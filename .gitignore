@@ -1,0 +1,14 @@
+node_modules/
+dist/
+logs/
+.cache/
+*.log
+.env
+client/.env
+server/.env
+infra/is/dist/
+tools/scenario-gen/out/
+test-results/
+playwright-report/
+.playwright-mcp/
+.superpowers/
