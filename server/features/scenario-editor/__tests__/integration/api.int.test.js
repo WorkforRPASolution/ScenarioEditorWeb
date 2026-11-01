@@ -51,6 +51,18 @@ describe('공정 권한 (완료 조건 2)', () => {
     expect(res.status).toBe(403)
     expect((await res.json()).code).toBe('PROCESS_FORBIDDEN')
   })
+  it('권한 밖 쌍의 버전 목록·열기·이미지도 403 PROCESS_FORBIDDEN(있는 시나리오)', async () => {
+    const path = '/scenarios/SEWETCH/SEWMODELA/EQP_STATE'
+    const vs = await get(`${path}/versions`) // sew_master 는 볼 수 있다 — 시나리오와 버전이 실제로 있다
+    expect(vs.status).toBe(200)
+    const crtime = (await vs.json()).data[0].crtime
+    // 이미지는 <img> 처럼 헤더 없이 ?seUser= 로 부른다(설정 사용자 sew_multi 는 SEWETCH 를 볼 수 있어 쿼리가 무시되면 403 이 아니다)
+    const image = `${base}${path}/versions/${crtime}/images/s0-bi?seUser=sew_cvd`
+    for (const res of [await get(`${path}/versions`, 'sew_cvd'), await get(`${path}/versions/current`, 'sew_cvd'), await get(`${path}/versions/${crtime}`, 'sew_cvd'), await fetch(image)]) {
+      expect(res.status, res.url).toBe(403)
+      expect((await res.json()).code, res.url).toBe('PROCESS_FORBIDDEN')
+    }
+  })
 })
 
 describe('전 종류 열기 (완료 조건 1·3)', () => {
