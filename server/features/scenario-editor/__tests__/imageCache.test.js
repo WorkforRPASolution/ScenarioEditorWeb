@@ -1,7 +1,9 @@
-import { describe, it, expect } from 'vitest'
-import { mkdtempSync, readFileSync, readdirSync, existsSync } from 'node:fs'
+import { describe, it, expect, vi } from 'vitest'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync } from 'node:fs'
+import fsp from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createHash } from 'node:crypto'
 import { createImageCache } from '../repo/imageCache'
 
 const png = (n) => Buffer.alloc(n, 1).toString('base64')
@@ -54,5 +56,85 @@ describe('imageCache', () => {
     await fs.rm(join(dir, encodeURIComponent('P.M.N.1'), '.done'))
     expect(await c.readSkeleton('P.M.N.1')).toBe(null)
     expect(existsSync(join(dir, encodeURIComponent('P.M.N.1')))).toBe(true)
+  })
+
+  it('한 버전이 maxBytes 보다 커도 자기 저장 뒤에 읽히고, 오래된 완료 버전만 지운다', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sew-img-'))
+    const c = createImageCache({ dir, maxBytes: 2500 })
+    await c.store('A.1', {}, [{ id: 'i', base64: png(1000) }])
+    await new Promise((r) => setTimeout(r, 15))
+    await c.store('BIG.1', { big: true }, [{ id: 'i', base64: png(3000) }]) // 혼자서 상한(2500)을 넘는다
+    expect(await c.readSkeleton('A.1')).toBe(null)
+    expect(await c.readSkeleton('BIG.1')).toEqual({ big: true })
+    expect(readFileSync(await c.imagePath('BIG.1', 'i'))).toHaveLength(3000)
+  })
+  it('완료 표시(.done) 없는 디렉터리(저장 중이거나 끊긴 것)는 용량이 넘어도 지우지 않는다', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sew-img-'))
+    const partial = join(dir, encodeURIComponent('PART.1'))
+    mkdirSync(partial)
+    writeFileSync(join(partial, 'i.png'), Buffer.alloc(1000, 1))
+    const c = createImageCache({ dir, maxBytes: 2500 })
+    await c.store('A.1', {}, [{ id: 'i', base64: png(1000) }])
+    await new Promise((r) => setTimeout(r, 15))
+    await c.store('B.1', {}, [{ id: 'i', base64: png(1000) }]) // 합계가 상한을 넘는다 -> 완료된 A 가 지워진다
+    expect(await c.readSkeleton('A.1')).toBe(null)
+    expect(await c.readSkeleton('B.1')).not.toBe(null)
+    expect(existsSync(join(partial, 'i.png'))).toBe(true)
+  })
+  it('지우다 실패해도 store 는 성공한다', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sew-img-'))
+    const c = createImageCache({ dir, maxBytes: 1500 })
+    await c.store('A.1', {}, [{ id: 'i', base64: png(1000) }])
+    await new Promise((r) => setTimeout(r, 15))
+    const realRm = fsp.rm
+    const spy = vi.spyOn(fsp, 'rm').mockImplementation(async (p, o) => {
+      if (String(p) === join(dir, encodeURIComponent('A.1'))) throw Object.assign(new Error('EACCES'), { code: 'EACCES' })
+      return realRm(p, o)
+    })
+    try {
+      await expect(c.store('B.1', { b: 1 }, [{ id: 'i', base64: png(1000) }])).resolves.toBeUndefined()
+      expect(spy).toHaveBeenCalledWith(join(dir, encodeURIComponent('A.1')), expect.anything()) // 지우기를 시도는 했다
+    } finally {
+      spy.mockRestore()
+    }
+    expect(await c.readSkeleton('B.1')).toEqual({ b: 1 })
+  })
+  it('특수 키(빈 문자열·.·..)는 디스크를 건드리기 전에 거부한다', async () => {
+    const parent = mkdtempSync(join(tmpdir(), 'sew-parent-'))
+    writeFileSync(join(parent, 'keep.txt'), 'x')
+    const dir = join(parent, 'cache')
+    const c = createImageCache({ dir, maxBytes: 1e9 })
+    for (const key of ['', '.', '..', undefined]) {
+      await expect(c.store(key, {}, [])).rejects.toThrow()
+    }
+    expect(readdirSync(parent)).toEqual(['keep.txt'])
+    expect(existsSync(dir)).toBe(false)
+    expect(await c.readSkeleton('..')).toBe(null)
+    expect(await c.imagePath('..', 'i')).toBe(null)
+  })
+  it('이미지 id 가 하나라도 틀리면 디렉터리를 만들기 전에 거부한다', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sew-img-'))
+    const c = createImageCache({ dir, maxBytes: 1e9 })
+    await expect(c.store('P.M.N.1', {}, [{ id: 'ok', base64: png(10) }, { id: 'a/b', base64: png(10) }])).rejects.toThrow('a/b')
+    await expect(c.store('P.M.N.2', {}, [{ id: 'ok', base64: png(10) }, { id: 5, base64: png(10) }])).rejects.toThrow()
+    await expect(c.store('P.M.N.3', {}, [{ id: 'ok', base64: png(10) }, { base64: png(10) }])).rejects.toThrow()
+    expect(readdirSync(dir)).toEqual([])
+  })
+  it('긴 시나리오 이름 키는 해시 디렉터리 이름으로 저장하고 읽는다', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sew-img-'))
+    const c = createImageCache({ dir, maxBytes: 1e9 })
+    const key = `P.M.${'가'.repeat(40)}.1730000000000` // encodeURIComponent 하면 200자를 넘는다
+    await c.store(key, { long: true }, [{ id: 's0-bi', base64: png(50) }])
+    expect(await c.readSkeleton(key)).toEqual({ long: true })
+    expect(readFileSync(await c.imagePath(key, 's0-bi'))).toHaveLength(50)
+    expect(readdirSync(dir)).toEqual([`~${createHash('sha256').update(key).digest('hex')}`])
+    expect(await c.readSkeleton(`${key}x`)).toBe(null)
+  })
+  it('200자 이하 키는 encodeURIComponent 이름을 그대로 쓴다', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sew-img-'))
+    const c = createImageCache({ dir, maxBytes: 1e9 })
+    const key = 'P.M.가나다.1730000000000'
+    await c.store(key, {}, [])
+    expect(readdirSync(dir)).toEqual([encodeURIComponent(key)])
   })
 })
