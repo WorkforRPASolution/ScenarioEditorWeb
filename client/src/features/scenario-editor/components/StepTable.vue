@@ -14,6 +14,11 @@ const theme = useGridTheme()
 const rows = computed(() => toRows(store.steps))
 const gridApi = ref(null)
 
+// 정렬은 끈다 — P1 의 순서는 ↑↓·순서도와 같은 번호 순서여야 한다.
+const defaultColDef = { sortable: false }
+// 클릭은 선택만 하고 Ctrl/Cmd 클릭으로 풀지는 못한다(store 의 선택과 표 강조가 어긋나지 않게).
+const rowSelection = { mode: 'singleRow', checkboxes: false, enableClickSelection: 'enableSelection' }
+
 const columnDefs = [
   { field: 'no', headerName: 'NO', width: 72, cellRenderer: renderNo },
   { field: 'condition', headerName: '조건', width: 100 },
@@ -35,9 +40,11 @@ function syncSelection() {
 }
 watch(() => store.selectedUid, () => nextTick(syncSelection))
 function onReady(e) { gridApi.value = e.api; syncSelection() }
+function onGone() { gridApi.value = null } // 스텝 0개 등으로 표가 지워지면 옛 api 를 놓는다
 function onCellClicked(e) {
   const go = e.event?.target?.closest?.('[data-go]')?.dataset.go ?? e.event?.target?.dataset?.go
   store.select(go ?? e.data.uid)
+  nextTick(syncSelection) // 이미 선택된 스텝을 눌러 선택이 안 바뀌어도 표 강조를 store 에 다시 맞춘다
 }
 function onKey(e) {
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); store.moveSelection(e.key === 'ArrowDown' ? 1 : -1) }
@@ -48,6 +55,7 @@ function onKey(e) {
   <div class="h-full outline-none" tabindex="0" data-testid="se-step-table" @keydown="onKey">
     <div v-if="!rows.length" class="h-full flex items-center justify-center text-sm text-gray-400">{{ t('SEW_UI_NO_STEPS') }}</div>
     <AgGridVue v-else :theme="theme" :row-data="rows" :column-defs="columnDefs" :get-row-id="(p) => p.data.uid" :suppress-cell-focus="true"
-      :row-selection="{ mode: 'singleRow', checkboxes: false, enableClickSelection: true }" style="width: 100%; height: 100%" @grid-ready="onReady" @cell-clicked="onCellClicked" />
+      :default-col-def="defaultColDef" :row-selection="rowSelection" style="width: 100%; height: 100%"
+      @grid-ready="onReady" @grid-pre-destroyed="onGone" @cell-clicked="onCellClicked" />
   </div>
 </template>

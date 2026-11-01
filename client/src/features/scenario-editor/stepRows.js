@@ -1,13 +1,17 @@
 import { targetLabel, targetKind, intervalSec, actionLabel, conditionLabel } from './format'
 
+const finite = (v) => typeof v === 'number' && Number.isFinite(v)
+const fixed2 = (v) => (v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v).toFixed(2) : '')
+
 export function toRows(steps) {
   return steps.map((s) => {
     const warn = s.notes.some((n) => n.level === 'warning')
     return {
       uid: s.uid, no: s.no, warn, info: !warn && s.notes.some((n) => n.level === 'info'),
       condition: conditionLabel(s.condition.kind),
-      accept: s.condition.kind === 'image' && s.condition.image ? Number(s.condition.image.accept).toFixed(2) : '',
-      retry: s.retry.limit, interval: intervalSec(s.retry.intervalMs), skip: s.condition.skipPreprocessing,
+      accept: s.condition.kind === 'image' && s.condition.image ? fixed2(s.condition.image.accept) : '',
+      retry: finite(s.retry?.limit) ? s.retry.limit : '', interval: finite(s.retry?.intervalMs) ? intervalSec(s.retry.intervalMs) : '',
+      skip: s.condition.skipPreprocessing,
       onTrue: targetLabel(s.next.onTrue), onTrueTarget: s.next.onTrue,
       onFalse: targetLabel(s.next.onFalse), onFalseTarget: s.next.onFalse,
       action: actionLabel(s.action.typeName), desc: s.descriptionToEmail ?? ''
