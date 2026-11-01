@@ -7,7 +7,9 @@
     "dev": "concurrently -n client,server \"npm --prefix client run dev\" \"npm --prefix server run dev\"",
     "test": "npm --prefix tools test && npm --prefix server test && npm --prefix client test",
     "upstream:import": "node tools/upstream/import.mjs",
-    "upstream:check": "node tools/upstream/check.mjs"
+    "upstream:check": "node tools/upstream/check.mjs",
+    "gen": "node tools/scenario-gen/cli.js",
+    "seed": "node tools/seed/cli.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
