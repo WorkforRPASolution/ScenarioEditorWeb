@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { createRequire } from 'node:module'
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 const require = createRequire(import.meta.url)
 
 let server
@@ -85,5 +88,37 @@ describe('/scenarios·/scenarios/:process/:model/:name/versions', () => {
       expect(res.status).toBe(403)
       expect(await res.json()).toMatchObject({ code: 'USER_NOT_REGISTERED' })
     }
+  })
+})
+
+describe('버전 열기', () => {
+  it('경로 값을 그대로 넘기고 X-SE-Open-Stats 를 싣고, CORS 가 그 헤더를 브라우저에 노출한다', async () => {
+    const calls = []
+    fake.opener = { open: async (...a) => { calls.push(a); return { skeleton: { name: 'A-B-C' }, stats: { ms: 12, peakRssMb: 345, fromCache: true } } } }
+    const res = await fetch(`${base}/scenarios/CVD/M1/A-B-C/versions/current`, { headers: { Origin: 'http://localhost:5173' } })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ success: true, data: { name: 'A-B-C' } })
+    expect(calls).toEqual([[expect.objectContaining({ singleid: 'sew_multi' }), 'CVD', 'M1', 'A-B-C', 'current']])
+    expect(res.headers.get('x-se-open-stats')).toBe('ms=12;peakRssMb=345;fromCache=true')
+    expect(res.headers.get('access-control-expose-headers')).toContain('X-SE-Open-Stats')
+  })
+  it('crtime 이 숫자가 아닌 이미지 요청은 400', async () => {
+    fake.opener = { imagePath: async () => { throw new Error('호출되면 안 된다') } }
+    const res = await fetch(`${base}/scenarios/CVD/M1/N/versions/abc/images/s0-bi`)
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ code: 'BAD_REQUEST' })
+  })
+})
+
+describe('이미지', () => {
+  it('점 폴더(.cache) 아래 파일도 PNG 로 준다', async () => {
+    const dir = join(mkdtempSync(join(tmpdir(), 'sew-img-')), '.cache', 'images')
+    mkdirSync(dir, { recursive: true })
+    const png = join(dir, 's0-bi.png')
+    writeFileSync(png, Buffer.from('89504e470d0a1a0a', 'hex'))
+    fake.opener = { imagePath: async () => png }
+    const res = await fetch(`${base}/scenarios/CVD/M1/N/versions/1730000000100/images/s0-bi`)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toMatch(/^image\/png/)
   })
 })

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildSkeleton, versionNotes } from '../../domain/skeleton'
+import { buildSkeleton, versionNotes, refreshPropertyParts } from '../../domain/skeleton'
 
 const md = (op, train = {}) => ({
   SearchArea: op === 0 ? { X: -18, Y: -18, Width: -18, Height: -18 } : { X: 10, Y: 20, Width: 300, Height: 200 },
@@ -196,5 +196,16 @@ describe('buildSkeleton', () => {
     expect(b.skeleton.header.compensation).toEqual({ x: 3, y: 4, refImage: null })
     expect(b.images.map((i) => i.id)).not.toContain('ref')
     expect(buildSkeleton({ ...base, biText: '' }).skeleton.header.compensation).toBe(null)
+  })
+})
+
+describe('refreshPropertyParts', () => {
+  it('운영 속성이 바뀌면 속성·시나리오 경고를 다시 계산하고 BI 경고는 둔다', () => {
+    const { skeleton } = buildSkeleton({ ...base, biText: '{broken' })
+    expect(skeleton.notes.map((n) => n.code)).toEqual(['PARSE_FAILED'])
+    const r = refreshPropertyParts(skeleton, { Priority: 3, Type: 1 }, { ScenarioDescription: '새 설명' })
+    expect(r.property.Priority).toBe(3)
+    expect(r.performance.scenarioDescription).toBe('새 설명')
+    expect(r.notes.map((n) => n.code).sort()).toEqual(['PARSE_FAILED', 'PRIORITY_NONSTANDARD'])
   })
 })

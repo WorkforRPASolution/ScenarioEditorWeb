@@ -46,4 +46,21 @@ async function versions(req, res) {
   ok(res, await getDeps().versions.versions(req.seUser, process, model, name))
 }
 
-module.exports = { ok, loadUser, me, scopes, refreshCache, list, versions }
+async function open(req, res) {
+  const { process, model, name, crtime } = req.params
+  const { skeleton, stats } = await getDeps().opener.open(req.seUser, process, model, name, crtime)
+  res.set('X-SE-Open-Stats', `ms=${stats.ms};peakRssMb=${stats.peakRssMb};fromCache=${stats.fromCache}`)
+  ok(res, skeleton)
+}
+
+async function image(req, res) {
+  const { process, model, name, crtime, imageId } = req.params
+  if (!/^\d+$/.test(crtime)) throw seError(400, 'BAD_REQUEST', 'crtime 은 숫자')
+  const p = await getDeps().opener.imagePath(req.seUser, process, model, name, Number(crtime), imageId)
+  res.set('Cache-Control', 'private, max-age=31536000, immutable')
+  res.type('png')
+  // 캐시 폴더 기본값이 .cache 아래다. Express 5(send 1.x)는 경로 중간의 점 폴더도 막으므로 허용한다(경로는 imageCache 가 만든 것만 온다).
+  res.sendFile(p, { dotfiles: 'allow' })
+}
+
+module.exports = { ok, loadUser, me, scopes, refreshCache, list, versions, open, image }

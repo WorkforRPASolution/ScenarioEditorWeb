@@ -29,11 +29,14 @@ function build(env = process.env) {
   const users = createUserService({ repo, ttlMs: num(env.USER_CACHE_TTL_SEC, 30) * 1000, now })
   const scopes = createScopeService({ repo, ttlMs: num(env.EQUIPMENT_CACHE_TTL_SEC, 60) * 1000, now })
   const out = { repo, hash, gridfs, imageCache, users, scopes }
-  // Task 4~5 가 여기에 opener·dataCheck 를 더한다.
+  // Task 5 가 여기에 dataCheck 를 더한다.
   const { createListService } = require('./service/listService')
   const { createVersionService } = require('./service/versionService')
   out.list = createListService({ repo, hash, scopes })
   out.versions = createVersionService({ gridfs, hash, scopes })
+  const { createOpenService } = require('./service/openService')
+  const { createLogger } = require('../../shared/logger')
+  out.opener = createOpenService({ repo, hash, gridfs, scopes, imageCache, log: createLogger('scenario-editor') })
   return out
 }
 

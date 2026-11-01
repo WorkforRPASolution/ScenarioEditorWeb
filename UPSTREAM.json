@@ -435,7 +435,7 @@
       "mode": "shell-modified",
       "sourceSha256": "d3b460c85376647728c3d20e71176681884a35aec56f76bcf24f038456dc6830",
       "localSha256": null,
-      "reason": "기능 라우터를 /api/scenario-editor 하나로"
+      "reason": "기능 라우터를 /api/scenario-editor 하나로, CORS 에 X-SE-Open-Stats 노출"
     },
     {
       "path": "server/index.js",

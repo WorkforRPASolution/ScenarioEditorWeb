@@ -27,7 +27,7 @@ app.use(cors({
     return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
-  exposedHeaders: ['Content-Disposition']
+  exposedHeaders: ['Content-Disposition', 'X-SE-Open-Stats']
 }));
 
 // HTTP request logging

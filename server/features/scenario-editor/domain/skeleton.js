@@ -104,8 +104,6 @@ function buildSkeleton({ process, model, name, crtime, isCurrent, body: storedBo
   steps.forEach((s, i) => s.notes.push(...g[i]))
 
   const targetWindow = judgeTargetWindow(body.TargetWindowCondition)
-  const prop = propertyFromBson(propertyDoc)
-  if (!prop.ok) notesOut.push(note('warning', 'PARSE_FAILED', { field: 'property', error: prop.error }))
   let compensation = null
   if (body.Compensation && typeof body.Compensation === 'object') {
     compensation = { x: body.Compensation.X, y: body.Compensation.Y, refImage: null }
@@ -114,24 +112,22 @@ function buildSkeleton({ process, model, name, crtime, isCurrent, body: storedBo
       compensation.refImage = url('ref')
     }
   }
-  notesOut.push(...scenarioNotes({ rawSteps, property: prop.ok ? prop.value : null, targetWindow }))
 
-  return {
-    skeleton: {
-      process, model, name, id: body.ID, version: { crtime, isCurrent },
-      header: {
-        description: body.Description, timeoutLimit: body.TimeoutLimit, revisionNo: body.RevisionNo, triggerType: body.TriggerType,
-        text: body.Text, targetWindow, hidingWindows: Array.isArray(body.HidingWindowConditionList) ? body.HidingWindowConditionList : [],
-        compensation
-      },
-      steps,
-      baseImageSummary: { needed, present },
-      property: prop.ok ? prop.value : null,
-      performance: performanceFromBson(performanceDoc),
-      notes: notesOut
+  // 운영 속성·성과·시나리오 알림은 refreshPropertyParts 가 붙인다(열 때마다 현재 값으로 다시 붙이는 것과 같은 경로).
+  const skeleton = refreshPropertyParts({
+    process, model, name, id: body.ID, version: { crtime, isCurrent },
+    header: {
+      description: body.Description, timeoutLimit: body.TimeoutLimit, revisionNo: body.RevisionNo, triggerType: body.TriggerType,
+      text: body.Text, targetWindow, hidingWindows: Array.isArray(body.HidingWindowConditionList) ? body.HidingWindowConditionList : [],
+      compensation
     },
-    images
-  }
+    steps,
+    baseImageSummary: { needed, present },
+    property: null,
+    performance: null,
+    notes: notesOut
+  }, propertyDoc, performanceDoc)
+  return { skeleton, images }
 }
 
 // 현재 운영 속성에 기대지 않는 알림 — 시나리오 알림(SCENARIO_NOTE_CODES)과 운영 속성 해석 실패(PARSE_FAILED property)를 뺀 나머지.
@@ -140,4 +136,13 @@ function versionNotes(notes) {
   return notes.filter((n) => !SCENARIO_NOTE_CODES.includes(n.code) && !(n.code === 'PARSE_FAILED' && n.params && n.params.field === 'property'))
 }
 
-module.exports = { buildSkeleton, versionNotes }
+// 운영 속성·성과는 버전과 무관한 현재 값이다 — 캐시된 뼈대에 열 때마다 다시 붙인다. 버전 쪽 알림(versionNotes: 본문·BI 해석 등)은 남긴다.
+function refreshPropertyParts(skeleton, propertyDoc, performanceDoc) {
+  const prop = propertyFromBson(propertyDoc)
+  const notes = [...versionNotes(skeleton.notes)]
+  if (!prop.ok) notes.push(note('warning', 'PARSE_FAILED', { field: 'property', error: prop.error }))
+  notes.push(...scenarioNotes({ rawSteps: skeleton.steps.map((s) => s.raw), property: prop.ok ? prop.value : null, targetWindow: skeleton.header.targetWindow }))
+  return { ...skeleton, property: prop.ok ? prop.value : null, performance: performanceFromBson(performanceDoc), notes }
+}
+
+module.exports = { buildSkeleton, versionNotes, refreshPropertyParts }
