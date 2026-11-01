@@ -1,0 +1,434 @@
+{
+  "source": "WebManager",
+  "commit": "2f1eb0a",
+  "importedAt": "2026-11-01",
+  "files": [
+    {
+      "path": "client/index.html",
+      "mode": "verbatim",
+      "sourceSha256": "d1928fa13b1a330f0d5b4ea2955c21c3f15ea8bcb4d9a6f4eda4390ad693fc06",
+      "localSha256": "d1928fa13b1a330f0d5b4ea2955c21c3f15ea8bcb4d9a6f4eda4390ad693fc06",
+      "reason": null
+    },
+    {
+      "path": "client/public/favicon.svg",
+      "mode": "verbatim",
+      "sourceSha256": "dfb36e0f856ee1384b1152741a0a4d7437af26898deedd145956d00733459c6f",
+      "localSha256": "dfb36e0f856ee1384b1152741a0a4d7437af26898deedd145956d00733459c6f",
+      "reason": null
+    },
+    {
+      "path": "client/src/main.js",
+      "mode": "verbatim",
+      "sourceSha256": "b3a1f758b6489bc256584c3844ce569dfa0aa7b3b696575799d736388fa82a44",
+      "localSha256": "b3a1f758b6489bc256584c3844ce569dfa0aa7b3b696575799d736388fa82a44",
+      "reason": null
+    },
+    {
+      "path": "client/src/App.vue",
+      "mode": "shell-modified",
+      "sourceSha256": "8539ae008e267b5a77e1b500abdc73e44cd403d4eae4eb309b7fed9e72a4dff8",
+      "localSha256": null,
+      "reason": "Auth·Landing 레이아웃과 접근 로그 제거, 늘 DefaultLayout"
+    },
+    {
+      "path": "client/src/router/index.js",
+      "mode": "shell-modified",
+      "sourceSha256": "3612581e6e1160b63144218fbccc1bc261551b25fa87177f2aafac950e4f1b70",
+      "localSha256": null,
+      "reason": "라우트를 편집기·unauthorized·/ redirect 로 교체, 가드는 대역 인증 초기화만"
+    },
+    {
+      "path": "client/src/layouts/DefaultLayout.vue",
+      "mode": "shell-modified",
+      "sourceSha256": "d9797d64ca046cd7425b67491c063c287d0562c5ca1abc891ad9231bd2f9144f",
+      "localSha256": null,
+      "reason": "공지 팝업(notices 기능) 제거"
+    },
+    {
+      "path": "client/src/layouts/Header.vue",
+      "mode": "shell-modified",
+      "sourceSha256": "11ef82d1d5cfc6805b6b7e43c1f6f319bb7d42e5a726a24b0e6ce57aa037b7bc",
+      "localSha256": null,
+      "reason": "공지·알림·도움말·로그아웃 제거"
+    },
+    {
+      "path": "client/src/layouts/Sidebar.vue",
+      "mode": "verbatim",
+      "sourceSha256": "db4f440512bc1ed2f4e6b511283d3a8d8a30679f57c4616f80b35a4dfdcb9f71",
+      "localSha256": "db4f440512bc1ed2f4e6b511283d3a8d8a30679f57c4616f80b35a4dfdcb9f71",
+      "reason": null
+    },
+    {
+      "path": "client/src/layouts/TabBar.vue",
+      "mode": "verbatim",
+      "sourceSha256": "ae93ab684e70763ba18dcc7fcac0746794d83606efe05786453503c13ad1dbbd",
+      "localSha256": "ae93ab684e70763ba18dcc7fcac0746794d83606efe05786453503c13ad1dbbd",
+      "reason": null
+    },
+    {
+      "path": "client/src/features/errors/UnauthorizedView.vue",
+      "mode": "verbatim",
+      "sourceSha256": "5ae9d68bf57f3a6296142590f97607c71a696d40c6c3c3f7f2b538bb0173cd25",
+      "localSha256": "5ae9d68bf57f3a6296142590f97607c71a696d40c6c3c3f7f2b538bb0173cd25",
+      "reason": null
+    },
+    {
+      "path": "client/src/style.css",
+      "mode": "verbatim",
+      "sourceSha256": "90a8f10b4a0c010faa25773f125d4cb5a23cd8fc48655804fdf9e9a99c4ba647",
+      "localSha256": "90a8f10b4a0c010faa25773f125d4cb5a23cd8fc48655804fdf9e9a99c4ba647",
+      "reason": null
+    },
+    {
+      "path": "client/tailwind.config.js",
+      "mode": "verbatim",
+      "sourceSha256": "67e8788c9cfd6fd3f89c27758017f922b83932ac87c827d172e50d9c5015410f",
+      "localSha256": "67e8788c9cfd6fd3f89c27758017f922b83932ac87c827d172e50d9c5015410f",
+      "reason": null
+    },
+    {
+      "path": "client/postcss.config.js",
+      "mode": "verbatim",
+      "sourceSha256": "190c877db466995bf1482f4a16abd06e04a89ede3119341e2a86ff96e1737b27",
+      "localSha256": "190c877db466995bf1482f4a16abd06e04a89ede3119341e2a86ff96e1737b27",
+      "reason": null
+    },
+    {
+      "path": "client/vite.config.js",
+      "mode": "verbatim",
+      "sourceSha256": "8aa5d6366e5cfac72653fcaa3518010be13bc697db366c227c2ad4c8376a48be",
+      "localSha256": "8aa5d6366e5cfac72653fcaa3518010be13bc697db366c227c2ad4c8376a48be",
+      "reason": null
+    },
+    {
+      "path": "client/vitest.setup.js",
+      "mode": "verbatim",
+      "sourceSha256": "b9e87f05184a3434a69b5b166e83ef7bc285e24b6d63acb98fd5443b72fb7974",
+      "localSha256": "b9e87f05184a3434a69b5b166e83ef7bc285e24b6d63acb98fd5443b72fb7974",
+      "reason": null
+    },
+    {
+      "path": "client/package.json",
+      "mode": "shell-modified",
+      "sourceSha256": "90b9c4082d3411584dc86968a7e8b0d31caf088a254a6045e1403c648abe5620",
+      "localSha256": null,
+      "reason": "사본이 쓰는 의존만, 버전은 WebManager lock 설치본에 고정"
+    },
+    {
+      "path": "client/.env.example",
+      "mode": "shell-modified",
+      "sourceSha256": "3d6b5fd7f71d195d8258d8b396004d17a32c6f023341960e1602eff3a5762973",
+      "localSha256": null,
+      "reason": "VITE_API_URL 을 3100 으로"
+    },
+    {
+      "path": "client/src/shared/stores/menu.js",
+      "mode": "verbatim",
+      "sourceSha256": "a85b48e0405681794cfc9e734d243c9641e03781bf16e6308461a9172b131039",
+      "localSha256": "a85b48e0405681794cfc9e734d243c9641e03781bf16e6308461a9172b131039",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/stores/tabs.js",
+      "mode": "verbatim",
+      "sourceSha256": "ba57d659d2c9f79f6c1331c4c9986eb12cd3672d6ae3cd203d24d049667e8455",
+      "localSha256": "ba57d659d2c9f79f6c1331c4c9986eb12cd3672d6ae3cd203d24d049667e8455",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/stores/featureFlags.js",
+      "mode": "verbatim",
+      "sourceSha256": "ff08ce206481adecb9a6af46e952601300477c98d0238f988781059b308a9fbf",
+      "localSha256": "ff08ce206481adecb9a6af46e952601300477c98d0238f988781059b308a9fbf",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/stores/processFilter.js",
+      "mode": "verbatim",
+      "sourceSha256": "6838464a12d0e33436df54eafb6320d18d2f24e88e437d90fa157230cf753336",
+      "localSha256": "6838464a12d0e33436df54eafb6320d18d2f24e88e437d90fa157230cf753336",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/stores/auth.js",
+      "mode": "stub",
+      "sourceSha256": "c3721ac95549783440be2266787ff7429d5d5fe5ef214e44f81fcc91a47860c1",
+      "localSha256": null,
+      "reason": "로그인 없음 — /api/scenario-editor/me 로 사용자"
+    },
+    {
+      "path": "client/src/shared/api/index.js",
+      "mode": "stub",
+      "sourceSha256": "2149b0b1c299bf95423fa912670a24c2f4f5d4f68cefff0e16d7958fdbc05dbd",
+      "localSha256": null,
+      "reason": "axios 인스턴스만, 401 리다이렉트·도메인 API 묶음 제거"
+    },
+    {
+      "path": "client/src/shared/composables/useFeaturePermission.js",
+      "mode": "stub",
+      "sourceSha256": "3640258300d341adc1eb1d36a789a82843e8697a51d118735eeaa21c3bf21085",
+      "localSha256": null,
+      "reason": "권한 API 없음 — 모두 허용(MVP 쓰기는 기능 안에서 WRITE 검사)"
+    },
+    {
+      "path": "client/src/shared/composables/useProcessPermission.js",
+      "mode": "stub",
+      "sourceSha256": "0c35b63f4ca27b0b49dffec16e17fdc36e4f81de9202847ba298bef1c7c8511f",
+      "localSha256": null,
+      "reason": "공정 권한은 서버가 계산 — 반환 키 5개 유지"
+    },
+    {
+      "path": "client/src/shared/components/AppIcon.vue",
+      "mode": "verbatim",
+      "sourceSha256": "406403b8213f205a71fae4c9b505d8c9cf77fad39976d1da9cd50e4ed0d90e3e",
+      "localSha256": "406403b8213f205a71fae4c9b505d8c9cf77fad39976d1da9cd50e4ed0d90e3e",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/components/BaseToast.vue",
+      "mode": "verbatim",
+      "sourceSha256": "7cb7d58e5b9439afe950b2e8196dbac97c73703424de7600121ebc5c5aa0408c",
+      "localSha256": "7cb7d58e5b9439afe950b2e8196dbac97c73703424de7600121ebc5c5aa0408c",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/components/ToggleSwitch.vue",
+      "mode": "verbatim",
+      "sourceSha256": "0026d552d0c2345b7dde175bf798499f14f65eea35bce6c57a95d997ff6bd302",
+      "localSha256": "0026d552d0c2345b7dde175bf798499f14f65eea35bce6c57a95d997ff6bd302",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/components/MultiSelect.vue",
+      "mode": "verbatim",
+      "sourceSha256": "c99b7b297b803ee835a894fde0b1201cd2293bc837c6af436a3c355083ccf76e",
+      "localSha256": "c99b7b297b803ee835a894fde0b1201cd2293bc837c6af436a3c355083ccf76e",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/components/FilterBookmarks.vue",
+      "mode": "verbatim",
+      "sourceSha256": "6bb11c5ae8e744a66b88b93eb1387192a1eede75d7316dc64734056b145ff97c",
+      "localSha256": "6bb11c5ae8e744a66b88b93eb1387192a1eede75d7316dc64734056b145ff97c",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/components/BaseFilterBar.vue",
+      "mode": "verbatim",
+      "sourceSha256": "732df427677a51a433819d9650e6ea12c516dd1df91a74eb456127168441f6f9",
+      "localSha256": "732df427677a51a433819d9650e6ea12c516dd1df91a74eb456127168441f6f9",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/components/BaseDataGridToolbar.vue",
+      "mode": "verbatim",
+      "sourceSha256": "b0ecb2855040a4072831c503c5890c6c542845915dbfb86fff43dc040553d61b",
+      "localSha256": "b0ecb2855040a4072831c503c5890c6c542845915dbfb86fff43dc040553d61b",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/components/CustomHorizontalScrollbar.vue",
+      "mode": "verbatim",
+      "sourceSha256": "3cc48d1d54f54a646aba49b58f5e7372e78170a3a55059a3a70a437f06299689",
+      "localSha256": "3cc48d1d54f54a646aba49b58f5e7372e78170a3a55059a3a70a437f06299689",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/components/ValidationErrorsModal.vue",
+      "mode": "verbatim",
+      "sourceSha256": "b24c2b9e1ba125c691bfdfca9c75de30f3ccc8fd5ab52f5e91dba987c56c1a87",
+      "localSha256": "b24c2b9e1ba125c691bfdfca9c75de30f3ccc8fd5ab52f5e91dba987c56c1a87",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/components/MonacoEditor.vue",
+      "mode": "verbatim",
+      "sourceSha256": "83cfd53b9cfad452972cf0865c1fb8b5542cb182f65afbca0ffc88a455d86d1e",
+      "localSha256": "83cfd53b9cfad452972cf0865c1fb8b5542cb182f65afbca0ffc88a455d86d1e",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/components/MonacoDiffEditor.vue",
+      "mode": "verbatim",
+      "sourceSha256": "7980736e5f3d120fbafe76bd32d539ee598fa7692292a946f7fe370c544fc083",
+      "localSha256": "7980736e5f3d120fbafe76bd32d539ee598fa7692292a946f7fe370c544fc083",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/components/AgGridMultiSelectEditor.vue",
+      "mode": "verbatim",
+      "sourceSha256": "b25ac86a86e54703fa1c4a9f8f1ff4892d7c507170f5cc26b0a64286380b45df",
+      "localSha256": "b25ac86a86e54703fa1c4a9f8f1ff4892d7c507170f5cc26b0a64286380b45df",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/components/AgGridProcessModelEditor.vue",
+      "mode": "verbatim",
+      "sourceSha256": "f84cb19d7175363d08a7182fff1c85e70a2a2104bb12e823dc0fad98ba9272a0",
+      "localSha256": "f84cb19d7175363d08a7182fff1c85e70a2a2104bb12e823dc0fad98ba9272a0",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/components/AgGridTagEditor.vue",
+      "mode": "verbatim",
+      "sourceSha256": "540df570c07d18b257fa47f4b8f47e9b3bb072d6c4353095817730163b432ada",
+      "localSha256": "540df570c07d18b257fa47f4b8f47e9b3bb072d6c4353095817730163b432ada",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/composables/useToast.js",
+      "mode": "verbatim",
+      "sourceSha256": "4cdea35dfa8b42aa92c4ec227b9b421808a95a6ad4337404ad18e437b43700ac",
+      "localSha256": "4cdea35dfa8b42aa92c4ec227b9b421808a95a6ad4337404ad18e437b43700ac",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/composables/useFilterBookmarks.js",
+      "mode": "verbatim",
+      "sourceSha256": "070a861805157244590b9714b0bcb352bf044b7e50220b593026fa71b2256e55",
+      "localSha256": "070a861805157244590b9714b0bcb352bf044b7e50220b593026fa71b2256e55",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/composables/useCustomScrollbar.js",
+      "mode": "verbatim",
+      "sourceSha256": "0729f7bfa6ced73fefbbe02fab3827115119c8926c29774f93bd3b2a8b7508c0",
+      "localSha256": "0729f7bfa6ced73fefbbe02fab3827115119c8926c29774f93bd3b2a8b7508c0",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/composables/useValidationErrorsModal.js",
+      "mode": "verbatim",
+      "sourceSha256": "a02250f462602fb903ad55cdfc022837af0e395f0685349b83bc91ef94ed943e",
+      "localSha256": "a02250f462602fb903ad55cdfc022837af0e395f0685349b83bc91ef94ed943e",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/composables/useTheme.js",
+      "mode": "verbatim",
+      "sourceSha256": "ff5cb09e8839d35f6a4b0be257f5f29bcdb3dacb455c9d85a58328bd6d3e2323",
+      "localSha256": "ff5cb09e8839d35f6a4b0be257f5f29bcdb3dacb455c9d85a58328bd6d3e2323",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/composables/useChartTheme.js",
+      "mode": "verbatim",
+      "sourceSha256": "486a0546baa7199df12560b5d0252b3bca3cdf5c6dddfa41b16a3c03cd8bb4cc",
+      "localSha256": "486a0546baa7199df12560b5d0252b3bca3cdf5c6dddfa41b16a3c03cd8bb4cc",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/composables/useDataGridCellSelection.js",
+      "mode": "verbatim",
+      "sourceSha256": "2919e86c77ed3fa86976372a00e287dc721a8b61ff6f552f4c419f5fec0864a1",
+      "localSha256": "2919e86c77ed3fa86976372a00e287dc721a8b61ff6f552f4c419f5fec0864a1",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/composables/useColumnWidthExporter.js",
+      "mode": "verbatim",
+      "sourceSha256": "9d1bb44cf6250d91fb804604b8d6955811e99f48af9e01b9fc0105a0c4002b91",
+      "localSha256": "9d1bb44cf6250d91fb804604b8d6955811e99f48af9e01b9fc0105a0c4002b91",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/composables/useResizableModal.js",
+      "mode": "verbatim",
+      "sourceSha256": "9f662707ff460b1b6a1528cbe74bd67aaae9e12b71a4975063c1b92da49e296d",
+      "localSha256": "9f662707ff460b1b6a1528cbe74bd67aaae9e12b71a4975063c1b92da49e296d",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/composables/useFilterBar.js",
+      "mode": "verbatim",
+      "sourceSha256": "6e3e8521c78de033d0eaed9301c3735dab95c8780cdd4dcda22c2fc1193bedd2",
+      "localSha256": "6e3e8521c78de033d0eaed9301c3735dab95c8780cdd4dcda22c2fc1193bedd2",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/utils/agGridPopupPosition.js",
+      "mode": "verbatim",
+      "sourceSha256": "d595b63aa620e212fa740ab069b76bdea02e0fafe3dd2c7c64f6a746c199068b",
+      "localSha256": "d595b63aa620e212fa740ab069b76bdea02e0fafe3dd2c7c64f6a746c199068b",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/utils/sseStreamParser.js",
+      "mode": "verbatim",
+      "sourceSha256": "59e9b21c7ea63feb60e4f46fcc0f49ca5f8e559e7c16539187717b6268b1d701",
+      "localSha256": "59e9b21c7ea63feb60e4f46fcc0f49ca5f8e559e7c16539187717b6268b1d701",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/utils/dataGridValidation.js",
+      "mode": "verbatim",
+      "sourceSha256": "eaaa446f288a8ce19e7bb2d6b12b89a2bb77b66c33426d7429908eb9f4ceff34",
+      "localSha256": "eaaa446f288a8ce19e7bb2d6b12b89a2bb77b66c33426d7429908eb9f4ceff34",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/styles/ag-grid-scroll.css",
+      "mode": "verbatim",
+      "sourceSha256": "5c34e3a887e211e4b87665cd8874ce58c748c6af821c5dc700a0150abf069f8d",
+      "localSha256": "5c34e3a887e211e4b87665cd8874ce58c748c6af821c5dc700a0150abf069f8d",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/components/__tests__/BaseToast.test.js",
+      "mode": "test",
+      "sourceSha256": "95281329bc5d51147330e6d1e7e2d9b328824581d13cdc7d6eac24894428c360",
+      "localSha256": "95281329bc5d51147330e6d1e7e2d9b328824581d13cdc7d6eac24894428c360",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/composables/__tests__/useChartTheme.test.js",
+      "mode": "test",
+      "sourceSha256": "59f77739e9013dbdc71c1b88b270b4a622793a0778208f6cd4ed79cb91628437",
+      "localSha256": "59f77739e9013dbdc71c1b88b270b4a622793a0778208f6cd4ed79cb91628437",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/composables/__tests__/useDataGridCellSelection.test.js",
+      "mode": "test",
+      "sourceSha256": "10a99436f0fcef456ded2b35adb24ca41ca681b78c35902a892ad3346d74fd70",
+      "localSha256": "10a99436f0fcef456ded2b35adb24ca41ca681b78c35902a892ad3346d74fd70",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/composables/__tests__/useResizableModal.test.js",
+      "mode": "test",
+      "sourceSha256": "8c038cd35c9f92f3f81cdf75b708a4a6584c366aa4966fc9267da737fdea7728",
+      "localSha256": "8c038cd35c9f92f3f81cdf75b708a4a6584c366aa4966fc9267da737fdea7728",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/composables/useValidationErrorsModal.test.js",
+      "mode": "test",
+      "sourceSha256": "1a218ce86d16ea4d2d535b6ec8097f67f65df76f9d1a6cd3830401661e7104de",
+      "localSha256": "1a218ce86d16ea4d2d535b6ec8097f67f65df76f9d1a6cd3830401661e7104de",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/stores/__tests__/menu.test.js",
+      "mode": "test",
+      "sourceSha256": "becda0986eab2b68b164a04588d3d620dd97def5483c010156c74a2407769224",
+      "localSha256": "becda0986eab2b68b164a04588d3d620dd97def5483c010156c74a2407769224",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/stores/__tests__/processFilter.test.js",
+      "mode": "test",
+      "sourceSha256": "b3001d66529ec72466a02ad174006e01e9fe8097319830da03da8953c1310453",
+      "localSha256": "b3001d66529ec72466a02ad174006e01e9fe8097319830da03da8953c1310453",
+      "reason": null
+    },
+    {
+      "path": "client/src/shared/stores/featureFlags.test.js",
+      "mode": "test",
+      "sourceSha256": "01f78136ad963c5542b78576992367a8ba185340a298853196cdcdccaf31014b",
+      "localSha256": "01f78136ad963c5542b78576992367a8ba185340a298853196cdcdccaf31014b",
+      "reason": null
+    }
+  ]
+}

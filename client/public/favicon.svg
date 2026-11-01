@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Layer 1 (bottom) - Slate Blue -->
+  <g opacity="0.9">
+    <polygon points="5,70 50,54 95,70 50,86" fill="#b4c8dc"/>
+    <polygon points="5,70 50,86 50,92 5,76" fill="#8aa0b8"/>
+    <polygon points="50,86 95,70 95,76 50,92" fill="#9eb4cc"/>
+  </g>
+  <!-- Layer 2 (middle) - Teal -->
+  <g opacity="0.85">
+    <polygon points="5,48 50,32 95,48 50,64" fill="#48b0a8"/>
+    <polygon points="5,48 50,64 50,70 5,54" fill="#2c908a"/>
+    <polygon points="50,64 95,48 95,54 50,70" fill="#3aa09a"/>
+  </g>
+  <!-- Layer 3 (top) - Primary Blue -->
+  <g opacity="0.82">
+    <polygon points="5,26 50,10 95,26 50,42" fill="#5c9ee0"/>
+    <polygon points="5,26 50,42 50,48 5,32" fill="#3878c0"/>
+    <polygon points="50,42 95,26 95,32 50,48" fill="#4a8cd0"/>
+  </g>
+</svg>
