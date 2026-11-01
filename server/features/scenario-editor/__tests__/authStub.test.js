@@ -33,6 +33,16 @@ describe('authMiddleware 대역', () => {
     expect(run(authenticate, { 'x-se-user': '  ' }).req.user.singleid).toBe('sew_multi')
   })
 
+  it('개발 전용 ?seUser= 는 SE_DEV_USER_OVERRIDE=1 일 때만(<img> 는 헤더를 못 보냄)', () => {
+    process.env.SE_USER_SINGLEID = 'sew_multi'
+    const req = { headers: {}, query: { seUser: 'sew_master' } }
+    authenticate(req, {}, () => {})
+    expect(req.user.singleid).toBe('sew_multi')
+    process.env.SE_DEV_USER_OVERRIDE = '1'
+    authenticate(req, {}, () => {})
+    expect(req.user.singleid).toBe('sew_master')
+  })
+
   it('optionalAuth 는 설정이 없으면 user 없이 통과한다', () => {
     const { req, called } = run(optionalAuth)
     expect(called).toBe(true)

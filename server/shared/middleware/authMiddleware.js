@@ -1,6 +1,6 @@
 // STANDALONE STUB — 편입 시 WebManager 원본으로 교체
 // 원본: WebManager@2f1eb0a server/shared/middleware/authMiddleware.js (150줄). export 5개와 동작 모양을 지킨다.
-// 로그인·JWT 가 없다. 사용자는 설정 SE_USER_SINGLEID, 개발 전용으로 SE_DEV_USER_OVERRIDE=1 이면 헤더 X-SE-User.
+// 로그인·JWT 가 없다. 사용자는 설정 SE_USER_SINGLEID, 개발 전용으로 SE_DEV_USER_OVERRIDE=1 이면 헤더 X-SE-User 또는 쿼리 ?seUser=(<img> 용).
 // req.user 에 authorityManager 는 없다 — 편집기 userService 가 ARS_USER_INFO 로 정한다.
 const { ApiError } = require('./errorHandler')
 
@@ -8,6 +8,9 @@ function resolveSingleId(req) {
   if (process.env.SE_DEV_USER_OVERRIDE === '1') {
     const header = req.headers['x-se-user']
     if (typeof header === 'string' && header.trim() !== '') return header.trim()
+    // <img> 는 헤더를 못 보낸다 — 개발 전용으로 쿼리도 받는다.
+    const q = req.query && req.query.seUser
+    if (typeof q === 'string' && q.trim() !== '') return q.trim()
   }
   const configured = process.env.SE_USER_SINGLEID
   return typeof configured === 'string' ? configured.trim() : ''
