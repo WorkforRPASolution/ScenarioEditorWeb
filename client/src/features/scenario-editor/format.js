@@ -34,3 +34,23 @@ export const conditionLabel = (kind) => LABELS.condition[kind] ?? kind
 export const SCENARIO_TYPE_KEYS = ['NOT_DEFINED', 'ALARM_RECOVERY', 'PM_MACRO', 'CONDITION_CHECK', 'SILENT_DOWN_INFORM', 'GLASS_DEFECT', 'SOP_INFORM', 'FAP', 'ACCIDENT_PREVENTION']
 export const scenarioTypeLabel = (n) => LABELS.scenarioType[SCENARIO_TYPE_KEYS[n]] ?? String(n)
 export const enabledLabel = (v) => LABELS.enabled[v === true ? 'true' : v === false ? 'false' : 'unknown']
+
+export function actionDetails(a) {
+  const rows = [['종류', actionLabel(a.typeName)]]
+  if (a.click) rows.push(['좌표', `${a.click.x}:${a.click.y}`], ['기준', a.click.basis === 'trainImage' ? '학습 이미지 왼쪽 위' : '화면 절대'])
+  if (a.wheel) rows.push(['칸 수', String(a.wheel.notches)], ['대기', `${a.wheel.delaySec}초`])
+  if (a.keyboard) {
+    rows.push(['입력 문자열', a.keyboard.text || '(없음)'], ['기능 키', a.keyboard.keys.map((k) => k.name).join(' ') || '(없음)'])
+    if (a.keyboard.unknownCodes.length) rows.push(['모르는 코드', a.keyboard.unknownCodes.join(', ')])
+  }
+  if (a.waitSec !== undefined) rows.push(['시간', `${a.waitSec}초`])
+  if (a.oiCommand) {
+    rows.push(['명령', a.oiCommand.command])
+    if (a.oiCommand.code) rows.push(['다운 코드', a.oiCommand.code])
+    if (a.oiCommand.chamber) rows.push(['챔버', a.oiCommand.chamber])
+  }
+  if (a.fap) rows.push(['SSB 메시지', a.fap.ssbMessage], ['PM 코드', a.fap.pmCode], ['메인 챔버', a.fap.mainChamber], ['ESOP 매크로', a.fap.esopMacroId])
+  if (a.native) rows.push(['함수', a.native.functionName ?? '(null)'], ['인자', a.native.params.join(', ') || '(없음)'], ['출력', a.native.outputs.join(', ') || '(없음)'])
+  rows.push(['저장 값', a.raw ? a.raw : '(빈 값)'])
+  return rows
+}

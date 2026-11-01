@@ -36,7 +36,7 @@ describe('messages', () => {
     const sources = import.meta.glob(['../**/*.vue', '../**/*.js', '!../tests/**'], { query: '?raw', import: 'default', eager: true })
     const keys = new Set()
     for (const src of Object.values(sources)) for (const m of src.matchAll(/\bt\('([A-Za-z0-9_]+)'/g)) keys.add(m[1])
-    expect(Object.keys(sources).length).toBeGreaterThan(2)
+    expect(keys.size).toBeGreaterThan(5)
     for (const k of keys) expect(MESSAGES[k], k).toBeDefined()
   })
 })
