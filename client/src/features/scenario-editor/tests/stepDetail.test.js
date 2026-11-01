@@ -4,6 +4,7 @@ import { setActivePinia, createPinia } from 'pinia'
 vi.mock('../api', () => ({ imageUrl: (p) => p }))
 import { actionDetails } from '../format'
 import StepDetail from '../components/StepDetail.vue'
+import CropView from '../components/CropView.vue'
 import { useEditorStore } from '../stores/editorStore'
 
 describe('actionDetails', () => {
@@ -15,6 +16,14 @@ describe('actionDetails', () => {
     expect(actionDetails({ typeName: 'OICommand', raw: 'EQP_DOWN@10000@A', oiCommand: { command: 'EQP_DOWN', code: '10000', chamber: 'A' } }))
       .toEqual([['종류', 'O.I. Command'], ['명령', 'EQP_DOWN'], ['다운 코드', '10000'], ['챔버', 'A'], ['저장 값', 'EQP_DOWN@10000@A']])
     expect(actionDetails({ typeName: null, raw: '' })).toEqual([['종류', '알 수 없는 동작'], ['저장 값', '(빈 값)']])
+  })
+  it('절대 좌표 클릭은 화면 절대', () => {
+    expect(actionDetails({ typeName: 'MouseLeftClick', raw: '-3:7', click: { x: -3, y: 7, basis: 'absolute' } }))
+      .toEqual([['종류', '마우스 클릭'], ['좌표', '-3:7'], ['기준', '화면 절대'], ['저장 값', '-3:7']])
+  })
+  it('에이전트 함수의 인자·출력이 배열이 아니어도 던지지 않는다', () => {
+    expect(actionDetails({ typeName: 'NativeFunction', raw: 'f', native: { functionName: 'f', params: undefined, outputs: 'x' } }))
+      .toEqual([['종류', '에이전트 함수'], ['함수', 'f'], ['인자', '(없음)'], ['출력', '(없음)'], ['저장 값', 'f']])
   })
 })
 
@@ -51,6 +60,54 @@ describe('StepDetail', () => {
     const st = open({ ...base, notes: [], condition: { kind: 'none', skipPreprocessing: false }, action: { typeName: 'None', raw: '' } })
     await mount(StepDetail).find('[data-testid="se-detail-onFalse"]').trigger('click')
     expect(st.selectedUid).toBe('s1')
+  })
+  it('Metadata 가 없어 해석 못 한 이미지·OCR 스텝: 던지지 않고 안내 줄과 경고를 보인다', () => {
+    for (const [kind, op] of [['image', 1], ['ocr', 2]]) {
+      open({ ...base, notes: [{ level: 'warning', code: 'PARSE_FAILED', params: { field: 'metadata' } }], condition: { kind, operationRaw: op, skipPreprocessing: null } })
+      const text = mount(StepDetail).text()
+      expect(text).toContain('저장된 조건 값을 해석하지 못했습니다(경고 참고).')
+      expect(text).toContain('저장된 값의 형식을 해석하지 못했습니다')
+    }
+  })
+  it('같은 코드의 경고가 여럿이어도 줄마다 그려지고 키 중복 경고가 없다', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const P = { level: 'warning', code: 'PARSE_FAILED', params: { field: 'metadata' } }
+    const U = { level: 'warning', code: 'UNREACHABLE', params: {} }
+    const st = open({ ...base, notes: [U, P, P] })
+    const w = mount(StepDetail)
+    expect(w.text().split('저장된 값의 형식을 해석하지 못했습니다').length - 1).toBe(2)
+    st.skeleton.steps[0].notes = [P, P, U] // 가운데가 바뀌는 갱신 — 키가 겹치면 Vue 가 경고한다
+    await w.vm.$nextTick()
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes('Duplicate keys'))).toEqual([])
+    warn.mockRestore()
+  })
+  it('클릭 지점이 학습 이미지 밖이면 문구에 좌표를 채워 보이고, 표시·마커는 0번 학습 이미지에만', async () => {
+    open({ ...base, condition: { kind: 'image', skipPreprocessing: false, searchArea: { x: 1, y: 2, w: 3, h: 4 }, image: { accept: 0.9, maxFind: 1, timeout: 1000, timeoutEnabled: true, multi: { count: '1', op: 0 }, trainImages: [{ key: 0, type: true, url: '/t' }, { key: 1, type: true, url: '/t2' }] } },
+      action: { typeName: 'MouseLeftClick', raw: '240:12', click: { x: 240, y: 12, basis: 'trainImage' } } })
+    const w = mount(StepDetail, { global: { stubs: { CropView: true } } })
+    expect(w.text().split('+ 클릭').length - 1).toBe(1)
+    const marked = w.findAllComponents(CropView).filter((c) => c.props('marker'))
+    expect(marked).toHaveLength(1)
+    expect(marked[0].props('src')).toBe('/t')
+    marked[0].vm.$emit('outside', true)
+    await w.vm.$nextTick()
+    expect(w.text()).toContain('클릭 지점: 학습 이미지 밖 (240, 12)')
+  })
+  it('성긴(깨진) 스텝에서도 undefined·NaN·{op} 글자가 화면에 나오지 않는다', () => {
+    const sparse = { ...base, isShowDialog: undefined, retry: {}, raw: {}, baseImage: { state: 'absent' } }
+    const conditions = [
+      { kind: 'unknown', skipPreprocessing: null },
+      { kind: 'image', skipPreprocessing: false, searchArea: {}, image: { multi: { count: '1', op: 0 }, trainImages: [{ key: 0, url: '/t' }] } },
+      { kind: 'ocr', skipPreprocessing: false, searchArea: { x: 1 }, ocr: { op: 7, opName: 'NumberInRange', multi: { count: '1', op: 0 } } },
+      { kind: 'ocr', skipPreprocessing: false, searchArea: null, ocr: { op: 5, opName: 'NumberEqual', multi: { count: '1', op: 0 } } }
+    ]
+    for (const condition of conditions) {
+      open({ ...sparse, condition })
+      const w = mount(StepDetail)
+      w.find('details').element.open = true
+      const text = w.text()
+      for (const bad of ['undefined', 'NaN', '{op}']) expect(text, `${condition.kind}/${bad}`).not.toContain(bad)
+    }
   })
   it('스텝이 없으면 빈 안내', () => {
     const st = useEditorStore(); st.skeleton = { steps: [], notes: [] }

@@ -76,7 +76,9 @@ export const MESSAGES = {
   SEW_UI_OCR_AREA_HINT: '보라 = OCR 영역',
   SEW_UI_DETAIL_EMPTY: '스텝을 고르면 여기에 자세한 내용이 보입니다.',
   SEW_UI_CONDITION_NONE_HINT: '조건 없이 바로 동작합니다.',
-  SEW_UI_CONDITION_UNKNOWN_HINT: '조건 번호 {op} — 원래 값을 유지합니다.'
+  SEW_UI_CONDITION_UNKNOWN_HINT: '조건 번호 {op} — 원래 값을 유지합니다.',
+  SEW_UI_CONDITION_DETAIL_MISSING: '저장된 조건 값을 해석하지 못했습니다(경고 참고).',
+  SEW_UI_CLICK_OUTSIDE: '클릭 지점: 학습 이미지 밖 ({x}, {y})'
 }
 
 export const LABELS = {
@@ -100,7 +102,8 @@ export const LABELS = {
   enabled: { true: '켜짐', false: '꺼짐', unknown: '?' },
   matchMode: { partial: '부분 일치', exact: '정확 일치' },
   skipPreprocessing: { na: '해당 없음', yes: '예 (숨길 창 옮기기 건너뜀)', no: '아니오' },
-  flowChip: { lastNext: 'NEXT (다음 없음)', self: '↺ 자기 자신' }
+  flowChip: { lastNext: 'NEXT (다음 없음)', self: '↺ 자기 자신' },
+  clickBasis: { trainImage: '학습 이미지 왼쪽 위', absolute: '화면 절대' }
 }
 
 export function t(key, params = {}) {
