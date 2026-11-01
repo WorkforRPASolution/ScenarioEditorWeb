@@ -30,6 +30,15 @@ describe('propertyFromBson (C# ScenarioProperty(BsonDocument), 조사 §5)', () 
     expect(propertyFromBson({ NextScenarioIfFail: { Name: 'X', Text: null } }).value.NextScenarioIfFail).toEqual({ Name: 'X', Text: null })
     expect(propertyFromBson({ NextScenarioIfFail: 'X' }).ok).toBe(false)
   })
+  it('문서가 아닌 값(null·문자열·배열·숫자)은 기본값으로 꾸미지 않고 실패, 없음(undefined)·빈 문서만 기본값', () => {
+    for (const bad of [null, 'str', [1, 2], 5]) {
+      const r = propertyFromBson(bad)
+      expect(r.ok, JSON.stringify(bad)).toBe(false)
+      expect(typeof r.error).toBe('string')
+    }
+    expect(propertyFromBson(undefined)).toMatchObject({ ok: true, value: { IsEnabled: true, Priority: 10 } })
+    expect(propertyFromBson({})).toMatchObject({ ok: true, value: { IsEnabled: true, Priority: 10 } })
+  })
   it('Owners 원소는 문자열로, null 원소는 "BsonNull"', () => {
     expect(propertyFromBson({ Owners: ['a', 5, null] }).value.Owners).toEqual(['a', '5', 'BsonNull'])
   })

@@ -32,6 +32,15 @@ describe('listService', () => {
   })
 })
 
+describe('listService — 문서가 아닌 운영 속성', () => {
+  it('property 가 null·문자열이면 기본값("켜짐")으로 꾸미지 않고 PARSE_FAILED 행', async () => {
+    const repo = { findScenarioDocs: async () => [{ scname: 'NUL', property: null }, { scname: 'STR', property: 'x' }] }
+    const hash = { hkeys: async () => ['NUL.1', 'STR.1'] }
+    const rows = await createListService({ repo, hash, scopes }).list(user, 'P', 'M')
+    for (const r of rows) expect(r).toMatchObject({ status: ['PARSE_FAILED'], isEnabled: null, typeName: null })
+  })
+})
+
 describe('versionService', () => {
   it('최신 먼저, 중복 한 번, 현재 표시', async () => {
     const gridfs = { findCrtimes: async () => [1730000000100, 1730000000300, 1730000000300] }

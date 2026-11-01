@@ -40,7 +40,12 @@ function nextScenario(v, key) {
   return { Name: f('Name'), Text: f('Text') }
 }
 
+// 없음(undefined)은 C# 기본값으로 연다(뼈대를 만들 때 {} 를 넘기는 것과 같다). 그 밖에 문서(배열 아닌 객체)가 아닌 값은
+// 기본값으로 꾸미지 않고 실패로 돌려 목록·바가 거짓 "켜짐" 을 보이지 않게 한다.
 function propertyFromBson(doc) {
+  if (doc !== undefined && (doc === null || typeof doc !== 'object' || Array.isArray(doc))) {
+    return { ok: false, error: `운영 속성이 문서가 아님 (${doc === null ? 'null' : Array.isArray(doc) ? 'array' : typeof doc})` }
+  }
   try {
     const p = doc || {}
     const has = (k) => Object.prototype.hasOwnProperty.call(p, k)
