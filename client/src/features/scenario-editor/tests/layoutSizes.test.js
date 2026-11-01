@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { useLayoutSizes, LAYOUT_DEFAULTS } from '../composables/useLayoutSizes'
 
 describe('useLayoutSizes', () => {
@@ -29,6 +29,43 @@ describe('useLayoutSizes', () => {
     expect({ ...sizes }).toEqual(LAYOUT_DEFAULTS)
     expect(() => reset('sh')).not.toThrow()
     spy.mockRestore(); spy2.mockRestore()
+  })
+  it('범위를 벗어난 저장 값은 한계 안으로 맞춘다', () => {
+    localStorage.setItem('se-layout', JSON.stringify({ rw: 5000, sh: 0, lw: -3 }))
+    expect({ ...useLayoutSizes().sizes }).toEqual({ lw: 180, rw: 620, sh: 120 })
+    localStorage.setItem('se-layout', JSON.stringify({ rw: -3 }))
+    expect(useLayoutSizes().sizes.rw).toBe(300)
+  })
+  describe('화면 크기에 맞춘 상한', () => {
+    const origW = window.innerWidth
+    const origH = window.innerHeight
+    const setViewport = (w, h) => { window.innerWidth = w; window.innerHeight = h }
+    afterEach(() => setViewport(origW, origH))
+
+    it('저장된 sh 가 화면 높이보다 크면 화면 높이 - 260 으로 줄인다', () => {
+      setViewport(1600, 600)
+      localStorage.setItem('se-layout', JSON.stringify({ sh: 1500 }))
+      expect(useLayoutSizes().sizes.sh).toBe(340)
+    })
+    it('저장된 rw 가 화면 너비보다 크면 화면 너비 - 400 으로 줄인다', () => {
+      setViewport(800, 900)
+      localStorage.setItem('se-layout', JSON.stringify({ rw: 600 }))
+      expect(useLayoutSizes().sizes.rw).toBe(400)
+    })
+    it('화면이 아주 작아 상한이 하한 밑이면 하한을 쓴다', () => {
+      setViewport(500, 300)
+      localStorage.setItem('se-layout', JSON.stringify({ rw: 600, sh: 900 }))
+      const { sizes } = useLayoutSizes()
+      expect([sizes.rw, sizes.sh]).toEqual([300, 120])
+    })
+    it('끌 때도 같은 상한이 적용된다', () => {
+      setViewport(1600, 600)
+      const { sizes, startDrag } = useLayoutSizes()
+      startDrag('sh', { clientY: 500, preventDefault() {} }, -1, 'y')
+      window.dispatchEvent(new MouseEvent('mousemove', { clientY: -3000 }))
+      window.dispatchEvent(new MouseEvent('mouseup'))
+      expect(sizes.sh).toBe(340)
+    })
   })
   it('깨진 저장 값은 무시한다', () => {
     localStorage.setItem('se-layout', '{oops')

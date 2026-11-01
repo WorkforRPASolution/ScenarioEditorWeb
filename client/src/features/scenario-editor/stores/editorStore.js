@@ -47,16 +47,24 @@ export const useEditorStore = defineStore('scenarioEditor', () => {
     await init()
   }
 
+  // 열기 요청이 겹치면 마지막 요청만 화면 상태를 바꾼다(앞 요청의 늦은 성공·실패·진행 표시 해제를 무시).
+  let openSeq = 0
   async function openScenario({ process, model, name, crtime = 'current' }) {
+    const id = ++openSeq
     opening.value = { process, model, name, crtime, startedAt: Date.now() }
     openError.value = null
     try {
-      skeleton.value = (await api.open(process, model, name, crtime)).data.data
-      selectedUid.value = skeleton.value.steps[0]?.uid ?? null
+      const next = (await api.open(process, model, name, crtime)).data.data
+      if (id !== openSeq) return
+      skeleton.value = next
+      selectedUid.value = next.steps[0]?.uid ?? null
     } catch (e) {
+      if (id !== openSeq) return
+      skeleton.value = null
+      selectedUid.value = null
       openError.value = { ...fail(e), target: { process, model, name, crtime } }
     } finally {
-      opening.value = null
+      if (id === openSeq) opening.value = null
     }
   }
 
@@ -64,7 +72,11 @@ export const useEditorStore = defineStore('scenarioEditor', () => {
   const selectByNo = (no) => { const s = steps.value[no - 1]; if (s) selectedUid.value = s.uid }
   function moveSelection(delta) {
     if (!steps.value.length) return
-    const i = Math.max(0, steps.value.findIndex((s) => s.uid === selectedUid.value))
+    const i = steps.value.findIndex((s) => s.uid === selectedUid.value)
+    if (i < 0) {
+      selectedUid.value = steps.value[delta < 0 ? steps.value.length - 1 : 0].uid
+      return
+    }
     selectedUid.value = steps.value[Math.min(steps.value.length - 1, Math.max(0, i + delta))].uid
   }
   function nextNoted() {

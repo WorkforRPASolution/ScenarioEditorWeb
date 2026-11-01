@@ -2,14 +2,23 @@ import { reactive } from 'vue'
 import { safeStorage } from './useSafeStorage'
 
 export const LAYOUT_DEFAULTS = { lw: 250, rw: 370, sh: 250 }
-const LIMITS = { lw: [180, 460], rw: [300, 620], sh: [120, 2000] }
+const MIN = { lw: 180, rw: 300, sh: 120 }
+const MAX = { lw: 460, rw: 620, sh: 2000 }
 const KEY = 'se-layout'
+
+// 위쪽 한계는 화면 크기를 따른다 — 키 큰 모니터에서 저장한 값이 작은 화면에서 경계선을 화면 밖으로 밀어내지 않게.
+function upper(k) {
+  if (k === 'sh') return Math.min(MAX.sh, window.innerHeight - 260)
+  if (k === 'rw') return Math.min(MAX.rw, window.innerWidth - 400)
+  return MAX[k]
+}
+const clamp = (k, v) => Math.max(MIN[k], Math.min(Math.max(MIN[k], upper(k)), Math.round(v)))
 
 function readSaved() {
   try {
     const v = JSON.parse(safeStorage.get(KEY) || '{}')
     const out = {}
-    for (const k of Object.keys(LAYOUT_DEFAULTS)) if (Number.isFinite(v[k])) out[k] = v[k]
+    for (const k of Object.keys(LAYOUT_DEFAULTS)) if (Number.isFinite(v[k])) out[k] = clamp(k, v[k])
     return out
   } catch {
     return {}
@@ -19,7 +28,6 @@ function readSaved() {
 export function useLayoutSizes() {
   const sizes = reactive({ ...LAYOUT_DEFAULTS, ...readSaved() })
   const save = () => safeStorage.set(KEY, JSON.stringify({ ...sizes }))
-  const clamp = (k, v) => Math.max(LIMITS[k][0], Math.min(LIMITS[k][1], Math.round(v)))
 
   function startDrag(key, event, sign = 1, axis = 'x') {
     event.preventDefault?.()
