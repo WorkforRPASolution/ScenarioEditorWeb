@@ -16,7 +16,7 @@ services:
       - ./is/conf:/ears/conf/EARSInterfaceSrv:ro
     command:
       - java
-      - -Xmx512m
+      - -Xmx1536m
       - -DMODE=DEBUG
       - -DEEG_BASE=/ears
       - -Dlog4j.configuration=file:/ears/conf/EARSInterfaceSrv/log4j.properties
@@ -28,4 +28,4 @@ services:
       - "127.0.0.1:8080:8080"
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    mem_limit: 768m
+    mem_limit: 2g
