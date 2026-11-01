@@ -9,7 +9,8 @@
     "upstream:import": "node tools/upstream/import.mjs",
     "upstream:check": "node tools/upstream/check.mjs",
     "gen": "node tools/scenario-gen/cli.js",
-    "seed": "node tools/seed/cli.js"
+    "seed": "node tools/seed/cli.js",
+    "e2e": "playwright test -c client/playwright.config.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
