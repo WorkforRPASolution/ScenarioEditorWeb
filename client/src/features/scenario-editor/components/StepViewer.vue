@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
 import { imageUrl } from '../api'
 import { t } from '../messages'
@@ -18,16 +18,53 @@ const showHint = ref(safeStorage.get(HINT) !== '1')
 
 watch(src, () => { natural.value = null; failed.value = false })
 
+// 사용자가 이 이미지에서 직접 확대·이동했는지(맞춤·새 이미지에서 해제). 상자 크기가 바뀔 때 다시 맞출지 정한다.
+let userMoved = false
+// 상자가 0×0(숨김)일 때 맞추기를 미뤄 둔 것 — 다음 0 아닌 크기에서 맞춘다.
+let pendingFit = false
+let lastW = 0
+let lastH = 0
+let observer = null
+let stopDrag = null
+
 function fit() {
   const el = box.value
   if (!el || !natural.value) return
-  const s = Math.min((el.clientWidth || natural.value.w) / natural.value.w, (el.clientHeight || natural.value.h) / natural.value.h) * 0.98
+  userMoved = false
+  const w = el.clientWidth
+  const h = el.clientHeight
+  if (!(w > 0 && h > 0)) { pendingFit = true; return }
+  pendingFit = false
+  const s = Math.min(w / natural.value.w, h / natural.value.h) * 0.98
   view.scale = s > 0 ? s : 1
-  view.tx = ((el.clientWidth || 0) - natural.value.w * view.scale) / 2
-  view.ty = ((el.clientHeight || 0) - natural.value.h * view.scale) / 2
+  view.tx = (w - natural.value.w * view.scale) / 2
+  view.ty = (h - natural.value.h * view.scale) / 2
 }
-function onLoad(e) { natural.value = { w: e.target.naturalWidth, h: e.target.naturalHeight }; fit() }
+function onLoad(e) { natural.value = { w: e.target.naturalWidth, h: e.target.naturalHeight }; userMoved = false; fit() }
+function onResize() {
+  const el = box.value
+  if (!el) return
+  const w = el.clientWidth
+  const h = el.clientHeight
+  const wasZero = !(lastW > 0 && lastH > 0)
+  lastW = w
+  lastH = h
+  if (!(w > 0 && h > 0)) return
+  if (pendingFit || wasZero || !userMoved) fit()
+}
+onMounted(() => {
+  const el = box.value
+  if (!el) return
+  lastW = el.clientWidth
+  lastH = el.clientHeight
+  if (typeof ResizeObserver !== 'undefined') { observer = new ResizeObserver(onResize); observer.observe(el) }
+})
+onBeforeUnmount(() => {
+  if (observer) { observer.disconnect(); observer = null }
+  if (stopDrag) stopDrag()
+})
 function zoomAt(factor, cx, cy) {
+  userMoved = true
   const ns = Math.min(8, Math.max(0.05, view.scale * factor))
   view.tx = cx - ((cx - view.tx) * ns) / view.scale
   view.ty = cy - ((cy - view.ty) * ns) / view.scale
@@ -39,12 +76,15 @@ function onWheel(e) {
 }
 const zoomButton = (f) => zoomAt(f, (box.value?.clientWidth || 0) / 2, (box.value?.clientHeight || 0) / 2)
 function onDown(e) {
+  if (e.button !== 0) return
+  if (stopDrag) stopDrag()
   const sx = e.clientX
   const sy = e.clientY
   const tx = view.tx
   const ty = view.ty
-  const move = (m) => { view.tx = tx + m.clientX - sx; view.ty = ty + m.clientY - sy }
-  const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up) }
+  const move = (m) => { userMoved = true; view.tx = tx + m.clientX - sx; view.ty = ty + m.clientY - sy }
+  const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); stopDrag = null }
+  stopDrag = up
   window.addEventListener('mousemove', move)
   window.addEventListener('mouseup', up)
 }

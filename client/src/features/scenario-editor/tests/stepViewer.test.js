@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 vi.mock('../api', () => ({ imageUrl: (p) => `http://x/api${p}` }))
@@ -10,8 +10,37 @@ const step = (over = {}) => ({ uid: 's0', no: 1, notes: [], action: {}, next: {}
   condition: { kind: 'image', searchArea: { x: 576, y: 336, w: 846, h: 480 } }, baseImage: { state: 'present', url: '/scenario-editor/x/images/s0-bi' }, ...over })
 
 describe('StepViewer', () => {
-  beforeEach(() => { setActivePinia(createPinia()); localStorage.clear() })
+  let observers
+  class FakeResizeObserver {
+    constructor(cb) { this.cb = cb; this.disconnect = vi.fn(); observers.push(this) }
+    observe() {}
+    unobserve() {}
+  }
+  beforeEach(() => { setActivePinia(createPinia()); localStorage.clear(); observers = []; vi.stubGlobal('ResizeObserver', FakeResizeObserver) })
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
   const open = (s) => { const st = useEditorStore(); st.skeleton = { steps: [s], notes: [] }; st.selectedUid = s.uid }
+  // happy-dom 은 레이아웃이 없어 clientWidth 가 0 — 상자 크기를 직접 정하고 ResizeObserver 를 깨운다.
+  const sizeBox = (w) => {
+    const el = w.find('.select-none').element
+    const sz = { w: 0, h: 0 }
+    Object.defineProperty(el, 'clientWidth', { get: () => sz.w, configurable: true })
+    Object.defineProperty(el, 'clientHeight', { get: () => sz.h, configurable: true })
+    return { resize(cw, ch) { sz.w = cw; sz.h = ch; observers.forEach((o) => o.cb([])) } }
+  }
+  const tf = (w) => {
+    const m = /translate\((-?[\d.e-]+)px, (-?[\d.e-]+)px\) scale\(([\d.e-]+)\)/.exec(w.find('[data-testid="se-base-image"]').element.parentElement.style.transform)
+    return { tx: Number(m[1]), ty: Number(m[2]), scale: Number(m[3]) }
+  }
+  const IMG = { target: { naturalWidth: 1000, naturalHeight: 500 } }
+  const mountSized = async (cw = 800, ch = 400) => {
+    open(step())
+    const w = mount(StepViewer, { attachTo: document.body })
+    const box = sizeBox(w)
+    box.resize(cw, ch)
+    w.vm.onLoad(IMG); await w.vm.$nextTick()
+    return { w, box }
+  }
+  const wheel = (w, dy) => w.find('.select-none').trigger('wheel', { deltaY: dy, clientX: 50, clientY: 50 })
 
   it('기준 화면과 검색 영역(기준 화면 픽셀 좌표)', async () => {
     open(step())
@@ -50,30 +79,121 @@ describe('StepViewer', () => {
     }
   })
   it('휠로 확대·축소, 끌어서 이동, 맞춤으로 되돌림', async () => {
-    open(step())
-    const w = mount(StepViewer, { attachTo: document.body })
-    w.vm.onLoad({ target: { naturalWidth: 1000, naturalHeight: 500 } }); await w.vm.$nextTick()
-    const layer = () => w.find('[data-testid="se-base-image"]').element.parentElement.style.transform
-    const scale = () => Number(/scale\(([\d.]+)\)/.exec(layer())[1])
-    const fitted = layer()
-    const s0 = scale()
-    await w.find('[data-testid="se-viewer"] .select-none').trigger('wheel', { deltaY: -100, clientX: 50, clientY: 50 })
-    expect(scale()).toBeGreaterThan(s0)
-    await w.find('[data-testid="se-viewer"] .select-none').trigger('wheel', { deltaY: 100, clientX: 50, clientY: 50 })
-    expect(scale()).toBeCloseTo(s0, 5)
-    const before = layer()
-    await w.find('[data-testid="se-viewer"] .select-none').trigger('mousedown', { clientX: 10, clientY: 10 })
+    const { w } = await mountSized()
+    const fitted = tf(w)
+    expect(fitted.scale).toBeCloseTo(0.784, 5)
+    expect(fitted.tx).toBeCloseTo(8, 5)
+    await wheel(w, -100)
+    expect(tf(w).scale).toBeGreaterThan(fitted.scale)
+    await wheel(w, 100)
+    expect(tf(w).scale).toBeCloseTo(fitted.scale, 5)
+    const before = tf(w)
+    await w.find('.select-none').trigger('mousedown', { clientX: 10, clientY: 10 })
     window.dispatchEvent(new MouseEvent('mousemove', { clientX: 60, clientY: 40 }))
     await w.vm.$nextTick()
-    expect(layer()).not.toBe(before)
+    expect(tf(w).tx).toBeCloseTo(before.tx + 50, 5)
+    expect(tf(w).ty).toBeCloseTo(before.ty + 30, 5)
     window.dispatchEvent(new MouseEvent('mouseup'))
-    const dragged = layer()
+    const dragged = tf(w)
     window.dispatchEvent(new MouseEvent('mousemove', { clientX: 200, clientY: 200 }))
     await w.vm.$nextTick()
-    expect(layer()).toBe(dragged)
+    expect(tf(w)).toEqual(dragged)
     w.vm.fit(); await w.vm.$nextTick()
-    expect(layer()).toBe(fitted)
+    expect(tf(w).scale).toBeCloseTo(fitted.scale, 5)
+    expect(tf(w).tx).toBeCloseTo(fitted.tx, 5)
     w.unmount()
+  })
+  it('상자가 0×0 이면 맞추기를 미루고, 실제 크기가 되면 맞춘다', async () => {
+    open(step())
+    const w = mount(StepViewer, { attachTo: document.body })
+    const box = sizeBox(w)
+    w.vm.onLoad(IMG); await w.vm.$nextTick()
+    expect(tf(w)).toEqual({ tx: 0, ty: 0, scale: 1 })
+    box.resize(0, 0)
+    expect(tf(w)).toEqual({ tx: 0, ty: 0, scale: 1 })
+    box.resize(800, 400); await w.vm.$nextTick()
+    expect(tf(w).scale).toBeCloseTo(0.784, 5)
+    expect(tf(w).tx).toBeCloseTo(8, 5)
+    w.unmount()
+  })
+  it('넓게 보기로 숨겨진 사이에 이미지가 불러와져도 다시 보이면 맞춘다', async () => {
+    const { w, box } = await mountSized()
+    await wheel(w, -100)
+    box.resize(0, 0)
+    w.vm.onLoad({ target: { naturalWidth: 2000, naturalHeight: 1000 } }); await w.vm.$nextTick()
+    box.resize(800, 400); await w.vm.$nextTick()
+    expect(tf(w).scale).toBeCloseTo(0.392, 5)
+    expect(tf(w).tx).toBeCloseTo(8, 5)
+    w.unmount()
+  })
+  it('상자 크기가 바뀌면 직접 움직이지 않은 화면은 다시 맞춘다', async () => {
+    const { w, box } = await mountSized()
+    box.resize(1000, 500); await w.vm.$nextTick()
+    expect(tf(w).scale).toBeCloseTo(0.98, 5)
+    expect(tf(w).tx).toBeCloseTo(10, 5)
+    w.unmount()
+  })
+  it('직접 확대·이동했으면 상자 크기가 바뀌어도 다시 맞추지 않는다', async () => {
+    const moves = {
+      휠: (w) => wheel(w, -100),
+      '＋ 버튼': (w) => w.find('button[title="확대"]').trigger('click'),
+      '－ 버튼': (w) => w.find('button[title="축소"]').trigger('click'),
+      끌기: async (w) => {
+        await w.find('.select-none').trigger('mousedown', { button: 0, clientX: 10, clientY: 10 })
+        window.dispatchEvent(new MouseEvent('mousemove', { clientX: 60, clientY: 40 }))
+        window.dispatchEvent(new MouseEvent('mouseup'))
+      }
+    }
+    for (const [name, move] of Object.entries(moves)) {
+      const { w, box } = await mountSized()
+      await move(w)
+      await w.vm.$nextTick()
+      const moved = tf(w)
+      expect(moved, name).not.toEqual({ tx: 8, ty: 4, scale: 0.784 })
+      box.resize(1000, 500); await w.vm.$nextTick()
+      expect(tf(w), name).toEqual(moved)
+      w.unmount()
+    }
+  })
+  it('맞춤을 누르거나 새 이미지가 불러와지면 다시 크기에 맞춰 따라간다', async () => {
+    const a = await mountSized()
+    await wheel(a.w, -100)
+    const zoomed = tf(a.w)
+    await a.w.findAll('button').find((b) => b.text() === '맞춤').trigger('click')
+    expect(tf(a.w).scale).toBeCloseTo(0.784, 5)
+    a.box.resize(1000, 500); await a.w.vm.$nextTick()
+    expect(tf(a.w).scale).toBeCloseTo(0.98, 5)
+    expect(tf(a.w).scale).not.toBeCloseTo(zoomed.scale, 3)
+    a.w.unmount()
+
+    const b = await mountSized()
+    await wheel(b.w, -100)
+    const st = useEditorStore()
+    st.skeleton = { steps: [step(), step({ uid: 's1', no: 2, baseImage: { state: 'present', url: '/scenario-editor/x/images/s1-bi' } })], notes: [] }
+    st.selectedUid = 's1'
+    await b.w.vm.$nextTick()
+    b.w.vm.onLoad(IMG); await b.w.vm.$nextTick()
+    expect(tf(b.w).scale).toBeCloseTo(0.784, 5)
+    b.box.resize(1000, 500); await b.w.vm.$nextTick()
+    expect(tf(b.w).scale).toBeCloseTo(0.98, 5)
+    b.w.unmount()
+  })
+  it('오른쪽 버튼으로는 끌어 이동하지 않는다', async () => {
+    const { w } = await mountSized()
+    const before = tf(w)
+    await w.find('.select-none').trigger('mousedown', { button: 2, clientX: 10, clientY: 10 })
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 60, clientY: 40 }))
+    await w.vm.$nextTick()
+    expect(tf(w)).toEqual(before)
+    w.unmount()
+  })
+  it('사라질 때 크기 관찰과 끌기 중인 창 이벤트를 놓는다', async () => {
+    const { w } = await mountSized()
+    const remove = vi.spyOn(window, 'removeEventListener')
+    await w.find('.select-none').trigger('mousedown', { button: 0, clientX: 10, clientY: 10 })
+    w.unmount()
+    expect(observers[0].disconnect).toHaveBeenCalled()
+    expect(remove.mock.calls.map((c) => c[0])).toEqual(expect.arrayContaining(['mousemove', 'mouseup']))
   })
   it('처음 한 번 기준 화면 안내, 닫으면 다시 안 보임', async () => {
     open(step())
@@ -117,5 +237,31 @@ describe('CropView', () => {
     const w = mk({})
     await w.find('img').trigger('error')
     expect(w.text()).toContain('없음')
+  })
+  it('src 가 바뀌면 불러오기 실패 표시를 지운다', async () => {
+    const w = mk({})
+    await w.find('img').trigger('error')
+    expect(w.text()).toContain('없음')
+    await w.setProps({ src: 'http://x/b.png' })
+    expect(w.text()).not.toContain('없음')
+  })
+  it('표시 영역이 정해져 있으면 불러오기를 기다리지 않고 outside 를 알린다', () => {
+    const w = mk({ rect: { x: 0, y: 0, w: 200, h: 100 }, marker: { x: 300, y: 50 } })
+    expect(w.emitted('outside')).toEqual([[true]])
+  })
+  it('이미지가 불러와진 채 표시 영역·클릭 지점이 바뀌면 outside 를 다시 알린다', async () => {
+    const w = mk({ rect: { x: 0, y: 0, w: 200, h: 100 }, marker: { x: 100, y: 50 } })
+    await load(w)
+    expect(w.emitted('outside')).toEqual([[false]])
+    await w.setProps({ marker: { x: 300, y: 50 } })
+    expect(w.emitted('outside')).toEqual([[false], [true]])
+    await w.setProps({ rect: { x: 0, y: 0, w: 400, h: 100 } })
+    expect(w.emitted('outside')).toEqual([[false], [true], [false]])
+  })
+  it('영역을 모르면(전체 보기·불러오기 전) outside 를 알리지 않는다', async () => {
+    const w = mk({ marker: { x: 100, y: 50 } })
+    expect(w.emitted('outside')).toBeUndefined()
+    await load(w, 400, 200)
+    expect(w.emitted('outside')).toEqual([[false]])
   })
 })

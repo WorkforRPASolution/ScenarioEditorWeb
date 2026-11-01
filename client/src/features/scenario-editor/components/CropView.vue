@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 
 const props = defineProps({ src: { type: String, required: true }, rect: { type: Object, default: null }, width: { type: Number, default: 110 }, marker: { type: Object, default: null } })
 const emit = defineEmits(['outside'])
@@ -8,9 +8,12 @@ const failed = ref(false)
 const r = computed(() => props.rect ?? (natural.value ? { x: 0, y: 0, w: natural.value.w, h: natural.value.h } : null))
 const k = computed(() => (r.value && r.value.w > 0 ? props.width / r.value.w : 1))
 const markerInside = computed(() => !!props.marker && !!r.value && props.marker.x >= 0 && props.marker.y >= 0 && props.marker.x <= r.value.w && props.marker.y <= r.value.h)
+// 위치를 알 수 있을 때(표시 영역 + 클릭 지점)만 안/밖을 판정한다.
+const outside = computed(() => (props.marker && r.value ? !markerInside.value : null))
+watch(outside, (v) => { if (v !== null) emit('outside', v) }, { immediate: true })
+watch(() => props.src, () => { natural.value = null; failed.value = false })
 function onLoad(e) {
   natural.value = { w: e.target.naturalWidth, h: e.target.naturalHeight }
-  if (props.marker) emit('outside', !markerInside.value)
 }
 defineExpose({ onLoad })
 </script>
