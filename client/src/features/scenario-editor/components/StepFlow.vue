@@ -42,6 +42,11 @@ const onNodeClick = ({ node }) => {
   if (node.id !== store.selectedUid) clickedUid = node.id
   store.select(node.id)
 }
+// 다음 카드와의 간격 안에 놓이는 칩(capped)만 폭을 묶고 말줄임, 나머지는 라벨 전체가 보이게 자란다. 아래 칩은 카드 폭 상자 안 가운데.
+const chipStyle = (d) => (d.capped
+  ? { width: `${FLOW.CHIP_W}px`, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
+  : { minWidth: `${FLOW.CHIP_W}px`, textAlign: 'center', whiteSpace: 'nowrap' })
+const chipBoxStyle = (d) => (d.branch === 'onFalse' ? { display: 'flex', justifyContent: 'center', width: `${FLOW.CW}px` } : { display: 'flex' })
 const level = (s) => (s.notes.some((n) => n.level === 'warning') ? 'warning' : s.notes.length ? 'info' : '')
 </script>
 
@@ -69,11 +74,12 @@ const level = (s) => (s.notes.some((n) => n.level === 'warning') ? 'warning' : s
         </div>
       </template>
       <template #node-chip="{ data }">
-        <div class="se-pill" :class="`se-pill-${data.kind}`" :title="data.label"
-          :style="{ width: `${FLOW.CHIP_W}px`, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }">
-          <Handle id="l" type="target" :position="Position.Left" class="!opacity-0" />
-          <Handle id="t" type="target" :position="Position.Top" class="!opacity-0" />
-          {{ data.label }}
+        <div :style="chipBoxStyle(data)">
+          <div class="se-pill" :class="`se-pill-${data.kind}`" :title="data.label" :style="chipStyle(data)">
+            <Handle id="l" type="target" :position="Position.Left" class="!opacity-0" />
+            <Handle id="t" type="target" :position="Position.Top" class="!opacity-0" />
+            {{ data.label }}
+          </div>
         </div>
       </template>
       <MiniMap pannable zoomable />

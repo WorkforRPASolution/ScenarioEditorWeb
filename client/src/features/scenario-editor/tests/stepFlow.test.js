@@ -42,6 +42,31 @@ describe('StepFlow', () => {
     expect(w.get('[data-testid="se-flow-node-1"]').text()).toContain('⚠')
     expect(w.findAll('.se-pill').map((p) => p.text())).toEqual(['? 7', '→9'])
   })
+  it('칩 폭: 다음 카드가 있는 옆(✓) 칩만 고정 폭+말줄임, 나머지는 라벨 전체가 보이게 자란다', () => {
+    const s = useEditorStore()
+    const raw = { kind: 'raw', value: 4294967295 }
+    s.skeleton = { steps: [step(0, { onTrue: raw, onFalse: { kind: 'end', value: 'FAIL' } }), step(1, { onTrue: { kind: 'next' }, onFalse: raw })], notes: [] }
+    const SlotFlow = { name: 'VueFlow', props: ['nodes', 'edges'], template: '<div><template v-for="n in nodes" :key="n.id"><slot :name="`node-${n.type}`" :id="n.id" :data="n.data" /></template></div>' }
+    const w = mount(StepFlow, { global: { stubs: { VueFlow: SlotFlow } } })
+    const [besideCapped, belowFail, besideLast, belowRaw] = w.findAll('.se-pill') // s0-onTrue, s0-onFalse, s1-onTrue, s1-onFalse
+    // 옆 칩(다음 카드 있음): 폭 70 고정 + 말줄임 + 전체 라벨은 title
+    expect(besideCapped.element.style.width).toBe('70px')
+    expect(besideCapped.element.style.textOverflow).toBe('ellipsis')
+    expect(besideCapped.attributes('title')).toBe('? 4294967295')
+    // 마지막 스텝의 옆 칩과 아래 칩: 최소 폭만, 말줄임·고정 폭 없음, 라벨 전체
+    for (const [pill, label] of [[besideLast, 'NEXT (다음 없음)'], [belowRaw, '? 4294967295'], [belowFail, 'FAIL']]) {
+      expect(pill.text()).toBe(label)
+      expect(pill.attributes('title')).toBe(label)
+      expect(pill.element.style.minWidth).toBe('70px')
+      expect(pill.element.style.width).toBe('')
+      expect(pill.element.style.textOverflow).toBe('')
+      expect(pill.element.style.overflow).toBe('')
+    }
+    // 아래 칩은 카드 폭 상자 안 가운데, 옆 칩은 제 폭만
+    expect(belowRaw.element.parentElement.style.width).toBe('220px')
+    expect(belowRaw.element.parentElement.style.justifyContent).toBe('center')
+    expect(besideLast.element.parentElement.style.width).toBe('')
+  })
   it('useVueFlow 와 <VueFlow> 가 같은 id(se-flow)를 쓴다', () => {
     const s = useEditorStore(); s.skeleton = skeletonOf(2)
     const w = mount(StepFlow)

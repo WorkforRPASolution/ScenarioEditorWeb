@@ -26,6 +26,17 @@ describe('layoutFlow', () => {
     expect(chip.position.x).toBeGreaterThanOrEqual(FLOW.CW) // 카드 오른쪽에서 시작
     expect(chip.position.x + FLOW.CHIP_W).toBeLessThanOrEqual(next.position.x - 4)
   })
+  it('칩 폭을 묶는 것은 다음 카드가 있는 스텝의 옆(✓) 칩뿐, 아래(✗) 칩은 카드 아래 가운데 폭으로 놓는다', () => {
+    const { nodes } = layoutFlow([S(0, SUCCESS, FAIL), S(1, NEXT, FAIL)])
+    const chips = nodes.filter((n) => n.type === 'chip')
+    expect(Object.fromEntries(chips.map((n) => [n.id, n.data.capped]))).toEqual({ 's0-onTrue': true, 's0-onFalse': false, 's1-onTrue': false, 's1-onFalse': false })
+    expect(chips.find((n) => n.id === 's1-onTrue').data.label).toBe('NEXT (다음 없음)') // 마지막 스텝: 오른쪽에 카드가 없다
+    expect(chips.filter((n) => n.data.branch === 'onFalse').map((n) => n.position)).toEqual([{ x: 0, y: FLOW.CH + 40 }, { x: FLOW.CW + FLOW.GAP, y: FLOW.CH + 40 }]) // 카드 폭 상자의 왼쪽 = 카드 왼쪽
+  })
+  it('스텝이 하나뿐이면 그 스텝이 마지막이라 칩을 묶지 않는다', () => {
+    const { nodes } = layoutFlow([S(0, SUCCESS, FAIL)])
+    expect(nodes.filter((n) => n.type === 'chip').map((n) => n.data.capped)).toEqual([false, false])
+  })
   it('양쪽이 모두 다음 카드면 화살표 하나', () => {
     const { edges } = layoutFlow([S(0, NEXT, NEXT), S(1, SUCCESS, FAIL)])
     const adj = edges.filter((e) => e.source === 's0' && e.target === 's1')
