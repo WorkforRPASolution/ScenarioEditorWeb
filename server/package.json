@@ -1,0 +1,29 @@
+{
+  "name": "server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ScenarioEditorWeb 백엔드 (WebManager 서버 셸 사본)",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "node --watch index.js",
+    "start": "node index.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "bson": "7.0.0",
+    "compression": "1.8.1",
+    "cors": "2.8.5",
+    "dotenv": "17.2.3",
+    "express": "5.2.1",
+    "helmet": "8.1.0",
+    "ioredis": "5.10.0",
+    "mongoose": "9.1.3",
+    "winston": "3.19.0",
+    "winston-daily-rotate-file": "5.0.0"
+  },
+  "devDependencies": {
+    "vitest": "4.0.18"
+  }
+}

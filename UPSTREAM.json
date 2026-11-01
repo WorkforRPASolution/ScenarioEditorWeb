@@ -429,6 +429,174 @@
       "sourceSha256": "01f78136ad963c5542b78576992367a8ba185340a298853196cdcdccaf31014b",
       "localSha256": "01f78136ad963c5542b78576992367a8ba185340a298853196cdcdccaf31014b",
       "reason": null
+    },
+    {
+      "path": "server/app.js",
+      "mode": "shell-modified",
+      "sourceSha256": "d3b460c85376647728c3d20e71176681884a35aec56f76bcf24f038456dc6830",
+      "localSha256": null,
+      "reason": "기능 라우터를 /api/scenario-editor 하나로"
+    },
+    {
+      "path": "server/index.js",
+      "mode": "shell-modified",
+      "sourceSha256": "296826f868f457a49ca8a4f6f29b5d0e917cffbb8f5ed23d6e287081f9295eda",
+      "localSha256": null,
+      "reason": "기능 초기화·cron·EQP Redis·락 해제 제거, 127.0.0.1 바인딩"
+    },
+    {
+      "path": "server/package.json",
+      "mode": "shell-modified",
+      "sourceSha256": "99e72948bbef27819dec50372663f412c711f9a5497081040f2a4025fd99e2ba",
+      "localSha256": null,
+      "reason": "사본이 쓰는 의존만, bson 명시"
+    },
+    {
+      "path": "server/.env.example",
+      "mode": "shell-modified",
+      "sourceSha256": "6c658e4e50ef9909df40a7a126158b892a0eb9b4a34328dabd3a35199a880795",
+      "localSha256": null,
+      "reason": "편집기 환경 변수"
+    },
+    {
+      "path": "server/shared/logger/index.js",
+      "mode": "verbatim",
+      "sourceSha256": "b51efdb7cd8b05b8accfb29b7f3df1c7a13f958d56b5c021a6a9c8c471ffb421",
+      "localSha256": "b51efdb7cd8b05b8accfb29b7f3df1c7a13f958d56b5c021a6a9c8c471ffb421",
+      "reason": null
+    },
+    {
+      "path": "server/shared/logger/httpLogger.js",
+      "mode": "verbatim",
+      "sourceSha256": "61145c0102f8673fceae9fd442ebfd230c68b8b8701d55f78b7938f1f52a9817",
+      "localSha256": "61145c0102f8673fceae9fd442ebfd230c68b8b8701d55f78b7938f1f52a9817",
+      "reason": null
+    },
+    {
+      "path": "server/shared/middleware/errorHandler.js",
+      "mode": "verbatim",
+      "sourceSha256": "9bfe595f7127261a9272c7ea6859a0240d31929b4e41b5bda68ff5b524ea169a",
+      "localSha256": "9bfe595f7127261a9272c7ea6859a0240d31929b4e41b5bda68ff5b524ea169a",
+      "reason": null
+    },
+    {
+      "path": "server/shared/middleware/authMiddleware.js",
+      "mode": "stub",
+      "sourceSha256": "d31bb77e3f6ca75e985b204c5b13f74b00ac6c90ae33cdc68f2095710f4b1c09",
+      "localSha256": null,
+      "reason": "로그인 없음 — 설정 SingleID(+개발 전용 X-SE-User)"
+    },
+    {
+      "path": "server/shared/db/connection.js",
+      "mode": "verbatim",
+      "sourceSha256": "e8499e3d170a6612a84a14e91bb0ae82bd52782cad72a0af5fd15d5f62fd3937",
+      "localSha256": "e8499e3d170a6612a84a14e91bb0ae82bd52782cad72a0af5fd15d5f62fd3937",
+      "reason": null
+    },
+    {
+      "path": "server/shared/db/redisConnection.js",
+      "mode": "verbatim",
+      "sourceSha256": "8908de19d8f57f579d082abe335bcd97d0d4c53231290a13e61d8666296f91c5",
+      "localSha256": "8908de19d8f57f579d082abe335bcd97d0d4c53231290a13e61d8666296f91c5",
+      "reason": null
+    },
+    {
+      "path": "server/shared/models/webmanagerLogModel.js",
+      "mode": "verbatim",
+      "sourceSha256": "c1db37c31336a579767dac42cf73716eb69721e0ef51b57363880ffab0445505",
+      "localSha256": "c1db37c31336a579767dac42cf73716eb69721e0ef51b57363880ffab0445505",
+      "reason": null
+    },
+    {
+      "path": "server/shared/utils/mongoLong.js",
+      "mode": "verbatim",
+      "sourceSha256": "abe96c8aeca80281f4d667d8bfcf3e93207781a76d61ae0dfc9fba7faac6a789",
+      "localSha256": "abe96c8aeca80281f4d667d8bfcf3e93207781a76d61ae0dfc9fba7faac6a789",
+      "reason": null
+    },
+    {
+      "path": "server/shared/utils/healthCheck.js",
+      "mode": "verbatim",
+      "sourceSha256": "ef8e3ba0d8cda675eb41cc56cd3c5805cddfbe4f2270290ff6f8bc7d53e68d81",
+      "localSha256": "ef8e3ba0d8cda675eb41cc56cd3c5805cddfbe4f2270290ff6f8bc7d53e68d81",
+      "reason": null
+    },
+    {
+      "path": "server/shared/utils/podIdentity.js",
+      "mode": "verbatim",
+      "sourceSha256": "6af1ccd67c92a7d3eba363629ad306e59b0f5f6aa465eaa9093ed5bd8a0317a4",
+      "localSha256": "6af1ccd67c92a7d3eba363629ad306e59b0f5f6aa465eaa9093ed5bd8a0317a4",
+      "reason": null
+    },
+    {
+      "path": "server/shared/utils/createCrudService.js",
+      "mode": "verbatim",
+      "sourceSha256": "1025a8fd8af2721e0f25bbf3f7c830b125943f662b2da7e8aa1f0fd47eea81fd",
+      "localSha256": "1025a8fd8af2721e0f25bbf3f7c830b125943f662b2da7e8aa1f0fd47eea81fd",
+      "reason": null
+    },
+    {
+      "path": "server/shared/utils/businessRules.js",
+      "mode": "verbatim",
+      "sourceSha256": "ea324bf69794cbf503f0dded405b8bdb989a69121f0195f1cd808e6e4bce8de4",
+      "localSha256": "ea324bf69794cbf503f0dded405b8bdb989a69121f0195f1cd808e6e4bce8de4",
+      "reason": null
+    },
+    {
+      "path": "server/shared/utils/sseHelper.js",
+      "mode": "verbatim",
+      "sourceSha256": "b05a1ece8b2ce125c8a831af4d2f820c262a06c571474d5c3d6d7f1f765cc50c",
+      "localSha256": "b05a1ece8b2ce125c8a831af4d2f820c262a06c571474d5c3d6d7f1f765cc50c",
+      "reason": null
+    },
+    {
+      "path": "server/shared/logger/index.test.js",
+      "mode": "test",
+      "sourceSha256": "53f8b9d2695f2c7d2ce409456677e6f2fca14655ff3e83d4acae8b8793cf9e59",
+      "localSha256": "53f8b9d2695f2c7d2ce409456677e6f2fca14655ff3e83d4acae8b8793cf9e59",
+      "reason": null
+    },
+    {
+      "path": "server/shared/logger/httpLogger.test.js",
+      "mode": "test",
+      "sourceSha256": "63906c21693c030f0a8ede8f455bde8eb2c85ba930b96f60e2150dc55729b3d1",
+      "localSha256": "63906c21693c030f0a8ede8f455bde8eb2c85ba930b96f60e2150dc55729b3d1",
+      "reason": null
+    },
+    {
+      "path": "server/shared/db/redisConnection.test.js",
+      "mode": "test",
+      "sourceSha256": "8c37b3b5352f4af5846d98315e10253cca929ddd058ad2e1812fb0de429c5c13",
+      "localSha256": "8c37b3b5352f4af5846d98315e10253cca929ddd058ad2e1812fb0de429c5c13",
+      "reason": null
+    },
+    {
+      "path": "server/shared/utils/healthCheck.test.js",
+      "mode": "test",
+      "sourceSha256": "1f6a74823bab6666f8b3b919c8d8ed0ad62953f8455ded8f4bd61fa529966097",
+      "localSha256": "1f6a74823bab6666f8b3b919c8d8ed0ad62953f8455ded8f4bd61fa529966097",
+      "reason": null
+    },
+    {
+      "path": "server/shared/utils/mongoLong.test.js",
+      "mode": "test",
+      "sourceSha256": "e5a630f2aabcf5525073d074228439856345c3f84efc70373a995fba1561092a",
+      "localSha256": "e5a630f2aabcf5525073d074228439856345c3f84efc70373a995fba1561092a",
+      "reason": null
+    },
+    {
+      "path": "server/shared/utils/podIdentity.test.js",
+      "mode": "test",
+      "sourceSha256": "7bc84325f1e2b3bc993957fc8339bbf0cc722d66135c2ec3755997af969cff49",
+      "localSha256": "7bc84325f1e2b3bc993957fc8339bbf0cc722d66135c2ec3755997af969cff49",
+      "reason": null
+    },
+    {
+      "path": "server/shared/utils/createCrudService.test.js",
+      "mode": "test",
+      "sourceSha256": "df99eacab8c0d582b4bd6fe8ac1a938766363f07920f557bbb00d5d6edfc1589",
+      "localSha256": "df99eacab8c0d582b4bd6fe8ac1a938766363f07920f557bbb00d5d6edfc1589",
+      "reason": null
     }
   ]
 }
