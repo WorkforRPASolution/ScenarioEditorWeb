@@ -29,14 +29,23 @@ function applyEquipmentRules(joined, user) {
   const proxyIpDuplicates = []
   const placed = new Set()
   const agentKeys = new Map()
+  // 조인은 AGENT_INFO 문서마다 EQP 문서를 되풀이한다 — 같은 무효 설비는 (eqpId, 사유)당 한 번만 기록한다.
+  // 무효 설비를 다음 문서에서 다시 검사하는 것(유효 설비 중복 판정)은 그대로다.
+  const invalidSeen = new Set()
+  const markInvalid = (entry) => {
+    const k = JSON.stringify([entry.eqpId, entry.reason])
+    if (invalidSeen.has(k)) return
+    invalidSeen.add(k)
+    invalid.push(entry)
+  }
   for (const doc of joined ?? []) {
     const e = isDoc(doc) ? doc : {}
     if (!allowsProcess(user, e.process)) continue
     const missing = REQUIRED_FIELDS.filter((f) => !(f in e) || e[f] === null || e[f] === undefined)
-    if (missing.length) { invalid.push({ eqpId: e.eqpId ?? null, reason: 'REQUIRED_MISSING', fields: missing }); continue }
+    if (missing.length) { markInvalid({ eqpId: e.eqpId ?? null, reason: 'REQUIRED_MISSING', fields: missing }); continue }
     if (placed.has(e.eqpId)) { if (!duplicateEqpIds.includes(e.eqpId)) duplicateEqpIds.push(e.eqpId); continue }
-    if (String(e.emailcategory).split('-').length !== 4) { invalid.push({ eqpId: e.eqpId, reason: 'WRONG_EMAIL_CATEGORY' }); continue }
-    if (NON_EMPTY_FIELDS.some((f) => String(e[f]) === '')) { invalid.push({ eqpId: e.eqpId, reason: 'REQUIRED_EMPTY' }); continue }
+    if (String(e.emailcategory).split('-').length !== 4) { markInvalid({ eqpId: e.eqpId, reason: 'WRONG_EMAIL_CATEGORY' }); continue }
+    if (NON_EMPTY_FIELDS.some((f) => String(e[f]) === '')) { markInvalid({ eqpId: e.eqpId, reason: 'REQUIRED_EMPTY' }); continue }
     valid.push(e)
     placed.add(e.eqpId)
     const local = Number(e.localpc ?? 0) === 1

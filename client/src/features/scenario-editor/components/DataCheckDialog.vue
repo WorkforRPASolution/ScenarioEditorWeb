@@ -26,7 +26,7 @@ const groups = computed(() => {
       <p class="mb-4 text-xs text-gray-500 dark:text-gray-400">{{ t('SEW_UI_DATA_CHECK_INTRO') }}</p>
       <section v-for="g in groups" :key="g.title" class="mb-4">
         <h4 class="text-xs font-semibold text-gray-700 dark:text-gray-200">{{ g.title }} <span class="font-normal text-gray-500">({{ g.items.length }}{{ g.note ? ` · ${g.note}` : '' }})</span></h4>
-        <ul class="mt-1 space-y-0.5 font-mono text-xs text-gray-800 dark:text-gray-200"><li v-for="i in g.items" :key="i">{{ i }}</li></ul>
+        <ul class="mt-1 space-y-0.5 font-mono text-xs text-gray-800 dark:text-gray-200"><li v-for="(item, i) in g.items" :key="i">{{ item }}</li></ul>
       </section>
     </div>
   </ModalShell>

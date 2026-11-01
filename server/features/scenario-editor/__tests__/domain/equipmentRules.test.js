@@ -25,6 +25,18 @@ describe('applyEquipmentRules (사내 05 §3.4 순서)', () => {
     expect(r.invalid).toEqual([{ eqpId: 'A', reason: 'WRONG_EMAIL_CATEGORY' }])
     expect(r.duplicateEqpIds).toEqual([])
   })
+  it('같은 무효 설비가 AGENT_INFO 2건으로 두 번 조인돼도 무효 기록은 한 번(설비·사유당)', () => {
+    const bad = eq('BADMAIL', { emailcategory: 'A-B-C' })
+    const empty = eq('BADREQ', { category: '' })
+    const missing = eq('NOOS'); delete missing.osVer
+    const joined = joinEquipment([{ eqpId: 'BADMAIL' }, { eqpId: 'BADMAIL' }, { eqpId: 'BADREQ' }, { eqpId: 'BADREQ' }, { eqpId: 'NOOS' }, { eqpId: 'NOOS' }], [bad, empty, missing])
+    expect(joined).toHaveLength(6)
+    const r = applyEquipmentRules(joined, master)
+    expect(r.invalid).toEqual([
+      { eqpId: 'BADMAIL', reason: 'WRONG_EMAIL_CATEGORY' }, { eqpId: 'BADREQ', reason: 'REQUIRED_EMPTY' }, { eqpId: 'NOOS', reason: 'REQUIRED_MISSING', fields: ['osVer'] }
+    ])
+    expect(r.duplicateEqpIds).toEqual([])
+  })
   it('필수 필드 없음·빈 값', () => {
     const missing = eq('X'); delete missing.osVer
     const r = applyEquipmentRules([missing, eq('Y', { category: '' })], master)
