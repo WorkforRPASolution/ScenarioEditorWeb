@@ -4,6 +4,8 @@ import { defineConfig, devices } from '@playwright/test'
 // 저장소 루트에서 `npm run e2e` 로 돌린다(루트에 @playwright/test).
 // 서버(3100)·클라이언트(5180)를 시험이 직접 띄우고 끝나면 내린다. 5173 은 다른 프로젝트 Vite 가 쓸 수 있어 피하고,
 // 이미 떠 있는 서버를 다시 쓰지 않는다(다른 앱이나 다른 환경 변수로 뜬 서버를 시험하지 않게) — 두 포트가 비어 있어야 한다.
+// 서버 주소·포트와 클라이언트가 부를 API 주소는 env 로 고정한다 — 로컬 server/.env·client/.env 값과 상관없이 같은 곳을 시험한다
+// (dotenv·Vite 는 이미 있는 환경 변수를 .env 로 덮어쓰지 않는다).
 const CLIENT_URL = 'http://localhost:5180'
 
 export default defineConfig({
@@ -21,7 +23,7 @@ export default defineConfig({
       command: 'npm --prefix server start',
       cwd: '..',
       url: 'http://127.0.0.1:3100/api/health',
-      env: { SE_DEV_USER_OVERRIDE: '1', ALLOWED_ORIGINS: 'http://localhost:5173,http://localhost:5180' },
+      env: { PORT: '3100', HOST: '127.0.0.1', SE_DEV_USER_OVERRIDE: '1', ALLOWED_ORIGINS: 'http://localhost:5173,http://localhost:5180' },
       reuseExistingServer: false,
       timeout: 120_000
     },
@@ -29,6 +31,7 @@ export default defineConfig({
       command: 'npm --prefix client run dev -- --port 5180 --strictPort',
       cwd: '..',
       url: CLIENT_URL,
+      env: { VITE_API_URL: 'http://localhost:3100/api' },
       reuseExistingServer: false,
       timeout: 120_000
     }
