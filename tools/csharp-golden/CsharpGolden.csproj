@@ -5,7 +5,7 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
-    <NoWarn>CS0168;CS8981;CS0108;CA2200;NU1903;NU1902;NU1901;NU1701</NoWarn>
+    <NoWarn>CS0168;CS8981;CS0108;NU1903;NU1902;NU1901;NU1701</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="12.0.1" />

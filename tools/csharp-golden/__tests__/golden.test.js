@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
 const { serializeScenario, serializeBackupInfo, serializeProperty } = require('../../../server/features/scenario-editor/domain/csharpJson')
-const { normalize, dotnetAvailable, build } = require('../normalize')
+const { normalize, dotnetAvailable } = require('../normalize')
 
-// 이 도구는 .NET 10 에서 돌고 "R" 이 최단 왕복 형식이라, 최단 표기가 16자리인 double(예: 0.7999999999999999)은 일부러 쓰지 않는다. .NET Framework 동작은 netFxR 단위 시험이 따로 본다.
+// 이 도구는 .NET 10 에서 돌고 "R" 이 최단 왕복 형식이라, 최단 표기가 16자리인 double(예: 0.7999999999999999)은 일부러 쓰지 않는다. .NET Framework 의 G15→G17 동작은 server 의 csharpJson.test.js csJsonDouble 표(0.7999999999999999 → 0.79999999999999993)가 따로 본다.
 const md = (train, textValue) => ({
   SearchArea: { X: 1, Y: 2, Width: 3, Height: 4 },
   ImageSearchParam: { TrainImageMap: train, AcceptThreshold: 0.85, MaximumNumberToFind: 2, TimeoutEnabled: false, Timeout: 1500.5 },
@@ -22,8 +22,6 @@ const tricky = {
 }
 
 describe.skipIf(!dotnetAvailable())('C# 기준 비교 (Newtonsoft 12.0.1)', () => {
-  beforeAll(() => build(), 180_000)
-
   it('까다로운 Scenario 를 C# 와 같은 글자로 쓴다', () => {
     const js = serializeScenario(tricky)
     expect(normalize('Scenario', js)).toBe(js)

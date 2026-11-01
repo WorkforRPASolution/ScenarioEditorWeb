@@ -14,8 +14,12 @@ function dotnetAvailable() {
   return spawnSync('dotnet', ['--version'], { env }).status === 0
 }
 
+// 출력은 붙잡아 두고, 성공하면 아무것도 찍지 않는다. 실패하면 붙잡은 stdout·stderr 를 메시지에 담아 던진다.
 function build() {
-  execFileSync('dotnet', ['build', '-c', 'Release', '-o', 'bin/out', '--nologo', '-v', 'q'], { cwd: DIR, env, stdio: 'inherit' })
+  const r = spawnSync('dotnet', ['build', '-c', 'Release', '-o', 'bin/out', '--nologo', '-v', 'q'], { cwd: DIR, env, encoding: 'utf8' })
+  if (r.error || r.status !== 0) {
+    throw new Error(`dotnet build 실패 (종료 ${r.status}${r.error ? `, ${r.error.message}` : ''})\n${r.stdout || ''}${r.stderr || ''}`)
+  }
 }
 
 function normalize(type, json) {
