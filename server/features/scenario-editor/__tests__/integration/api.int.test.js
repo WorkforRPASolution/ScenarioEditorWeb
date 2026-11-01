@@ -63,6 +63,11 @@ describe('전 종류 열기 (완료 조건 1·3)', () => {
       expect(row.status.sort()).toEqual([...exp.list.status].sort())
       if (exp.list.isEnabled !== undefined) expect(row.isEnabled).toBe(exp.list.isEnabled)
     }
+    // 열 수 없는 시나리오(NO_REDIS_FIELD 등)도 버전 목록은 나온다 — 조기 return 앞에서 대조한다.
+    if (exp.versions) {
+      const vs = (await (await get(`/scenarios/${enc(meta.process)}/${enc(meta.model)}/${enc(meta.name)}/versions`)).json()).data
+      expect(vs).toHaveLength(exp.versions)
+    }
     const res = await get(`/scenarios/${enc(meta.process)}/${enc(meta.model)}/${enc(meta.name)}/versions/current`)
     if (!exp.open.ok) {
       expect(res.status).toBe(exp.open.status)
@@ -78,10 +83,6 @@ describe('전 종류 열기 (완료 조건 1·3)', () => {
       expect(sk.steps.map((s) => ({ kind: s.condition.kind, action: s.action.typeName, onTrue: label(s.next.onTrue), onFalse: label(s.next.onFalse),
         baseImage: s.baseImage.state, notes: s.notes.map((n) => n.code).sort() })))
         .toEqual(exp.steps.map((e) => ({ ...e, notes: [...e.notes].sort() })))
-    }
-    if (exp.versions) {
-      const vs = (await (await get(`/scenarios/${enc(meta.process)}/${enc(meta.model)}/${enc(meta.name)}/versions`)).json()).data
-      expect(vs).toHaveLength(exp.versions)
     }
     const img = sk.steps.find((s) => s.baseImage.state === 'present')
     if (img) {
@@ -100,6 +101,7 @@ describe('전 종류 열기 (완료 조건 1·3)', () => {
 describe('데이터 점검', () => {
   it('SEWCVD 범위의 무효·중복이 보인다', async () => {
     const d = (await (await get('/data-check', 'sew_cvd')).json()).data
+    expect(d.duplicateUsers).toEqual([])
     expect(d.duplicateEqpIds).toEqual(['SEWT_DUP01'])
     expect(d.invalidEquipment.map((x) => [x.eqpId, x.reason]).sort()).toEqual([['SEWT_BADMAIL', 'WRONG_EMAIL_CATEGORY'], ['SEWT_BADREQ', 'REQUIRED_EMPTY']])
     expect(d.proxyIpDuplicates).toEqual([{ eqpId: 'SEWT_PRX02', sameAs: 'SEWT_PRX01' }])
