@@ -27,11 +27,20 @@ const listError = ref('')
 const search = ref('')
 const enabledOnly = ref(false)
 const selected = ref(null)
+const selectedCrtime = ref(null)
 const versions = ref([])
 const versionsError = ref('')
+// 지금 rows 를 받아 온 { process, model } — 열기 요청은 화면의 선택값이 아니라 이 쌍으로 보낸다
+const loadedFor = ref(null)
 
 const processes = computed(() => store.scopes?.processes ?? [])
 const models = computed(() => processes.value.find((p) => p.process === process.value)?.models ?? [])
+// 권한·설비를 못 읽었거나(null) 비었을 때(빈 배열) 빈 선택 상자만 보이지 않게 한 줄로 알린다
+const scopesNotice = computed(() => {
+  if (!store.scopes) return { text: t('SEW_UI_LOAD_SCOPES_FAILED'), error: true }
+  if (processes.value.length === 0) return { text: t('SEW_UI_LOAD_NO_SCOPES'), error: false }
+  return null
+})
 const filtered = computed(() => {
   const q = search.value.trim().toLowerCase()
   return rows.value.filter((r) => (!enabledOnly.value || r.isEnabled !== false) && r.name.toLowerCase().includes(q))
@@ -46,11 +55,23 @@ function pickInitial() {
   model.value = processes.value[0]?.models[0]?.model ?? ''
 }
 
+// 요청마다 번호를 매겨 마지막 요청의 응답만 화면에 쓴다(앞 요청의 늦은 성공·실패는 버린다)
+let listSeq = 0
+let versionSeq = 0
 async function loadList() {
-  rows.value = []; selected.value = null; versions.value = []; listError.value = ''
+  const id = ++listSeq
+  versionSeq++
+  rows.value = []; selected.value = null; selectedCrtime.value = null; versions.value = []; versionsError.value = ''; listError.value = ''; loadedFor.value = null
   if (!process.value || !model.value) return
-  safeStorage.set(LAST, JSON.stringify({ process: process.value, model: model.value }))
-  try { rows.value = (await api.list(process.value, model.value)).data.data } catch (e) { listError.value = errorMessage(e) }
+  const pair = { process: process.value, model: model.value }
+  safeStorage.set(LAST, JSON.stringify(pair))
+  try {
+    const next = (await api.list(pair.process, pair.model)).data.data
+    if (id !== listSeq) return
+    rows.value = next; loadedFor.value = pair
+  } catch (e) {
+    if (id === listSeq) listError.value = errorMessage(e)
+  }
 }
 
 watch(() => props.modelValue, (open) => { if (open && !process.value) pickInitial() }, { immediate: true })
@@ -59,12 +80,31 @@ watch(process, () => { if (!models.value.some((m) => m.model === model.value)) m
 watch([process, model], loadList, { immediate: true })
 
 async function onRowClicked(e) {
+  const pair = loadedFor.value
+  if (!pair) return
+  const id = ++versionSeq
+  if (selected.value?.name !== e.data.name) selectedCrtime.value = null
   selected.value = e.data
   versions.value = []; versionsError.value = ''
-  try { versions.value = (await api.versions(process.value, model.value, e.data.name)).data.data } catch (err) { versionsError.value = errorMessage(err) }
+  try {
+    const next = (await api.versions(pair.process, pair.model, e.data.name)).data.data
+    if (id === versionSeq) versions.value = next
+  } catch (err) {
+    if (id === versionSeq) versionsError.value = errorMessage(err)
+  }
 }
-const openRow = (name, crtime = 'current') => emit('open', { process: process.value, model: model.value, name, crtime: String(crtime) })
+function openRow(name, crtime = 'current') {
+  const pair = loadedFor.value
+  if (!pair) return
+  emit('open', { process: pair.process, model: pair.model, name, crtime: String(crtime) })
+}
 const onRowDoubleClicked = (e) => openRow(e.data.name)
+const openVersion = (v) => { if (selected.value) openRow(selected.value.name, v.isCurrent ? 'current' : v.crtime) }
+function openSelected() {
+  if (!selected.value) return
+  const v = versions.value.find((x) => x.crtime === selectedCrtime.value)
+  openRow(selected.value.name, v && !v.isCurrent ? v.crtime : 'current')
+}
 
 // useToast 는 ref 만 준다 — 화면에 그리는 건 아래 <BaseToast>
 async function refresh() {
@@ -73,7 +113,10 @@ async function refresh() {
     const before = `${process.value}/${model.value}`
     if (!processes.value.some((p) => p.process === process.value && p.models.some((m) => m.model === model.value))) pickInitial()
     if (`${process.value}/${model.value}` === before) await loadList()
-    showToast('success', t('SEW_UI_REFRESHED'))
+    // refreshCaches 는 내 정보·권한 읽기가 실패해도 던지지 않는다 — 결과 상태로 성공을 가린다
+    if (store.meError) showToast('error', store.meError.message)
+    else if (!store.scopes) showToast('error', t('SEW_UI_REFRESH_FAILED'))
+    else showToast('success', t('SEW_UI_REFRESHED'))
   } catch (e) {
     showToast('error', errorMessage(e))
   }
@@ -104,19 +147,22 @@ const select = 'h-[38px] rounded-lg border border-gray-300 dark:border-dark-bord
         <span class="text-xs text-gray-500 ml-1">{{ t('SEW_UI_LOAD_SCOPE_HINT') }}</span>
         <button class="ml-auto h-[38px] px-3 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm" data-testid="se-load-refresh" @click="refresh">{{ t('SEW_UI_REFRESH_SCOPES') }}</button>
       </div>
+      <p v-if="scopesNotice" class="px-5 py-2 text-sm border-b border-gray-200 dark:border-dark-border" :class="scopesNotice.error ? 'text-red-600' : 'text-gray-600 dark:text-gray-300'" data-testid="se-load-scopes-notice">{{ scopesNotice.text }}</p>
       <div class="flex-1 min-h-0 grid" style="grid-template-columns: minmax(0, 1fr) 280px">
         <div class="min-h-0 flex flex-col border-r border-gray-200 dark:border-dark-border">
-          <p v-if="listError" class="p-3 text-sm text-red-600">{{ listError }}</p>
+          <p v-if="listError" class="p-3 text-sm text-red-600" data-testid="se-load-list-error">{{ listError }}</p>
           <AgGridVue class="flex-1 min-h-0" :theme="theme" :row-data="filtered" :column-defs="columnDefs" :get-row-id="(p) => p.data.name"
             :row-selection="{ mode: 'singleRow', checkboxes: false, enableClickSelection: true }" @row-clicked="onRowClicked" @row-double-clicked="onRowDoubleClicked"
             style="width: 100%; height: 100%" data-testid="se-load-grid" />
         </div>
         <div class="p-3 flex flex-col min-h-0">
           <div class="text-xs font-semibold text-gray-700 dark:text-gray-200 mb-2">버전 <span v-if="selected" class="font-normal text-gray-500">— {{ selected.name }}</span></div>
-          <p v-if="versionsError" class="text-xs text-red-600">{{ versionsError }}</p>
-          <ul class="flex-1 overflow-auto space-y-1 text-sm">
-            <li v-for="v in versions" :key="v.crtime" data-testid="se-load-version" class="px-2 py-1.5 rounded-md cursor-pointer hover:bg-gray-100 dark:hover:bg-dark-border flex items-center gap-2"
-              @dblclick="openRow(selected.name, v.isCurrent ? 'current' : v.crtime)">
+          <p v-if="versionsError" class="text-xs text-red-600" data-testid="se-load-versions-error">{{ versionsError }}</p>
+          <ul class="flex-1 overflow-auto space-y-1 text-sm" role="listbox">
+            <li v-for="v in versions" :key="v.crtime" role="option" :aria-selected="selectedCrtime === v.crtime" data-testid="se-load-version"
+              class="px-2 py-1.5 rounded-md cursor-pointer flex items-center gap-2"
+              :class="selectedCrtime === v.crtime ? 'bg-primary-100 dark:bg-primary-900/30' : 'hover:bg-gray-100 dark:hover:bg-dark-border'"
+              @click="selectedCrtime = v.crtime" @dblclick="openVersion(v)">
               <span class="font-mono text-xs text-gray-800 dark:text-gray-200">{{ formatCrtime(v.crtime) }}</span>
               <span v-if="v.isCurrent" class="px-1.5 rounded text-[10px] bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-400">현재</span>
             </li>
@@ -128,7 +174,7 @@ const select = 'h-[38px] rounded-lg border border-gray-300 dark:border-dark-bord
     </div>
     <template #footer>
       <button class="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-lg transition text-sm disabled:opacity-50" :disabled="!selected" data-testid="se-load-open"
-        @click="openRow(selected.name)">열기</button>
+        @click="openSelected">열기</button>
     </template>
   </ModalShell>
 </template>
