@@ -1,0 +1,31 @@
+# ScenarioEditorWeb 로컬 인프라 — InterfaceServer(DEBUG 모드) 하나. Mongo·Redis 는 이미 떠 있는 OrbStack 컨테이너를 쓴다.
+# 선례: ARSAgent tools/integration 의 is 프로필.
+name: sew-infra
+services:
+  interface-server:
+    image: eclipse-temurin:8-jre
+    environment:
+      HOST_IP: 127.0.0.1
+      HTTP_PORT: "8080"
+      VISION_PORT: "9300"
+      THRIFT_VISION_PORT: "9301"
+      REDIS_PASSWORD: visuallove
+      MODE: DEBUG
+    volumes:
+      - ./is/dist:/opt/is:ro
+      - ./is/conf:/ears/conf/EARSInterfaceSrv:ro
+    command:
+      - java
+      - -Xmx512m
+      - -DMODE=DEBUG
+      - -DEEG_BASE=/ears
+      - -Dlog4j.configuration=file:/ears/conf/EARSInterfaceSrv/log4j.properties
+      - -cp
+      - /opt/is/EARSInterfaceSrv.jar:/opt/is/lib/*:/opt/is/inhouse-stubs-1.0.jar
+      - com.sec.eeg.ars.actor.Master
+      - start
+    ports:
+      - "127.0.0.1:8080:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    mem_limit: 768m
