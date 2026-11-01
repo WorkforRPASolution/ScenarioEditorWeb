@@ -32,4 +32,18 @@ async function refreshCache(req, res) {
   ok(res, { refreshed: true })
 }
 
-module.exports = { ok, loadUser, me, scopes, refreshCache }
+const need = (v, name) => {
+  if (typeof v !== 'string' || v === '') throw seError(400, 'BAD_REQUEST', `${name} 가 필요합니다`)
+  return v
+}
+
+async function list(req, res) {
+  ok(res, await getDeps().list.list(req.seUser, need(req.query.process, 'process'), need(req.query.model, 'model')))
+}
+
+async function versions(req, res) {
+  const { process, model, name } = req.params
+  ok(res, await getDeps().versions.versions(req.seUser, process, model, name))
+}
+
+module.exports = { ok, loadUser, me, scopes, refreshCache, list, versions }

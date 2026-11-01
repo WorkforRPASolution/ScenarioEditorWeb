@@ -55,3 +55,35 @@ describe('/me·/scopes·/cache/refresh', () => {
     expect(fake.cleared).toBe(14)
   })
 })
+
+describe('/scenarios·/scenarios/:process/:model/:name/versions', () => {
+  it('process·model 이 없으면 400 BAD_REQUEST', async () => {
+    Object.assign(fake, { list: { list: async () => { throw new Error('호출되면 안 된다') } } })
+    for (const q of ['', '?process=CVD', '?model=M1', '?process=&model=M1']) {
+      const res = await fetch(`${base}/scenarios${q}`)
+      expect(res.status).toBe(400)
+      expect(await res.json()).toMatchObject({ code: 'BAD_REQUEST' })
+    }
+  })
+  it('목록은 사용자·공정·모델을 서비스에 그대로 넘기고 data 로 감싼다', async () => {
+    const calls = []
+    Object.assign(fake, { list: { list: async (...a) => { calls.push(a); return [{ name: 'A' }] } } })
+    const body = await (await fetch(`${base}/scenarios?process=CVD&model=M1`)).json()
+    expect(body).toEqual({ success: true, data: [{ name: 'A' }] })
+    expect(calls).toEqual([[expect.objectContaining({ singleid: 'sew_multi' }), 'CVD', 'M1']])
+  })
+  it('버전 목록은 경로 값을 문자열 그대로(하이픈 포함) 넘긴다', async () => {
+    const calls = []
+    Object.assign(fake, { versions: { versions: async (...a) => { calls.push(a); return [{ crtime: 1, isCurrent: true }] } } })
+    const body = await (await fetch(`${base}/scenarios/CVD/M1/A-B-C/versions`)).json()
+    expect(body).toEqual({ success: true, data: [{ crtime: 1, isCurrent: true }] })
+    expect(calls).toEqual([[expect.objectContaining({ singleid: 'sew_multi' }), 'CVD', 'M1', 'A-B-C']])
+  })
+  it('미등록 사용자는 목록·버전도 403 USER_NOT_REGISTERED', async () => {
+    for (const p of ['/scenarios?process=CVD&model=M1', '/scenarios/CVD/M1/A/versions']) {
+      const res = await fetch(`${base}${p}`, { headers: { 'X-SE-User': 'sew_none' } })
+      expect(res.status).toBe(403)
+      expect(await res.json()).toMatchObject({ code: 'USER_NOT_REGISTERED' })
+    }
+  })
+})
