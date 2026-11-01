@@ -1,0 +1,38 @@
+import { describe, it, expect } from 'vitest'
+import { t, errorCode, errorMessage, noteMessage, MESSAGES } from '../messages'
+
+const NOTE_CODES = ['CONDITION_UNKNOWN', 'ACTION_INVALID', 'OCR_OP_NONE', 'PARSE_FAILED', 'NEXT_OUT_OF_RANGE', 'NEXT_SELF', 'LAST_STEP_NEXT',
+  'FALSE_NEXT_WITH_ACTION', 'VALUE_EMPTY', 'OCR_WITH_MOUSE_CLICK', 'UNREACHABLE', 'NO_SUCCESS', 'ACTION_NOT_IN_COMBO', 'EQPSTATE_SKIP_PREPROCESSING',
+  'BASE_IMAGE_MISSING', 'KEY_CODE_UNKNOWN', 'PRIORITY_NONSTANDARD', 'TARGET_WINDOW_DIFFERS']
+const ERROR_CODES = ['USER_NOT_REGISTERED', 'PROCESS_FORBIDDEN', 'NOT_FOUND', 'DATA_INVALID', 'UPSTREAM_DOWN', 'UPSTREAM_TIMEOUT', 'UPSTREAM_FAILED', 'BAD_REQUEST', 'NETWORK', 'TIMEOUT', 'UNKNOWN']
+
+describe('messages', () => {
+  it('경고·알림 코드 18개 모두 문구가 있다', () => {
+    for (const c of NOTE_CODES) expect(noteMessage({ code: c, params: {} })).not.toMatch(/^\[/)
+  })
+  it('오류 코드 모두 문구가 있다', () => {
+    for (const c of ERROR_CODES) expect(errorMessage({ response: { data: { code: c } } })).not.toMatch(/^\[/)
+  })
+  it('미등록 사용자는 사내 키 Exception12', () => {
+    expect(MESSAGES.Exception12).toBeTruthy()
+    expect(errorMessage({ response: { status: 403, data: { code: 'USER_NOT_REGISTERED' } } })).toBe(MESSAGES.Exception12)
+  })
+  it('axios 시간 초과·연결 실패', () => {
+    expect(errorCode({ code: 'ECONNABORTED' })).toBe('TIMEOUT')
+    expect(errorCode({ request: {} })).toBe('NETWORK')
+    expect(errorCode(new Error('x'))).toBe('UNKNOWN')
+  })
+  it('없는 키는 [키] 로 드러난다', () => {
+    expect(t('NOPE')).toBe('[NOPE]')
+  })
+  it('문구에 BI 라는 말이 없다', () => {
+    for (const v of Object.values(MESSAGES)) expect(v).not.toMatch(/\bBI\b/)
+  })
+  it('화면 코드가 쓰는 문구 키가 모두 있다', () => {
+    const sources = import.meta.glob(['../**/*.vue', '../**/*.js', '!../tests/**'], { query: '?raw', import: 'default', eager: true })
+    const keys = new Set()
+    for (const src of Object.values(sources)) for (const m of src.matchAll(/\bt\('([A-Za-z0-9_]+)'/g)) keys.add(m[1])
+    expect(Object.keys(sources).length).toBeGreaterThan(2)
+    for (const k of keys) expect(MESSAGES[k], k).toBeDefined()
+  })
+})

@@ -19,4 +19,15 @@ const api = axios.create({
   }
 })
 
+// 개발 전용: localStorage se-dev-user 가 있으면 사용자를 바꿔 부른다(서버 SE_DEV_USER_OVERRIDE=1 일 때만 효력). 편입 때 대역과 함께 사라진다.
+api.interceptors.request.use((config) => {
+  try {
+    const dev = localStorage.getItem('se-dev-user')
+    if (dev) config.headers['X-SE-User'] = dev
+  } catch {
+    // 저장소를 못 쓰면 설정 사용자 그대로
+  }
+  return config
+})
+
 export default api
