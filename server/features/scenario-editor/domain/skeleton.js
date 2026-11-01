@@ -2,7 +2,7 @@
 // 본문(GridFS metadata.body)·BI(파일 내용)·운영 속성·성과 → 브라우저용 뼈대 + 떼어 낼 이미지 목록(설계 §5.3).
 const { parseCondition, parseAction, note } = require('./conditionCodec')
 const { toTarget } = require('./nextStep')
-const { graphNotes, scenarioNotes } = require('./notes')
+const { graphNotes, scenarioNotes, SCENARIO_NOTE_CODES } = require('./notes')
 const { judgeTargetWindow } = require('./targetWindow')
 const { propertyFromBson } = require('./propertyModel')
 const { performanceFromBson } = require('./performanceModel')
@@ -35,13 +35,16 @@ function buildSkeleton({ process, model, name, crtime, isCurrent, body: storedBo
   const uids = rawSteps.map((_, i) => `s${i}`)
   const url = (id) => `${imageBaseUrl}/${id}`
   let snapshots = []
-  if (typeof biText === 'string' && biText !== '') {
+  if (typeof biText === 'string' && biText !== '') { // 빈 BI 는 기준 화면이 아예 없는 버전 — 정상이라 알림 없음
+    let list = null
     try {
       const bi = JSON.parse(biText)
-      snapshots = Array.isArray(bi.TargetSnapshotList) ? bi.TargetSnapshotList : []
+      if (isObject(bi) && !Array.isArray(bi) && Array.isArray(bi.TargetSnapshotList)) list = bi.TargetSnapshotList
     } catch {
-      notesOut.push(note('warning', 'PARSE_FAILED', { field: 'bi' }))
+      // 읽을 수 없는 글자 — 아래에서 알린다
     }
+    if (list) snapshots = list
+    else notesOut.push(note('warning', 'PARSE_FAILED', { field: 'bi' }))
   }
   const images = []
   let needed = 0
@@ -55,7 +58,14 @@ function buildSkeleton({ process, model, name, crtime, isCurrent, body: storedBo
     const trainIds = new Map()
     if (c.condition.image) {
       const map = trainMapOf(st)
+      let badKeyNoted = false
       c.condition.image.trainImages = c.condition.image.trainImages.map((ti) => {
+        // 이미지 ID·URL 은 음이 아닌 안전한 정수 키에만 만든다(그 밖의 키는 이미지 캐시가 거절해 열기 전체가 실패한다)
+        if (!(Number.isSafeInteger(ti.key) && ti.key >= 0)) {
+          if (!badKeyNoted) notes.push(note('warning', 'PARSE_FAILED', { field: 'trainImage' }))
+          badKeyNoted = true
+          return { ...ti, url: null }
+        }
         const entry = map[ti.key] ?? map[String(ti.key)]
         if (!isObject(entry)) notes.push(note('warning', 'PARSE_FAILED', { field: 'trainImage', key: ti.key }))
         if (isObject(entry) && isImage(entry.BinaryImage)) {
@@ -124,4 +134,10 @@ function buildSkeleton({ process, model, name, crtime, isCurrent, body: storedBo
   }
 }
 
-module.exports = { buildSkeleton }
+// 현재 운영 속성에 기대지 않는 알림 — 시나리오 알림(SCENARIO_NOTE_CODES)과 운영 속성 해석 실패(PARSE_FAILED property)를 뺀 나머지.
+// 속성만 바뀐 뒤 뼈대의 시나리오 알림을 다시 만들 때 남겨 둘 알림이다. 순서는 그대로, 입력은 바꾸지 않는다.
+function versionNotes(notes) {
+  return notes.filter((n) => !SCENARIO_NOTE_CODES.includes(n.code) && !(n.code === 'PARSE_FAILED' && n.params && n.params.field === 'property'))
+}
+
+module.exports = { buildSkeleton, versionNotes }

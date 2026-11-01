@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { graphNotes, scenarioNotes } from '../../domain/notes'
+import { graphNotes, scenarioNotes, SCENARIO_NOTE_CODES } from '../../domain/notes'
 import { toTarget } from '../../domain/nextStep'
 
 const st = (t, f, type = 0) => ({ NextStepIfTrue: t, NextStepIfFalse: f, Script: { Type: type, Value: '', NativeFunction: null } })
@@ -53,5 +53,13 @@ describe('scenarioNotes', () => {
   it('객체가 아닌 스텝이 있어도 던지지 않는다', () => {
     const codes = scenarioNotes({ rawSteps: [null, 5, st(10000, -1)], property: null, targetWindow: null }).map((n) => n.code)
     expect(codes).toEqual([])
+  })
+})
+
+describe('SCENARIO_NOTE_CODES', () => {
+  it('scenarioNotes 가 낼 수 있는 코드 전부이고 얼려 있다', () => {
+    const all = scenarioNotes({ rawSteps: [st(10002, -1)], property: { Priority: 3 }, targetWindow: { agentFinds: false, inHouseShowsSet: true } })
+    expect(all.map((n) => n.code).sort()).toEqual([...SCENARIO_NOTE_CODES].sort())
+    expect(Object.isFrozen(SCENARIO_NOTE_CODES)).toBe(true)
   })
 })

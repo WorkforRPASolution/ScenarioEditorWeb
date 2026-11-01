@@ -42,4 +42,7 @@ function scenarioNotes({ rawSteps, property, targetWindow }) {
   return out
 }
 
-module.exports = { graphNotes, scenarioNotes }
+// scenarioNotes 가 낼 수 있는 코드 전부. 현재 운영 속성·대상 창·SUCCESS 연결에서 다시 계산되는 알림이라 버전 알림(skeleton.versionNotes)과 갈린다.
+const SCENARIO_NOTE_CODES = Object.freeze(['NO_SUCCESS', 'PRIORITY_NONSTANDARD', 'TARGET_WINDOW_DIFFERS'])
+
+module.exports = { graphNotes, scenarioNotes, SCENARIO_NOTE_CODES }
