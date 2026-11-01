@@ -8,6 +8,9 @@ const { seError } = require('../errors')
 const enc = encodeURIComponent
 const baseUrl = (p, m, n, crtime) => `/scenario-editor/scenarios/${enc(p)}/${enc(m)}/${enc(n)}/versions/${crtime}/images`
 const rss = () => process.memoryUsage().rss
+// 버전 캐시·single-flight 키. 칸마다 인코딩해 '/' 로 잇는다 — '.' 로 이으면 (P,'M.A','B') 와 (P,'M','A.B') 가 같은 키가 된다.
+// imageCache 가 키를 다시 인코딩해 디렉터리 이름 하나로 만든다(길면 해시).
+const versionKey = (p, m, n, crtime) => [p, m, n, String(crtime)].map(enc).join('/')
 
 function createOpenService({ repo, hash, gridfs, scopes, imageCache, log }) {
   const flight = createSingleFlight()
@@ -20,7 +23,7 @@ function createOpenService({ repo, hash, gridfs, scopes, imageCache, log }) {
   }
 
   async function unpack(process, model, name, crtime) {
-    const key = `${process}.${model}.${name}.${crtime}`
+    const key = versionKey(process, model, name, crtime)
     return flight.run(key, async () => {
       const cached = await imageCache.readSkeleton(key)
       if (cached) return { core: cached, fromCache: true }
@@ -62,7 +65,7 @@ function createOpenService({ repo, hash, gridfs, scopes, imageCache, log }) {
 
   async function imagePath(user, process, model, name, crtime, imageId) {
     await scopes.assertAllowed(user, process, model)
-    const key = `${process}.${model}.${name}.${crtime}`
+    const key = versionKey(process, model, name, crtime)
     let p = await imageCache.imagePath(key, imageId)
     if (!p && !(await imageCache.readSkeleton(key))) {
       await unpack(process, model, name, crtime)
@@ -75,4 +78,4 @@ function createOpenService({ repo, hash, gridfs, scopes, imageCache, log }) {
   return { open, imagePath }
 }
 
-module.exports = { createOpenService, baseUrl }
+module.exports = { createOpenService, baseUrl, versionKey }

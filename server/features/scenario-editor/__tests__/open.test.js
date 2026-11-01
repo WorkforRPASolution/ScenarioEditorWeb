@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createOpenService } from '../service/openService'
+import { createOpenService, versionKey } from '../service/openService'
 import { createImageCache } from '../repo/imageCache'
 
 const LONG_B64 = Buffer.from('fake-png-bytes-xxxxxxxx').toString('base64')
@@ -68,5 +68,45 @@ describe('openService', () => {
     expect(p).toMatch(/s0-bi\.png$/)
     expect(t.reads()).toBe(2)
     await expect(t.svc.imagePath({}, 'P', 'M', 'N', 1730000000100, 'zz')).rejects.toMatchObject({ statusCode: 404 })
+  })
+
+  describe('캐시 키는 공정·모델·이름·crtime 조합마다 다르다', () => {
+    it("(P,'M.A','B') 와 (P,'M','A.B') 는 키가 다르다 — '.' 으로 이어 붙이지 않는다", () => {
+      expect(versionKey('P', 'M.A', 'B', 1)).not.toBe(versionKey('P', 'M', 'A.B', 1))
+      expect(versionKey('P.M', 'A', 'B', 1)).not.toBe(versionKey('P', 'M.A', 'B', 1))
+      expect(versionKey('P', 'M/A', 'B', 1)).not.toBe(versionKey('P', 'M', 'A/B', 1))
+      expect(versionKey('P', 'M', 'N', 1730000000100)).toBe(versionKey('P', 'M', 'N', '1730000000100'))
+    })
+    it('겹치는 두 조합을 열면 서로 다른 디렉터리에 풀고, 이미지도 제 것만 준다', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'sew-open-key-'))
+      const png = (tag) => Buffer.from(`fake-png-${tag}-xxxxxxxxxxxx`).toString('base64')
+      const bodyOf = (desc, b64) => ({ ...body, Description: desc, Step: [{ ...body.Step[0], Metadata: { ...body.Step[0].Metadata,
+        ImageSearchParam: { ...body.Step[0].Metadata.ImageSearchParam, TrainImageMap: { 0: { BinaryImage: b64, Type: true } } } } }] })
+      const files = { 'M.A|B': { desc: 'one', b64: png('one') }, 'M|A.B': { desc: 'two', b64: png('two') } }
+      let reads = 0
+      const svc = createOpenService({
+        repo: { findScenarioKeyDocs: async () => [{ property: { Priority: 10 }, performance: {} }] },
+        hash: { hkeys: async () => [] },
+        gridfs: {
+          findVersion: async (p, m, n) => { const f = files[`${m}|${n}`]; return f ? { _id: `${m}|${n}`, metadata: { body: bodyOf(f.desc, f.b64) } } : null },
+          readContent: async (id) => { reads++; return JSON.stringify({ TargetSnapshotList: [files[id].b64] }) }
+        },
+        scopes: { assertAllowed: async () => {} },
+        imageCache: createImageCache({ dir, maxBytes: 1e9 }),
+        log: { info() {}, warn() {} }
+      })
+      const one = await svc.open({}, 'P', 'M.A', 'B', '1')
+      const two = await svc.open({}, 'P', 'M', 'A.B', '1')
+      expect(one.skeleton.header.description).toBe('one')
+      expect(two.stats.fromCache).toBe(false)
+      expect(two.skeleton.header.description).toBe('two')
+      expect(reads).toBe(2)
+      expect(readdirSync(dir)).toHaveLength(2)
+      const p1 = await svc.imagePath({}, 'P', 'M.A', 'B', 1, 's0-bi')
+      const p2 = await svc.imagePath({}, 'P', 'M', 'A.B', 1, 's0-bi')
+      expect(p1).not.toBe(p2)
+      expect(readFileSync(p1).toString()).toContain('one')
+      expect(readFileSync(p2).toString()).toContain('two')
+    })
   })
 })
