@@ -53,6 +53,10 @@ async function open(req, res) {
   ok(res, skeleton)
 }
 
+async function dataCheck(req, res) {
+  ok(res, await getDeps().dataCheck.check(req.seUser))
+}
+
 async function image(req, res) {
   const { process, model, name, crtime, imageId } = req.params
   if (!/^\d+$/.test(crtime)) throw seError(400, 'BAD_REQUEST', 'crtime 은 숫자')
@@ -63,4 +67,4 @@ async function image(req, res) {
   res.sendFile(p, { dotfiles: 'allow' })
 }
 
-module.exports = { ok, loadUser, me, scopes, refreshCache, list, versions, open, image }
+module.exports = { ok, loadUser, me, scopes, refreshCache, list, versions, open, dataCheck, image }

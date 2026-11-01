@@ -91,6 +91,17 @@ describe('/scenarios·/scenarios/:process/:model/:name/versions', () => {
   })
 })
 
+describe('데이터 점검', () => {
+  it('GET /data-check 는 사용자를 서비스에 넘기고 data 로 감싼다', async () => {
+    const calls = []
+    const result = { duplicateUsers: [], duplicateEqpIds: [], invalidEquipment: [], proxyIpDuplicates: [], duplicateProperties: [] }
+    Object.assign(fake, { dataCheck: { check: async (...a) => { calls.push(a); return result } } })
+    const body = await (await fetch(`${base}/data-check`)).json()
+    expect(body).toEqual({ success: true, data: result })
+    expect(calls).toEqual([[expect.objectContaining({ singleid: 'sew_multi' })]])
+  })
+})
+
 describe('버전 열기', () => {
   it('경로 값을 그대로 넘기고 X-SE-Open-Stats 를 싣고, CORS 가 그 헤더를 브라우저에 노출한다', async () => {
     const calls = []
