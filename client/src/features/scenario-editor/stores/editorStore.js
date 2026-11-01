@@ -51,6 +51,7 @@ export const useEditorStore = defineStore('scenarioEditor', () => {
   let openSeq = 0
   async function openScenario({ process, model, name, crtime = 'current' }) {
     const id = ++openSeq
+    expanded.value = false // 넓게 보기에서는 위쪽(여는 중·오류 표시)이 가려진다
     opening.value = { process, model, name, crtime, startedAt: Date.now() }
     openError.value = null
     try {

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, onActivated, onDeactivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useEditorStore } from './stores/editorStore'
 import { useLayoutSizes } from './composables/useLayoutSizes'
@@ -20,15 +20,39 @@ const router = useRouter()
 const { sizes, startDrag, reset } = useLayoutSizes()
 const loadOpen = ref(false)
 
-onMounted(async () => {
-  await store.init()
+// 셸은 모든 화면을 <keep-alive> 로 감싼다 — 화면은 세션에 한 번만 만들어지고, 다른 화면에 가 있는 동안에도 감시자가 살아 있다.
+// 그래서 (1) 주소 쿼리는 이 화면이 보일 때만 쓰고, (2) 돌아올 때(onActivated) 주소와 열린 시나리오를 다시 맞춘다.
+let active = false
+let firstActivation = true
+
+const queryTarget = () => {
   const q = route.query
-  if (!store.meError && q.p && q.m && q.n) store.openScenario({ process: String(q.p), model: String(q.m), name: String(q.n), crtime: String(q.v || 'current') })
+  return q.p && q.m && q.n ? { process: String(q.p), model: String(q.m), name: String(q.n), crtime: String(q.v || 'current') } : null
+}
+const queryOf = (sk) => ({ p: sk.process, m: sk.model, n: sk.name, v: sk.version.isCurrent ? 'current' : String(sk.version.crtime) })
+const writeQuery = (sk) => router.replace({ name: 'ScenarioEditor', query: queryOf(sk) })
+
+async function start() {
+  const target = queryTarget() // await 뒤에는 다른 화면의 주소일 수 있어 먼저 읽는다
+  await store.init()
+  if (!store.meError && target) store.openScenario(target)
+}
+
+onMounted(() => { active = true; start() })
+onDeactivated(() => { active = false })
+onActivated(() => {
+  active = true
+  if (firstActivation) { firstActivation = false; return } // 처음 켜질 때는 onMounted 가 이미 처리한다
+  const sk = store.skeleton
+  const target = queryTarget()
+  if (store.meError || store.opening) return // 열기가 끝나면 아래 감시자가 주소를 맞춘다
+  if (!target) { if (sk) writeQuery(sk); return }
+  const q = sk && queryOf(sk)
+  if (!q || q.p !== target.process || q.m !== target.model || q.n !== target.name || q.v !== target.crtime) store.openScenario(target)
 })
 
 watch(() => store.skeleton, (sk) => {
-  if (!sk) return
-  router.replace({ query: { p: sk.process, m: sk.model, n: sk.name, v: sk.version.isCurrent ? 'current' : String(sk.version.crtime) } })
+  if (sk && active) writeQuery(sk)
 })
 
 const retry = () => store.openError && store.openScenario(store.openError.target)
@@ -37,7 +61,8 @@ const card = 'bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:
 
 <template>
   <div class="h-full flex flex-col min-h-0" style="height: calc(100vh - 144px)" data-testid="se-root">
-    <StatePanel v-if="store.meError" kind="unregistered" :message="store.meError.message" />
+    <StatePanel v-if="store.meError?.code === 'USER_NOT_REGISTERED'" kind="unregistered" :message="store.meError.message" />
+    <StatePanel v-else-if="store.meError" kind="error" :message="store.meError.message" @retry="start" />
     <template v-else>
       <ScenarioBar class="mb-3 shrink-0" @load="loadOpen = true" />
       <div class="flex-1 min-h-0 grid" :style="{ gridTemplateColumns: `36px 12px minmax(0,1fr) 12px ${sizes.rw}px` }">

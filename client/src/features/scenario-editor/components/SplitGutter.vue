@@ -1,4 +1,6 @@
 <script setup>
+import { t } from '../messages'
+
 defineProps({ direction: { type: String, default: 'v' }, testid: { type: String, default: '' } })
 defineEmits(['start', 'reset'])
 </script>
@@ -8,7 +10,7 @@ defineEmits(['start', 'reset'])
     :data-testid="testid"
     class="group relative shrink-0"
     :class="direction === 'v' ? 'w-3 cursor-col-resize' : 'h-3 cursor-row-resize'"
-    title="끌어서 크기 조절 · 두 번 누르면 기본값"
+    :title="t('SEW_UI_GUTTER_HINT')"
     @mousedown="$emit('start', $event)"
     @dblclick="$emit('reset')"
   >

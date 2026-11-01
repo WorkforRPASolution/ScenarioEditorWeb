@@ -46,6 +46,15 @@ describe('editorStore', () => {
     await s.openScenario({ process: 'P', model: 'M', name: 'N', crtime: '5' })
     expect(s.openError).toMatchObject({ code: 'DATA_INVALID', target: { process: 'P', model: 'M', name: 'N', crtime: '5' } })
   })
+  it('openScenario: 시작하면 넓게 보기를 푼다 — 여는 중·오류 표시가 가려지지 않게', async () => {
+    api.open.mockRejectedValue({ response: { status: 422, data: { code: 'DATA_INVALID' } } })
+    const s = useEditorStore()
+    s.expanded = true
+    const p = s.openScenario({ process: 'P', model: 'M', name: 'N' })
+    expect(s.expanded).toBe(false)
+    await p
+    expect(s.expanded).toBe(false)
+  })
   it('선택 이동·경고 스텝 순회', async () => {
     api.open.mockReturnValue(ok(skeleton))
     const s = useEditorStore()

@@ -19,7 +19,7 @@ const elapsed = computed(() => Math.max(0, Math.floor((now.value - props.started
     </div>
     <div v-else-if="kind === 'opening'" data-testid="se-opening" class="text-gray-600 dark:text-gray-300">
       <svg class="w-8 h-8 mx-auto mb-3 animate-spin text-primary-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" /><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg>
-      <p>{{ t('SEW_UI_OPENING') }} · {{ elapsed }}초</p>
+      <p>{{ t('SEW_UI_OPENING') }} · {{ t('SEW_UI_OPENING_ELAPSED', { s: elapsed }) }}</p>
       <p v-if="elapsed >= 5" class="text-sm text-gray-500 mt-1">{{ t('SEW_UI_OPENING_SLOW') }}</p>
     </div>
     <div v-else-if="kind === 'error'" data-testid="se-open-error" class="text-gray-700 dark:text-gray-200 max-w-lg">

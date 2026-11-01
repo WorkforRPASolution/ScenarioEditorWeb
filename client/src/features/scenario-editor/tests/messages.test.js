@@ -22,6 +22,10 @@ describe('messages', () => {
     expect(errorCode({ request: {} })).toBe('NETWORK')
     expect(errorCode(new Error('x'))).toBe('UNKNOWN')
   })
+  it('자리표시자를 채운다 — 경과 시간', () => {
+    expect(t('SEW_UI_OPENING_ELAPSED', { s: 3 })).toBe('3초')
+    expect(MESSAGES.SEW_UI_GUTTER_HINT).toBeTruthy()
+  })
   it('없는 키는 [키] 로 드러난다', () => {
     expect(t('NOPE')).toBe('[NOPE]')
   })
