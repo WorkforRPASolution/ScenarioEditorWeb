@@ -22,7 +22,7 @@ module.exports = [
     ], { header: { targetWindow: { agentFinds: true, matchMode: 'partial' } } })
   },
   {
-    name: 'ALL_ACTIONS', process: 'SEWCVD', model: 'SEWMODELA', desc: '동작 16종',
+    name: 'ALL_ACTIONS', process: 'SEWCVD', model: 'SEWMODELA', desc: '동작 16종(O.I. Command 3)',
     build: (w) => {
       w.image({ fx: 'alarm', area: DIALOG, train: RESET, click: '24:12', desc: '클릭' })
       w.image({ fx: 'alarm', area: DIALOG, train: RESET, action: [2, '10:5'], desc: '두 번 클릭' })
@@ -32,6 +32,8 @@ module.exports = [
       w.none({ action: [6, '30000'], desc: '대기' })
       w.none({ action: [7, ''], desc: 'Variable 동작' })
       w.none({ action: [8, 'EQP_DOWN@10000@A'], desc: 'O.I. Command' })
+      w.none({ action: [8, 'RUNDOWN_RELEASE@A'], desc: 'O.I. Command RUNDOWN_RELEASE' })
+      w.none({ action: [8, 'SERVER_RESTART'], desc: 'O.I. Command SERVER_RESTART' })
       w.none({ action: [9, 'EQ Control*'], desc: '창 찾기' })
       w.none({ action: [10, 'ops@example.com'], desc: '메일' })
       w.none({ action: [11, 'C:\\tools\\reset.bat'], desc: '명령 실행' })
@@ -46,6 +48,7 @@ module.exports = [
       S('image', 'MouseRightClick', 'NEXT', 'FAIL', 'present'), S('none', 'MouseMove', 'NEXT', 'FAIL', 'notNeeded'),
       S('none', 'Keyboard', 'NEXT', 'FAIL', 'notNeeded'), S('none', 'Wait', 'NEXT', 'FAIL', 'notNeeded'),
       S('none', 'Variable', 'NEXT', 'FAIL', 'notNeeded', ['ACTION_NOT_IN_COMBO']), S('none', 'OICommand', 'NEXT', 'FAIL', 'notNeeded', ['ACTION_NOT_IN_COMBO']),
+      S('none', 'OICommand', 'NEXT', 'FAIL', 'notNeeded', ['ACTION_NOT_IN_COMBO']), S('none', 'OICommand', 'NEXT', 'FAIL', 'notNeeded', ['ACTION_NOT_IN_COMBO']),
       S('none', 'FindWindow', 'NEXT', 'FAIL', 'notNeeded'), S('none', 'SendEmail', 'NEXT', 'FAIL', 'notNeeded'),
       S('none', 'RunCommand', 'NEXT', 'FAIL', 'notNeeded'), S('none', 'CustomScript', 'NEXT', 'FAIL', 'notNeeded'),
       S('none', 'FAP', 'NEXT', 'FAIL', 'notNeeded', ['ACTION_NOT_IN_COMBO']), S('none', 'ACS', 'NEXT', 'FAIL', 'notNeeded', ['ACTION_NOT_IN_COMBO']),

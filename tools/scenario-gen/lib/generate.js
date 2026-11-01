@@ -11,10 +11,10 @@ function generate(setNames, outDir) {
   const results = []
   for (const set of setNames) {
     if (!SETS[set]) throw new Error(`없는 묶음: ${set}`)
+    fs.rmSync(path.join(outDir, set), { recursive: true, force: true }) // 이름을 바꾸거나 뺀 시나리오의 묵은 폴더가 남지 않게 요청한 묶음만 비운다
     for (const spec of SETS[set]()) {
       const builds = spec.versions ?? [spec.build]
       const dir = path.join(outDir, set, spec.name)
-      fs.rmSync(dir, { recursive: true, force: true })
       fs.mkdirSync(dir, { recursive: true })
       let last
       builds.forEach((build, i) => {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { createRequire } from 'node:module'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 const require = createRequire(import.meta.url)
@@ -24,6 +24,23 @@ describe('생성기', () => {
     expect(bi.TargetSnapshotList).toHaveLength(body.Step.length)
     if (exp.steps) expect(exp.steps).toHaveLength(body.Step.length)
     expect(body.ID).toBe(`${r.meta.process}-${r.meta.model}-${r.meta.name}`)
+  })
+  it('다시 만들면 그 묶음 폴더에 남은 묵은 시나리오 폴더가 지워진다', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sew-gen-stale-'))
+    generate(['anomaly'], dir)
+    const stray = join(dir, 'anomaly', 'RENAMED_AWAY')
+    mkdirSync(stray)
+    writeFileSync(join(stray, 'meta.json'), '{}')
+    generate(['anomaly'], dir)
+    expect(existsSync(stray)).toBe(false)
+    expect(readdirSync(join(dir, 'anomaly'))).toHaveLength(7)
+  })
+  it('요청하지 않은 묶음 폴더는 건드리지 않는다', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sew-gen-sets-'))
+    generate(['basic'], dir)
+    generate(['anomaly'], dir)
+    expect(readdirSync(join(dir, 'basic'))).toHaveLength(15)
+    expect(readdirSync(join(dir, 'anomaly'))).toHaveLength(7)
   })
   it('공정·모델 이름에 - 가 없다(사내 전제, Q-007)', () => {
     for (const r of results) expect(`${r.meta.process}${r.meta.model}`).not.toContain('-')
