@@ -17,3 +17,6 @@ ScenarioEditorWeb — 사내 ScenarioEditor(C# WPF)를 웹으로 다시 만드�
 - 개발: `npm run dev` (클라이언트 5173, 서버 3100)
 - 시험: `npm test` (tools·server·client vitest), TDD 가 기본이다(ARS 루트 CLAUDE.md).
 - InterfaceServer: `tools/infra/prepare-is.sh && docker compose -f infra/docker-compose.yml up -d` (JVM `-Xmx1536m`·컨테이너 `mem_limit: 2g`. 메모리: 막 올렸을 때 약 405 MiB, 110MB 시나리오(BIG_200) 저장 뒤 최고 약 1500 MiB(cgroup memory.peak)·저장 뒤 1.3 GiB 안팎에 머문다. 2026-11-01 측정. `-Xmx512m`/768m 에서는 110MB 본문 해석 중 OutOfMemoryError). 확인: `tools/infra/smoke-is.sh`
+- 통합 시험: `npm run seed -- reset basic anomaly && npm --prefix server run test:integration` (로컬 Mongo·Redis·InterfaceServer). `server/.env` 의 `WEBMANAGER_DB_URI` 는 반드시 `SE_WEB_DEV` — 비워 두면 연결 코드가 WebManager 의 실제 로그 DB(`WEB_MANAGER`)로 떨어진다. `reset` 은 BIG_200 도 지우므로 측정 전에 `seed -- big` 을 다시 한다.
+- 큰 시나리오 측정: `npm run seed -- big` 후 서버(`npm --prefix server start`)를 띄우고 `node tools/measure/open-big.js` (끝나면 서버를 내린다).
+- 큰 시나리오 측정 (2026-11-01): BIG_200(200 스텝, BI 114,881,881바이트) 첫 열기 258ms·서버 peakRssMb 658(`X-SE-Open-Stats`, 100ms 간격 표본), 다시 열기 4ms(디스크 뼈대 캐시), 뼈대 응답 313,942자(JSON, 압축 전). 다른 실행에서 `/usr/bin/time -l` 로 잰 프로세스 최대 상주 메모리는 649 MiB(680,607,744바이트)로 표본값과 맞는다. 목표(첫 30초·다시 1초, RSS 1024 이하) 안이라 `gridfsRepo.readContent` 흘려 읽기 task 는 등록하지 않았다. 숫자는 실행마다 조금 달라진다(두 번째 실행: 첫 열기 242ms·647MB·다시 열기 3ms).
