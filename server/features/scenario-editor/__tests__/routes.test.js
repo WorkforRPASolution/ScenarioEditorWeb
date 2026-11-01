@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
 import { createRequire } from 'node:module'
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, chmodSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 const require = createRequire(import.meta.url)
@@ -131,5 +131,39 @@ describe('이미지', () => {
     const res = await fetch(`${base}/scenarios/CVD/M1/N/versions/1730000000100/images/s0-bi`)
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toMatch(/^image\/png/)
+    expect(res.headers.get('cache-control')).toBe('private, max-age=31536000, immutable')
+  })
+
+  describe('보내기 실패는 PNG·1년 캐시 머리글 없이 JSON 오류로, 파일 경로를 싣지 않는다', () => {
+    const savedEnv = process.env.NODE_ENV
+    beforeEach(() => { process.env.NODE_ENV = 'development' }) // 개발 모드는 오류 메시지를 그대로 내보낸다
+    afterEach(() => { process.env.NODE_ENV = savedEnv })
+    const expectCleanError = async (res, status, dir) => {
+      expect(res.status).toBe(status)
+      expect(res.headers.get('content-type')).toMatch(/^application\/json/)
+      expect(res.headers.get('cache-control') || '').not.toContain('immutable')
+      const text = await res.text()
+      expect(text).not.toContain(dir)
+      return JSON.parse(text)
+    }
+
+    it('캐시 파일이 그 사이 사라졌으면 404 NOT_FOUND', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'sew-img-gone-'))
+      fake.opener = { imagePath: async () => join(dir, 's0-bi.png') }
+      const body = await expectCleanError(await fetch(`${base}/scenarios/CVD/M1/N/versions/1730000000100/images/s0-bi`), 404, dir)
+      expect(body).toMatchObject({ code: 'NOT_FOUND' })
+    })
+    it.skipIf(process.getuid && process.getuid() === 0)('그 밖 오류(읽기 권한 없음)도 경로 없는 오류로', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'sew-img-deny-'))
+      const png = join(dir, 's0-bi.png')
+      writeFileSync(png, Buffer.from('89504e470d0a1a0a', 'hex'))
+      chmodSync(png, 0o000)
+      fake.opener = { imagePath: async () => png }
+      try {
+        await expectCleanError(await fetch(`${base}/scenarios/CVD/M1/N/versions/1730000000100/images/s0-bi`), 500, dir)
+      } finally {
+        chmodSync(png, 0o600)
+      }
+    })
   })
 })
