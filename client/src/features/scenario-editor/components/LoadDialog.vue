@@ -131,7 +131,8 @@ const columnDefs = [
   { field: 'description', headerName: '설명', minWidth: 180, flex: 1 },
   { headerName: '최근 수정자', width: 120, valueGetter: (p) => p.data.lastOwner?.singleid ?? '' },
   { field: 'currentCrtime', headerName: '현재 버전', width: 160, valueFormatter: (p) => (p.value ? formatCrtime(p.value) : '') },
-  { field: 'status', headerName: '상태', width: 140, valueFormatter: (p) => p.value.map((s) => LABELS.listStatus[s] ?? s).join(', ') }
+  // 열 합계(약 1170px)가 창의 표 영역(약 760px)보다 넓다 — 열 수 없는 원인(완료 조건 3)이 가로 스크롤 뒤로 숨지 않게 오른쪽에 고정한다
+  { field: 'status', headerName: '상태', width: 140, pinned: 'right', valueFormatter: (p) => p.value.map((s) => LABELS.listStatus[s] ?? s).join(', ') }
 ]
 const select = 'h-[38px] rounded-lg border border-gray-300 dark:border-dark-border bg-white dark:bg-dark-bg px-2 text-sm text-gray-900 dark:text-gray-100'
 </script>

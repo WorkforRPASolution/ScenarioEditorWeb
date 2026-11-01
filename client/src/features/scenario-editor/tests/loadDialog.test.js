@@ -179,6 +179,16 @@ describe('LoadDialog', () => {
     })
   })
 
+  it('상태 열은 오른쪽에 고정한다 — 열 합계가 창보다 넓어 가로로 밀려도 열 수 없는 원인이 보인다(완료 조건 3)', async () => {
+    const { w } = setup(); await flushPromises()
+    const cols = w.findComponent({ name: 'AgGridVue' }).props('columnDefs')
+    const status = cols.find((c) => c.field === 'status')
+    expect(status.pinned).toBe('right')
+    expect(status.valueFormatter({ value: ['NO_CURRENT_VERSION', 'DUPLICATE_PROPERTY'] })).toBe('현재 버전 없음, 같은 키 2건')
+    // 나머지 열 순서는 설계 §6.2 그대로
+    expect(cols.map((c) => c.headerName)).toEqual(['이름', '켜짐', '유형', '트리거', '등급', '설명', '최근 수정자', '현재 버전', '상태'])
+  })
+
   it('버전 줄을 한 번 누르면 고른 표시, 열기는 고른 버전으로(없으면 현재)', async () => {
     const { w } = setup(); await flushPromises()
     const grid = w.findComponent({ name: 'AgGridVue' })
