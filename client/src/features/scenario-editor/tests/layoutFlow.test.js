@@ -19,6 +19,13 @@ describe('layoutFlow', () => {
     const chips = nodes.filter((n) => n.type === 'chip').map((n) => [n.id, n.data.label, n.data.kind])
     expect(chips).toEqual([['s0-onFalse', 'FAIL', 'end-fail'], ['s1-onTrue', 'SUCCESS', 'end-success'], ['s1-onFalse', 'FAIL', 'end-fail']])
   })
+  it('✓ 끝 상태 칩은 다음 카드 앞에서 끝난다(4px 이상 띄움)', () => {
+    const { nodes } = layoutFlow([S(0, SUCCESS, FAIL), S(1, SUCCESS, FAIL)])
+    const chip = nodes.find((n) => n.id === 's0-onTrue')
+    const next = nodes.find((n) => n.id === 's1')
+    expect(chip.position.x).toBeGreaterThanOrEqual(FLOW.CW) // 카드 오른쪽에서 시작
+    expect(chip.position.x + FLOW.CHIP_W).toBeLessThanOrEqual(next.position.x - 4)
+  })
   it('양쪽이 모두 다음 카드면 화살표 하나', () => {
     const { edges } = layoutFlow([S(0, NEXT, NEXT), S(1, SUCCESS, FAIL)])
     const adj = edges.filter((e) => e.source === 's0' && e.target === 's1')

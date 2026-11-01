@@ -2,7 +2,9 @@
 import { targetLabel, targetKind } from './format'
 import { LABELS } from './messages'
 
-export const FLOW = { CW: 220, CH: 72, GAP: 80, CHIP_W: 76 }
+// 칩 폭 CHIP_W 는 카드 사이 간격 GAP 안에 들어간다: 카드 오른쪽 끝에서 CHIP_DX 만큼 띄우고 CHIP_W 를 더해도 다음 카드(CW + GAP)보다 4px 이상 앞.
+export const FLOW = { CW: 220, CH: 72, GAP: 80, CHIP_W: 70 }
+const CHIP_DX = 5
 const GREEN = '#16a34a'
 const RED = '#dc2626'
 const edgeStyle = (branch) => {
@@ -19,7 +21,7 @@ export function layoutFlow(steps) {
 
   const chip = (s, i, branch, label, kind) => {
     const id = `${s.uid}-${branch}`
-    const position = branch === 'onTrue' ? { x: X(i) + FLOW.CW + 12, y: 8 } : { x: X(i) + FLOW.CW / 2 - FLOW.CHIP_W / 2, y: FLOW.CH + 40 }
+    const position = branch === 'onTrue' ? { x: X(i) + FLOW.CW + CHIP_DX, y: 8 } : { x: X(i) + FLOW.CW / 2 - FLOW.CHIP_W / 2, y: FLOW.CH + 40 }
     nodes.push({ id, type: 'chip', position, data: { label, kind } })
     edges.push({ id: `e-${id}`, source: s.uid, target: id, sourceHandle: branch === 'onTrue' ? 'r' : 'b', targetHandle: branch === 'onTrue' ? 'l' : 't', type: 'straight', ...edgeStyle(branch) })
   }

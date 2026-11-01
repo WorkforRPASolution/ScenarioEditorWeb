@@ -16,14 +16,32 @@ import '../pills.css'
 defineOptions({ name: 'StepFlow' })
 const store = useEditorStore()
 const graph = computed(() => layoutFlow(store.steps))
-const { setCenter, findNode } = useVueFlow('se-flow')
+const { setCenter, onInit } = useVueFlow('se-flow')
 
-watch(() => store.selectedUid, async (uid) => {
+// 선택한 카드를 가운데로(확대 1). 위치는 배치 결과에서 읽는다 — Vue Flow 내부 상태가 새 노드를 받기 전에도 맞다.
+const centerOn = (uid, duration = 300) => {
+  const n = uid && graph.value.nodes.find((x) => x.id === uid && x.type === 'step')
+  if (n) setCenter(n.position.x + FLOW.CW / 2, n.position.y + FLOW.CH / 2 + 40, { zoom: 1, duration })
+}
+
+// 표 탭에서 고른 뒤 순서도 탭으로 오면 이 컴포넌트가 새로 만들어진다: 처음 그릴 때 선택한 카드로 간다.
+onInit(() => centerOn(store.selectedUid, 0))
+
+// 선택이 바뀌거나 다른 시나리오가 열리면(선택 uid 가 그대로여도) 선택한 카드로 간다.
+// 순서도 안에서 카드를 눌러 고른 경우는 이미 눈앞에 있으니 보던 위치·확대를 그대로 둔다.
+let clickedUid = null
+watch([() => store.skeleton, () => store.selectedUid], async ([skeleton, uid], [prevSkeleton]) => {
+  const fromFlow = skeleton === prevSkeleton && uid === clickedUid
+  clickedUid = null
+  if (fromFlow) return
   await nextTick()
-  const n = uid && findNode(uid)
-  if (n) setCenter(n.position.x + FLOW.CW / 2, n.position.y + FLOW.CH / 2 + 40, { zoom: 1, duration: 300 })
+  centerOn(uid)
 })
-const onNodeClick = ({ node }) => { if (node.type === 'step') store.select(node.id) }
+const onNodeClick = ({ node }) => {
+  if (node.type !== 'step') return
+  if (node.id !== store.selectedUid) clickedUid = node.id
+  store.select(node.id)
+}
 const level = (s) => (s.notes.some((n) => n.level === 'warning') ? 'warning' : s.notes.length ? 'info' : '')
 </script>
 
@@ -51,7 +69,8 @@ const level = (s) => (s.notes.some((n) => n.level === 'warning') ? 'warning' : s
         </div>
       </template>
       <template #node-chip="{ data }">
-        <div class="se-pill" :class="`se-pill-${data.kind}`" :style="{ minWidth: `${FLOW.CHIP_W}px`, textAlign: 'center' }">
+        <div class="se-pill" :class="`se-pill-${data.kind}`" :title="data.label"
+          :style="{ width: `${FLOW.CHIP_W}px`, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }">
           <Handle id="l" type="target" :position="Position.Left" class="!opacity-0" />
           <Handle id="t" type="target" :position="Position.Top" class="!opacity-0" />
           {{ data.label }}
