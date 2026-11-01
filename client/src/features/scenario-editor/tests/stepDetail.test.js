@@ -6,6 +6,7 @@ import { actionDetails } from '../format'
 import StepDetail from '../components/StepDetail.vue'
 import CropView from '../components/CropView.vue'
 import { useEditorStore } from '../stores/editorStore'
+import { MESSAGES } from '../messages'
 
 describe('actionDetails', () => {
   it('종류별 해석과 저장 값', () => {
@@ -66,7 +67,7 @@ describe('StepDetail', () => {
       open({ ...base, notes: [{ level: 'warning', code: 'PARSE_FAILED', params: { field: 'metadata' } }], condition: { kind, operationRaw: op, skipPreprocessing: null } })
       const text = mount(StepDetail).text()
       expect(text).toContain('저장된 조건 값을 해석하지 못했습니다(경고 참고).')
-      expect(text).toContain('저장된 값의 형식을 해석하지 못했습니다')
+      expect(text).toContain(MESSAGES.SEW_NOTE_PARSE_FAILED_metadata) // field 별 문구
     }
   })
   it('같은 코드의 경고가 여럿이어도 줄마다 그려지고 키 중복 경고가 없다', async () => {
@@ -75,7 +76,7 @@ describe('StepDetail', () => {
     const U = { level: 'warning', code: 'UNREACHABLE', params: {} }
     const st = open({ ...base, notes: [U, P, P] })
     const w = mount(StepDetail)
-    expect(w.text().split('저장된 값의 형식을 해석하지 못했습니다').length - 1).toBe(2)
+    expect(w.text().split(MESSAGES.SEW_NOTE_PARSE_FAILED_metadata).length - 1).toBe(2)
     st.skeleton.steps[0].notes = [P, P, U] // 가운데가 바뀌는 갱신 — 키가 겹치면 Vue 가 경고한다
     await w.vm.$nextTick()
     expect(warn.mock.calls.filter((c) => String(c[0]).includes('Duplicate keys'))).toEqual([])

@@ -80,11 +80,13 @@ export const useEditorStore = defineStore('scenarioEditor', () => {
     }
     selectedUid.value = steps.value[Math.min(steps.value.length - 1, Math.max(0, i + delta))].uid
   }
+  // 경고·알림이 있는 스텝을 차례로 고른다. 옮겼으면 true — 스텝 경고가 없으면(시나리오 경고만) false 라 바가 시나리오 경고 줄을 보인다.
   function nextNoted() {
     const list = steps.value.filter((s) => s.notes.length)
-    if (!list.length) return
+    if (!list.length) return false
     const i = list.findIndex((s) => s.uid === selectedUid.value)
     selectedUid.value = list[(i + 1) % list.length].uid
+    return true
   }
 
   return {

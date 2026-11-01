@@ -65,6 +65,18 @@ describe('editorStore', () => {
     s.nextNoted(); expect(s.selectedUid).toBe('s2')
     s.nextNoted(); expect(s.selectedUid).toBe('s1')
   })
+  it('경고 스텝 순회는 옮겼는지 알린다 — 스텝 경고가 없으면(시나리오 경고만) false', async () => {
+    api.open.mockReturnValue(ok({ ...skeleton, steps: [{ uid: 'a', no: 1, notes: [] }], notes: [{ level: 'warning', code: 'NO_SUCCESS' }] }))
+    const s = useEditorStore()
+    await s.openScenario({ process: 'P', model: 'M', name: 'N' })
+    expect(s.warningCount).toBe(1)
+    expect(s.nextNoted()).toBe(false)
+    expect(s.selectedUid).toBe('a')
+    api.open.mockReturnValue(ok(skeleton))
+    await s.openScenario({ process: 'P', model: 'M', name: 'N' })
+    expect(s.nextNoted()).toBe(true)
+    expect(s.selectedUid).toBe('s1')
+  })
   it('선택이 없으면 아래 방향은 첫 스텝, 위 방향은 마지막 스텝', async () => {
     api.open.mockReturnValue(ok(skeleton))
     const s = useEditorStore()

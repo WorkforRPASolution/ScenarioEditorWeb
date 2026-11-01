@@ -9,6 +9,8 @@ defineOptions({ name: 'StepViewer' })
 const store = useEditorStore()
 const step = computed(() => store.selectedStep)
 const src = computed(() => (step.value?.baseImage.state === 'present' ? imageUrl(step.value.baseImage.url) : null))
+// 버전의 기준 화면 데이터 자체를 해석하지 못했으면(시나리오 경고 PARSE_FAILED bi) "저장되어 있지 않음" 이 아니라 그 사실을 알린다.
+const biUnreadable = computed(() => (store.skeleton?.notes ?? []).some((n) => n.code === 'PARSE_FAILED' && n.params?.field === 'bi'))
 const natural = ref(null)
 const failed = ref(false)
 const box = ref(null)
@@ -113,7 +115,7 @@ defineExpose({ onLoad, fit })
     <div ref="box" class="flex-1 min-h-0 relative overflow-hidden bg-gray-50 dark:bg-dark-bg select-none" @wheel.prevent="onWheel" @mousedown="onDown">
       <div v-if="!step" class="h-full" />
       <div v-else-if="step.baseImage.state === 'notNeeded'" class="h-full flex items-center justify-center text-sm text-gray-400 px-6 text-center">{{ t('SEW_UI_BASE_IMAGE_NOT_NEEDED') }}</div>
-      <div v-else-if="step.baseImage.state === 'missing'" class="h-full flex items-center justify-center text-sm text-gray-400 px-6 text-center">{{ t('SEW_UI_BASE_IMAGE_MISSING') }}</div>
+      <div v-else-if="step.baseImage.state === 'missing'" class="h-full flex items-center justify-center text-sm text-gray-400 px-6 text-center">{{ biUnreadable ? t('SEW_UI_BASE_IMAGE_UNREADABLE') : t('SEW_UI_BASE_IMAGE_MISSING') }}</div>
       <div v-else-if="failed" class="h-full flex items-center justify-center text-sm text-gray-400">{{ t('SEW_UI_IMAGE_LOAD_FAILED') }}</div>
       <div v-if="src && !failed" class="absolute left-0 top-0 origin-top-left"
         :style="{ transform: `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`, width: natural ? `${natural.w}px` : 'auto', height: natural ? `${natural.h}px` : 'auto' }">

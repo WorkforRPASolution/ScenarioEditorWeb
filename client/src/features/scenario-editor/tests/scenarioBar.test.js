@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import ScenarioBar from '../components/ScenarioBar.vue'
 import { useEditorStore } from '../stores/editorStore'
+import { MESSAGES } from '../messages'
 
 const ModalStub = { name: 'ModalShell', props: ['modelValue', 'title'], template: '<div v-if="modelValue" :data-title="title"><slot /></div>' }
 const skeleton = (over = {}) => ({
@@ -57,5 +58,76 @@ describe('ScenarioBar', () => {
     await w.find('[data-testid="se-property"]').trigger('click')
     const text = w.text()
     for (const v of ['운영 속성은 버전과 상관없이 현재 값입니다', '1·5·10', 'NEXT_SC', '미입력']) expect(text).toContain(v)
+  })
+
+  describe('시나리오 단위 경고·알림 줄', () => {
+    let w
+    afterEach(() => { if (w) w.unmount(); w = null; vi.useRealTimers() })
+    const twNone = { agentFinds: false, matchMode: null, reasonCode: 'TEXT_EMPTY', inHouseShowsSet: false, raw: { Text: null, ClassName: null } }
+    const scenarioNotes = [
+      { level: 'warning', code: 'PARSE_FAILED', params: { field: 'body' } },
+      { level: 'warning', code: 'PARSE_FAILED', params: { field: 'bi' } },
+      { level: 'warning', code: 'NO_SUCCESS', params: {} },
+      { level: 'info', code: 'PRIORITY_NONSTANDARD', params: { priority: 3 } }
+    ]
+
+    it('TARGET_WINDOW_DIFFERS 를 뺀 시나리오 경고·알림을 문구로 나열한다(PARSE_FAILED 는 field 별 문구)', () => {
+      const s = useEditorStore()
+      s.skeleton = skeleton({ notes: [...scenarioNotes, { level: 'info', code: 'TARGET_WINDOW_DIFFERS', params: { reasonCode: 'TEXT_EMPTY' } }] })
+      w = mountBar()
+      const line = w.find('[data-testid="se-scenario-notes"]')
+      expect(line.exists()).toBe(true)
+      for (const k of ['SEW_NOTE_PARSE_FAILED_body', 'SEW_NOTE_PARSE_FAILED_bi', 'SEW_NOTE_NO_SUCCESS']) expect(line.text()).toContain(MESSAGES[k])
+      expect(line.text()).toContain('1·5·10')
+      expect(line.text()).not.toContain(MESSAGES.SEW_NOTE_TARGET_WINDOW_DIFFERS)
+      expect(line.text()).not.toContain(MESSAGES.SEW_NOTE_PARSE_FAILED)
+      // 대상 창 안내는 대상 창 자리에 한 번만
+      expect(w.text().split(MESSAGES.SEW_NOTE_TARGET_WINDOW_DIFFERS)).toHaveLength(2)
+    })
+    it('대상 창 알림만 있거나 시나리오 알림이 없으면 줄이 없다', () => {
+      const s = useEditorStore()
+      s.skeleton = skeleton()
+      w = mountBar()
+      expect(w.find('[data-testid="se-scenario-notes"]').exists()).toBe(false)
+      s.skeleton = skeleton({ notes: [] })
+      expect(mountBar().find('[data-testid="se-scenario-notes"]').exists()).toBe(false)
+    })
+    it('스텝 경고가 없고 시나리오 경고만 있으면 "경고 n · 알림 n" 이 시나리오 경고 줄로 간다(포커스·강조)', async () => {
+      vi.useFakeTimers()
+      const s = useEditorStore()
+      s.skeleton = skeleton({ steps: [{ uid: 's0', no: 1, notes: [] }], notes: scenarioNotes, header: { ...skeleton().header, targetWindow: twNone } })
+      s.selectedUid = 's0'
+      w = mount(ScenarioBar, { attachTo: document.body, global: { stubs: { ModalShell: ModalStub } } })
+      const line = w.find('[data-testid="se-scenario-notes"]')
+      line.element.scrollIntoView = vi.fn()
+      expect(line.attributes('data-flash')).toBe('false')
+      await w.find('[data-testid="se-notes"]').trigger('click')
+      expect(s.selectedUid).toBe('s0')
+      expect(document.activeElement).toBe(line.element)
+      expect(line.element.scrollIntoView).toHaveBeenCalled()
+      expect(line.attributes('data-flash')).toBe('true')
+      vi.advanceTimersByTime(3000)
+      await w.vm.$nextTick()
+      expect(line.attributes('data-flash')).toBe('false')
+    })
+    it('대상 창 알림만 있으면 버튼이 대상 창 안내 줄을 강조한다', async () => {
+      const s = useEditorStore()
+      s.skeleton = skeleton({ steps: [{ uid: 's0', no: 1, notes: [] }] })
+      w = mount(ScenarioBar, { attachTo: document.body, global: { stubs: { ModalShell: ModalStub } } })
+      const tw = w.find('[data-testid="se-bar-tw-differs"]')
+      tw.element.scrollIntoView = vi.fn()
+      await w.find('[data-testid="se-notes"]').trigger('click')
+      expect(document.activeElement).toBe(tw.element)
+      expect(tw.attributes('data-flash')).toBe('true')
+    })
+    it('스텝 경고가 있으면 지금처럼 그 스텝을 고르고 줄을 강조하지 않는다', async () => {
+      const s = useEditorStore()
+      s.skeleton = skeleton({ steps: [{ uid: 's0', no: 1, notes: [] }, { uid: 's1', no: 2, notes: [{ level: 'warning', code: 'UNREACHABLE' }] }], notes: scenarioNotes })
+      s.selectedUid = 's0'
+      w = mount(ScenarioBar, { attachTo: document.body, global: { stubs: { ModalShell: ModalStub } } })
+      await w.find('[data-testid="se-notes"]').trigger('click')
+      expect(s.selectedUid).toBe('s1')
+      expect(w.find('[data-testid="se-scenario-notes"]').attributes('data-flash')).toBe('false')
+    })
   })
 })

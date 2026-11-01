@@ -17,6 +17,26 @@ export const MESSAGES = {
   SEW_NOTE_ACTION_INVALID: '알 수 없는 동작 번호입니다. 에이전트가 이 시나리오를 거부할 수 있습니다.',
   SEW_NOTE_OCR_OP_NONE: 'OCR 비교 연산이 선택되지 않았습니다.',
   SEW_NOTE_PARSE_FAILED: '저장된 값의 형식을 해석하지 못했습니다. 원래 값을 확인하세요.',
+  // PARSE_FAILED 의 params.field 별 문구(noteMessage 가 먼저 찾는다). 서버 domain(skeleton·conditionCodec)이 내는 field 전부.
+  SEW_NOTE_PARSE_FAILED_body: '시나리오 본문을 해석하지 못해 스텝·머리 정보 없이 열었습니다. 저장 데이터를 확인하세요.',
+  SEW_NOTE_PARSE_FAILED_steps: '스텝 목록(Step)이 목록 형식이 아니라 스텝 없이 열었습니다. 저장 데이터를 확인하세요.',
+  SEW_NOTE_PARSE_FAILED_bi: '기준 화면 데이터를 해석하지 못해 기준 화면 없이 열었습니다(실행에는 영향 없음).',
+  SEW_NOTE_PARSE_FAILED_property: '운영 속성을 해석하지 못했습니다. 운영 속성 없이 엽니다.',
+  SEW_NOTE_PARSE_FAILED_step: '스텝 값이 객체가 아니라 빈 스텝으로 읽었습니다. 원래 값을 확인하세요.',
+  SEW_NOTE_PARSE_FAILED_metadata: '스텝의 조건 정보(Metadata)를 해석하지 못했습니다.',
+  SEW_NOTE_PARSE_FAILED_script: '스텝의 동작 정보(Script)를 해석하지 못했습니다.',
+  SEW_NOTE_PARSE_FAILED_trainImage: '학습 이미지 정보를 해석하지 못했습니다(그 학습 이미지는 보이지 않습니다).',
+  SEW_NOTE_PARSE_FAILED_imageMulti: '이미지 다중 검사 값이 "개수-연산" 형식이 아닙니다.',
+  SEW_NOTE_PARSE_FAILED_ocrMulti: 'OCR 다중 검사 값이 "개수-연산" 형식이 아닙니다.',
+  SEW_NOTE_PARSE_FAILED_eqpState: '설비 상태 조건 값이 "대상,상태,코드" 세 칸이 아닙니다.',
+  SEW_NOTE_PARSE_FAILED_TextValue: '조건 값(TextValue)이 글자가 아닙니다.',
+  SEW_NOTE_PARSE_FAILED_ConditionExpression: '조건 식(ConditionExpression)이 글자가 아닙니다.',
+  SEW_NOTE_PARSE_FAILED_click: '마우스 좌표 값이 "x:y" 형식이 아닙니다.',
+  SEW_NOTE_PARSE_FAILED_wheel: '휠 값이 "칸@@초" 형식이 아닙니다.',
+  SEW_NOTE_PARSE_FAILED_keyboard: '키보드 값의 키 코드가 숫자가 아닙니다.',
+  SEW_NOTE_PARSE_FAILED_wait: '대기 값이 숫자(밀리초)가 아닙니다.',
+  SEW_NOTE_PARSE_FAILED_fap: 'FAP 값이 "@" 로 나눈 네 칸이 아닙니다.',
+  SEW_NOTE_PARSE_FAILED_native: '에이전트 함수 정보(NativeFunction)가 없습니다.',
   SEW_NOTE_NEXT_OUT_OF_RANGE: '다음 스텝 번호가 범위를 벗어났습니다.',
   SEW_NOTE_NEXT_SELF: '다음 스텝이 자기 자신입니다(사내 편집기는 저장을 막습니다).',
   SEW_NOTE_LAST_STEP_NEXT: '마지막 스텝의 다음이 NEXT 입니다(사내 편집기는 저장을 막습니다).',
@@ -44,6 +64,7 @@ export const MESSAGES = {
   SEW_UI_BASE_IMAGE_HINT: '기준 화면은 스텝을 만들 때 캡처한 화면입니다. 실행에는 쓰이지 않습니다.',
   SEW_UI_BASE_IMAGE_NOT_NEEDED: '이 스텝은 화면을 보지 않는 조건이라 기준 화면이 없습니다.',
   SEW_UI_BASE_IMAGE_MISSING: '기준 화면이 저장되어 있지 않습니다 (실행에는 영향 없음).',
+  SEW_UI_BASE_IMAGE_UNREADABLE: '기준 화면 데이터를 해석하지 못했습니다(경고 참고).',
   SEW_UI_IMAGE_LOAD_FAILED: '기준 화면을 불러오지 못했습니다.',
   SEW_UI_TRAIN_NOT_STORED: '점선 = 검색 영역 · 학습 이미지 위치는 저장되지 않아 그리지 않습니다',
   SEW_UI_PROPERTY_CURRENT: '운영 속성은 버전과 상관없이 현재 값입니다.',
@@ -128,6 +149,9 @@ export function errorMessage(err) {
   return t(ERROR_KEYS[code] ?? `SEW_ERR_${code}`)
 }
 
+// 경고·알림 문구. params.field 가 있으면 그 field 의 문구(예: SEW_NOTE_PARSE_FAILED_bi)를 먼저 찾고, 없으면 코드 공통 문구.
 export function noteMessage(note) {
-  return t(`SEW_NOTE_${note.code}`, note.params || {})
+  const params = note.params || {}
+  const specific = typeof params.field === 'string' ? `SEW_NOTE_${note.code}_${params.field}` : null
+  return t(specific && MESSAGES[specific] !== undefined ? specific : `SEW_NOTE_${note.code}`, params)
 }

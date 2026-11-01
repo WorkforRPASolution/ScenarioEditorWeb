@@ -69,6 +69,18 @@ describe('StepViewer', () => {
     await w.find('[data-testid="se-base-image"]').trigger('error')
     expect(w.text()).toContain('불러오지 못했습니다')
   })
+  it('기준 화면 데이터(시나리오 단위 PARSE_FAILED bi)를 해석하지 못해 없는 스텝은 그 사실을 알린다', () => {
+    const st = useEditorStore()
+    const s = step({ baseImage: { state: 'missing' } })
+    st.skeleton = { steps: [s], notes: [{ level: 'warning', code: 'PARSE_FAILED', params: { field: 'bi' } }] }
+    st.selectedUid = s.uid
+    const text = mount(StepViewer).text()
+    expect(text).toContain('기준 화면 데이터를 해석하지 못했습니다(경고 참고).')
+    expect(text).not.toContain('저장되어 있지 않습니다')
+    // 다른 field 의 해석 실패는 해당 없음 — 원래 안내
+    st.skeleton = { steps: [s], notes: [{ level: 'warning', code: 'PARSE_FAILED', params: { field: 'property' } }] }
+    expect(mount(StepViewer).text()).toContain('저장되어 있지 않습니다')
+  })
   it('검색 영역이 없거나 숫자가 아니면 그리지 않고 오류도 내지 않는다', async () => {
     for (const searchArea of [undefined, null, 'abc', { x: 'a', y: 1, w: 2, h: 3 }, { x: 1, y: 2 }]) {
       open(step({ condition: { kind: 'image', searchArea } }))
