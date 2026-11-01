@@ -5,10 +5,19 @@ const { OCR_OPERATION_NAMES, SCRIPT_TYPE_NAMES, KEY_CODE_NAMES, nameOf } = requi
 
 const note = (level, code, params = {}) => ({ level, code, params })
 const INT = /^-?\d+$/
+const DEFAULT_MULTI = Object.freeze({ count: '1', op: 0, raw: '' }) // 사내 기본값(MainWindow.xaml.cs:1186-1196)
+
+// 저장 문자열 필드를 읽는다. null·없음은 빈 값, 문자열이 아닌 값은 빈 값으로 보되 해석 실패 경고를 단다.
+function stringField(value, field, notes) {
+  if (value === null || value === undefined) return ''
+  if (typeof value === 'string') return value
+  notes.push(note('warning', 'PARSE_FAILED', { field }))
+  return ''
+}
 
 function parseImageMulti(textValue, notes) {
-  const raw = textValue ?? ''
-  if (raw === '') return { count: '1', op: 0, raw }
+  const raw = stringField(textValue, 'TextValue', notes)
+  if (raw === '') return { ...DEFAULT_MULTI }
   const t = raw.split('-')
   if (t.length !== 2 || !/^\d+$/.test(t[1])) {
     notes.push(note('warning', 'PARSE_FAILED', { field: 'imageMulti', raw }))
@@ -18,9 +27,9 @@ function parseImageMulti(textValue, notes) {
 }
 
 function parseOcrText(textValue, notes) {
-  const v = textValue ?? ''
+  const v = stringField(textValue, 'TextValue', notes)
   const i = v.indexOf('@@@@')
-  if (i < 0) return { text: v, multi: null }
+  if (i < 0) return { text: v, multi: { ...DEFAULT_MULTI } }
   const tail = v.slice(i + 4)
   const t = tail.split('-')
   const ok = t.length === 2 && /^\d+$/.test(t[1])
@@ -29,7 +38,7 @@ function parseOcrText(textValue, notes) {
 }
 
 function parseEqpState(expr, notes) {
-  const raw = expr ?? ''
+  const raw = stringField(expr, 'ConditionExpression', notes)
   const t = raw.split(',')
   if (t.length !== 3) {
     notes.push(note('warning', 'PARSE_FAILED', { field: 'eqpState', raw }))
@@ -45,6 +54,10 @@ function parseEqpState(expr, notes) {
 
 function parseCondition(step) {
   const notes = []
+  if (!step || typeof step !== 'object') {
+    notes.push(note('warning', 'PARSE_FAILED', { field: 'step' }))
+    return { condition: { kind: 'unknown', operationRaw: null, skipPreprocessing: null }, notes }
+  }
   const op = step.Operation
   const kind = op === 0 ? 'none' : op === 1 ? 'image' : op === 2 ? 'ocr' : op === 4 ? 'eqpState' : 'unknown'
   if (kind === 'unknown') notes.push(note('warning', 'CONDITION_UNKNOWN', { operation: op }))
@@ -94,6 +107,10 @@ const NOT_IN_COMBO = new Set([7, 8, 13, 14, 15]) // Variable·OICommand·FAP·AC
 
 function parseAction(step, conditionKind) {
   const notes = []
+  if (!step || typeof step !== 'object') {
+    notes.push(note('warning', 'PARSE_FAILED', { field: 'step' }))
+    return { action: { type: null, typeName: null, raw: null }, notes }
+  }
   const s = step.Script
   if (!s || typeof s !== 'object') {
     notes.push(note('warning', 'PARSE_FAILED', { field: 'script' }))

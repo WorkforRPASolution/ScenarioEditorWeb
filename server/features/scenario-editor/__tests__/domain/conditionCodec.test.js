@@ -93,3 +93,67 @@ describe('parseAction', () => {
     expect(codes(r.notes)).toEqual(['ACTION_INVALID'])
   })
 })
+
+// 해석에 실패해도 예외로 끝내지 않고 그 스텝에 경고를 단다(설계 §5.6).
+const warn = (field, extra = {}) => ({ level: 'warning', code: 'PARSE_FAILED', params: { field, ...extra } })
+const ocrInfo = (over) => ({ OcrParamInfo: { Type: 1, Operation: 1, TextValue: '', NumberValue: -218, NumberRangeMin: -218, NumberRangeMax: -218, MinMatchingValue: 10, ...over } })
+const DEFAULT_MULTI = { count: '1', op: 0, raw: '' }
+
+describe('parseCondition: 잘못된 입력에도 예외가 없다', () => {
+  it.each([null, undefined, 5, 'x'])('step=%s → unknown + step 경고', (bad) => {
+    expect(() => parseCondition(bad)).not.toThrow()
+    expect(parseCondition(bad)).toEqual({
+      condition: { kind: 'unknown', operationRaw: null, skipPreprocessing: null },
+      notes: [warn('step')]
+    })
+  })
+  it.each([123, true, {}, ['2-1']])('이미지 스텝의 TextValue=%j 는 빈 값으로 보고 TextValue 경고', (bad) => {
+    const r = parseCondition(step(1, { OcrParamInfo: { ...md().OcrParamInfo, TextValue: bad } }))
+    expect(r.condition.image.multi).toEqual(DEFAULT_MULTI)
+    expect(r.notes).toEqual([warn('TextValue')])
+  })
+  it('이미지 스텝의 TextValue 가 null·없음이면 경고 없이 기본값', () => {
+    for (const tv of [null, undefined]) {
+      const r = parseCondition(step(1, { OcrParamInfo: { ...md().OcrParamInfo, TextValue: tv } }))
+      expect(r.condition.image.multi).toEqual(DEFAULT_MULTI)
+      expect(r.notes).toEqual([])
+    }
+  })
+  it.each([123, true, {}, ['IDLE@@@@1-0']])('OCR 스텝의 TextValue=%j 는 빈 값으로 보고 TextValue 경고', (bad) => {
+    const r = parseCondition(step(2, ocrInfo({ TextValue: bad })))
+    expect(r.condition.ocr).toMatchObject({ text: '', multi: DEFAULT_MULTI })
+    expect(r.notes).toEqual([warn('TextValue')])
+  })
+  it('OCR 스텝의 TextValue 가 null·없음이면 경고 없이 빈 문자열', () => {
+    for (const tv of [null, undefined]) {
+      const r = parseCondition(step(2, ocrInfo({ TextValue: tv })))
+      expect(r.condition.ocr).toMatchObject({ text: '', multi: DEFAULT_MULTI })
+      expect(r.notes).toEqual([])
+    }
+  })
+  it('OCR 텍스트에 @@@@ 가 없으면 다중 검사는 사내 기본값 1·0', () => {
+    const r = parseCondition(step(2, ocrInfo({ TextValue: 'IDLE' })))
+    expect(r.condition.ocr).toMatchObject({ text: 'IDLE', multi: DEFAULT_MULTI })
+    expect(r.notes).toEqual([])
+  })
+  it.each([123, true, {}])('설비 상태 스텝의 ConditionExpression=%j 는 빈 값으로 보고 경고 둘(원인·결과)', (bad) => {
+    const r = parseCondition(step(4, { ConditionExpression: bad }))
+    expect(r.condition.kind).toBe('eqpState')
+    expect(r.condition.eqpState).toMatchObject({ target: null, targetKind: 'unknown', raw: '' })
+    expect(r.notes).toEqual([warn('ConditionExpression'), warn('eqpState', { raw: '' })])
+  })
+  it('설비 상태 스텝의 ConditionExpression 이 없으면 기존대로 eqpState 경고 하나', () => {
+    const r = parseCondition(step(4, { ConditionExpression: undefined }))
+    expect(r.notes).toEqual([warn('eqpState', { raw: '' })])
+  })
+})
+
+describe('parseAction: 잘못된 입력에도 예외가 없다', () => {
+  it.each([null, undefined, 5, 'x'])('step=%s → type null + step 경고', (bad) => {
+    expect(() => parseAction(bad, 'image')).not.toThrow()
+    expect(parseAction(bad, 'image')).toEqual({
+      action: { type: null, typeName: null, raw: null },
+      notes: [warn('step')]
+    })
+  })
+})

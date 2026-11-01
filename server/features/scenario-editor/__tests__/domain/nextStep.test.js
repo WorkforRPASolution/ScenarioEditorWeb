@@ -15,3 +15,12 @@ describe('toTarget', () => {
     [10003, { kind: 'raw', value: 10003 }]
   ])('%s', (v, t) => expect(toTarget(v, uids)).toEqual(t))
 })
+
+describe('toTarget: 잘못된 uids 에도 예외가 없다', () => {
+  it.each([undefined, null, 'abc', {}, 5])('uids=%s → 번호로 못 푸는 값은 raw, 끝/다음은 그대로', (bad) => {
+    expect(() => toTarget(0, bad)).not.toThrow()
+    expect(toTarget(0, bad)).toEqual({ kind: 'raw', value: 0 })
+    expect(toTarget(-1, bad)).toEqual({ kind: 'end', value: 'FAIL' })
+    expect(toTarget(10002, bad)).toEqual({ kind: 'next' })
+  })
+})
