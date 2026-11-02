@@ -11,7 +11,7 @@ const SCENARIO_TYPE_NAMES = ['NOT_DEFINED', 'ALARM_RECOVERY', 'PM_MACRO', 'CONDI
   'SOP_INFORM', 'FAP', 'ACCIDENT_PREVENTION']
 const TRIGGER_TYPE_NAMES = ['USER_DEFINED', 'EES', 'REALTIME']
 const TRIGGER_NAMES = ['NA', 'Log', 'RV', 'EqState', 'Time', 'Scenario', 'Manual']
-const GRADE_NAMES = ['NA', 'S', 'A', 'B', 'C', 'D', 'NotUsed'] // 사내 등급 콤보 순서 = enum 순서 [사용자 확인 2026-11-01, Q-008]
+const GRADE_NAMES = ['N/A', 'S', 'A', 'B', 'C', 'D', 'NotUsed'] // 사내 등급 콤보 문구·순서(enum 0 NA 는 화면에 "N/A") [사용자 확인 2026-11-01, 사내 XAML 2026-11-02, Q-008]
 const PERFORM_TYPE_NAMES = ['None', 'Active', 'Passive']
 const ACCIDENT_TYPE_NAMES = ['None', 'Electric', 'Leak', 'Fire', 'Chemical', 'HumanError', 'System']
 const AUTHORITY_NAMES = ['Normal User', 'Administrator', 'Conductor', 'Manager']

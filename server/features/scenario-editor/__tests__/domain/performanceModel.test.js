@@ -7,6 +7,10 @@ describe('performanceFromBson (사내 이름 EqpPerfornmanceLoss·WaferLoss, Q-0
     expect(p).toMatchObject({ group: 'SEW', triggerName: 'Log', gradeName: 'A', supervisorNotEntered: true, eqpPerformanceLoss: 3, waferLoss: 4, scenarioDescription: '설명' })
     expect(p.rawKeys).toContain('WaferLoss')
   })
+  it('등급 이름은 사내 콤보 문구 그대로 — 0 은 "N/A"(enum 이름 NA 가 아님), 6 은 NotUsed (Q-008, 사내 XAML)', () => {
+    expect(performanceFromBson({ Grade: 0 })).toMatchObject({ grade: 0, gradeName: 'N/A' })
+    expect(performanceFromBson({ Grade: 6 })).toMatchObject({ grade: 6, gradeName: 'NotUsed' })
+  })
   it('사본 이름(EqpPerformanceLoss·GlassLoss)은 운영에 없는 키라 읽지 않고 저장된 키로만 보인다', () => {
     const p = performanceFromBson({ EqpPerformanceLoss: 7, GlassLoss: 8, Supervisor: '홍길동' })
     expect(p).toMatchObject({ eqpPerformanceLoss: 0, waferLoss: 0, supervisor: '홍길동', supervisorNotEntered: false })
