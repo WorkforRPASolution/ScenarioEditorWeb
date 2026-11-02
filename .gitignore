@@ -1,16 +1,51 @@
+# 의존성
 node_modules/
+
+# 빌드 산출물 (client/dist)
 dist/
-logs/
-.cache/
-*.log
+
+# 환경 변수 — 예시 파일만 올린다
 .env
-client/.env
-server/.env
-infra/is/dist/
-tools/scenario-gen/out/
+.env.*
+!.env.example
+!.env.inhouse.example
+
+# 로그
+logs/
+*.log
+
+# 캐시 (server/.cache 이미지·뼈대 캐시 포함)
+.cache/
+.eslintcache
+*.tsbuildinfo
+
+# 시험 산출물
+coverage/
 test-results/
 playwright-report/
 .playwright-mcp/
-.superpowers/
+
+# 도구 산출물
+# InterfaceServer 실행 파일 사본 (tools/infra/prepare-is.sh 가 채운다)
+infra/is/dist/
+# 시나리오 생성기 출력
+tools/scenario-gen/out/
+# C# 기준 도구 빌드
 tools/csharp-golden/bin/
 tools/csharp-golden/obj/
+
+# 작업 공간
+.superpowers/
+.claude/settings.local.json
+# git bundle 묶음 (사내 반입용)
+*.bundle
+
+# 편집기·OS
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+._*
+Thumbs.db
