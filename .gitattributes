@@ -1,0 +1,2 @@
+# 줄바꿈은 LF 로 고정한다 — Windows 에서 받아도 CRLF 로 바꾸지 않는다(사본 sha256 검사·셸 스크립트가 LF 를 전제한다).
+* text=auto eol=lf
