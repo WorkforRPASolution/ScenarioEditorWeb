@@ -11,13 +11,11 @@ P1(보기 전용)을 사내 운영 EARS 에 붙여 실제 데이터로 확인한
 - npm 저장소(또는 사내 미러) 접근
 - 운영 Mongo(4.2.6)·Redis 에 닿는 PC, 운영 `ARS_USER_INFO` 에 있는 본인 SingleID
 
-**받기** — 원격 저장소가 없으므로 묶음 파일 하나로 옮긴다.
+**받기**
 ```
-# 집 맥에서
-cd ScenarioEditorWeb && git bundle create ../sew.bundle --all
-# 사내에서 (P1 이 main 에 합쳐지기 전이면 브랜치는 p1-view)
-git clone -b <브랜치> sew.bundle ScenarioEditorWeb
+git clone https://github.com/WorkforRPASolution/ScenarioEditorWeb.git
 ```
+비공개 저장소라 WorkforRPASolution 조직에 권한이 있는 계정이 필요하다. 사내망에서 GitHub 에 닿지 않으면 묶음 파일 하나로 옮긴다: 집 맥에서 `cd ScenarioEditorWeb && git bundle create ../sew.bundle --all`, 사내에서 `git clone -b main sew.bundle ScenarioEditorWeb`.
 
 **설치·설정**
 ```

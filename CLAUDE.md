@@ -6,7 +6,7 @@ ScenarioEditorWeb — 사내 ScenarioEditor(C# WPF)를 웹으로 다시 만드�
 - 접두사 **`SEW-`** (2026-11-01 신설) — `cd ~/Backlog && npm run backlog -- next --prefix SEW-` (CLI 전용, 규칙은 전역 `~/.claude/CLAUDE.md`).
 
 ## 저장소 규칙
-- 자체 git, 원격 없음. 푸시하지 않는다.
+- 자체 git. 원격 `origin` = https://github.com/WorkforRPASolution/ScenarioEditorWeb (비공개, 2026-11-02 사용자가 만들고 연결을 지시). 기본 브랜치 `main`. 푸시는 사용자가 요청할 때만.
 - `client/`·`server/` 의 WebManager 사본은 `UPSTREAM.json` 이 출처(커밋·sha256·판정)를 기록한다. `verbatim` 파일은 고치지 않는다 — 고칠 일은 `UPSTREAM-CHANGES.md` 에 적는다. `npm run upstream:check` 가 손댄 사본을 잡는다.
 - 사본을 다시 가져올 때는 WebManager 작업 트리를 읽지 않고 `git -C ../WebManager show <커밋>:<경로>` 로만 꺼낸다(`npm run upstream:import`).
 - 편입 대상은 `client/src/features/scenario-editor/`·`server/features/scenario-editor/` 둘뿐이다. 다른 기능 폴더를 import 하지 않는다.
