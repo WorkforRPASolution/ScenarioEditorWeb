@@ -1,4 +1,5 @@
 // shell-modified: WebManager@2f1eb0a server/app.js — 기능 라우터 21개를 편집기 라우터 하나로 바꿨다.
+// SE_WEBMANAGER_DB=0 이면 WEBMANAGER 기록 저장을 끄고 상태 확인을 EARS 기준으로 한다(server/webManagerDb.js).
 const express = require('express');
 const compression = require('compression');
 const cors = require('cors');
@@ -6,6 +7,10 @@ const helmet = require('helmet');
 const path = require('path');
 const { httpLogger } = require('./shared/logger/httpLogger');
 const { errorHandler, notFoundHandler } = require('./shared/middleware/errorHandler');
+const { webManagerDbEnabled, disableWebManagerLog, healthWithoutWebManager } = require('./webManagerDb');
+
+const webManagerDb = webManagerDbEnabled(process.env);
+if (!webManagerDb) disableWebManagerLog(require('./shared/models/webmanagerLogModel'));
 
 const app = express();
 
@@ -48,7 +53,8 @@ app.use(compression({
 const { asyncHandler } = require('./shared/middleware/errorHandler');
 const { getHealthStatus } = require('./shared/utils/healthCheck');
 app.get('/api/health', asyncHandler(async (req, res) => {
-  const health = await getHealthStatus();
+  const status = await getHealthStatus();
+  const health = webManagerDb ? status : healthWithoutWebManager(status);
   res.status(health.status === 'down' ? 503 : 200).json(health);
 }));
 

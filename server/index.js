@@ -1,18 +1,20 @@
 // shell-modified: WebManager@2f1eb0a server/index.js — 기능 require·초기화 13개(권한 동기화 포함)·EQP Redis·cron·분산 락 해제를 뺐다.
-// 단독판은 127.0.0.1 에 바인딩한다(server/listen.js).
+// 단독판은 127.0.0.1 에 바인딩한다(server/listen.js). SE_WEBMANAGER_DB=0 이면 EARS 만 연결한다(server/webManagerDb.js).
 require('dotenv').config();
 const { createLogger } = require('./shared/logger');
 const app = require('./app');
-const { connectDB, closeConnections } = require('./shared/db/connection');
+const { connectDB, closeConnections, earsConnection } = require('./shared/db/connection');
 const { connectRedis, closeRedis } = require('./shared/db/redisConnection');
 const { resolveListenAddress } = require('./listen');
+const { webManagerDbEnabled, connectEarsOnly } = require('./webManagerDb');
 
 const serverLog = createLogger('server');
 const { port: PORT, host: HOST } = resolveListenAddress(process.env);
 
 const startServer = async () => {
   try {
-    await connectDB();
+    if (webManagerDbEnabled(process.env)) await connectDB();
+    else await connectEarsOnly(earsConnection, process.env);
     await connectRedis();
 
     const server = app.listen(PORT, HOST, () => {
