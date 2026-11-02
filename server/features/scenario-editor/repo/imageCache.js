@@ -9,9 +9,11 @@ const MAX_NAME = 200 // 인코딩한 디렉터리 이름이 이보다 길면(한
 
 // 키 -> 디렉터리 이름. 같은 키는 항상 같은 이름이고 저장·읽기가 모두 이 함수를 쓴다.
 // 빈 키와 '.'·'..' 는 캐시 밖(부모)을 가리키므로 디스크를 건드리기 전에 거부한다.
+// encodeURIComponent 가 남기는 문자 중 * 는 Windows 파일 이름에 못 쓰므로 %2A 로 바꾼다.
+// encodeURIComponent 는 %2A 를 내지 않으므로(% 는 %25 가 된다) 다른 키와 겹치지 않는다.
 function dirName(key) {
   if (typeof key !== 'string') throw new Error('캐시 키 형식 오류')
-  const enc = encodeURIComponent(key)
+  const enc = encodeURIComponent(key).replace(/\*/g, '%2A')
   if (enc === '' || enc === '.' || enc === '..') throw new Error(`캐시 키 형식 오류: ${JSON.stringify(key)}`)
   return enc.length <= MAX_NAME ? enc : `~${crypto.createHash('sha256').update(key).digest('hex')}`
 }

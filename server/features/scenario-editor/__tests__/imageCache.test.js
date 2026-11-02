@@ -130,6 +130,16 @@ describe('imageCache', () => {
     expect(readdirSync(dir)).toEqual([`~${createHash('sha256').update(key).digest('hex')}`])
     expect(await c.readSkeleton(`${key}x`)).toBe(null)
   })
+  it('Windows 에서 못 쓰는 문자(<>:"/\\|?*)는 디렉터리 이름에 남지 않고, * 와 %2A 는 다른 키다', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sew-img-'))
+    const c = createImageCache({ dir, maxBytes: 1e9 })
+    await c.store('P/M/a<b>c:d"e\\f|g?h*i/1', { star: true }, [{ id: 's0-bi', base64: png(10) }])
+    await c.store('P/M/h%2Ai/1', { pct: true }, [])
+    for (const name of readdirSync(dir)) expect(name).not.toMatch(/[<>:"/\\|?*]/)
+    expect(await c.readSkeleton('P/M/a<b>c:d"e\\f|g?h*i/1')).toEqual({ star: true })
+    expect(await c.readSkeleton('P/M/h%2Ai/1')).toEqual({ pct: true })
+    expect(readFileSync(await c.imagePath('P/M/a<b>c:d"e\\f|g?h*i/1', 's0-bi'))).toHaveLength(10)
+  })
   it('200자 이하 키는 encodeURIComponent 이름을 그대로 쓴다', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'sew-img-'))
     const c = createImageCache({ dir, maxBytes: 1e9 })
