@@ -28,7 +28,7 @@ const SCHEMAS = {
     ['DoNotSendEmailWhenSuccess', 'bool'], ['DoNotSendEmailWhenStop', 'bool'], ['DoNotSendEmailWhenFail', 'bool'],
     ['StartDelay', 'int'], ['RetryCnt', 'int'], ['RetryInterval', 'int'], ['NextScenarioIfSuccess', 'NextScenarioCondition'],
     ['NextScenarioIfFail', 'NextScenarioCondition'], ['Type', 'int'], ['DetailedDescriptionTitle', 'string'],
-    ['DetailedDescription', 'string'], ['DescriptionFromDonductor', 'string'], ['EDMLink', 'string'], ['IsEnabled', 'bool'],
+    ['DetailedDescription', 'string'], ['DescriptionFromConductor', 'string'], ['EDMLink', 'string'], ['IsEnabled', 'bool'],
     ['ExecutingLevel', 'int'], ['IsShowDialog', 'bool'], ['Priority', 'int'], ['LcncType', 'int'], ['LowcodeExtension', 'string']],
   SetScenarioRequest: [['Process', 'string'], ['Model', 'string'], ['SCName', 'string'], ['BI', 'string'], ['Body', 'string'], ['Property', 'string']]
 }

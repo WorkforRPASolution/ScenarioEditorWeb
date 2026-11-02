@@ -18,9 +18,9 @@ const newBackupInfo = (id) => ({ ID: 'BI.' + id, TargetSnapshotList: [] })
 const newProperty = (id) => ({ ID: id, Owners: ['sew_gen@2026-11-01 10:00:00'], ScenarioTriggerType: 0, DoNotSendEmailWhenSuccess: false,
   DoNotSendEmailWhenStop: false, DoNotSendEmailWhenFail: false, StartDelay: 0, RetryCnt: 0, RetryInterval: 10,
   NextScenarioIfSuccess: null, NextScenarioIfFail: null, Type: 1, DetailedDescriptionTitle: '', DetailedDescription: '',
-  DescriptionFromDonductor: '', EDMLink: '', IsEnabled: true, ExecutingLevel: 0, IsShowDialog: true, Priority: 10, LcncType: 0, LowcodeExtension: '' })
+  DescriptionFromConductor: '', EDMLink: '', IsEnabled: true, ExecutingLevel: 0, IsShowDialog: true, Priority: 10, LcncType: 0, LowcodeExtension: '' })
 const newPerformance = (desc) => ({ Group: 'SEW', Trigger: 1, TriggerInfo: null, Grade: 2, Supervisor: 'Not entered', SupervisorComment: '',
-  CitizenDeveloper: [], PerformType: 1, ScenarioDescription: desc, ManWorkLoss: 0, EqpPerformanceLoss: 0, EqpStopLoss: 0, GlassLoss: 0,
+  CitizenDeveloper: [], PerformType: 1, ScenarioDescription: desc, ManWorkLoss: 0, EqpPerfornmanceLoss: 0, EqpStopLoss: 0, WaferLoss: 0,
   InvestCostLoss: 0, AdditionalEffect: '', AccidentType: 0, AccidentInfo: '', UpdateDate: '' })
 
 // 시나리오 한 버전을 만드는 작업대. img 는 images.js (그림 원천).

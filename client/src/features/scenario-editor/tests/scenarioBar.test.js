@@ -10,9 +10,9 @@ const skeleton = (over = {}) => ({
   process: 'SEWCVD', model: 'SEWMODELA', name: 'X', id: 'SEWCVD-SEWMODELA-X', version: { crtime: 1730000000000, isCurrent: true },
   header: { description: '메일 제목', timeoutLimit: 240, targetWindow: { agentFinds: false, matchMode: null, reasonCode: 'TEXT_EMPTY', inHouseShowsSet: true, raw: { Text: null, ClassName: null } } },
   property: { IsEnabled: true, Type: 1, Priority: 3, Owners: ['a@2026-11-01 10:00:00'], ScenarioTriggerType: 0, StartDelay: 0, RetryCnt: 0, RetryInterval: 10,
-    NextScenarioIfSuccess: null, NextScenarioIfFail: { Name: 'NEXT_SC', Text: 't' }, DetailedDescriptionTitle: '', DetailedDescription: '', DescriptionFromDonductor: '', EDMLink: '',
+    NextScenarioIfSuccess: null, NextScenarioIfFail: { Name: 'NEXT_SC', Text: 't' }, DetailedDescriptionTitle: '', DetailedDescription: '', DescriptionFromConductor: '심의 메모', EDMLink: '',
     ExecutingLevel: 0, IsShowDialog: true, LcncType: 0, LowcodeExtension: '', DoNotSendEmailWhenSuccess: false, DoNotSendEmailWhenStop: false, DoNotSendEmailWhenFail: false, ID: 'X' },
-  performance: { gradeName: 'A', supervisor: 'Not entered', supervisorNotEntered: true, scenarioDescription: '설명', rawKeys: ['Grade'], eqpPerformanceLoss: 0, glassLoss: 0 },
+  performance: { gradeName: 'A', supervisor: 'Not entered', supervisorNotEntered: true, scenarioDescription: '설명', rawKeys: ['Grade'], eqpPerformanceLoss: 0, waferLoss: 42 },
   steps: [{ uid: 's0', no: 1, notes: [{ level: 'warning', code: 'X' }] }], notes: [{ level: 'info', code: 'TARGET_WINDOW_DIFFERS' }], ...over
 })
 
@@ -58,6 +58,16 @@ describe('ScenarioBar', () => {
     await w.find('[data-testid="se-property"]').trigger('click')
     const text = w.text()
     for (const v of ['운영 속성은 버전과 상관없이 현재 값입니다', '1·5·10', 'NEXT_SC', '미입력']) expect(text).toContain(v)
+  })
+  it('운영 속성 창: 심의 의견은 DescriptionFromConductor, 성과는 웨이퍼 손실(사내 이름)', async () => {
+    const s = useEditorStore(); s.skeleton = skeleton()
+    const w = mountBar()
+    await w.find('[data-testid="se-property"]').trigger('click')
+    const text = w.text()
+    expect(text).toContain('심의 메모')
+    expect(text).toContain('웨이퍼 손실')
+    expect(text).toContain('42')
+    expect(text).not.toContain('글라스 손실')
   })
 
   describe('시나리오 단위 경고·알림 줄', () => {

@@ -43,14 +43,14 @@ module.exports = [
       ] }
   },
   {
-    name: 'BAD_PERFORMANCE', process: 'SEWCVD', model: 'SEWMODELB', desc: '성과 정보 WebManager 이름',
+    name: 'BAD_PERFORMANCE', process: 'SEWCVD', model: 'SEWMODELB', desc: '성과 정보 사본 이름(운영에 없는 키)',
     build: (w) => {
       one(w)
       const p = w.sc.performance
-      delete p.EqpPerformanceLoss; delete p.GlassLoss
-      p.EqpPerfornmanceLoss = 7; p.WaferLoss = 8
+      delete p.EqpPerfornmanceLoss; delete p.WaferLoss
+      p.EqpPerformanceLoss = 7; p.GlassLoss = 8
     },
-    expect: { list: { visible: true, status: [] }, open: { ok: true }, scenarioNotes: [], performance: { eqpPerformanceLoss: 7, glassLoss: 8 },
+    expect: { list: { visible: true, status: [] }, open: { ok: true }, scenarioNotes: [], performance: { eqpPerformanceLoss: 0, waferLoss: 0 },
       steps: [S('none', 'None', 'SUCCESS', 'FAIL', 'notNeeded')] }
   },
   {

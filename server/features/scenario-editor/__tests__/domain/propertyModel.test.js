@@ -9,6 +9,12 @@ describe('propertyFromBson (C# ScenarioProperty(BsonDocument), 조사 §5)', () 
     expect(Object.keys(r.value)).toEqual(SCHEMAS.ScenarioProperty.map(([k]) => k))
     expect(r.value).toMatchObject({ ID: '', Owners: [], RetryInterval: 10, IsEnabled: true, IsShowDialog: true, Priority: 10, NextScenarioIfSuccess: null })
   })
+  it('운영 키 DescriptionFromConductor 를 읽는다 — 사본 철자 Donductor 는 옮겨 적기 오타라 운영에 없다(40 §1.11)', () => {
+    expect(propertyFromBson({ DescriptionFromConductor: '심의 메모' }).value.DescriptionFromConductor).toBe('심의 메모')
+    const typo = propertyFromBson({ DescriptionFromDonductor: '오타 키' }).value
+    expect(typo.DescriptionFromConductor).toBe('')
+    expect(typo).not.toHaveProperty('DescriptionFromDonductor')
+  })
   it('Int64·Double·숫자 문자열은 정수로(소수는 버림)', () => {
     const long = { toNumber: () => 30, _bsontype: 'Long' }
     const r = propertyFromBson({ StartDelay: long, RetryCnt: 2.7, Priority: '5' })

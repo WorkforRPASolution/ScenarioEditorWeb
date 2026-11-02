@@ -5,7 +5,7 @@ const { SCHEMAS } = require('./csharpJson')
 const DEFAULTS = {
   ID: '', Owners: [], ScenarioTriggerType: 0, DoNotSendEmailWhenSuccess: false, DoNotSendEmailWhenStop: false,
   DoNotSendEmailWhenFail: false, StartDelay: 0, RetryCnt: 0, RetryInterval: 10, NextScenarioIfSuccess: null,
-  NextScenarioIfFail: null, Type: 0, DetailedDescriptionTitle: '', DetailedDescription: '', DescriptionFromDonductor: '',
+  NextScenarioIfFail: null, Type: 0, DetailedDescriptionTitle: '', DetailedDescription: '', DescriptionFromConductor: '',
   EDMLink: '', IsEnabled: true, ExecutingLevel: 0, IsShowDialog: true, Priority: 10, LcncType: 0, LowcodeExtension: ''
 }
 const isLong = (v) => v && typeof v === 'object' && typeof v.toNumber === 'function'

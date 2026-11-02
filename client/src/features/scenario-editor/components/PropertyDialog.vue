@@ -29,12 +29,12 @@ const sections = computed(() => {
       ['실행 레벨', p.ExecutingLevel], ['알림 창', yn(p.IsShowDialog)]] },
     { title: '후속 시나리오', rows: [['성공하면', next(p.NextScenarioIfSuccess)], ['실패하면', next(p.NextScenarioIfFail)]] },
     { title: '담당', rows: people },
-    { title: '심의', rows: [['심의 의견(Conductor)', p.DescriptionFromDonductor || '—'],
+    { title: '심의', rows: [['심의 의견(Conductor)', p.DescriptionFromConductor || '—'],
       ...(f ? [['심의자', f.supervisorNotEntered ? '미입력' : f.supervisor], ['심의자 의견', f.supervisorComment || '—']] : [])] }
   ]
   if (f) {
     out.push({ title: '성과 정보', rows: [['등급', f.gradeName], ['시나리오 설명', f.scenarioDescription || '—'], ['트리거', f.triggerName ?? '—'], ['트리거 정보', f.triggerInfo ?? '—'],
-      ['성과 유형', f.performTypeName ?? '—'], ['인력 손실', f.manWorkLoss], ['설비 성능 손실', f.eqpPerformanceLoss], ['설비 정지 손실', f.eqpStopLoss], ['글라스 손실', f.glassLoss],
+      ['성과 유형', f.performTypeName ?? '—'], ['인력 손실', f.manWorkLoss], ['설비 성능 손실', f.eqpPerformanceLoss], ['설비 정지 손실', f.eqpStopLoss], ['웨이퍼 손실', f.waferLoss],
       ['투자비 손실', f.investCostLoss], ['추가 효과', f.additionalEffect || '—'], ['사고 유형', f.accidentTypeName ?? '—'], ['사고 정보', f.accidentInfo || '—'],
       ['갱신일', f.updateDate || '—'], ['저장된 키', f.rawKeys.join(', ')]] })
   }

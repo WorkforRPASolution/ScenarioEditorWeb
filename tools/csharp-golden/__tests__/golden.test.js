@@ -33,7 +33,7 @@ describe.skipIf(!dotnetAvailable())('C# 기준 비교 (Newtonsoft 12.0.1)', () =
   it('Property (후속 시나리오·null 생략)', () => {
     const p = { ID: 'X', Owners: ['a@2026-11-01 10:00:00', 'b'], ScenarioTriggerType: 2, DoNotSendEmailWhenSuccess: true, DoNotSendEmailWhenStop: false,
       DoNotSendEmailWhenFail: true, StartDelay: 5, RetryCnt: 3, RetryInterval: 10, NextScenarioIfSuccess: { Name: 'N', Text: 'T' }, NextScenarioIfFail: null,
-      Type: 8, DetailedDescriptionTitle: '제목', DetailedDescription: '', DescriptionFromDonductor: '', EDMLink: 'http://x', IsEnabled: false,
+      Type: 8, DetailedDescriptionTitle: '제목', DetailedDescription: '', DescriptionFromConductor: '', EDMLink: 'http://x', IsEnabled: false,
       ExecutingLevel: 1, IsShowDialog: true, Priority: 3, LcncType: 0, LowcodeExtension: '' }
     const js = serializeProperty(p)
     expect(normalize('Property', js)).toBe(js)

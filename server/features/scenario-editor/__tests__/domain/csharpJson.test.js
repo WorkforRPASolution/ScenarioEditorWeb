@@ -27,7 +27,7 @@ const property = {
   ID: 'CVD-M100-ALARM_RECOVERY_01', Owners: ['user01@2026-11-01 10:00:00'], ScenarioTriggerType: 0,
   DoNotSendEmailWhenSuccess: false, DoNotSendEmailWhenStop: false, DoNotSendEmailWhenFail: false,
   StartDelay: 0, RetryCnt: 0, RetryInterval: 10, NextScenarioIfSuccess: null, NextScenarioIfFail: null, Type: 1,
-  DetailedDescriptionTitle: '', DetailedDescription: '', DescriptionFromDonductor: '', EDMLink: '',
+  DetailedDescriptionTitle: '', DetailedDescription: '', DescriptionFromConductor: '', EDMLink: '',
   IsEnabled: true, ExecutingLevel: 0, IsShowDialog: true, Priority: 10, LcncType: 0, LowcodeExtension: ''
 }
 
@@ -89,7 +89,7 @@ describe('serializeBackupInfo', () => {
 
 describe('serializeProperty (NullValueHandling.Ignore)', () => {
   it('Newtonsoft 출력과 같고 null 키를 뺀다', () => {
-    expect(serializeProperty(property)).toBe('{"ID":"CVD-M100-ALARM_RECOVERY_01","Owners":["user01@2026-11-01 10:00:00"],"ScenarioTriggerType":0,"DoNotSendEmailWhenSuccess":false,"DoNotSendEmailWhenStop":false,"DoNotSendEmailWhenFail":false,"StartDelay":0,"RetryCnt":0,"RetryInterval":10,"Type":1,"DetailedDescriptionTitle":"","DetailedDescription":"","DescriptionFromDonductor":"","EDMLink":"","IsEnabled":true,"ExecutingLevel":0,"IsShowDialog":true,"Priority":10,"LcncType":0,"LowcodeExtension":""}')
+    expect(serializeProperty(property)).toBe('{"ID":"CVD-M100-ALARM_RECOVERY_01","Owners":["user01@2026-11-01 10:00:00"],"ScenarioTriggerType":0,"DoNotSendEmailWhenSuccess":false,"DoNotSendEmailWhenStop":false,"DoNotSendEmailWhenFail":false,"StartDelay":0,"RetryCnt":0,"RetryInterval":10,"Type":1,"DetailedDescriptionTitle":"","DetailedDescription":"","DescriptionFromConductor":"","EDMLink":"","IsEnabled":true,"ExecutingLevel":0,"IsShowDialog":true,"Priority":10,"LcncType":0,"LowcodeExtension":""}')
   })
   it('후속 시나리오가 있으면 필드 객체로 쓴다', () => {
     const p = { ...property, NextScenarioIfSuccess: { Name: 'NEXT_SC', Text: 'after ok' } }

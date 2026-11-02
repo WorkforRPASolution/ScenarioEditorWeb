@@ -1,5 +1,5 @@
 'use strict'
-// 성과 정보(SC_PROPERTY.performance). 사본 이름(EqpPerformanceLoss·GlassLoss)과 WebManager 가 읽는 이름(EqpPerfornmanceLoss·WaferLoss)을 둘 다 읽는다(Q-009).
+// 성과 정보(SC_PROPERTY.performance). 필드 이름은 사내 C# 그대로(EqpPerfornmanceLoss 오타 포함·WaferLoss) — WebManager 와 같다(Q-009, 2026-11-02 사내 코드 대조).
 const { TRIGGER_NAMES, GRADE_NAMES, PERFORM_TYPE_NAMES, ACCIDENT_TYPE_NAMES, NOT_ENTERED, nameOf } = require('./enums')
 
 const isLong = (v) => v && typeof v === 'object' && typeof v.toNumber === 'function'
@@ -8,7 +8,6 @@ const str = (v) => (typeof v === 'string' ? v : '')
 
 function performanceFromBson(doc) {
   if (!doc || typeof doc !== 'object') return null
-  const pick = (a, b) => (a in doc ? doc[a] : doc[b])
   const supervisor = typeof doc.Supervisor === 'string' ? doc.Supervisor : NOT_ENTERED
   const trigger = int(doc.Trigger)
   const grade = int(doc.Grade)
@@ -27,9 +26,9 @@ function performanceFromBson(doc) {
     performType, performTypeName: nameOf(PERFORM_TYPE_NAMES, performType),
     scenarioDescription: str(doc.ScenarioDescription),
     manWorkLoss: int(doc.ManWorkLoss),
-    eqpPerformanceLoss: int(pick('EqpPerformanceLoss', 'EqpPerfornmanceLoss')),
+    eqpPerformanceLoss: int(doc.EqpPerfornmanceLoss),
     eqpStopLoss: int(doc.EqpStopLoss),
-    glassLoss: int(pick('GlassLoss', 'WaferLoss')),
+    waferLoss: int(doc.WaferLoss),
     investCostLoss: int(doc.InvestCostLoss),
     additionalEffect: str(doc.AdditionalEffect),
     accidentType, accidentTypeName: nameOf(ACCIDENT_TYPE_NAMES, accidentType),
