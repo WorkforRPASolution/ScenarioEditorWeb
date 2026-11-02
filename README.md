@@ -92,6 +92,7 @@ Windows 방화벽 허용 창이 뜨면 허용하지 않아도 된다(이 PC 안�
 |---|---|
 | PowerShell 에서 `npm` 이 "이 시스템에서 스크립트를 실행할 수 없으므로…" 오류 | 명령 프롬프트(cmd)를 쓰거나 `npm` 대신 `npm.cmd` 로 친다 |
 | `npm install` 이 시간 초과·`ECONNREFUSED` | 사내 미러: `npm config set registry <미러 주소>`. 사내 프록시: `npm config set proxy http://<프록시>:<포트>` 와 `npm config set https-proxy http://<프록시>:<포트>` |
+| `npm install` 이 `No matching version found for <패키지>@<판>`·`ETARGET` | 사내 미러가 아직 그 판을 받지 않았다. 패키지 이름과 판을 알려 주면 미러에 있는 판으로 고정한다(rollup 은 4.67.3 으로 고정해 두었다) |
 | `npm install` 이 `SELF_SIGNED_CERT_IN_CHAIN`·`UNABLE_TO_GET_ISSUER_CERT` | 사내 루트 인증서 파일을 `npm config set cafile <인증서 경로>` 로 준다 |
 | 서버가 `EADDRINUSE`·`EACCES` 로 뜨지 않음 | 3100 을 다른 프로그램이 쓰거나 Windows 가 예약한 포트다(`netsh interface ipv4 show excludedportrange protocol=tcp`). `server\.env` 의 `PORT` 와 `client\.env` 의 `VITE_API_URL` 을 같은 새 포트로 바꾼다 |
 | Vite 가 5173 대신 5174 같은 다른 포트로 뜸 | 그 주소로 연다. 서버가 그 주소를 거부하므로 `server\.env` 의 `ALLOWED_ORIGINS` 끝에 `,http://localhost:5174` 처럼 더하고 다시 띄운다 |

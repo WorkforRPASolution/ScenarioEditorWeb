@@ -3,7 +3,18 @@
   "private": true,
   "version": "0.1.0",
   "type": "commonjs",
-  "scripts": { "test": "vitest run" },
-  "dependencies": { "ioredis": "5.10.0", "mongodb": "~7.0", "pngjs": "7.0.0" },
-  "devDependencies": { "vitest": "4.0.18" }
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "ioredis": "5.10.0",
+    "mongodb": "~7.0",
+    "pngjs": "7.0.0"
+  },
+  "devDependencies": {
+    "vitest": "4.0.18"
+  },
+  "overrides": {
+    "rollup": "4.67.3"
+  }
 }
