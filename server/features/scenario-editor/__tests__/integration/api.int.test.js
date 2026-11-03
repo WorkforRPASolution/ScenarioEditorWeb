@@ -120,3 +120,13 @@ describe('데이터 점검', () => {
     expect(d.duplicateProperties).toEqual([{ process: 'SEWCVD', model: 'SEWMODELB', name: 'DUP_PROPERTY', count: 2 }])
   })
 })
+
+describe('InterfaceServer 응답 해석 (실제 서버)', () => {
+  it('Property 가 JSON 이 아니면 저장 없이 502 UPSTREAM_FAILED, 원문은 upstream 으로만 남는다', async () => {
+    const { setScenario } = require('../../clients/interfaceClient')
+    const e = await setScenario({ process: 'SEWCVD', model: 'SEWMODELA', name: 'SEW_NEVER_SAVED', body: '{}', bi: '{}', property: 'not json' }).catch((x) => x)
+    expect(e).toMatchObject({ statusCode: 502, code: 'UPSTREAM_FAILED' })
+    expect(e.upstream.status).toBe(200)
+    expect(e.upstream.text).toContain('"success":"false"')
+  })
+})

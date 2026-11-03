@@ -1,14 +1,10 @@
 'use strict'
 const { Long } = require('mongodb')
-const { serializeSetScenarioRequest } = require('../../../server/features/scenario-editor/domain/csharpJson')
+const interfaceClient = require('../../../server/features/scenario-editor/clients/interfaceClient')
 const { parseField } = require('../../../server/features/scenario-editor/domain/versionPick')
 const env = require('./env')
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-
-function setScenarioPayload({ process, model, name, body, bi, property }) {
-  return serializeSetScenarioRequest({ Process: process, Model: model, SCName: name, BI: bi, Body: body, Property: property })
-}
 
 async function waitNewField(redis, key, name, before, timeoutMs, pollMs = 500) {
   const end = Date.now() + timeoutMs
@@ -29,28 +25,23 @@ async function waitNewField(redis, key, name, before, timeoutMs, pollMs = 500) {
 async function setScenario(ctx, { process, model, name, body, bi, property }) {
   const key = `${process}-${model}`
   const before = new Set(await ctx.redis.hkeys(key))
-  let status = 0
+  let status = 200
   let text = ''
+  let ok = true
   try {
-    const res = await fetch(`${env.EARS_INTERFACE_URL}/EARS/Interface`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', category: 'scenario', function: 'setscenario' },
-      body: setScenarioPayload({ process, model, name, body, bi, property }),
-      signal: AbortSignal.timeout(env.SETSCENARIO_TIMEOUT_MS)
-    })
-    status = res.status
-    text = await res.text()
+    await interfaceClient.setScenario({ process, model, name, body, bi, property }, { timeoutMs: env.SETSCENARIO_TIMEOUT_MS })
   } catch (e) {
-    text = e && e.cause ? `${e} (${e.cause.code || e.cause.message || e.cause})` : String(e) // fetch failed 만으로는 서버가 죽었는지 거절했는지 모른다
+    if (!e.upstream) throw e
+    ok = false
+    ;({ status, text } = e.upstream)
   }
-  const ok = status === 200 && /"success"\s*:\s*"true"/.test(text)
   const crtime = await waitNewField(ctx.redis, key, name, before, ok ? 5000 : 60000)
   if (crtime === null) {
     for (let db = 1; db < 16; db++) {
       const n = await ctx.redis.call('SELECT', db).then(() => ctx.redis.exists(key)).finally(() => ctx.redis.call('SELECT', 0))
       if (n) throw new Error(`시나리오 해시 ${key} 가 Redis DB${db} 에 있다 — 설계는 DB0 전제(설계 §3.1). 멈춘다.`)
     }
-    throw new Error(`setscenario 실패: ${name} (HTTP ${status}) ${text.slice(0, 300)}`)
+    throw new Error(`setscenario 실패: ${name} (HTTP ${status}) ${text}`)
   }
   return { crtime, httpStatus: status, verifiedAfterError: !ok }
 }
@@ -63,4 +54,4 @@ async function afterSave(ctx, { process, model, name, propertyType, performance 
   )
 }
 
-module.exports = { setScenarioPayload, waitNewField, setScenario, afterSave }
+module.exports = { waitNewField, setScenario, afterSave }
