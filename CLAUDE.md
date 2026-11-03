@@ -3,7 +3,7 @@
 ScenarioEditorWeb — 사내 ScenarioEditor(C# WPF)를 웹으로 다시 만드는 MVP. WebManager 디자인 시스템 사본 위에서 단독 실행하고, 최종적으로 WebManager 메뉴로 편입한다. 설계·계획은 ARS 루트 `docs/scenario-editor-web/`(README 색인)에 있다.
 
 ## 새 세션 시작점
-- 다음 할 일은 `next --prefix SEW-` 로 본다. 페이즈 P2~P6 = SEW-010~014 이고 deps 로 순서가 걸려 있다(P2 선행 SEW-005). 각 항목 note 에 근거 문서·확정 결정·설계 때 정할 질문 번호가 있다.
+- 다음 할 일은 `next --prefix SEW-` 로 본다. 페이즈 P2~P6 = SEW-010~014 이고 deps 로 순서가 걸려 있다(P2 선행 SEW-005). 각 항목 note 에 근거 문서·확정 결정·설계 때 정할 질문 번호가 있다. 운영·사내 확인이 남은 질문 묶음은 SEW-016 이다.
 - 정본은 ARS 루트 `docs/scenario-editor-web/` 다. 이 저장소의 세션 메모리에는 없다.
   - 웹 결정: `analysis/40-decisions-and-confirmed-facts.md` §2.0(날짜순 결정 표)·§2.1~§2.12
   - 열린 질문: `analysis/42-open-questions.md`(§1.0b = 사내 코드 대조 답)
@@ -12,12 +12,12 @@ ScenarioEditorWeb — 사내 ScenarioEditor(C# WPF)를 웹으로 다시 만드�
   - 새 결정·답이 나오면 40·42 와 해당 기능 문서에 적는다.
 - 페이즈 진행은 P1 과 같다: brainstorming → 설계 문서(`design/`) 사용자 승인 → 계획(`plans/`) → 구현(TDD). 문서를 만들거나 옮기기 전에 `docs/scenario-editor-web/README.md` 색인을 읽는다.
 - 사내 사실은 두 곳에서 온다.
-  - 사본 `ARS/ScenarioEditor/ArsScenarioEditor`: 사용자가 사내 코드를 옮겨 적는 부분 사본이다. 지시 없이 고치지 않는다.
+  - 사본 `ARS/ScenarioEditor/ArsScenarioEditor`: 사용자가 사내 코드를 옮겨 적은 부분 사본이다. 2026-11-03 부터 코드 참조용으로만 쓴다(더 옮겨 적지 않음). 지시 없이 고치지 않는다.
   - 사내 전체 코드: 사용자가 Codex 로 대조해 답을 전해 준다(42 §1.0b).
-- `ScenarioEditor` 세션 몫(접두사 `SE-`): 사내 결함 기록, 사본 공백(SE-021), 운영·사내 확인 질문 묶음(SE-022).
 
 ## 백로그
 - 접두사 **`SEW-`** (2026-11-01 신설) — `cd ~/Backlog && npm run backlog -- next --prefix SEW-` (CLI 전용, 규칙은 전역 `~/.claude/CLAUDE.md`).
+- 접두사 **`SE-`** 도 이 세션이 쓴다(2026-11-03 사용자 결정) — 사내 ScenarioEditor(데스크톱) 코드에서 고칠 결함 기록용이다. 웹 작업 중 사내 결함을 찾으면 `--prefix SE- --parent none --category scenario-editor` 로 등록하고, 웹에서 피하는 방법은 해당 SEW 페이즈 항목 note 에 적는다. 이 저장소에서 고칠 일은 `SEW-` 다. 기존 SE-001~019 의 웹 처리는 SEW-010~013 note 에 있다.
 
 ## 저장소 규칙
 - 자체 git. 원격 `origin` = https://github.com/WorkforRPASolution/ScenarioEditorWeb (비공개, 2026-11-02 사용자가 만들고 연결을 지시). 기본 브랜치 `main`. 푸시는 사용자가 요청할 때만.
