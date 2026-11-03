@@ -3,6 +3,7 @@
 const { pickCurrent } = require('../domain/versionPick')
 const { buildSkeleton, refreshPropertyParts } = require('../domain/skeleton')
 const { createSingleFlight } = require('../util/singleFlight')
+const { createSemaphore } = require('../util/semaphore')
 const { seError } = require('../errors')
 
 const enc = encodeURIComponent
@@ -15,6 +16,8 @@ const versionKey = (p, m, n, crtime, fileId) => [p, m, n, String(crtime), String
 
 function createOpenService({ repo, hash, gridfs, scopes, imageCache, log }) {
   const flight = createSingleFlight()
+  // 큰 판 하나를 풀 때 메모리를 많이 쓴다 — 서로 다른 판의 풀기도 한 번에 하나만. 캐시가 있는 열기는 이 줄을 기다리지 않는다.
+  const unpacking = createSemaphore(1)
 
   async function propertyDocOf(process, model, name) {
     const docs = await repo.findScenarioKeyDocs(process, model, name)
@@ -28,13 +31,15 @@ function createOpenService({ repo, hash, gridfs, scopes, imageCache, log }) {
     return flight.run(key, async () => {
       const cached = await imageCache.readSkeleton(key)
       if (cached) return { core: cached, fromCache: true }
-      const file = await gridfs.findFile(fileId)
-      if (!file) throw seError(404, 'NOT_FOUND', '그 버전이 없습니다')
-      const biText = await gridfs.readContent(fileId)
-      const { skeleton, images } = buildSkeleton({ process, model, name, crtime, isCurrent: false, body: file.metadata.body, biText,
-        propertyDoc: {}, performanceDoc: null, imageBaseUrl: baseUrl(process, model, name, crtime, fileId) })
-      await imageCache.store(key, skeleton, images)
-      return { core: skeleton, fromCache: false }
+      return unpacking.run(async () => {
+        const file = await gridfs.findFile(fileId)
+        if (!file) throw seError(404, 'NOT_FOUND', '그 버전이 없습니다')
+        const biText = await gridfs.readContent(fileId)
+        const { skeleton, images } = buildSkeleton({ process, model, name, crtime, isCurrent: false, body: file.metadata.body, biText,
+          propertyDoc: {}, performanceDoc: null, imageBaseUrl: baseUrl(process, model, name, crtime, fileId) })
+        await imageCache.store(key, skeleton, images)
+        return { core: skeleton, fromCache: false }
+      })
     })
   }
 

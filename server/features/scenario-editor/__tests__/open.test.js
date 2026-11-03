@@ -109,6 +109,79 @@ describe('openService', () => {
     })
   })
 
+  describe('차가운 풀기는 한 번에 하나', () => {
+    const tick = () => new Promise((r) => setTimeout(r, 5))
+    // crtime 마다 파일이 다른 판. 본문 읽기는 gate 를 열 때까지 멈춘다.
+    function coldSetup() {
+      const gates = new Map()
+      const gateOf = (id) => {
+        if (!gates.has(id)) { let open; const wait = new Promise((r) => { open = r }); gates.set(id, { wait, open }) }
+        return gates.get(id)
+      }
+      let reading = 0
+      let peak = 0
+      const svc = createOpenService({
+        repo: { findScenarioKeyDocs: async () => [{ property: { Priority: 10 }, performance: {} }] },
+        hash: { hkeys: async () => [] },
+        gridfs: {
+          findVersionId: async (p, m, n, crtime) => `f${crtime}`,
+          findFile: async (id) => ({ _id: id, metadata: { body } }),
+          readContent: async (id) => {
+            reading++
+            peak = Math.max(peak, reading)
+            await gateOf(id).wait
+            reading--
+            return JSON.stringify({ TargetSnapshotList: [LONG_B64] })
+          }
+        },
+        scopes: { assertAllowed: async () => {} },
+        imageCache: createImageCache({ dir: mkdtempSync(join(tmpdir(), 'sew-open-')), maxBytes: 1e9 }),
+        log: { info() {}, warn() {} }
+      })
+      return { svc, gateOf, reading: () => reading, peak: () => peak }
+    }
+
+    it('서로 다른 버전을 동시에 열면 차례로 푼다', async () => {
+      const t = coldSetup()
+      const a = t.svc.open({}, 'P', 'M', 'N', '1')
+      const b = t.svc.open({}, 'P', 'M', 'N', '2')
+      await tick()
+      expect(t.reading()).toBe(1)
+      t.gateOf('f1').open()
+      t.gateOf('f2').open()
+      await Promise.all([a, b])
+      expect(t.peak()).toBe(1)
+    })
+    it('캐시가 있는 다시 열기는 풀기 줄을 기다리지 않는다', async () => {
+      const t = coldSetup()
+      t.gateOf('f1').open()
+      await t.svc.open({}, 'P', 'M', 'N', '1')
+      const cold = t.svc.open({}, 'P', 'M', 'N', '2') // 풀기가 멈춰 있다
+      await tick()
+      expect(t.reading()).toBe(1)
+      const again = await t.svc.open({}, 'P', 'M', 'N', '1')
+      expect(again.stats.fromCache).toBe(true)
+      t.gateOf('f2').open()
+      await cold
+    })
+    it('풀기가 실패해도 다음 풀기가 돈다', async () => {
+      const svc = createOpenService({
+        repo: { findScenarioKeyDocs: async () => [{ property: { Priority: 10 }, performance: {} }] },
+        hash: { hkeys: async () => [] },
+        gridfs: {
+          findVersionId: async (p, m, n, crtime) => `f${crtime}`,
+          findFile: async (id) => ({ _id: id, metadata: { body } }),
+          readContent: async (id) => { if (id === 'f1') throw new Error('읽기 실패'); return JSON.stringify({ TargetSnapshotList: [LONG_B64] }) }
+        },
+        scopes: { assertAllowed: async () => {} },
+        imageCache: createImageCache({ dir: mkdtempSync(join(tmpdir(), 'sew-open-')), maxBytes: 1e9 }),
+        log: { info() {}, warn() {} }
+      })
+      await expect(svc.open({}, 'P', 'M', 'N', '1')).rejects.toThrow('읽기 실패')
+      expect((await svc.open({}, 'P', 'M', 'N', '2')).stats.fromCache).toBe(false)
+    })
+  })
+
   describe('캐시 키는 공정·모델·이름·crtime 조합마다 다르다', () => {
     it("(P,'M.A','B') 와 (P,'M','A.B') 는 키가 다르다 — '.' 으로 이어 붙이지 않는다", () => {
       expect(versionKey('P', 'M.A', 'B', 1, 'f')).not.toBe(versionKey('P', 'M', 'A.B', 1, 'f'))
