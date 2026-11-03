@@ -1,5 +1,6 @@
 // shell-modified: WebManager@2f1eb0a server/app.js — 기능 라우터 21개를 편집기 라우터 하나로 바꿨다.
 // SE_WEBMANAGER_DB=0 이면 WEBMANAGER 기록 저장을 끄고 상태 확인을 EARS 기준으로 한다(server/webManagerDb.js).
+// 단독판은 로그인이 없어 CORS 앞에서 Host·쓰기 출처를 검사한다(server/localGuard.js).
 const express = require('express');
 const compression = require('compression');
 const cors = require('cors');
@@ -8,6 +9,7 @@ const path = require('path');
 const { httpLogger } = require('./shared/logger/httpLogger');
 const { errorHandler, notFoundHandler } = require('./shared/middleware/errorHandler');
 const { webManagerDbEnabled, disableWebManagerLog, healthWithoutWebManager } = require('./webManagerDb');
+const { createLocalGuard } = require('./localGuard');
 
 const webManagerDb = webManagerDbEnabled(process.env);
 if (!webManagerDb) disableWebManagerLog(require('./shared/models/webmanagerLogModel'));
@@ -22,6 +24,7 @@ app.use(helmet({
 
 // CORS configuration
 const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:5173'];
+app.use(createLocalGuard({ allowedOrigins, allowedHosts: process.env.ALLOWED_HOSTS }));
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps or curl)
