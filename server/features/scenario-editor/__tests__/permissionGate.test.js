@@ -11,8 +11,8 @@ function spies() {
   const deps = {
     repo: { findScenarioDocs: spy('repo.findScenarioDocs'), findScenarioKeyDocs: spy('repo.findScenarioKeyDocs') },
     hash: { hkeys: spy('hash.hkeys') },
-    gridfs: { findCrtimes: spy('gridfs.findCrtimes'), findVersionId: spy('gridfs.findVersionId'), findFile: spy('gridfs.findFile'), readContent: spy('gridfs.readContent') },
-    imageCache: { readSkeleton: spy('imageCache.readSkeleton'), store: spy('imageCache.store'), imagePath: spy('imageCache.imagePath') },
+    gridfs: { findCrtimes: spy('gridfs.findCrtimes'), findVersionId: spy('gridfs.findVersionId'), findFile: spy('gridfs.findFile'), streamContent: spy('gridfs.streamContent') },
+    imageCache: { readSkeleton: spy('imageCache.readSkeleton'), begin: spy('imageCache.begin'), imagePath: spy('imageCache.imagePath') },
     scopes: { assertAllowed: vi.fn(async () => { throw seError(403, 'PROCESS_FORBIDDEN', '공정 권한 밖의 공정·모델입니다') }) },
     log: { info() {}, warn() {} }
   }

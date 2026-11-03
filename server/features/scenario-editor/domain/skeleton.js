@@ -1,5 +1,6 @@
 'use strict'
-// 본문(GridFS metadata.body)·BI(파일 내용)·운영 속성·성과 → 브라우저용 뼈대 + 떼어 낼 이미지 목록(설계 §5.3).
+// 본문(GridFS metadata.body)·운영 속성·성과 → 브라우저용 뼈대 + 떼어 낼 이미지 목록(설계 §5.3).
+// BI(파일 내용)는 부른 쪽이 흘려 읽어 기준 화면을 먼저 디스크에 쓴다(biStream). 여기는 그 결과 baseImages { parseFailed, present(스텝 번호) } 만 받는다.
 const { parseCondition, parseAction, note } = require('./conditionCodec')
 const { toTarget } = require('./nextStep')
 const { graphNotes, scenarioNotes, SCENARIO_NOTE_CODES } = require('./notes')
@@ -18,6 +19,19 @@ function trainMapOf(step) {
   return isObject(map) ? map : {}
 }
 
+const needsBaseImage = (kind) => kind === 'image' || kind === 'ocr'
+const baseImageId = (i) => `s${i}-bi`
+
+// BI 를 읽으며 어느 항목을 기준 화면으로 떼어 낼지 정한다(스텝 번호, 항목 값 -> 참·거짓).
+function wantsBaseImage(storedBody) {
+  const rawSteps = isObject(storedBody) && Array.isArray(storedBody.Step) ? storedBody.Step : []
+  const needed = new Set()
+  rawSteps.forEach((stored, i) => { if (needsBaseImage(parseCondition(stored).condition.kind)) needed.add(i) })
+  return (i, value) => needed.has(i) && isImage(value)
+}
+
+const NO_BASE_IMAGES = Object.freeze({ parseFailed: false, present: new Set() })
+
 function rawWithUrls(step, trainUrl) {
   const copy = JSON.parse(JSON.stringify(step))
   const map = trainMapOf(copy)
@@ -25,7 +39,7 @@ function rawWithUrls(step, trainUrl) {
   return copy
 }
 
-function buildSkeleton({ process, model, name, crtime, isCurrent, body: storedBody, biText, propertyDoc, performanceDoc, imageBaseUrl }) {
+function buildSkeleton({ process, model, name, crtime, isCurrent, body: storedBody, baseImages = NO_BASE_IMAGES, propertyDoc, performanceDoc, imageBaseUrl }) {
   const notesOut = []
   // 본문이 객체가 아니면 빈 본문으로 열고 알린다(깨진 저장 값은 던지지 않는다 — 설계 §5.6).
   if (!isObject(storedBody)) notesOut.push(note('warning', 'PARSE_FAILED', { field: 'body' }))
@@ -34,18 +48,7 @@ function buildSkeleton({ process, model, name, crtime, isCurrent, body: storedBo
   const rawSteps = Array.isArray(body.Step) ? body.Step : []
   const uids = rawSteps.map((_, i) => `s${i}`)
   const url = (id) => `${imageBaseUrl}/${id}`
-  let snapshots = []
-  if (typeof biText === 'string' && biText !== '') { // 빈 BI 는 기준 화면이 아예 없는 버전 — 정상이라 알림 없음
-    let list = null
-    try {
-      const bi = JSON.parse(biText)
-      if (isObject(bi) && !Array.isArray(bi) && Array.isArray(bi.TargetSnapshotList)) list = bi.TargetSnapshotList
-    } catch {
-      // 읽을 수 없는 글자 — 아래에서 알린다
-    }
-    if (list) snapshots = list
-    else notesOut.push(note('warning', 'PARSE_FAILED', { field: 'bi' }))
-  }
+  if (baseImages.parseFailed) notesOut.push(note('warning', 'PARSE_FAILED', { field: 'bi' }))
   const images = []
   let needed = 0
   let present = 0
@@ -78,14 +81,12 @@ function buildSkeleton({ process, model, name, crtime, isCurrent, body: storedBo
       })
     }
     let baseImage
-    if (c.condition.kind !== 'image' && c.condition.kind !== 'ocr') baseImage = { state: 'notNeeded' }
+    if (!needsBaseImage(c.condition.kind)) baseImage = { state: 'notNeeded' }
     else {
       needed++
-      if (isImage(snapshots[i])) {
+      if (baseImages.present.has(i)) {
         present++
-        const id = `s${i}-bi`
-        images.push({ id, base64: snapshots[i] })
-        baseImage = { state: 'present', url: url(id) }
+        baseImage = { state: 'present', url: url(baseImageId(i)) }
       } else {
         baseImage = { state: 'missing' }
         notes.push(note('info', 'BASE_IMAGE_MISSING'))
@@ -145,4 +146,4 @@ function refreshPropertyParts(skeleton, propertyDoc, performanceDoc) {
   return { ...skeleton, property: prop.ok ? prop.value : null, performance: performanceFromBson(performanceDoc), notes }
 }
 
-module.exports = { buildSkeleton, versionNotes, refreshPropertyParts }
+module.exports = { buildSkeleton, wantsBaseImage, baseImageId, versionNotes, refreshPropertyParts }

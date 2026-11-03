@@ -1,14 +1,28 @@
 'use strict'
 // InterfaceServer setscenario 가 쓴 GridFS(파일 이름 {P}.{M}.{N}.{crtime}, metadata {model,name,crtime,process,body}).
 // 버전 내용은 getscenario 와 같이 uploadDate 가 가장 늦은 파일을 쓴다(설계 §5.5). 같은 crtime 으로 다시 올라올 수 있어(redis_to_mongo) 그 파일의 _id 가 캐시 정체성이다.
-const { withMongoErrors } = require('../errors')
+const { seError, withMongoErrors, mapGridfsError } = require('../errors')
 
 const MAX = 20000
 
 function createGridfsRepository(getDb, mongo) {
   const files = () => getDb().collection('fs.files')
   const q = (process, model, name) => ({ 'metadata.process': process, 'metadata.model': model, 'metadata.name': name })
-  return withMongoErrors({
+  // 파일 내용(BI)을 조각으로 흘려 준다. 큰 BI 를 한 번에 메모리에 올리지 않기 위해서다. 반복 도중의 오류도 여기서 바꾼다.
+  async function* streamContent(file) {
+    let bytes = 0
+    try {
+      for await (const chunk of new mongo.GridFSBucket(getDb()).openDownloadStream(file._id)) {
+        bytes += chunk.length
+        yield chunk
+      }
+    } catch (e) {
+      throw mapGridfsError(e)
+    }
+    // 드라이버는 뒤쪽 조각이 없으면 오류 없이 끝낸다 — 전부 없으면 정상인 빈 BI 와 구분되지 않으므로 파일 길이와 대조한다.
+    if (bytes !== file.length) throw seError(422, 'DATA_INVALID', 'GridFS 파일 조각이 빠졌거나 깨졌습니다')
+  }
+  const queries = withMongoErrors({
     async findCrtimes(process, model, name) {
       const docs = await files().find(q(process, model, name), { projection: { 'metadata.crtime': 1 } }).maxTimeMS(MAX).toArray()
       return docs.map((d) => d.metadata.crtime)
@@ -25,14 +39,9 @@ function createGridfsRepository(getDb, mongo) {
     },
     async findFile(fileId) {
       return files().findOne({ _id: fileId }, { maxTimeMS: MAX })
-    },
-    async readContent(fileId) {
-      const bucket = new mongo.GridFSBucket(getDb())
-      const chunks = []
-      for await (const c of bucket.openDownloadStream(fileId)) chunks.push(c)
-      return Buffer.concat(chunks).toString('utf8')
     }
   })
+  return { ...queries, streamContent }
 }
 
 module.exports = { createGridfsRepository }

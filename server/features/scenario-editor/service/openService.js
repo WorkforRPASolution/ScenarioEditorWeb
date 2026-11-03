@@ -1,7 +1,9 @@
 'use strict'
 // 버전 열기: SC_PROPERTY 정확히 1건 확인 → 버전 고르기 → (캐시 없으면) GridFS 본문·BI 를 풀어 뼈대 + PNG 디스크 캐시 → 운영 속성 붙이기.
+// BI 는 흘려 읽어 기준 화면을 바로 디스크에 쓴다. 큰 판도 메모리에 모으지 않는다.
 const { pickCurrent } = require('../domain/versionPick')
-const { buildSkeleton, refreshPropertyParts } = require('../domain/skeleton')
+const { buildSkeleton, wantsBaseImage, baseImageId, refreshPropertyParts } = require('../domain/skeleton')
+const { scanBi } = require('../domain/biStream')
 const { createSingleFlight } = require('../util/singleFlight')
 const { createSemaphore } = require('../util/semaphore')
 const { seError } = require('../errors')
@@ -34,11 +36,29 @@ function createOpenService({ repo, hash, gridfs, scopes, imageCache, log }) {
       return unpacking.run(async () => {
         const file = await gridfs.findFile(fileId)
         if (!file) throw seError(404, 'NOT_FOUND', '그 버전이 없습니다')
-        const biText = await gridfs.readContent(fileId)
-        const { skeleton, images } = buildSkeleton({ process, model, name, crtime, isCurrent: false, body: file.metadata.body, biText,
-          propertyDoc: {}, performanceDoc: null, imageBaseUrl: baseUrl(process, model, name, crtime, fileId) })
-        await imageCache.store(key, skeleton, images)
-        return { core: skeleton, fromCache: false }
+        const writer = imageCache.begin(key)
+        try {
+          const body = file.metadata.body
+          const wanted = wantsBaseImage(body)
+          const present = new Set()
+          const state = await scanBi(gridfs.streamContent(file), async (i, value) => {
+            if (!wanted(i, value)) return
+            await writer.writeImage(baseImageId(i), value)
+            present.add(i)
+          })
+          // 끝에서 깨진 것을 알면 앞서 쓴 기준 화면도 믿을 수 없다 — 파일 전체를 읽을 수 없는 것으로 본다.
+          if (state === 'invalid') {
+            await writer.removeImages([...present].map(baseImageId))
+            present.clear()
+          }
+          const { skeleton, images } = buildSkeleton({ process, model, name, crtime, isCurrent: false, body, baseImages: { parseFailed: state === 'invalid', present },
+            propertyDoc: {}, performanceDoc: null, imageBaseUrl: baseUrl(process, model, name, crtime, fileId) })
+          await writer.commit(skeleton, images)
+          return { core: skeleton, fromCache: false }
+        } catch (e) {
+          await writer.abort()
+          throw e
+        }
       })
     })
   }

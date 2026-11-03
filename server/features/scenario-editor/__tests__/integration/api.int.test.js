@@ -190,4 +190,27 @@ describe('같은 crtime 으로 다시 올라온 파일 (캐시 정체성 = fs.fi
   it('없는 판은 404', async () => {
     expect((await open(1)).status).toBe(404)
   })
+  // 드라이버는 중간 조각이 빠지면 오류를 내지만 뒤쪽 조각이 빠지면 오류 없이 끝낸다. 어느 쪽이든 깨진 파일이다.
+  it.each([
+    ['조각이 전부 없음', 10, {}],
+    ['뒤쪽 조각이 없음', 300 * 1024, { n: 1 }],
+    ['중간 조각이 없음', 600 * 1024, { n: 1 }]
+  ])('GridFS 파일이 깨지면(%s) 422 DATA_INVALID 이고 캐시에 남지 않는다', async (_, size, chunkFilter) => {
+    const { earsConnection } = require('../../../../shared/db/connection')
+    const { sk } = await open()
+    const old = await fileDoc(sk.version.crtime)
+    const crtime = sk.version.crtime + 2
+    const content = `{"TargetSnapshotList":["${'A'.repeat(size)}"]}`
+    const id = await upload(`${meta.process}.${meta.model}.${meta.name}.${crtime}`, { ...old.metadata, crtime }, content)
+    try {
+      await earsConnection.db.collection('fs.chunks').deleteMany({ files_id: id, ...chunkFilter })
+      for (let i = 0; i < 2; i++) { // 두 번째도 같다 — 깨진 결과가 캐시에 남지 않는다
+        const res = await get(`${PATH}/versions/${crtime}`)
+        expect(res.status).toBe(422)
+        expect((await res.json()).code).toBe('DATA_INVALID')
+      }
+    } finally {
+      await bucket().delete(id)
+    }
+  })
 })

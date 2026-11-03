@@ -14,6 +14,12 @@ const body = { RevisionNo: 0, TriggerType: 2, ID: 'P-M-N', Text: '', Description
       ImageSearchParam: { TrainImageMap: { 0: { BinaryImage: LONG_B64, Type: true } }, AcceptThreshold: 0.9, MaximumNumberToFind: 1, TimeoutEnabled: true, Timeout: 1000 },
       OcrParamInfo: { Type: 0, Operation: 0, TextValue: '1-0', NumberValue: -218, NumberRangeMin: -218, NumberRangeMax: -218, MinMatchingValue: 5 } } }] }
 
+// GridFS 조각처럼 잘게 나눠 준다
+function* bytes(text, size = 7) {
+  const buf = Buffer.from(text)
+  for (let i = 0; i < buf.length; i += size) yield buf.subarray(i, i + size)
+}
+
 function setup(over = {}) {
   let reads = 0
   let fileReads = 0
@@ -21,16 +27,22 @@ function setup(over = {}) {
   const OTHER_B64 = Buffer.from('other-png-bytes-yyyyyyyyy').toString('base64')
   const biOf = { f1: LONG_B64, f2: OTHER_B64 }
   let property = { Priority: 10, Type: 1 }
+  const cacheDir = mkdtempSync(join(tmpdir(), 'sew-open-'))
   const deps = {
     repo: { findScenarioKeyDocs: async () => over.keyDocs ?? [{ property, performance: {} }] },
     hash: { hkeys: async () => ['N.1730000000100'] },
     gridfs: {
       findVersionId: async (p, m, n, crtime) => (crtime === 1730000000100 ? fileId : null),
       findFile: async (id) => { fileReads++; return { _id: id, metadata: { body } } },
-      readContent: async (id) => { reads++; await new Promise((r) => setTimeout(r, 20)); return JSON.stringify({ ID: 'BI.P-M-N', TargetSnapshotList: [biOf[id]] }) }
+      streamContent: async function* ({ _id: id }) {
+        reads++
+        await new Promise((r) => setTimeout(r, 20))
+        yield* bytes(over.biText ?? JSON.stringify({ ID: 'BI.P-M-N', TargetSnapshotList: [biOf[id]] }))
+        if (over.biError) throw over.biError
+      }
     },
     scopes: { assertAllowed: async () => {} },
-    imageCache: createImageCache({ dir: mkdtempSync(join(tmpdir(), 'sew-open-')), maxBytes: 1e9 }),
+    imageCache: Object.assign(createImageCache({ dir: cacheDir, maxBytes: 1e9 }), { __dir: cacheDir }),
     log: { info() {}, warn() {} }
   }
   return { svc: createOpenService(deps), deps, reads: () => reads, fileReads: () => fileReads, setFile: (id) => { fileId = id }, biOf, setProperty: (p) => { property = p; deps.repo.findScenarioKeyDocs = async () => [{ property, performance: {} }] } }
@@ -109,6 +121,40 @@ describe('openService', () => {
     })
   })
 
+  describe('BI 흘려 읽기', () => {
+    const noteBi = (sk) => sk.notes.filter((n) => n.params && n.params.field === 'bi')
+    const pngFiles = (t, key) => readdirSync(join(t.deps.imageCache.__dir, encodeURIComponent(key))).filter((f) => f.endsWith('.png')).sort()
+    it('필요한 스텝의 기준 화면만 PNG 로 쓴다', async () => {
+      const t = setup({ biText: JSON.stringify({ TargetSnapshotList: [LONG_B64, LONG_B64, LONG_B64] }) }) // 스텝은 1개
+      const { skeleton } = await t.svc.open({}, 'P', 'M', 'N', 'current')
+      expect(skeleton.baseImageSummary).toEqual({ needed: 1, present: 1 })
+      expect(pngFiles(t, versionKey('P', 'M', 'N', 1730000000100, 'f1'))).toEqual(['s0-bi.png', 's0-train-0.png'])
+      expect(readFileSync(await t.svc.imagePath({}, 'P', 'M', 'N', 1730000000100, 'f1', 's0-bi')).toString()).toBe('fake-png-bytes-xxxxxxxx')
+    })
+    it('빈 BI 는 알림 없이 기준 화면 없음이다', async () => {
+      const { skeleton } = await setup({ biText: '' }).svc.open({}, 'P', 'M', 'N', 'current')
+      expect(skeleton.steps[0].baseImage).toEqual({ state: 'missing' })
+      expect(noteBi(skeleton)).toEqual([])
+    })
+    it('끝이 깨진 BI 는 앞서 쓴 기준 화면도 버리고 PARSE_FAILED 로 연다', async () => {
+      const t = setup({ biText: `{"TargetSnapshotList":["${LONG_B64}"` })
+      const { skeleton } = await t.svc.open({}, 'P', 'M', 'N', 'current')
+      expect(skeleton.steps[0].baseImage).toEqual({ state: 'missing' })
+      expect(noteBi(skeleton)).toHaveLength(1)
+      expect(pngFiles(t, versionKey('P', 'M', 'N', 1730000000100, 'f1'))).toEqual(['s0-train-0.png'])
+    })
+    it('읽기 도중 실패하면 쓰던 판을 남기지 않고, 다음 열기가 다시 푼다', async () => {
+      const over = { biError: Object.assign(new Error('끊김'), { statusCode: 503, code: 'UPSTREAM_DOWN' }) }
+      const t = setup(over)
+      await expect(t.svc.open({}, 'P', 'M', 'N', 'current')).rejects.toMatchObject({ code: 'UPSTREAM_DOWN' })
+      expect(readdirSync(t.deps.imageCache.__dir)).toEqual([])
+      over.biError = null
+      const { stats } = await t.svc.open({}, 'P', 'M', 'N', 'current')
+      expect(stats.fromCache).toBe(false)
+      expect(t.reads()).toBe(2)
+    })
+  })
+
   describe('차가운 풀기는 한 번에 하나', () => {
     const tick = () => new Promise((r) => setTimeout(r, 5))
     // crtime 마다 파일이 다른 판. 본문 읽기는 gate 를 열 때까지 멈춘다.
@@ -126,12 +172,12 @@ describe('openService', () => {
         gridfs: {
           findVersionId: async (p, m, n, crtime) => `f${crtime}`,
           findFile: async (id) => ({ _id: id, metadata: { body } }),
-          readContent: async (id) => {
+          streamContent: async function* ({ _id: id }) {
             reading++
             peak = Math.max(peak, reading)
             await gateOf(id).wait
             reading--
-            return JSON.stringify({ TargetSnapshotList: [LONG_B64] })
+            yield* bytes(JSON.stringify({ TargetSnapshotList: [LONG_B64] }))
           }
         },
         scopes: { assertAllowed: async () => {} },
@@ -171,7 +217,7 @@ describe('openService', () => {
         gridfs: {
           findVersionId: async (p, m, n, crtime) => `f${crtime}`,
           findFile: async (id) => ({ _id: id, metadata: { body } }),
-          readContent: async (id) => { if (id === 'f1') throw new Error('읽기 실패'); return JSON.stringify({ TargetSnapshotList: [LONG_B64] }) }
+          streamContent: async function* ({ _id: id }) { if (id === 'f1') throw new Error('읽기 실패'); yield* bytes(JSON.stringify({ TargetSnapshotList: [LONG_B64] })) }
         },
         scopes: { assertAllowed: async () => {} },
         imageCache: createImageCache({ dir: mkdtempSync(join(tmpdir(), 'sew-open-')), maxBytes: 1e9 }),
@@ -203,7 +249,7 @@ describe('openService', () => {
         gridfs: {
           findVersionId: async (p, m, n) => (files[`${m}|${n}`] ? `${m}|${n}` : null),
           findFile: async (id) => ({ _id: id, metadata: { body: bodyOf(files[id].desc, files[id].b64) } }),
-          readContent: async (id) => { reads++; return JSON.stringify({ TargetSnapshotList: [files[id].b64] }) }
+          streamContent: async function* ({ _id: id }) { reads++; yield* bytes(JSON.stringify({ TargetSnapshotList: [files[id].b64] })) }
         },
         scopes: { assertAllowed: async () => {} },
         imageCache: createImageCache({ dir, maxBytes: 1e9 }),

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildSkeleton, versionNotes, refreshPropertyParts } from '../../domain/skeleton'
+import { buildSkeleton, wantsBaseImage, versionNotes, refreshPropertyParts } from '../../domain/skeleton'
 
 const md = (op, train = {}) => ({
   SearchArea: op === 0 ? { X: -18, Y: -18, Width: -18, Height: -18 } : { X: 10, Y: 20, Width: 300, Height: 200 },
@@ -24,9 +24,11 @@ const body = {
 const base = { process: 'P', model: 'M', name: 'N', crtime: 1730000000000, isCurrent: true, body, propertyDoc: { Priority: 10, Type: 1 },
   performanceDoc: { ScenarioDescription: '설명' }, imageBaseUrl: '/img' }
 
+const BROKEN_BI = { parseFailed: true, present: new Set() }
+
 describe('buildSkeleton', () => {
   it('스텝을 구조화하고 이미지를 떼어 URL 로 바꾼다', () => {
-    const { skeleton, images } = buildSkeleton({ ...base, biText: JSON.stringify({ ID: 'BI.P-M-N', TargetSnapshotList: [LONG_B64, 'AA==', 'AA=='] }) })
+    const { skeleton, images } = buildSkeleton({ ...base, baseImages: { parseFailed: false, present: new Set([0]) } })
     expect(skeleton).toMatchObject({ process: 'P', model: 'M', name: 'N', id: 'P-M-N', version: { crtime: 1730000000000, isCurrent: true } })
     expect(skeleton.header).toMatchObject({ description: '메일 제목', timeoutLimit: 240, targetWindow: { agentFinds: true, matchMode: 'partial' } })
     const [s0, s1, s2] = skeleton.steps
@@ -37,30 +39,30 @@ describe('buildSkeleton', () => {
     expect(s1.notes.map((n) => n.code)).toEqual(['BASE_IMAGE_MISSING'])
     expect(s1.next.onFalse).toEqual({ kind: 'step', uid: 's0', no: 1 })
     expect(s2).toMatchObject({ baseImage: { state: 'notNeeded' }, action: { waitSec: 30 } })
-    expect(images.map((i) => i.id)).toEqual(['s0-train-0', 's0-bi'])
+    expect(images.map((i) => i.id)).toEqual(['s0-train-0']) // 기준 화면은 BI 를 읽으며 이미 디스크에 썼다
     expect(skeleton.baseImageSummary).toEqual({ needed: 2, present: 1 })
     expect(skeleton.property).toMatchObject({ Priority: 10, Type: 1 })
     expect(skeleton.performance).toMatchObject({ scenarioDescription: '설명' })
     expect(skeleton.notes).toEqual([])
   })
   it('기준 화면이 아예 없는 버전(BI "")도 연다 — 알림만', () => {
-    const { skeleton, images } = buildSkeleton({ ...base, biText: '' })
+    const { skeleton, images } = buildSkeleton({ ...base })
     expect(skeleton.steps[0].baseImage).toEqual({ state: 'missing' })
     expect(images.map((i) => i.id)).toEqual(['s0-train-0'])
   })
   it('운영 속성 해석 실패는 시나리오 경고, 속성은 null', () => {
-    const { skeleton } = buildSkeleton({ ...base, biText: '', propertyDoc: { Priority: null } })
+    const { skeleton } = buildSkeleton({ ...base, propertyDoc: { Priority: null } })
     expect(skeleton.property).toBe(null)
     expect(skeleton.notes.map((n) => n.code)).toEqual(['PARSE_FAILED'])
   })
 
   describe('깨진 저장 값은 던지지 않고 알림으로 낮춘다', () => {
     const codes = (ns) => ns.map((n) => n.code)
-    const withStep = (step) => ({ ...base, biText: '', body: { ...body, Step: [step] } })
+    const withStep = (step) => ({ ...base, body: { ...body, Step: [step] } })
 
     it('본문이 객체가 아니면 빈 뼈대와 본문 해석 실패 경고', () => {
       for (const bad of [null, undefined, 'x', 5]) {
-        const { skeleton, images } = buildSkeleton({ ...base, body: bad, biText: '' })
+        const { skeleton, images } = buildSkeleton({ ...base, body: bad })
         expect(skeleton.steps).toEqual([])
         expect(images).toEqual([])
         expect(skeleton.notes).toContainEqual({ level: 'warning', code: 'PARSE_FAILED', params: { field: 'body' } })
@@ -68,13 +70,13 @@ describe('buildSkeleton', () => {
       }
     })
     it('Step 이 배열이 아니면 스텝 없음 + 해석 실패 경고', () => {
-      const { skeleton } = buildSkeleton({ ...base, body: { ...body, Step: 'abc' }, biText: '' })
+      const { skeleton } = buildSkeleton({ ...base, body: { ...body, Step: 'abc' } })
       expect(skeleton.steps).toEqual([])
       expect(skeleton.notes).toContainEqual({ level: 'warning', code: 'PARSE_FAILED', params: { field: 'steps' } })
     })
     it('객체가 아닌 스텝은 그 스텝만 경고하고 raw 는 빈 객체', () => {
       for (const bad of [null, 'x', 5]) {
-        const { skeleton } = buildSkeleton({ ...base, body: { ...body, Step: [bad, body.Step[2]] }, biText: '' })
+        const { skeleton } = buildSkeleton({ ...base, body: { ...body, Step: [bad, body.Step[2]] } })
         const [s0, s1] = skeleton.steps
         expect(s0.condition.kind).toBe('unknown')
         expect(s0.baseImage).toEqual({ state: 'notNeeded' })
@@ -104,78 +106,58 @@ describe('buildSkeleton', () => {
         expect(images.map((i) => i.id)).toEqual(['s0-train-1'])
       }
     })
-    it('기준 화면 항목이 문자열이 아니거나 BI 가 깨졌으면 없는 것으로 본다', () => {
-      for (const bad of [5, {}, null, ['AAAAAAAA']]) {
-        const { skeleton, images } = buildSkeleton({ ...base, biText: JSON.stringify({ TargetSnapshotList: [bad, bad, bad] }) })
-        expect(skeleton.steps[0].baseImage).toEqual({ state: 'missing' })
-        expect(skeleton.baseImageSummary).toEqual({ needed: 2, present: 0 })
-        expect(images.map((i) => i.id)).toEqual(['s0-train-0'])
-      }
-      for (const bad of ['{깨짐', 'null', '5']) {
-        const { skeleton } = buildSkeleton({ ...base, biText: bad })
-        expect(skeleton.steps[0].baseImage).toEqual({ state: 'missing' })
-        expect(skeleton.baseImageSummary).toEqual({ needed: 2, present: 0 })
-      }
-      expect(buildSkeleton({ ...base, biText: '{깨짐' }).skeleton.notes).toContainEqual({ level: 'warning', code: 'PARSE_FAILED', params: { field: 'bi' } })
-    })
-  })
-
-  describe('학습 이미지 키가 정수가 아니면 이미지 ID 를 만들지 않는다', () => {
-    it.each([['1.5'], ['Infinity'], ['-1'], ['abc']])('키 %s 는 URL 없이 두고 이미지 목록에 넣지 않으며 한 번 알린다', (badKey) => {
-      const train = { 0: { BinaryImage: LONG_B64, Type: true }, [badKey]: { BinaryImage: LONG_B64, Type: false } }
-      const step = { ...body.Step[0], Metadata: md(1, train) }
-      const { skeleton, images } = buildSkeleton({ ...base, biText: '', body: { ...body, Step: [step] } })
-      const s0 = skeleton.steps[0]
-      expect(s0.condition.image.trainImages.map((t) => t.url)).toEqual(['/img/s0-train-0', null])
-      expect(images.map((i) => i.id)).toEqual(['s0-train-0'])
-      expect(images.every((i) => /^[a-z0-9-]+$/.test(i.id))).toBe(true)
-      expect(s0.notes.filter((n) => n.code === 'PARSE_FAILED' && n.params.field === 'trainImage')).toEqual([
-        { level: 'warning', code: 'PARSE_FAILED', params: { field: 'trainImage' } }
-      ])
-      expect(s0.raw.Metadata.ImageSearchParam.TrainImageMap[badKey].BinaryImage).toBe(null)
-    })
-    it('정수가 아닌 키가 여럿이어도 스텝당 한 번만 알린다', () => {
-      const train = { '1.5': { BinaryImage: LONG_B64, Type: true }, Infinity: { BinaryImage: LONG_B64, Type: true } }
-      const step = { ...body.Step[0], Metadata: md(1, train) }
-      const { skeleton, images } = buildSkeleton({ ...base, biText: '', body: { ...body, Step: [step] } })
-      expect(images).toEqual([])
-      expect(skeleton.steps[0].notes.filter((n) => n.params.field === 'trainImage')).toHaveLength(1)
-    })
-  })
-
-  describe('BI 본문이 기대한 모양이 아니면 기준 화면 없음으로 보고 알린다', () => {
-    const biNote = { level: 'warning', code: 'PARSE_FAILED', params: { field: 'bi' } }
-    it.each([['5'], ['[]'], ['{}'], ['null'], ['"x"'], ['{"TargetSnapshotList":"x"}'], ['{"TargetSnapshotList":null}'], ['{"TargetSnapshotList":{}}'], ['{깨짐']])('%s', (text) => {
-      const { skeleton, images } = buildSkeleton({ ...base, biText: text })
-      expect(skeleton.notes.filter((n) => n.params.field === 'bi')).toEqual([biNote])
+    it('BI 가 깨졌으면 없는 것으로 보고 PARSE_FAILED bi 로 알린다', () => {
+      const { skeleton, images } = buildSkeleton({ ...base, baseImages: BROKEN_BI })
       expect(skeleton.steps[0].baseImage).toEqual({ state: 'missing' })
       expect(skeleton.baseImageSummary).toEqual({ needed: 2, present: 0 })
+      expect(skeleton.notes.filter((n) => n.params.field === 'bi')).toEqual([{ level: 'warning', code: 'PARSE_FAILED', params: { field: 'bi' } }])
       expect(images.map((i) => i.id)).toEqual(['s0-train-0'])
     })
-    it.each([[''], [undefined], [null], ['{"TargetSnapshotList":[]}']])('알림 없음: %j', (text) => {
-      const { skeleton } = buildSkeleton({ ...base, biText: text })
+    it('BI 가 비었거나 항목이 없으면 없는 것으로 보되 PARSE_FAILED 는 없다', () => {
+      const { skeleton } = buildSkeleton({ ...base, baseImages: { parseFailed: false, present: new Set() } })
+      expect(skeleton.steps[0].baseImage).toEqual({ state: 'missing' })
       expect(skeleton.notes.filter((n) => n.params.field === 'bi')).toEqual([])
+      expect(buildSkeleton(base).skeleton.notes.filter((n) => n.params.field === 'bi')).toEqual([])
     })
   })
 
+  describe('wantsBaseImage: BI 를 읽으며 어느 항목을 떼어 낼지', () => {
+    // body: 0 = 이미지 조건, 1 = OCR 조건, 2 = 조건 없음
+    it.each([
+      [0, LONG_B64, true],
+      [1, LONG_B64, true],
+      [2, LONG_B64, false], // 조건 없는 스텝은 기준 화면이 필요 없다
+      [3, LONG_B64, false], // 스텝 수보다 많은 항목
+      [0, 'AA==', false], // 1바이트 자리표시
+      [0, 5, false],
+      [0, {}, false],
+      [0, null, false],
+      [0, ['AAAAAAAA'], false]
+    ])('스텝 %i, 값 %j → %s', (i, value, want) => {
+      expect(wantsBaseImage(body)(i, value)).toBe(want)
+    })
+    it.each([[null], [5], [{ Step: 'abc' }], [[]]])('본문이 %j 면 어느 항목도 떼어 내지 않는다', (bad) => {
+      expect(wantsBaseImage(bad)(0, LONG_B64)).toBe(false)
+    })
+  })
   describe('versionNotes — 현재 운영 속성에 기대지 않는 알림만 남긴다', () => {
     const w = (code, params = {}) => ({ level: 'warning', code, params })
     it('본문이 객체가 아니면 본문 해석 실패만 남는다(SUCCESS 없음·대상 창 표시 차이는 뺀다)', () => {
-      const { skeleton } = buildSkeleton({ ...base, body: null, biText: '' })
+      const { skeleton } = buildSkeleton({ ...base, body: null })
       expect(skeleton.notes.map((n) => n.code)).toEqual(expect.arrayContaining(['PARSE_FAILED', 'NO_SUCCESS', 'TARGET_WINDOW_DIFFERS']))
       expect(versionNotes(skeleton.notes)).toEqual([w('PARSE_FAILED', { field: 'body' })])
     })
     it('Step 이 배열이 아닌 알림도 남는다', () => {
-      const { skeleton } = buildSkeleton({ ...base, body: { ...body, Step: 'abc' }, biText: '' })
+      const { skeleton } = buildSkeleton({ ...base, body: { ...body, Step: 'abc' } })
       expect(versionNotes(skeleton.notes)).toEqual([w('PARSE_FAILED', { field: 'steps' })])
     })
     it('BI 해석 실패는 남기고 우선순위 알림은 뺀다', () => {
-      const { skeleton } = buildSkeleton({ ...base, biText: '{broken', propertyDoc: { Priority: 3 } })
+      const { skeleton } = buildSkeleton({ ...base, baseImages: BROKEN_BI, propertyDoc: { Priority: 3 } })
       expect(skeleton.notes.map((n) => n.code)).toContain('PRIORITY_NONSTANDARD')
       expect(versionNotes(skeleton.notes)).toEqual([w('PARSE_FAILED', { field: 'bi' })])
     })
     it('운영 속성 해석 실패(PARSE_FAILED property)는 뺀다', () => {
-      const { skeleton } = buildSkeleton({ ...base, biText: '', propertyDoc: { Priority: null } })
+      const { skeleton } = buildSkeleton({ ...base, propertyDoc: { Priority: null } })
       expect(skeleton.notes.map((n) => n.code)).toEqual(['PARSE_FAILED'])
       expect(versionNotes(skeleton.notes)).toEqual([])
     })
@@ -188,20 +170,20 @@ describe('buildSkeleton', () => {
   })
 
   it('보정 기준 이미지는 떼어 URL 로 바꾸고, 이미지가 아니면 URL 없이 좌표만 둔다', () => {
-    const withComp = (comp) => buildSkeleton({ ...base, biText: '', body: { ...body, Compensation: comp } })
+    const withComp = (comp) => buildSkeleton({ ...base, body: { ...body, Compensation: comp } })
     const a = withComp({ X: 3, Y: 4, RefImage: LONG_B64 })
     expect(a.skeleton.header.compensation).toEqual({ x: 3, y: 4, refImage: '/img/ref' })
     expect(a.images.at(-1)).toEqual({ id: 'ref', base64: LONG_B64 }) // 디코드하지 않은 base64 그대로
     const b = withComp({ X: 3, Y: 4, RefImage: 'AA==' })
     expect(b.skeleton.header.compensation).toEqual({ x: 3, y: 4, refImage: null })
     expect(b.images.map((i) => i.id)).not.toContain('ref')
-    expect(buildSkeleton({ ...base, biText: '' }).skeleton.header.compensation).toBe(null)
+    expect(buildSkeleton({ ...base }).skeleton.header.compensation).toBe(null)
   })
 })
 
 describe('refreshPropertyParts', () => {
   it('운영 속성이 바뀌면 속성·시나리오 경고를 다시 계산하고 BI 경고는 둔다', () => {
-    const { skeleton } = buildSkeleton({ ...base, biText: '{broken' })
+    const { skeleton } = buildSkeleton({ ...base, baseImages: BROKEN_BI })
     expect(skeleton.notes.map((n) => n.code)).toEqual(['PARSE_FAILED'])
     const r = refreshPropertyParts(skeleton, { Priority: 3, Type: 1 }, { ScenarioDescription: '새 설명' })
     expect(r.property.Priority).toBe(3)

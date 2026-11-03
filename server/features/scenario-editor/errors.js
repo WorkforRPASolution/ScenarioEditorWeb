@@ -19,6 +19,13 @@ const MONGO_DOWN = new Set([
 const MONGO_DOWN_CODES = new Set([91, 11600, 189, 10107, 13435])
 const MAX_TIME_EXPIRED = 50
 
+function mapMongoError(e) {
+  if (e && e.code && typeof e.code === 'string') return e
+  if (e && (MONGO_DOWN.has(e.name) || MONGO_DOWN_CODES.has(e.code))) return seError(503, 'UPSTREAM_DOWN', 'EARS DB 를 읽지 못했습니다')
+  if (e && e.code === MAX_TIME_EXPIRED) return seError(504, 'UPSTREAM_TIMEOUT', 'EARS DB 응답이 늦습니다')
+  return e
+}
+
 function withMongoErrors(repo) {
   const out = {}
   for (const [k, fn] of Object.entries(repo)) {
@@ -26,14 +33,18 @@ function withMongoErrors(repo) {
       try {
         return await fn(...args)
       } catch (e) {
-        if (e && e.code && typeof e.code === 'string') throw e
-        if (e && (MONGO_DOWN.has(e.name) || MONGO_DOWN_CODES.has(e.code))) throw seError(503, 'UPSTREAM_DOWN', 'EARS DB 를 읽지 못했습니다')
-        if (e && e.code === MAX_TIME_EXPIRED) throw seError(504, 'UPSTREAM_TIMEOUT', 'EARS DB 응답이 늦습니다')
-        throw e
+        throw mapMongoError(e)
       }
     }
   }
   return out
 }
 
-module.exports = { seError, withMongoErrors }
+// GridFS 본문을 읽는 도중의 오류. 조각이 빠졌거나 크기가 틀리면 저장 데이터 문제, 그 사이 파일이 지워졌으면 없는 판이다.
+function mapGridfsError(e) {
+  if (e && e.name === 'MongoGridFSChunkError') return seError(422, 'DATA_INVALID', 'GridFS 파일 조각이 빠졌거나 깨졌습니다')
+  if (e && e.code === 'ENOENT') return seError(404, 'NOT_FOUND', '그 버전이 없습니다')
+  return mapMongoError(e)
+}
+
+module.exports = { seError, withMongoErrors, mapGridfsError }

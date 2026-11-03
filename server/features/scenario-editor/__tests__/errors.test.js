@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { withMongoErrors } from '../errors'
+import { withMongoErrors, mapGridfsError } from '../errors'
 
 const fail = (name, extra = {}) => async () => { throw Object.assign(new Error('내부 주소 10.0.0.1:27017'), { name, ...extra }) }
 
@@ -36,5 +36,26 @@ describe('withMongoErrors', () => {
     const coded = Object.assign(new Error('x'), { statusCode: 503, code: 'UPSTREAM_DOWN' })
     await expect(withMongoErrors({ find: async () => { throw coded } }).find()).rejects.toBe(coded)
     expect(await withMongoErrors({ find: async (a, b) => a + b }).find(1, 2)).toBe(3)
+  })
+})
+
+describe('mapGridfsError (본문 읽기 도중 오류)', () => {
+  const err = (name, extra = {}) => Object.assign(new Error('내부 주소 10.0.0.1:27017'), { name, ...extra })
+  it.each([
+    ['조각이 빠졌거나 깨짐', err('MongoGridFSChunkError'), 422, 'DATA_INVALID'],
+    ['그 사이 파일이 지워짐', err('MongoRuntimeError', { code: 'ENOENT' }), 404, 'NOT_FOUND'],
+    ['읽는 도중 연결이 끊김', err('MongoNetworkError'), 503, 'UPSTREAM_DOWN'],
+    ['풀이 비워짐', err('PoolClearedOnNetworkError'), 503, 'UPSTREAM_DOWN'],
+    ['질의 시간 초과', err('MongoServerError', { code: 50 }), 504, 'UPSTREAM_TIMEOUT']
+  ])('%s', (_, e, statusCode, code) => {
+    const mapped = mapGridfsError(e)
+    expect(mapped).toMatchObject({ statusCode, code })
+    expect(mapped.message).not.toContain('10.0.0.1')
+  })
+  it('그 밖 오류와 이미 code 가 붙은 오류는 그대로', () => {
+    const other = err('TypeError')
+    expect(mapGridfsError(other)).toBe(other)
+    const coded = Object.assign(new Error('x'), { statusCode: 503, code: 'UPSTREAM_DOWN' })
+    expect(mapGridfsError(coded)).toBe(coded)
   })
 })

@@ -74,23 +74,49 @@ function createImageCache({ dir, maxBytes }) {
     }
   }
 
-  async function store(key, skeleton, images) {
+  // 판 하나를 쓰기 시작한다. 완료 표시(.done)는 commit 때 쓰므로 그 전에는 없는 판이다.
+  // 디렉터리는 처음 쓸 때 비우고 만든다 — id 가 틀리면 디스크를 건드리지 않는다.
+  function begin(key) {
     const d = vdir(key) // 특수 키는 여기서 던진다
-    for (const img of images) {
-      if (!img || typeof img.id !== 'string' || !ID.test(img.id)) throw new Error(`이미지 id 형식 오류: ${img && img.id}`)
-    }
-    await fsp.rm(d, { recursive: true, force: true })
-    await fsp.mkdir(d, { recursive: true })
-    // 뼈대가 같은 id 를 두 번 낼 수 있다(예: TrainImageMap 키 '1' 과 '01'). 내용이 같으니 처음 것만 쓴다.
     const written = new Set()
-    for (const img of images) {
-      if (written.has(img.id)) continue
-      written.add(img.id)
-      await fsp.writeFile(path.join(d, `${img.id}.png`), Buffer.from(img.base64, 'base64'))
+    let prepared = null
+    const prepare = () => {
+      if (!prepared) prepared = fsp.rm(d, { recursive: true, force: true }).then(() => fsp.mkdir(d, { recursive: true }))
+      return prepared
     }
-    await fsp.writeFile(path.join(d, 'skeleton.json'), JSON.stringify(skeleton))
-    await fsp.writeFile(done(key), '')
-    await evict(path.basename(d))
+    const checkId = (id) => {
+      if (typeof id !== 'string' || !ID.test(id)) throw new Error(`이미지 id 형식 오류: ${id}`)
+    }
+    async function writeImage(id, base64) {
+      checkId(id)
+      // 뼈대가 같은 id 를 두 번 낼 수 있다(예: TrainImageMap 키 '1' 과 '01'). 내용이 같으니 처음 것만 쓴다.
+      if (written.has(id)) return
+      written.add(id)
+      await prepare()
+      await fsp.writeFile(path.join(d, `${id}.png`), Buffer.from(base64, 'base64'))
+    }
+    return {
+      writeImage,
+      async removeImages(ids) {
+        for (const id of ids) {
+          checkId(id)
+          written.delete(id)
+          await fsp.rm(path.join(d, `${id}.png`), { force: true })
+        }
+      },
+      async commit(skeleton, images) {
+        for (const img of images) checkId(img && img.id)
+        await prepare()
+        for (const img of images) await writeImage(img.id, img.base64)
+        await fsp.writeFile(path.join(d, 'skeleton.json'), JSON.stringify(skeleton))
+        await fsp.writeFile(done(key), '')
+        await evict(path.basename(d))
+      },
+      // 실패한 쓰기를 치운다. 원래 오류를 가리지 않게 어떤 오류도 던지지 않는다.
+      async abort() {
+        if (prepared) await fsp.rm(d, { recursive: true, force: true }).catch(() => {})
+      }
+    }
   }
 
   async function imagePath(key, imageId) {
@@ -110,7 +136,7 @@ function createImageCache({ dir, maxBytes }) {
     await fsp.rm(dir, { recursive: true, force: true })
   }
 
-  return { readSkeleton, store, imagePath, clear }
+  return { readSkeleton, begin, imagePath, clear }
 }
 
 module.exports = { createImageCache }
