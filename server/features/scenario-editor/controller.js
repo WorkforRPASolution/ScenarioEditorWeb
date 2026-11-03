@@ -1,6 +1,7 @@
 'use strict'
 const { getDeps } = require('./deps')
 const { seError } = require('./errors')
+const { hasFullScope } = require('./domain/processPermission')
 
 const ok = (res, data) => res.json({ success: true, data })
 
@@ -25,10 +26,12 @@ async function scopes(req, res) {
 }
 
 async function refreshCache(req, res) {
+  const images = req.query.images === '1'
+  if (images && !hasFullScope(req.seUser)) throw seError(403, 'MASTER_REQUIRED', '이미지 캐시 비우기는 전체 공정 사용자만 할 수 있습니다')
   const d = getDeps()
   d.users.clear()
   d.scopes.clear()
-  if (req.query.images === '1') await d.imageCache.clear()
+  if (images) await d.imageCache.clear()
   ok(res, { refreshed: true })
 }
 

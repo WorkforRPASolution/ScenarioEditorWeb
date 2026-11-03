@@ -20,10 +20,12 @@ afterAll(() => { require('../deps')._setDeps(null); return new Promise((r) => se
 
 const user = { singleid: 'sew_multi', name: 'M', processRaw: 'CVD;ETCH', processes: ['CVD', 'ETCH'], multiProcess: ['CVD', 'ETCH'], process: 'CVD',
   isMaster: false, authority: 'WRITE', canWrite: true, authorityManager: 3, authorityManagerValid: true, authorityName: 'Manager', duplicateUserDocs: 1 }
+const { parseUser } = require('../domain/processPermission')
+const MASTERS = { sew_master: parseUser({ singleid: 'sew_master', process: 'MASTER' }), sew_mastercvd: parseUser({ singleid: 'sew_mastercvd', process: 'MASTER;CVD' }) }
 beforeEach(() => {
   let cleared = 0
   Object.assign(fake, {
-    users: { getUser: async (id) => (id === 'sew_none' ? null : { ...user, singleid: id }), clear: () => { cleared++ } },
+    users: { getUser: async (id) => (id === 'sew_none' ? null : { ...user, singleid: id, ...MASTERS[id] }), clear: () => { cleared++ } },
     scopes: {
       scopeFor: async () => ({ pairs: [{ process: 'CVD', models: [{ model: 'M1', eqpCount: 2 }] }], invalid: [{ eqpId: 'X', reason: 'REQUIRED_EMPTY' }], duplicateEqpIds: ['D'], proxyIpDuplicates: [], valid: [] }),
       assertAllowed: async () => {}, clear: () => { cleared++ }
@@ -51,11 +53,20 @@ describe('/me·/scopes·/cache/refresh', () => {
     const body = await (await fetch(`${base}/scopes`)).json()
     expect(body.data).toEqual({ processes: [{ process: 'CVD', models: [{ model: 'M1', eqpCount: 2 }] }], excludedEqpCount: 2 })
   })
-  it('/cache/refresh 는 사용자·설비 캐시를, images=1 이면 이미지 캐시도 비운다', async () => {
+  it('/cache/refresh 는 누구나 사용자·설비 캐시를 비운다', async () => {
     expect((await (await fetch(`${base}/cache/refresh`, { method: 'POST' })).json()).data).toEqual({ refreshed: true })
     expect(fake.cleared).toBe(2)
-    await fetch(`${base}/cache/refresh?images=1`, { method: 'POST' })
-    expect(fake.cleared).toBe(14)
+  })
+  it('/cache/refresh?images=1 은 순수 MASTER 면 이미지 캐시까지 비운다', async () => {
+    const res = await fetch(`${base}/cache/refresh?images=1`, { method: 'POST', headers: { 'X-SE-User': 'sew_master' } })
+    expect(res.status).toBe(200)
+    expect(fake.cleared).toBe(12)
+  })
+  it.each(['sew_multi', 'sew_mastercvd'])('/cache/refresh?images=1 은 %s 이면 403 이고 아무 캐시도 비우지 않는다', async (id) => {
+    const res = await fetch(`${base}/cache/refresh?images=1`, { method: 'POST', headers: { 'X-SE-User': id } })
+    expect(res.status).toBe(403)
+    expect(await res.json()).toMatchObject({ code: 'MASTER_REQUIRED' })
+    expect(fake.cleared).toBe(0)
   })
 })
 

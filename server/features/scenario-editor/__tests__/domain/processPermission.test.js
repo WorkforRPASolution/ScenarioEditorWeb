@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseUser, allowsProcess } from '../../domain/processPermission'
+import { parseUser, allowsProcess, hasFullScope } from '../../domain/processPermission'
 
 describe('parseUser (사내 MongoQuery.cs:294-319)', () => {
   it('단일 공정·WRITE', () => {
@@ -58,5 +58,19 @@ describe('allowsProcess (사내 MongoQuery.cs:367-385)', () => {
   })
   it('process 가 없으면 아무것도 못 본다', () => {
     expect(allowsProcess(parseUser({ singleid: 'u' }), '')).toBe(false)
+  })
+})
+
+describe('hasFullScope (서버 전체에 걸리는 작업의 기준)', () => {
+  it.each([
+    ['MASTER', true],
+    ['MASTER;CVD', false], // 첫 값이 MASTER 여도 볼 수 있는 공정은 목록 안뿐이다
+    ['CVD;MASTER', false],
+    ['CVD', false]
+  ])('process %s → %s', (process, want) => {
+    expect(hasFullScope(parseUser({ singleid: 'a', process }))).toBe(want)
+  })
+  it('process 가 없으면 false', () => {
+    expect(hasFullScope(parseUser({ singleid: 'a' }))).toBe(false)
   })
 })

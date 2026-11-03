@@ -3,6 +3,7 @@
 export const MESSAGES = {
   Exception12: '편집기 사용자로 등록되지 않았습니다. 관리자에게 사용자 등록을 요청하세요.',
   SEW_ERR_PROCESS_FORBIDDEN: '공정 권한 밖의 공정·모델입니다.',
+  SEW_ERR_MASTER_REQUIRED: '전체 공정(MASTER) 사용자만 할 수 있습니다.',
   SEW_ERR_NOT_FOUND: '시나리오나 버전을 찾지 못했습니다. 현재 버전이 없거나(저장 기록만 있음) 지워졌을 수 있습니다.',
   SEW_ERR_DATA_INVALID: '저장 데이터를 열 수 없습니다. 같은 공정·모델·이름의 운영 속성 문서가 둘 이상인지 데이터 점검에서 확인하세요.',
   SEW_ERR_UPSTREAM_DOWN: 'DB·Redis 에 연결되지 않았습니다. 잠시 뒤 다시 시도하세요.',

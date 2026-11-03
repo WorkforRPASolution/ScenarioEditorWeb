@@ -45,4 +45,9 @@ function allowsProcess(user, process) {
   return true
 }
 
-module.exports = { parseUser, allowsProcess, toAuthorityManager }
+// 서버 전체에 걸리는 작업(이미지 캐시 전체 비우기 등)의 기준. "MASTER;CVD" 는 첫 값이 MASTER 여도 볼 수 있는 공정이 목록 안뿐이라 뺀다.
+function hasFullScope(user) {
+  return user.isMaster && !user.multiProcess
+}
+
+module.exports = { parseUser, allowsProcess, hasFullScope, toAuthorityManager }
