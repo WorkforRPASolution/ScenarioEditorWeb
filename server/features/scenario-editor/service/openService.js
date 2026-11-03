@@ -6,11 +6,12 @@ const { createSingleFlight } = require('../util/singleFlight')
 const { seError } = require('../errors')
 
 const enc = encodeURIComponent
-const baseUrl = (p, m, n, crtime) => `/scenario-editor/scenarios/${enc(p)}/${enc(m)}/${enc(n)}/versions/${crtime}/images`
+// 이미지 URL 은 1년 캐시라 내용이 바뀌면 안 된다 — 파일 id 를 넣어 같은 crtime 으로 다시 올라온 파일과 구분한다.
+const baseUrl = (p, m, n, crtime, fileId) => `/scenario-editor/scenarios/${enc(p)}/${enc(m)}/${enc(n)}/versions/${crtime}/files/${enc(fileId)}/images`
 const rss = () => process.memoryUsage().rss
 // 버전 캐시·single-flight 키. 칸마다 인코딩해 '/' 로 잇는다 — '.' 로 이으면 (P,'M.A','B') 와 (P,'M','A.B') 가 같은 키가 된다.
 // imageCache 가 키를 다시 인코딩해 디렉터리 이름 하나로 만든다(길면 해시).
-const versionKey = (p, m, n, crtime) => [p, m, n, String(crtime)].map(enc).join('/')
+const versionKey = (p, m, n, crtime, fileId) => [p, m, n, String(crtime), String(fileId)].map(enc).join('/')
 
 function createOpenService({ repo, hash, gridfs, scopes, imageCache, log }) {
   const flight = createSingleFlight()
@@ -22,16 +23,16 @@ function createOpenService({ repo, hash, gridfs, scopes, imageCache, log }) {
     return docs[0]
   }
 
-  async function unpack(process, model, name, crtime) {
-    const key = versionKey(process, model, name, crtime)
+  async function unpack(process, model, name, crtime, fileId) {
+    const key = versionKey(process, model, name, crtime, fileId)
     return flight.run(key, async () => {
       const cached = await imageCache.readSkeleton(key)
       if (cached) return { core: cached, fromCache: true }
-      const file = await gridfs.findVersion(process, model, name, crtime)
+      const file = await gridfs.findFile(fileId)
       if (!file) throw seError(404, 'NOT_FOUND', '그 버전이 없습니다')
-      const biText = await gridfs.readContent(file._id)
+      const biText = await gridfs.readContent(fileId)
       const { skeleton, images } = buildSkeleton({ process, model, name, crtime, isCurrent: false, body: file.metadata.body, biText,
-        propertyDoc: {}, performanceDoc: null, imageBaseUrl: baseUrl(process, model, name, crtime) })
+        propertyDoc: {}, performanceDoc: null, imageBaseUrl: baseUrl(process, model, name, crtime, fileId) })
       await imageCache.store(key, skeleton, images)
       return { core: skeleton, fromCache: false }
     })
@@ -53,7 +54,9 @@ function createOpenService({ repo, hash, gridfs, scopes, imageCache, log }) {
         if (!/^\d+$/.test(String(crtimeParam))) throw seError(400, 'BAD_REQUEST', 'crtime 은 숫자 또는 current')
         crtime = Number(crtimeParam)
       }
-      const { core, fromCache } = await unpack(process, model, name, crtime)
+      const fileId = await gridfs.findVersionId(process, model, name, crtime)
+      if (fileId === null) throw seError(404, 'NOT_FOUND', '그 버전이 없습니다')
+      const { core, fromCache } = await unpack(process, model, name, crtime, fileId)
       const skeleton = refreshPropertyParts({ ...core, version: { crtime, isCurrent: crtime === current } }, doc.property, doc.performance)
       const stats = { ms: Date.now() - started, peakRssMb: Math.round(Math.max(peak, rss()) / 1048576), fromCache }
       log.info(`open ${process}-${model}-${name}@${crtime} ${stats.ms}ms peakRss=${stats.peakRssMb}MB cache=${fromCache} steps=${skeleton.steps.length}`)
@@ -63,12 +66,15 @@ function createOpenService({ repo, hash, gridfs, scopes, imageCache, log }) {
     }
   }
 
-  async function imagePath(user, process, model, name, crtime, imageId) {
+  async function imagePath(user, process, model, name, crtime, fileId, imageId) {
     await scopes.assertAllowed(user, process, model)
-    const key = versionKey(process, model, name, crtime)
+    const key = versionKey(process, model, name, crtime, fileId)
     let p = await imageCache.imagePath(key, imageId)
     if (!p && !(await imageCache.readSkeleton(key))) {
-      await unpack(process, model, name, crtime)
+      // 캐시가 지워졌다. 다시 풀 수 있는 것은 그 판의 최신 파일뿐이다 — 옛 파일 URL 에 새 파일 내용을 주면 안 된다.
+      const latest = await gridfs.findVersionId(process, model, name, crtime)
+      if (latest === null || String(latest) !== fileId) throw seError(404, 'NOT_FOUND', '이미지가 없습니다')
+      await unpack(process, model, name, crtime, latest)
       p = await imageCache.imagePath(key, imageId)
     }
     if (!p) throw seError(404, 'NOT_FOUND', '이미지가 없습니다')

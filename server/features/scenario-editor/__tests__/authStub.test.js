@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { authenticate, optionalAuth } from '../../../shared/middleware/authMiddleware'
 
-const IMAGE_URL = '/api/scenario-editor/scenarios/SEWCVD/SEWMODELA/N/versions/1730000000100/images/s0-bi'
+const IMAGE_URL = '/api/scenario-editor/scenarios/SEWCVD/SEWMODELA/N/versions/1730000000100/files/65aa/images/s0-bi'
 // 실제 요청처럼 원격 주소·경로를 싣는다(기본: 루프백에서 /me).
 const run = (mw, headers = {}, opts = {}) => {
   const { url = '/api/scenario-editor/me', query } = opts
@@ -55,7 +55,7 @@ describe('authMiddleware 대역', () => {
       expect(run(authenticate, { 'x-se-user': 'sew_master' }, { url }).req.user.singleid, url).toBe('sew_master')
     }
     // 쿼리 글자에 /images/ 를 넣어도 경로가 아니면 받지 않는다
-    expect(run(authenticate, {}, { url: '/api/scenario-editor/me?x=/versions/1/images/a&seUser=sew_master', query: { seUser: 'sew_master' } }).req.user.singleid).toBe('sew_multi')
+    expect(run(authenticate, {}, { url: '/api/scenario-editor/me?x=/versions/1/files/f/images/a&seUser=sew_master', query: { seUser: 'sew_master' } }).req.user.singleid).toBe('sew_multi')
   })
 
   it('두 덮어쓰기 모두 루프백(127.0.0.1·::1·::ffff:127.0.0.1)에서 온 요청에만 효력', () => {

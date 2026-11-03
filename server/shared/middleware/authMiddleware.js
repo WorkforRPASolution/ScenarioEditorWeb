@@ -6,7 +6,7 @@
 const { ApiError } = require('./errorHandler')
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1'])
-const IMAGE_PATH = /\/versions\/[^/]+\/images\/[^/]+$/
+const IMAGE_PATH = /\/versions\/[^/]+\/files\/[^/]+\/images\/[^/]+$/
 const nonEmpty = (v) => typeof v === 'string' && v.trim() !== ''
 
 function devOverride(req) {

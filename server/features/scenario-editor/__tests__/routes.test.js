@@ -126,20 +126,26 @@ describe('버전 열기', () => {
   })
   it('crtime 이 숫자가 아닌 이미지 요청은 400', async () => {
     fake.opener = { imagePath: async () => { throw new Error('호출되면 안 된다') } }
-    const res = await fetch(`${base}/scenarios/CVD/M1/N/versions/abc/images/s0-bi`)
+    const res = await fetch(`${base}/scenarios/CVD/M1/N/versions/abc/files/f1/images/s0-bi`)
     expect(res.status).toBe(400)
     expect(await res.json()).toMatchObject({ code: 'BAD_REQUEST' })
   })
 })
 
 describe('이미지', () => {
+  it('경로의 파일 id 를 그대로 넘긴다', async () => {
+    const calls = []
+    fake.opener = { imagePath: async (...a) => { calls.push(a.slice(1)); throw Object.assign(new Error('x'), { statusCode: 418 }) } }
+    await fetch(`${base}/scenarios/CVD/M1/N/versions/1730000000100/files/65aa/images/s0-bi`)
+    expect(calls).toEqual([['CVD', 'M1', 'N', 1730000000100, '65aa', 's0-bi']])
+  })
   it('점 폴더(.cache) 아래 파일도 PNG 로 준다', async () => {
     const dir = join(mkdtempSync(join(tmpdir(), 'sew-img-')), '.cache', 'images')
     mkdirSync(dir, { recursive: true })
     const png = join(dir, 's0-bi.png')
     writeFileSync(png, Buffer.from('89504e470d0a1a0a', 'hex'))
     fake.opener = { imagePath: async () => png }
-    const res = await fetch(`${base}/scenarios/CVD/M1/N/versions/1730000000100/images/s0-bi`)
+    const res = await fetch(`${base}/scenarios/CVD/M1/N/versions/1730000000100/files/f1/images/s0-bi`)
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toMatch(/^image\/png/)
     expect(res.headers.get('cache-control')).toBe('private, max-age=31536000, immutable')
@@ -161,7 +167,7 @@ describe('이미지', () => {
     it('캐시 파일이 그 사이 사라졌으면 404 NOT_FOUND', async () => {
       const dir = mkdtempSync(join(tmpdir(), 'sew-img-gone-'))
       fake.opener = { imagePath: async () => join(dir, 's0-bi.png') }
-      const body = await expectCleanError(await fetch(`${base}/scenarios/CVD/M1/N/versions/1730000000100/images/s0-bi`), 404, dir)
+      const body = await expectCleanError(await fetch(`${base}/scenarios/CVD/M1/N/versions/1730000000100/files/f1/images/s0-bi`), 404, dir)
       expect(body).toMatchObject({ code: 'NOT_FOUND' })
     })
     it.skipIf(process.getuid && process.getuid() === 0)('그 밖 오류(읽기 권한 없음)도 경로 없는 오류로', async () => {
@@ -171,7 +177,7 @@ describe('이미지', () => {
       chmodSync(png, 0o000)
       fake.opener = { imagePath: async () => png }
       try {
-        await expectCleanError(await fetch(`${base}/scenarios/CVD/M1/N/versions/1730000000100/images/s0-bi`), 500, dir)
+        await expectCleanError(await fetch(`${base}/scenarios/CVD/M1/N/versions/1730000000100/files/f1/images/s0-bi`), 500, dir)
       } finally {
         chmodSync(png, 0o600)
       }

@@ -11,7 +11,7 @@ function spies() {
   const deps = {
     repo: { findScenarioDocs: spy('repo.findScenarioDocs'), findScenarioKeyDocs: spy('repo.findScenarioKeyDocs') },
     hash: { hkeys: spy('hash.hkeys') },
-    gridfs: { findCrtimes: spy('gridfs.findCrtimes'), findVersion: spy('gridfs.findVersion'), readContent: spy('gridfs.readContent') },
+    gridfs: { findCrtimes: spy('gridfs.findCrtimes'), findVersionId: spy('gridfs.findVersionId'), findFile: spy('gridfs.findFile'), readContent: spy('gridfs.readContent') },
     imageCache: { readSkeleton: spy('imageCache.readSkeleton'), store: spy('imageCache.store'), imagePath: spy('imageCache.imagePath') },
     scopes: { assertAllowed: vi.fn(async () => { throw seError(403, 'PROCESS_FORBIDDEN', '공정 권한 밖의 공정·모델입니다') }) },
     log: { info() {}, warn() {} }
@@ -46,7 +46,7 @@ describe('공정 권한 게이트 — 거부되면 데이터 원천을 건드리
   })
   it('이미지', async () => {
     const { deps, called } = spies()
-    await expect(createOpenService(deps).imagePath(user, 'SEWETCH', 'SEWMODELA', 'EQP_STATE', 1730000000100, 's0-bi')).rejects.toMatchObject(FORBIDDEN)
+    await expect(createOpenService(deps).imagePath(user, 'SEWETCH', 'SEWMODELA', 'EQP_STATE', 1730000000100, 'f1', 's0-bi')).rejects.toMatchObject(FORBIDDEN)
     expect(deps.scopes.assertAllowed).toHaveBeenCalledWith(user, 'SEWETCH', 'SEWMODELA')
     expect(called()).toEqual([])
   })

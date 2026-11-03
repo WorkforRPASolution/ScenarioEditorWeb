@@ -66,9 +66,9 @@ const IMAGE_HEADERS = Object.freeze({ 'Cache-Control': 'private, max-age=3153600
 const FILE_HEADERS = ['Cache-Control', 'Content-Type', 'Content-Length', 'ETag', 'Last-Modified', 'Accept-Ranges', 'Content-Range']
 
 async function image(req, res, next) {
-  const { process, model, name, crtime, imageId } = req.params
+  const { process, model, name, crtime, fileId, imageId } = req.params
   if (!/^\d+$/.test(crtime)) throw seError(400, 'BAD_REQUEST', 'crtime 은 숫자')
-  const p = await getDeps().opener.imagePath(req.seUser, process, model, name, Number(crtime), imageId)
+  const p = await getDeps().opener.imagePath(req.seUser, process, model, name, Number(crtime), fileId, imageId)
   // 캐시 폴더 기본값이 .cache 아래다. Express 5(send 1.x)는 경로 중간의 점 폴더도 막으므로 허용한다(경로는 imageCache 가 만든 것만 온다).
   res.sendFile(p, { dotfiles: 'allow', headers: IMAGE_HEADERS }, (err) => {
     if (!err || err.code === 'ECONNABORTED') return // 받는 쪽이 끊었다

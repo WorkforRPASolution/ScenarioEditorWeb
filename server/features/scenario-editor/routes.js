@@ -14,6 +14,6 @@ router.get('/data-check', asyncHandler(c.dataCheck))
 router.get('/scenarios', asyncHandler(c.list))
 router.get('/scenarios/:process/:model/:name/versions', asyncHandler(c.versions))
 router.get('/scenarios/:process/:model/:name/versions/:crtime', asyncHandler(c.open))
-router.get('/scenarios/:process/:model/:name/versions/:crtime/images/:imageId', asyncHandler(c.image))
+router.get('/scenarios/:process/:model/:name/versions/:crtime/files/:fileId/images/:imageId', asyncHandler(c.image))
 
 module.exports = router

@@ -57,7 +57,7 @@ describe('공정 권한 (완료 조건 2)', () => {
     expect(vs.status).toBe(200)
     const crtime = (await vs.json()).data[0].crtime
     // 이미지는 <img> 처럼 헤더 없이 ?seUser= 로 부른다(설정 사용자 sew_multi 는 SEWETCH 를 볼 수 있어 쿼리가 무시되면 403 이 아니다)
-    const image = `${base}${path}/versions/${crtime}/images/s0-bi?seUser=sew_cvd`
+    const image = `${base}${path}/versions/${crtime}/files/any/images/s0-bi?seUser=sew_cvd`
     for (const res of [await get(`${path}/versions`, 'sew_cvd'), await get(`${path}/versions/current`, 'sew_cvd'), await get(`${path}/versions/${crtime}`, 'sew_cvd'), await fetch(image)]) {
       expect(res.status, res.url).toBe(403)
       expect((await res.json()).code, res.url).toBe('PROCESS_FORBIDDEN')
@@ -128,5 +128,66 @@ describe('InterfaceServer 응답 해석 (실제 서버)', () => {
     expect(e).toMatchObject({ statusCode: 502, code: 'UPSTREAM_FAILED' })
     expect(e.upstream.status).toBe(200)
     expect(e.upstream.text).toContain('"success":"false"')
+  })
+})
+
+describe('같은 crtime 으로 다시 올라온 파일 (캐시 정체성 = fs.files._id)', () => {
+  const { meta } = scenarios.find((s) => s.name === 'ALL_ACTIONS')
+  const PATH = `/scenarios/${enc(meta.process)}/${enc(meta.model)}/${enc(meta.name)}`
+  const open = async (crtime = 'current') => {
+    const res = await get(`${PATH}/versions/${crtime}`)
+    return { status: res.status, stats: res.headers.get('x-se-open-stats'), sk: res.status === 200 ? (await res.json()).data : null }
+  }
+  const bucket = () => {
+    const mongoose = require('mongoose')
+    const { earsConnection } = require('../../../../shared/db/connection')
+    return new mongoose.mongo.GridFSBucket(earsConnection.db)
+  }
+  const fileDoc = async (crtime) => {
+    const { earsConnection } = require('../../../../shared/db/connection')
+    return earsConnection.db.collection('fs.files').findOne({ 'metadata.process': meta.process, 'metadata.model': meta.model, 'metadata.name': meta.name, 'metadata.crtime': crtime })
+  }
+  const upload = (filename, metadata, content) => new Promise((resolve, reject) => {
+    const up = bucket().openUploadStream(filename, { metadata })
+    up.on('finish', () => resolve(up.id)).on('error', reject)
+    up.end(content)
+  })
+
+  it('빈 BI 로 다시 올라오면(redis_to_mongo) 사내 getscenario 처럼 새 파일을 읽고, 지우면 옛 캐시로 돌아간다', async () => {
+    const before = await open()
+    const { crtime } = before.sk.version
+    expect(before.sk.baseImageSummary.present).toBeGreaterThan(0)
+    const oldUrl = before.sk.steps.find((s) => s.baseImage.state === 'present').baseImage.url
+    const old = await fileDoc(crtime)
+    expect(oldUrl).toContain(`/files/${old._id}/images/`)
+    const id = await upload(old.filename, old.metadata, '')
+    try {
+      const after = await open()
+      expect(after.stats).toContain('fromCache=false')
+      expect(after.sk.baseImageSummary.present).toBe(0)
+      // 옛 URL 은 1년 캐시 대상이라 내용이 그대로여야 한다
+      expect((await fetch(`${base.replace('/scenario-editor', '')}${oldUrl}?seUser=sew_master`)).status).toBe(200)
+    } finally {
+      await bucket().delete(id)
+    }
+    const back = await open()
+    expect(back.stats).toContain('fromCache=true')
+    expect(back.sk.baseImageSummary.present).toBe(before.sk.baseImageSummary.present)
+  })
+  it('파일 이름이 규칙과 달라도 메타데이터로 찾아 연다', async () => {
+    const { sk } = await open()
+    const old = await fileDoc(sk.version.crtime)
+    const crtime = sk.version.crtime + 1
+    const id = await upload('SEW_NONSTANDARD_NAME', { ...old.metadata, crtime }, '')
+    try {
+      const res = await open(crtime)
+      expect(res.status).toBe(200)
+      expect(res.sk.version.crtime).toBe(crtime)
+    } finally {
+      await bucket().delete(id)
+    }
+  })
+  it('없는 판은 404', async () => {
+    expect((await open(1)).status).toBe(404)
   })
 })
