@@ -8,7 +8,9 @@ describe('withMongoErrors', () => {
     const names = [
       'MongoNetworkError', 'MongoNetworkTimeoutError', 'MongoServerSelectionError', 'MongoNotConnectedError', 'MongoTopologyClosedError',
       // 한 연결이 끊긴 뒤 같이 돌던 질의가 받는 오류들
-      'MongoPoolClearedError', 'MongoServerClosedError', 'MongoPoolClosedError', 'MongoWaitQueueTimeoutError'
+      'MongoPoolClearedError', 'MongoServerClosedError', 'MongoPoolClosedError', 'MongoWaitQueueTimeoutError',
+      // 드라이버 이름에 Mongo 접두사가 없다(mongodb 7 PoolClearedOnNetworkError)
+      'PoolClearedOnNetworkError'
     ]
     for (const name of names) {
       const err = await withMongoErrors({ find: fail(name) }).find().catch((e) => e)

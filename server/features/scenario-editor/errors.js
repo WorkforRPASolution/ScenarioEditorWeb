@@ -9,10 +9,10 @@ function seError(status, code, message) {
 }
 
 // 드라이버 오류 이름(mongodb 6~7). 질의 도중 끊겨도 500 이 아니라 503 이 되게 한다(설계 오류 표).
-// 뒤 네 개(풀 비움·서버 닫힘·풀 닫힘·대기열 시간 초과)는 한 연결이 끊긴 뒤 같이 돌던 질의가 받는다.
+// 뒤 다섯 개(풀 비움 둘·서버 닫힘·풀 닫힘·대기열 시간 초과)는 한 연결이 끊긴 뒤 같이 돌던 질의가 받는다.
 const MONGO_DOWN = new Set([
   'MongoNetworkError', 'MongoNetworkTimeoutError', 'MongoServerSelectionError', 'MongoNotConnectedError', 'MongoTopologyClosedError',
-  'MongoPoolClearedError', 'MongoServerClosedError', 'MongoPoolClosedError', 'MongoWaitQueueTimeoutError'
+  'MongoPoolClearedError', 'PoolClearedOnNetworkError', 'MongoServerClosedError', 'MongoPoolClosedError', 'MongoWaitQueueTimeoutError'
 ])
 // 서버가 내려가거나 주 노드가 바뀌는 중에 서버가 돌려주는 MongoServerError 코드.
 // 91 ShutdownInProgress, 11600 InterruptedAtShutdown, 189 PrimarySteppedDown, 10107 NotWritablePrimary, 13435 NotPrimaryNoSecondaryOk
