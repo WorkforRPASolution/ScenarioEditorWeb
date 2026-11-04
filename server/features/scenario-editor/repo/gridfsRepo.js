@@ -4,6 +4,8 @@
 const { seError, withMongoErrors, mapGridfsError } = require('../errors')
 
 const MAX = 20000
+// 본문 읽기 전체의 상한. 풀기는 한 번에 하나라 멈춘 읽기 하나가 다른 판을 막지 않게 한다. 브라우저 열기 제한(client OPEN_TIMEOUT_MS)과 같다.
+const READ_TIMEOUT_MS = 120000
 
 function createGridfsRepository(getDb, mongo) {
   const files = () => getDb().collection('fs.files')
@@ -12,7 +14,7 @@ function createGridfsRepository(getDb, mongo) {
   async function* streamContent(file) {
     let bytes = 0
     try {
-      for await (const chunk of new mongo.GridFSBucket(getDb()).openDownloadStream(file._id)) {
+      for await (const chunk of new mongo.GridFSBucket(getDb()).openDownloadStream(file._id, { timeoutMS: READ_TIMEOUT_MS })) {
         bytes += chunk.length
         yield chunk
       }
@@ -20,7 +22,7 @@ function createGridfsRepository(getDb, mongo) {
       throw mapGridfsError(e)
     }
     // 드라이버는 뒤쪽 조각이 없으면 오류 없이 끝낸다 — 전부 없으면 정상인 빈 BI 와 구분되지 않으므로 파일 길이와 대조한다.
-    if (bytes !== file.length) throw seError(422, 'DATA_INVALID', 'GridFS 파일 조각이 빠졌거나 깨졌습니다')
+    if (bytes !== file.length) throw seError(422, 'FILE_DAMAGED', 'GridFS 파일 조각이 빠졌거나 깨졌습니다')
   }
   const queries = withMongoErrors({
     async findCrtimes(process, model, name) {

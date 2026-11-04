@@ -42,7 +42,8 @@ describe('withMongoErrors', () => {
 describe('mapGridfsError (본문 읽기 도중 오류)', () => {
   const err = (name, extra = {}) => Object.assign(new Error('내부 주소 10.0.0.1:27017'), { name, ...extra })
   it.each([
-    ['조각이 빠졌거나 깨짐', err('MongoGridFSChunkError'), 422, 'DATA_INVALID'],
+    ['조각이 빠졌거나 깨짐', err('MongoGridFSChunkError'), 422, 'FILE_DAMAGED'],
+    ['읽기 시간 제한을 넘김', err('MongoOperationTimeoutError'), 504, 'UPSTREAM_TIMEOUT'],
     ['그 사이 파일이 지워짐', err('MongoRuntimeError', { code: 'ENOENT' }), 404, 'NOT_FOUND'],
     ['읽는 도중 연결이 끊김', err('MongoNetworkError'), 503, 'UPSTREAM_DOWN'],
     ['풀이 비워짐', err('PoolClearedOnNetworkError'), 503, 'UPSTREAM_DOWN'],

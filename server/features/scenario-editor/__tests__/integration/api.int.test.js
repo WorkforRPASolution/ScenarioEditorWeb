@@ -195,7 +195,7 @@ describe('같은 crtime 으로 다시 올라온 파일 (캐시 정체성 = fs.fi
     ['조각이 전부 없음', 10, {}],
     ['뒤쪽 조각이 없음', 300 * 1024, { n: 1 }],
     ['중간 조각이 없음', 600 * 1024, { n: 1 }]
-  ])('GridFS 파일이 깨지면(%s) 422 DATA_INVALID 이고 캐시에 남지 않는다', async (_, size, chunkFilter) => {
+  ])('GridFS 파일이 깨지면(%s) 422 FILE_DAMAGED 이고 캐시에 남지 않는다', async (_, size, chunkFilter) => {
     const { earsConnection } = require('../../../../shared/db/connection')
     const { sk } = await open()
     const old = await fileDoc(sk.version.crtime)
@@ -207,7 +207,7 @@ describe('같은 crtime 으로 다시 올라온 파일 (캐시 정체성 = fs.fi
       for (let i = 0; i < 2; i++) { // 두 번째도 같다 — 깨진 결과가 캐시에 남지 않는다
         const res = await get(`${PATH}/versions/${crtime}`)
         expect(res.status).toBe(422)
-        expect((await res.json()).code).toBe('DATA_INVALID')
+        expect((await res.json()).code).toBe('FILE_DAMAGED')
       }
     } finally {
       await bucket().delete(id)
