@@ -1,7 +1,8 @@
 'use strict'
 // InterfaceServer 호출(공통 설계 §7.1). 공개 함수 목록이 곧 허용 목록이다 — 경로·function 을 입력으로 합성하지 않는다.
 // 사용자 문구에는 내부 정보를 싣지 않고, 서버가 준 원문은 로그와 오류의 upstream { status, text } 로만 남긴다.
-// 504 는 결과를 모르는 실패다: 서버가 10초 askTimeout 뒤에도 저장을 끝까지 진행할 수 있어(분석 03 §1.4) 부른 쪽이 판 이력·Redis 로 확인해야 한다.
+// 503 은 요청이 가지 않았다는 뜻이다. 504 는 결과를 모르는 실패다: 시간 초과·응답 전 끊김이고, 서버가 10초 askTimeout 뒤에도 저장을 끝까지 진행할 수 있어(분석 03 §1.4)
+// 저장이 곧 배포이므로 부른 쪽이 다시 보내기 전에 판 이력·Redis 로 확인해야 한다.
 const { createLogger } = require('../../../shared/logger')
 const { serializeSetScenarioRequest } = require('../domain/csharpJson')
 const { seError } = require('../errors')
@@ -11,6 +12,8 @@ const log = createLogger('scenario-editor')
 const DEFAULT_URL = 'http://localhost:8080'
 const DEFAULT_TIMEOUT_MS = 15000
 const UPSTREAM_TEXT_MAX = 300
+// 요청을 보내기 전 단계의 실패 — 이것만 "가지 않았다" 고 말할 수 있다.
+const NOT_SENT_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EHOSTUNREACH', 'ENETUNREACH', 'EAI_AGAIN', 'UND_ERR_CONNECT_TIMEOUT', 'ERR_INVALID_URL'])
 
 // --- DI for testing ---
 let _fetch = globalThis.fetch
@@ -43,10 +46,10 @@ async function post(fn, body, timeoutMs) {
     status = res.status
     text = await res.text()
   } catch (e) {
-    if (e && e.name === 'TimeoutError') throw failure(fn, 504, 'UPSTREAM_TIMEOUT', 'InterfaceServer 응답이 늦습니다', status, e.message)
     // fetch failed 만으로는 서버가 죽었는지 거절했는지 모른다 — 원인을 함께 남긴다
     const cause = e && e.cause ? ` (${e.cause.code || e.cause.message || e.cause})` : ''
-    throw failure(fn, 503, 'UPSTREAM_DOWN', 'InterfaceServer 에 연결하지 못했습니다', status, `${e}${cause}`)
+    if (e && e.cause && NOT_SENT_CODES.has(e.cause.code)) throw failure(fn, 503, 'UPSTREAM_DOWN', 'InterfaceServer 에 연결하지 못했습니다', status, `${e}${cause}`)
+    throw failure(fn, 504, 'UPSTREAM_TIMEOUT', 'InterfaceServer 응답을 받지 못했습니다', status, `${e}${cause}`)
   }
   if (status === 500) throw failure(fn, 504, 'UPSTREAM_TIMEOUT', 'InterfaceServer 응답이 늦습니다', status, text)
   let parsed = null

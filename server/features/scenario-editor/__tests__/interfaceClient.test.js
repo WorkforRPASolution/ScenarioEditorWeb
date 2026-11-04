@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import http from 'node:http'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
 const { setScenario, _setDeps } = require('../clients/interfaceClient')
@@ -51,7 +52,7 @@ describe('응답 해석 (공통 설계 §7.2)', () => {
     ['JSON null', respondWith('null'), 502, 'UPSTREAM_FAILED'],
     ['HTTP 413', respondWith('too big', 413), 502, 'UPSTREAM_FAILED'],
     ['HTTP 500 (10초 askTimeout)', respondWith('There was an internal server error.', 500), 504, 'UPSTREAM_TIMEOUT'],
-    ['연결 실패', async () => { throw new TypeError('fetch failed') }, 503, 'UPSTREAM_DOWN']
+    ['연결 거부', async () => { throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED' } }) }, 503, 'UPSTREAM_DOWN']
   ])('%s', async (_, fake, statusCode, code) => {
     _setDeps({ fetch: fake })
     await expect(setScenario(scenario)).rejects.toMatchObject({ statusCode, code })
@@ -68,6 +69,45 @@ describe('응답 해석 (공통 설계 §7.2)', () => {
     const e = await setScenario(scenario).catch((x) => x)
     expect(e.message).not.toContain('ECONNREFUSED')
     expect(e.upstream.text).toContain('ECONNREFUSED')
+  })
+})
+
+describe('끊김: 503 은 요청이 가지 않았을 때만이다 (저장 = 배포라 다시 보내도 되는지가 갈린다)', () => {
+  const serve = (handler) => new Promise((resolve) => { const s = http.createServer(handler); s.listen(0, '127.0.0.1', () => resolve(s)) })
+  const urlOf = (s) => `http://127.0.0.1:${s.address().port}`
+  const closing = []
+  afterEach(async () => { await Promise.all(closing.splice(0).map((s) => new Promise((r) => { s.closeAllConnections(); s.close(r) }))) })
+
+  it('서버가 요청을 다 받은 뒤 끊으면 결과를 모르는 504 다', async () => {
+    const server = await serve((req) => { req.resume(); req.on('end', () => req.socket.destroy()) })
+    closing.push(server)
+    process.env.EARS_INTERFACE_URL = urlOf(server)
+    await expect(setScenario(scenario)).rejects.toMatchObject({ statusCode: 504, code: 'UPSTREAM_TIMEOUT' })
+  })
+  it('200 머리글 뒤 본문 중간에 끊겨도 504 다', async () => {
+    const server = await serve((req, res) => { req.resume(); req.on('end', () => { res.writeHead(200); res.write('{"succ', () => req.socket.destroy()) }) })
+    closing.push(server)
+    process.env.EARS_INTERFACE_URL = urlOf(server)
+    await expect(setScenario(scenario)).rejects.toMatchObject({ statusCode: 504, code: 'UPSTREAM_TIMEOUT', upstream: { status: 200 } })
+  })
+  it.each(['127.0.0.1', 'localhost'])('닫힌 포트(%s)는 요청이 가지 않았으니 503 이다', async (host) => {
+    const server = await serve(() => {})
+    const { port } = server.address()
+    await new Promise((r) => server.close(r))
+    process.env.EARS_INTERFACE_URL = `http://${host}:${port}`
+    await expect(setScenario(scenario)).rejects.toMatchObject({ statusCode: 503, code: 'UPSTREAM_DOWN' })
+  })
+  it('주소 설정이 틀려 보내지 못했으면 503 이다', async () => {
+    process.env.EARS_INTERFACE_URL = 'not a url'
+    await expect(setScenario(scenario)).rejects.toMatchObject({ statusCode: 503, code: 'UPSTREAM_DOWN' })
+  })
+  it.each(['ENOTFOUND', 'EHOSTUNREACH', 'ENETUNREACH', 'EAI_AGAIN', 'UND_ERR_CONNECT_TIMEOUT'])('연결 단계 오류 %s 는 503 이다', async (code) => {
+    _setDeps({ fetch: async () => { throw Object.assign(new TypeError('fetch failed'), { cause: { code } }) } })
+    await expect(setScenario(scenario)).rejects.toMatchObject({ statusCode: 503, code: 'UPSTREAM_DOWN' })
+  })
+  it.each(['ECONNRESET', 'EPIPE', 'UND_ERR_SOCKET', undefined])('그 밖 끊김(%s)은 504 다', async (code) => {
+    _setDeps({ fetch: async () => { throw Object.assign(new TypeError('fetch failed'), code ? { cause: { code } } : {}) } })
+    await expect(setScenario(scenario)).rejects.toMatchObject({ statusCode: 504, code: 'UPSTREAM_TIMEOUT' })
   })
 })
 
