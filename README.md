@@ -96,13 +96,13 @@ Windows 방화벽 허용 창이 뜨면 허용하지 않아도 된다(이 PC 안�
 | `npm install` 이 `SELF_SIGNED_CERT_IN_CHAIN`·`UNABLE_TO_GET_ISSUER_CERT` | 사내 루트 인증서 파일을 `npm config set cafile <인증서 경로>` 로 준다 |
 | 서버가 `EADDRINUSE`·`EACCES` 로 뜨지 않음 | 3100 을 다른 프로그램이 쓰거나 Windows 가 예약한 포트다(`netsh interface ipv4 show excludedportrange protocol=tcp`). `server\.env` 의 `PORT` 와 `client\.env` 의 `VITE_API_URL` 을 같은 새 포트로 바꾼다 |
 | Vite 가 5173 대신 5174 같은 다른 포트로 뜸 | 그 주소로 연다. 서버가 그 주소를 거부하므로 `server\.env` 의 `ALLOWED_ORIGINS` 끝에 `,http://localhost:5174` 처럼 더하고 다시 띄운다 |
-| 응답이 403 `HOST_FORBIDDEN`·`ORIGIN_FORBIDDEN`, 로그에 같은 코드 | 브라우저 주소를 `localhost`·`127.0.0.1` 로 연다. 다른 이름으로 열어야 하면 `server\.env` 의 `ALLOWED_HOSTS` 에 그 이름을, 화면 주소는 `ALLOWED_ORIGINS` 에 더하고 다시 띄운다 |
+| 응답이 403 `HOST_FORBIDDEN`·`ORIGIN_FORBIDDEN`, 로그에 같은 코드 | 화면은 `http://localhost:5173` 으로 연다(`127.0.0.1:5173` 은 `ALLOWED_ORIGINS` 에 없어 거부된다). 다른 주소로 열어야 하면 화면 주소를 `server\.env` 의 `ALLOWED_ORIGINS` 에, 서버를 부르는 이름을 `ALLOWED_HOSTS` 에 더하고 다시 띄운다 |
 | 서버가 `Failed to start server: …` 로 끝남 | Mongo 에 붙지 못했다. `MONGODB_URI` 의 주소·계정·`authSource` 를 사내 WebManager 설정과 대조한다 |
 | `[server]` 로그에 `Redis connection failed`, 화면에 "DB·Redis 에 연결되지 않았습니다" | `REDIS_URL`(Sentinel 이면 `REDIS_PASSWORD` 도)을 사내 WebManager 설정과 대조한다. 서버는 Redis 없이도 뜨지만 목록·버전·열기가 되지 않는다 |
 | 시나리오가 열리지 않거나 경고가 이상함 | 화면의 문구와 `server\logs` 의 그날 로그를 함께 적어 온다 |
 
 ### 8. 알아 둘 것
 
-- 시나리오를 처음 열면 기준 화면 묶음(BI)을 통째로 읽는다. 100MB 급이면 이 PC 메모리를 약 650MB 쓰고, 운영 Mongo 에서도 그만큼 읽는다. 다시 열 때는 `server\.cache\images`(상한 2GB)를 쓴다. 동시에 여는 수 제한은 아직 없다(SEW-005) — 혼자 시험한다.
+- 시나리오를 처음 열면 기준 화면 묶음(BI)을 조각으로 흘려 읽어 PNG 로 디스크에 쓴다. 100MB 급이면 이 PC 메모리를 약 300MB 쓰고(로컬 측정), 운영 Mongo 에서는 그 파일 전체를 읽는다. 서로 다른 시나리오의 첫 열기는 한 번에 하나씩 돈다. 다시 열 때는 `server\.cache\images`(상한 2GB)를 쓰고 Mongo 에서는 파일 id 만 조회한다.
 - 데이터 점검 창은 사용자 범위(공정·모델) 안의 `SC_PROPERTY` 를 집계한다. 마스터 사용자면 전체다.
 - 실제 운영 데이터는 처음 본다. 해석이 깨지면 화면이 죽지 않고 경고로 보인다. 어떤 시나리오에서 무엇이 어떻게 보였는지(경고 문구·화면) 적어 오면 고친다.
