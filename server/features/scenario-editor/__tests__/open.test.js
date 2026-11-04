@@ -210,6 +210,20 @@ describe('openService', () => {
       t.gateOf('f2').open()
       await cold
     })
+    it('풀기 중에 이미지 캐시를 비우면 풀기가 끝난 뒤에 비운다(풀던 폴더가 사라져 열기가 실패하지 않게)', async () => {
+      const t = coldSetup()
+      const opening = t.svc.open({}, 'P', 'M', 'N', '1')
+      await tick()
+      let cleared = false
+      const clearing = t.svc.clearImages().then(() => { cleared = true })
+      await tick()
+      expect(cleared).toBe(false)
+      t.gateOf('f1').open()
+      expect((await opening).stats.fromCache).toBe(false)
+      await clearing
+      expect(cleared).toBe(true)
+      expect((await t.svc.open({}, 'P', 'M', 'N', '1')).stats.fromCache).toBe(false) // 정말 비웠다
+    })
     it('풀기가 실패해도 다음 풀기가 돈다', async () => {
       const svc = createOpenService({
         repo: { findScenarioKeyDocs: async () => [{ property: { Priority: 10 }, performance: {} }] },

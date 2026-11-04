@@ -31,7 +31,7 @@ async function refreshCache(req, res) {
   const d = getDeps()
   d.users.clear()
   d.scopes.clear()
-  if (images) await d.imageCache.clear()
+  if (images) await d.opener.clearImages()
   ok(res, { refreshed: true })
 }
 

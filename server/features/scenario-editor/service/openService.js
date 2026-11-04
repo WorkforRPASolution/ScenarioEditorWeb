@@ -106,7 +106,10 @@ function createOpenService({ repo, hash, gridfs, scopes, imageCache, log }) {
     return p
   }
 
-  return { open, imagePath }
+  // 풀기가 끝나기를 기다린다 — 풀던 폴더가 사라지면 그 열기가 실패한다.
+  const clearImages = () => unpacking.run(() => imageCache.clear())
+
+  return { open, imagePath, clearImages }
 }
 
 module.exports = { createOpenService, baseUrl, versionKey }

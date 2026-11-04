@@ -30,7 +30,7 @@ beforeEach(() => {
       scopeFor: async () => ({ pairs: [{ process: 'CVD', models: [{ model: 'M1', eqpCount: 2 }] }], invalid: [{ eqpId: 'X', reason: 'REQUIRED_EMPTY' }], duplicateEqpIds: ['D'], proxyIpDuplicates: [], valid: [] }),
       assertAllowed: async () => {}, clear: () => { cleared++ }
     },
-    imageCache: { clear: async () => { cleared += 10 } }
+    opener: { clearImages: async () => { cleared += 10 } }
   })
   // Object.assign 은 getter 를 값으로 복사하므로 따로 정의한다
   Object.defineProperty(fake, 'cleared', { get: () => cleared, configurable: true })
