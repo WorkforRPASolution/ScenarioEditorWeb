@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest'
 import http from 'node:http'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
@@ -82,8 +82,31 @@ describe('쓰기 요청의 출처 검사 (CSRF 방어)', () => {
     const res = await send('POST', REFRESH, { Origin: ALLOWED, Host: 'evil.example' })
     expect(res.body).toMatchObject({ code: 'HOST_FORBIDDEN' })
   })
-  it('읽기 요청의 출처는 이 검사가 보지 않는다(같은 PC 의 <img> 는 Origin 이 없다)', async () => {
+  it('Origin 이 없는 읽기는 통과한다(<img> 는 Origin 을 보내지 않는다)', async () => {
     expect((await send('GET', ME, { 'Sec-Fetch-Site': 'cross-site' })).status).toBe(200)
+  })
+})
+
+describe('허용되지 않은 Origin 은 메서드와 상관없이 막고 오류 기록에 남기지 않는다', () => {
+  const { WebManagerLog } = require('../../../shared/models/webmanagerLogModel')
+  it.each([
+    ['GET', ME, {}],
+    ['POST', REFRESH, {}],
+    ['OPTIONS', REFRESH, { 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'content-type' }] // JSON POST CSRF 는 사전 확인부터 시작한다
+  ])('%s %s', async (method, path, headers) => {
+    const save = vi.spyOn(WebManagerLog.prototype, 'save')
+    try {
+      const res = await send(method, path, { Origin: 'https://evil.example', ...headers })
+      expect(res.status).toBe(403)
+      expect(res.body).toMatchObject({ code: 'ORIGIN_FORBIDDEN' })
+      expect(save).not.toHaveBeenCalled()
+    } finally {
+      save.mockRestore()
+    }
+  })
+  it('허용된 Origin 의 읽기와 사전 확인은 그대로다', async () => {
+    expect((await send('GET', ME, { Origin: ALLOWED })).status).toBe(200)
+    expect((await send('OPTIONS', REFRESH, { Origin: ALLOWED, 'Access-Control-Request-Method': 'POST' })).status).toBe(204)
   })
 })
 
