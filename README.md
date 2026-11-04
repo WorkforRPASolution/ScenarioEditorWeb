@@ -96,6 +96,7 @@ Windows 방화벽 허용 창이 뜨면 허용하지 않아도 된다(이 PC 안�
 | `npm install` 이 `SELF_SIGNED_CERT_IN_CHAIN`·`UNABLE_TO_GET_ISSUER_CERT` | 사내 루트 인증서 파일을 `npm config set cafile <인증서 경로>` 로 준다 |
 | 서버가 `EADDRINUSE`·`EACCES` 로 뜨지 않음 | 3100 을 다른 프로그램이 쓰거나 Windows 가 예약한 포트다(`netsh interface ipv4 show excludedportrange protocol=tcp`). `server\.env` 의 `PORT` 와 `client\.env` 의 `VITE_API_URL` 을 같은 새 포트로 바꾼다 |
 | Vite 가 5173 대신 5174 같은 다른 포트로 뜸 | 그 주소로 연다. 서버가 그 주소를 거부하므로 `server\.env` 의 `ALLOWED_ORIGINS` 끝에 `,http://localhost:5174` 처럼 더하고 다시 띄운다 |
+| 응답이 403 `HOST_FORBIDDEN`·`ORIGIN_FORBIDDEN`, 로그에 같은 코드 | 브라우저 주소를 `localhost`·`127.0.0.1` 로 연다. 다른 이름으로 열어야 하면 `server\.env` 의 `ALLOWED_HOSTS` 에 그 이름을, 화면 주소는 `ALLOWED_ORIGINS` 에 더하고 다시 띄운다 |
 | 서버가 `Failed to start server: …` 로 끝남 | Mongo 에 붙지 못했다. `MONGODB_URI` 의 주소·계정·`authSource` 를 사내 WebManager 설정과 대조한다 |
 | `[server]` 로그에 `Redis connection failed`, 화면에 "DB·Redis 에 연결되지 않았습니다" | `REDIS_URL`(Sentinel 이면 `REDIS_PASSWORD` 도)을 사내 WebManager 설정과 대조한다. 서버는 Redis 없이도 뜨지만 목록·버전·열기가 되지 않는다 |
 | 시나리오가 열리지 않거나 경고가 이상함 | 화면의 문구와 `server\logs` 의 그날 로그를 함께 적어 온다 |

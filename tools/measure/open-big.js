@@ -36,7 +36,7 @@ async function openOnce() {
   const peak = Math.max(p1.peakRssMb, p2.peakRssMb)
   if (!(peak <= LIMIT.peakRssMb)) failed.push(`peakRssMb ${peak} > ${LIMIT.peakRssMb} (또는 X-SE-Open-Stats 를 읽지 못함)`)
   if (failed.length) {
-    console.log('목표 밖 — 설계 §2.4 에 따라 진행 표시 방식·흘려 읽기를 다시 본다')
+    console.log('목표 밖 — 설계 §2.4 에 따라 진행 표시 방식을 다시 본다')
     for (const m of failed) console.log('  실패:', m)
   } else {
     console.log(`목표 안(첫 ${LIMIT.firstMs / 1000}초·다시 ${LIMIT.secondMs / 1000}초·RSS ${LIMIT.peakRssMb}MB 이하, peakRssMb ${peak})`)

@@ -25,6 +25,7 @@ ScenarioEditorWeb — 사내 ScenarioEditor(C# WPF)를 웹으로 다시 만드�
 - 사본을 다시 가져올 때는 WebManager 작업 트리를 읽지 않고 `git -C ../WebManager show <커밋>:<경로>` 로만 꺼낸다(`npm run upstream:import`).
 - 편입 대상은 `client/src/features/scenario-editor/`·`server/features/scenario-editor/` 둘뿐이다. 다른 기능 폴더를 import 하지 않는다.
 - 백엔드는 127.0.0.1 에서만 받는다. 시험 데이터는 공유 로컬 EARS 에 `SEW` 접두사로만 넣는다.
+- `server/localGuard.js`(Host 허용 목록·쓰기 출처 검사)는 단독판 전용이고 편입 때 사라진다. 단독판으로 사내 운영 DB 저장 시험까지 하기로 해 두었다(2026-11-04, 분석 40 §2.0).
 
 ## 실행·시험
 - 처음: `npm install && npm --prefix client install && npm --prefix server install && npm --prefix tools install`, `npx playwright install chromium`(E2E 브라우저), `cp server/.env.example server/.env`, `cp client/.env.example client/.env`
@@ -36,7 +37,8 @@ ScenarioEditorWeb — 사내 ScenarioEditor(C# WPF)를 웹으로 다시 만드�
 - 통합 시험: `npm run seed -- reset basic anomaly && npm --prefix server run test:integration` (로컬 Mongo·Redis·InterfaceServer). `server/.env` 의 `WEBMANAGER_DB_URI` 는 반드시 `SE_WEB_DEV` — 비워 두면 연결 코드가 WebManager 의 실제 로그 DB(`WEB_MANAGER`)로 떨어진다. `reset` 은 BIG_200 도 지우므로 측정 전에 `seed -- big` 을 다시 한다.
 - E2E: `npm run e2e` (시험 데이터 reset basic anomaly 가 먼저). 설정 `client/playwright.config.js`, 시험 `client/e2e/scenario-editor/`(7종 × 화면 1600×1000·1920×1080). 시험이 서버 3100(`PORT=3100`·`HOST=127.0.0.1`·`SE_DEV_USER_OVERRIDE=1`, `ALLOWED_ORIGINS` 에 5180 추가)과 클라이언트 5180(`VITE_API_URL=http://localhost:3100/api`)을 직접 띄우고 끝나면 내린다 — 값은 설정이 넘겨 로컬 `.env` 와 상관없다. 이미 떠 있는 서버는 다시 쓰지 않으므로 두 포트가 비어 있어야 한다(`npm run dev` 를 내린 뒤). 5173 은 다른 프로젝트 Vite 와 겹칠 수 있어 쓰지 않는다.
 - 큰 시나리오 측정: `npm run seed -- big` 후 서버(`SE_DEV_USER_OVERRIDE=1 npm --prefix server start` — `open-big.js` 가 `X-SE-User: sew_master` 로 부른다)를 띄우고 `node tools/measure/open-big.js` (끝나면 서버를 내린다).
-- 큰 시나리오 측정 (2026-11-01): BIG_200(200 스텝, BI 114,881,881바이트) 첫 열기 서버 258ms(`stats.ms`, 벽시계 270ms)·서버 peakRssMb 658(`X-SE-Open-Stats`, 100ms 간격 표본), 다시 열기 서버 4ms(벽시계 9ms, 디스크 뼈대 캐시), 뼈대 응답 313,942자(JSON, 압축 전). 앞의 ms 는 서버가 잰 `stats.ms` 이고 클라이언트가 잰 벽시계 값은 뒤 괄호다. `/usr/bin/time -l` 로 잰 프로세스 최대 상주 메모리 649 MiB(680,607,744바이트)가 표본값과 맞는다. 다시 잰 실행들: 첫 열기 서버 226~262ms(벽시계 240~280ms)·peakRssMb 637~674(674 는 한도를 낮춘 실패 경로 확인 실행)·다시 열기 서버 3~4ms(벽시계 7~9ms). `open-big.js` 는 첫 30초·다시 1초·peakRssMb 1024 이하와 fromCache(첫 false·다시 true)를 모두 검사하고 하나라도 어기면 종료 코드 1 이다. 기준 안이라 `gridfsRepo.readContent` 흘려 읽기 task 는 등록하지 않았다. 로컬 Mongo·차가운 서버 기준, 사내 값 아님.
+- 큰 시나리오 측정 (2026-11-04, BI 흘려 읽기 뒤): BIG_200 첫 열기 서버 414~435ms(벽시계 428~450ms)·peakRssMb 239~313, 다시 열기 서버 3~4ms(벽시계 8~10ms). 같은 서버에서 연달아 세 번 잰 실행의 `/usr/bin/time -l` 최대 상주 메모리 287 MiB(301,121,536바이트). 흘려 읽기 전(아래)보다 메모리는 절반 아래, 첫 열기는 2배쯤 느리다. 로컬 Mongo 기준, 사내 값 아님.
+- 큰 시나리오 측정 (2026-11-01, 흘려 읽기 전): BIG_200(200 스텝, BI 114,881,881바이트) 첫 열기 서버 258ms(`stats.ms`, 벽시계 270ms)·서버 peakRssMb 658(`X-SE-Open-Stats`, 100ms 간격 표본), 다시 열기 서버 4ms(벽시계 9ms, 디스크 뼈대 캐시), 뼈대 응답 313,942자(JSON, 압축 전). 앞의 ms 는 서버가 잰 `stats.ms` 이고 클라이언트가 잰 벽시계 값은 뒤 괄호다. `/usr/bin/time -l` 로 잰 프로세스 최대 상주 메모리 649 MiB(680,607,744바이트)가 표본값과 맞는다. 다시 잰 실행들: 첫 열기 서버 226~262ms(벽시계 240~280ms)·peakRssMb 637~674(674 는 한도를 낮춘 실패 경로 확인 실행)·다시 열기 서버 3~4ms(벽시계 7~9ms). `open-big.js` 는 첫 30초·다시 1초·peakRssMb 1024 이하와 fromCache(첫 false·다시 true)를 모두 검사하고 하나라도 어기면 종료 코드 1 이다. 로컬 Mongo·차가운 서버 기준, 사내 값 아님.
 
 ## P1 완료 확인 (2026-11-01)
 설계(ARS `docs/scenario-editor-web/design/p1-view-design.md`) §2 완료 조건 6개. 로컬 Mongo·Redis·InterfaceServer 컨테이너, 시험 데이터 `seed -- reset basic anomaly` + `seed -- big` 을 새로 넣은 뒤 확인했다.
