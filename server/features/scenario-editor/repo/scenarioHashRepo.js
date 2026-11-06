@@ -12,6 +12,15 @@ function createScenarioHashRepository(getRedis) {
       } catch {
         throw seError(503, 'UPSTREAM_DOWN', 'Redis 를 읽지 못했습니다')
       }
+    },
+    async hget(key, field) {
+      const r = getRedis()
+      if (!r) throw seError(503, 'UPSTREAM_DOWN', 'Redis 에 연결되지 않았습니다')
+      try {
+        return await r.hget(key, field)
+      } catch {
+        throw seError(503, 'UPSTREAM_DOWN', 'Redis 를 읽지 못했습니다')
+      }
     }
   }
 }

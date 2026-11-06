@@ -24,7 +24,7 @@ function build(env = process.env) {
     return webManagerConnection.db
   }
   const now = () => Date.now()
-  const repo = createEarsRepository(getDb)
+  const repo = createEarsRepository(getDb, mongoose.mongo)
   const web = createWebRepository(getWebDb, mongoose.mongo)
   const hash = createScenarioHashRepository(getRedisClient)
   const gridfs = createGridfsRepository(getDb, mongoose.mongo)

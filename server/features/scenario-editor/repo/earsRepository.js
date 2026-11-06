@@ -1,11 +1,21 @@
 'use strict'
-// EARS 읽기 전용(P1). 쓰기 함수는 P2 에서 이 파일에만 더한다(공통 설계 §3.3).
+// EARS 읽기 + 쓰기(공통 설계 §3.3). 운영 데이터 쓰기 필드는 이 파일에만 둔다.
+// 쓰는 필드(SC_PROPERTY): scCategory·trCategory(Int64), property.Owners, property.IsEnabled,
+// performance(새 대상은 전체, 심의·성과 수정은 performance.* 필드). 본문·BI·property 전체는 setscenario 로만 쓴다.
 const { withMongoErrors } = require('../errors')
 
 const MAX = 20000
 
-function createEarsRepository(getDb) {
+const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+// mongo = mongoose.mongo (Long 용). scCategory·trCategory 는 사내 C# 이 Int64 로 쓴다.
+function createEarsRepository(getDb, mongo) {
   const col = (name) => getDb().collection(name)
+  const keyFilter = (k) => ({ process: k.process, eqpModel: k.model, scname: k.name, property: { $exists: true } })
+  const setFields = async (key, $set) => {
+    const r = await col('SC_PROPERTY').updateOne(keyFilter(key), { $set }, { maxTimeMS: MAX })
+    return { matched: r.matchedCount }
+  }
   return withMongoErrors({
     findUsers: (singleid) => col('ARS_USER_INFO').find({ singleid }, { projection: { password: 0 } }).maxTimeMS(MAX).toArray(),
     findAgents: () => col('AGENT_INFO').find({ arsagentJava: 1 }, { projection: { _id: 0, eqpId: 1 } }).maxTimeMS(MAX).toArray(),
@@ -23,7 +33,32 @@ function createEarsRepository(getDb) {
         { $sort: { '_id.process': 1, '_id.model': 1, '_id.name': 1 } }
       ], { maxTimeMS: MAX }).toArray()
       return rows.map((r) => ({ process: r._id.process, model: r._id.model, name: r._id.name, count: r.count }))
-    }
+    },
+    finishDeploy: (key, { scCategory, owners, performance }) => {
+      const $set = { scCategory: mongo.Long.fromNumber(scCategory), trCategory: mongo.Long.fromNumber(0), 'property.Owners': owners }
+      if (performance && typeof performance === 'object') $set.performance = performance
+      return setFields(key, $set)
+    },
+    setEnabled: (key, { enabled, owners }) => setFields(key, { 'property.IsEnabled': enabled, 'property.Owners': owners }),
+    setReview: (key, fields) => setFields(key, { ...fields }),
+    setPerformanceFields: (key, fields) => {
+      const bad = Object.keys(fields).filter((k) => !k.startsWith('performance.'))
+      if (bad.length) throw new Error(`performance. 로 시작하지 않는 필드: ${bad.join(', ')}`)
+      return setFields(key, { ...fields })
+    },
+    countPropertyDocs: (key) => col('SC_PROPERTY').countDocuments(keyFilter(key), { maxTimeMS: MAX }),
+    searchUsers: (q) => {
+      const rx = { $regex: escapeRegex(q), $options: 'i' }
+      return col('ARS_USER_INFO')
+        .find({ $or: [{ singleid: rx }, { name: rx }] }, { projection: { _id: 0, singleid: 1, name: 1, process: 1, password: 0 } })
+        .limit(20).maxTimeMS(MAX).toArray()
+    },
+    findSameNameModels: async (process, name) => {
+      const models = await col('SC_PROPERTY').distinct('eqpModel', { process, scname: name, property: { $exists: true } }, { maxTimeMS: MAX })
+      return [...models].sort()
+    },
+    hasNameRule: async () => (await getDb().listCollections({ name: 'SC_NAME_RULE' }, { nameOnly: true }).toArray()).length > 0,
+    findNameRule: () => col('SC_NAME_RULE').find({}, { projection: { _id: 0 } }).maxTimeMS(MAX).toArray()
   })
 }
 
