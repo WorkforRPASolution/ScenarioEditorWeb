@@ -10,7 +10,7 @@ const { seError } = require('../errors')
 
 const enc = encodeURIComponent
 // 디스크 뼈대 캐시 형식 번호. 뼈대에 담는 값이 바뀌면 올린다 — 다른 번호(없음 포함)의 캐시는 없는 것으로 보고 다시 푼다.
-const SKELETON_CACHE_FORMAT = 2
+const SKELETON_CACHE_FORMAT = 3 // 3: 이미지가 아닌 조건의 찾을 그림도 떼고, 정규 키가 아닌 찾을 그림은 raw 에 저장값 그대로(2026-11-06)
 // 이미지 URL 은 1년 캐시라 내용이 바뀌면 안 된다 — 파일 id 를 넣어 같은 crtime 으로 다시 올라온 파일과 구분한다.
 const baseUrl = (p, m, n, crtime, fileId) => `/scenario-editor/scenarios/${enc(p)}/${enc(m)}/${enc(n)}/versions/${crtime}/files/${enc(fileId)}/images`
 const rss = () => process.memoryUsage().rss

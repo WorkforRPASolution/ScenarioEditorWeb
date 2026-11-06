@@ -175,7 +175,7 @@ describe('refreshPropertyParts', () => {
 
 describe('원본 보존', () => {
   const noImages = { parseFailed: false, present: new Set(), literals: new Map(), count: null }
-  const withTrain = (v) => ({ ...base.body, Step: [{ ...base.body.Step[0], Metadata: md(1, { 0: { BinaryImage: v, Type: true } }) }] })
+  const withTrain = (v, train = { 0: { BinaryImage: v, Type: true } }) => ({ ...base.body, Step: [{ ...base.body.Step[0], Metadata: md(1, train) }] })
   it('자리표시 찾을 그림은 raw 에 원래 값으로 남는다', () => {
     const { skeleton } = buildSkeleton({ ...base, body: withTrain('AA=='), baseImages: noImages })
     expect(skeleton.steps[0].raw.Metadata.ImageSearchParam.TrainImageMap['0'].BinaryImage).toBe('AA==')
@@ -204,6 +204,30 @@ describe('원본 보존', () => {
     const { TargetWindowCondition, ...noTwc } = base.body
     expect('TargetWindowCondition' in buildSkeleton({ ...base, body: noTwc }).skeleton.header.raw).toBe(false)
     expect(buildSkeleton({ ...base, body: noTwc }).skeleton.header.raw).toEqual({ Compensation: null })
+  })
+  it('이미지가 아닌 조건의 찾을 그림도 떼어 URL 로 바꾼다(이미지 스텝을 OCR·조건 없음으로 바꿔 저장한 판)', () => {
+    const train = { 0: { BinaryImage: LONG_B64, Type: true }, 1: { BinaryImage: 'AA==', Type: false } }
+    const steps = [{ ...base.body.Step[1], Metadata: md(2, train) }, { ...base.body.Step[2], Metadata: md(0, { 3: { BinaryImage: LONG_B64, Type: false } }) }]
+    const { skeleton, images } = buildSkeleton({ ...base, body: { ...base.body, Step: steps }, baseImages: noImages })
+    expect(images.map((i) => i.id)).toEqual(['s0-train-0', 's1-train-3'])
+    const [s0, s1] = skeleton.steps
+    expect(s0.condition.kind).toBe('ocr')
+    expect(s0.raw.Metadata.ImageSearchParam.TrainImageMap).toEqual({ 0: { BinaryImage: '/img/s0-train-0', Type: true }, 1: { BinaryImage: 'AA==', Type: false } })
+    expect(s1.raw.Metadata.ImageSearchParam.TrainImageMap).toEqual({ 3: { BinaryImage: '/img/s1-train-3', Type: false } })
+    expect(s0.notes.filter((n) => n.params.field === 'trainImage')).toEqual([])
+  })
+  it('음이 아닌 정수의 정규 표기가 아닌 키의 그림은 떼지 않고 raw 에 저장값 그대로 둔다', () => {
+    const train = { '-1': { BinaryImage: LONG_B64, Type: true }, abc: { BinaryImage: LONG_B64, Type: true }, '01': { BinaryImage: LONG_B64, Type: true }, 0: { BinaryImage: LONG_B64, Type: true } }
+    const { skeleton, images } = buildSkeleton({ ...base, body: withTrain(null, train), baseImages: noImages })
+    expect(images.map((i) => i.id)).toEqual(['s0-train-0'])
+    const map = skeleton.steps[0].raw.Metadata.ImageSearchParam.TrainImageMap
+    expect(map).toEqual({ 0: { BinaryImage: '/img/s0-train-0', Type: true }, '-1': train['-1'], abc: train.abc, '01': train['01'] })
+    expect(skeleton.steps[0].condition.image.trainImages.find((t) => t.key === 0).url).toBe('/img/s0-train-0')
+    expect(skeleton.steps[0].condition.image.trainImages.filter((t) => t.key !== 0).every((t) => t.url === null)).toBe(true)
+    // 알림은 전과 같다: 정수가 아닌 키('-1'·'abc')는 한 번, '01' 은 숫자 1 로 읽혀 표에 "1" 이 없다는 알림
+    expect(skeleton.steps[0].notes.filter((n) => n.params.field === 'trainImage')).toEqual([
+      { level: 'warning', code: 'PARSE_FAILED', params: { field: 'trainImage' } },
+      { level: 'warning', code: 'PARSE_FAILED', params: { field: 'trainImage', key: 1 } }])
   })
   it('보정 RefImage 가 그림이면 raw 에는 null, URL 은 compensation.refImage 가 가리킨다', () => {
     const { skeleton } = buildSkeleton({ ...base, body: { ...base.body, Compensation: { RefImage: LONG_B64, X: 1, Y: 2 } } })

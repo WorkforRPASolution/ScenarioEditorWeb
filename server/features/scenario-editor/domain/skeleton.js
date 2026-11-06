@@ -7,6 +7,7 @@ const { graphNotes, scenarioNotes, SCENARIO_NOTE_CODES } = require('./notes')
 const { judgeTargetWindow } = require('./targetWindow')
 const { propertyFromBson } = require('./propertyModel')
 const { performanceFromBson } = require('./performanceModel')
+const { isTrainKey, trainImageId } = require('./trainKey')
 
 const isImage = (b64) => typeof b64 === 'string' && b64.length > 4 // "AA==" = 1바이트 자리표시(조건 없음·설비 상태)
 
@@ -25,11 +26,11 @@ const baseImageId = (i) => `s${i}-bi`
 // present = 그림인 BI 항목 전부(스텝 종류와 상관없이), literals = 그림이 아닌 항목 값, count = BI 항목 수(해석 실패·빈 파일이면 null).
 const NO_BASE_IMAGES = Object.freeze({ parseFailed: false, present: new Set(), literals: new Map(), count: null })
 
-// 찾을 그림은 그림만 URL 로 바꾼다. 자리표시(AA==)·빈 값은 원래 값을 둔다(그대로 다시 조립하려면 원본이 필요).
-function rawWithUrls(step, trainUrl) {
+// 찾을 그림은 떼어 낸 그림만 URL 로 바꾼다. 자리표시(AA==)·빈 값과 정규 키가 아닌 항목은 저장값을 둔다(그대로 다시 조립하려면 원본이 필요).
+function rawWithUrls(step, trainUrls) {
   const copy = JSON.parse(JSON.stringify(step))
   const map = trainMapOf(copy)
-  for (const k of Object.keys(map)) if (isObject(map[k]) && isImage(map[k].BinaryImage)) map[k].BinaryImage = trainUrl(k, map[k].BinaryImage)
+  for (const [k, u] of trainUrls) map[k].BinaryImage = u
   return copy
 }
 
@@ -65,12 +66,20 @@ function buildSkeleton({ process, model, name, crtime, isCurrent, body: storedBo
     const c = parseCondition(stored)
     const a = parseAction(stored, c.condition.kind)
     const notes = [...c.notes, ...(stepIsObject ? a.notes : [])]
-    const trainIds = new Map()
+    // 찾을 그림은 조건 종류와 상관없이 뗀다 — 사내에서 이미지 스텝을 OCR·조건 없음으로 바꾸면 표가 남은 채 저장되고,
+    // 다시 조립할 때 그 그림이 있어야 같은 글자가 나온다. ID·URL 은 정규 키에만 만든다(trainKey).
+    const map = trainMapOf(st)
+    const trainUrls = new Map()
+    for (const k of Object.keys(map)) {
+      const entry = map[k]
+      if (!isTrainKey(k) || !isObject(entry) || !isImage(entry.BinaryImage)) continue
+      const id = trainImageId(i, k)
+      images.push({ id, base64: entry.BinaryImage })
+      trainUrls.set(k, url(id))
+    }
     if (c.condition.image) {
-      const map = trainMapOf(st)
       let badKeyNoted = false
       c.condition.image.trainImages = c.condition.image.trainImages.map((ti) => {
-        // 이미지 ID·URL 은 음이 아닌 안전한 정수 키에만 만든다(그 밖의 키는 이미지 캐시가 거절해 열기 전체가 실패한다)
         if (!(Number.isSafeInteger(ti.key) && ti.key >= 0)) {
           if (!badKeyNoted) notes.push(note('warning', 'PARSE_FAILED', { field: 'trainImage' }))
           badKeyNoted = true
@@ -78,13 +87,7 @@ function buildSkeleton({ process, model, name, crtime, isCurrent, body: storedBo
         }
         const entry = map[ti.key] ?? map[String(ti.key)]
         if (!isObject(entry)) notes.push(note('warning', 'PARSE_FAILED', { field: 'trainImage', key: ti.key }))
-        if (isObject(entry) && isImage(entry.BinaryImage)) {
-          const id = `s${i}-train-${ti.key}`
-          images.push({ id, base64: entry.BinaryImage })
-          trainIds.set(String(ti.key), url(id))
-          return { ...ti, url: url(id) }
-        }
-        return { ...ti, url: null }
+        return { ...ti, url: trainUrls.get(String(ti.key)) ?? null }
       })
     }
     let baseImage
@@ -108,7 +111,7 @@ function buildSkeleton({ process, model, name, crtime, isCurrent, body: storedBo
       retry: { limit: st.RetryLimit, intervalMs: st.RetryInterval },
       descriptionToEmail: st.DescriptionToEmail, descriptionToDialog: st.DescriptionToDialog, isShowDialog: st.IsShowDialog,
       baseImage, bi, notes,
-      raw: rawWithUrls(st, (k) => trainIds.get(String(k)) ?? null)
+      raw: rawWithUrls(st, trainUrls)
     }
   })
   const g = graphNotes(rawSteps, steps.map((s) => s.next), uids)

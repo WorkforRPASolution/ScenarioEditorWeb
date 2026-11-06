@@ -1,5 +1,6 @@
 'use strict'
 // 편집 시나리오: 브라우저가 검사·초안·배포 요청에 싣는 구조 값(저장 형식 문자열 없음). 모양·형만 본다(업무 규칙은 rules).
+const { isTrainKey, trainImageId } = require('./trainKey')
 
 class EditedScenarioError extends Error {
   constructor(path, reason) {
@@ -131,18 +132,20 @@ function targetOf(t) {
   return clone(t)
 }
 
+// 찾을 그림 참조는 조건 종류와 상관없이 raw 의 찾을 그림 표에서 만든다(이미지가 아닌 스텝도 표를 지닐 수 있다).
+// 뼈대가 뗀 그림은 raw 에 그 URL(…/s{i}-train-{키})이 들어 있다 — '-' 는 base64 글자가 아니라 저장값과 헷갈리지 않는다.
+// 정규 키가 아닌 항목은 참조를 만들지 않는다(조립이 raw 의 저장값을 그대로 쓴다).
 function trainOf(step, i) {
   const out = {}
-  const raw = (((step.raw || {}).Metadata || {}).ImageSearchParam || {}).TrainImageMap || {}
-  const list = (step.condition && step.condition.image && step.condition.image.trainImages) || []
-  for (const ti of list) {
-    // 음이 아닌 안전한 정수가 아닌 키는 다시 조립할 수 없어 건너뛴다(뼈대도 URL 을 만들지 않는다).
-    if (!(Number.isSafeInteger(ti.key) && ti.key >= 0)) continue
-    if (ti.url) out[ti.key] = { from: 'source', id: `s${i}-train-${ti.key}` }
-    else {
-      const entry = raw[ti.key]
-      out[ti.key] = { literal: nullish(entry && typeof entry === 'object' ? clone(entry.BinaryImage) : null) }
-    }
+  const isp = ((step.raw || {}).Metadata || {}).ImageSearchParam
+  const map = isObject(isp) ? isp.TrainImageMap : null
+  if (!isObject(map)) return out
+  for (const k of Object.keys(map)) {
+    if (!isTrainKey(k)) continue
+    const entry = map[k]
+    const v = isObject(entry) ? entry.BinaryImage : null
+    const id = trainImageId(i, k)
+    out[k] = typeof v === 'string' && v.endsWith(`/${id}`) ? { from: 'source', id } : { literal: nullish(clone(v)) }
   }
   return out
 }

@@ -55,6 +55,15 @@ describe('editedFromSkeleton', () => {
     const e = fresh()
     expect(e.steps[0].images.train).toEqual({ 0: { from: 'source', id: 's0-train-0' }, 1: { literal: 'AA==' } })
   })
+  it('찾을 그림 참조는 조건 종류와 상관없이 raw 의 찾을 그림 표에서 만든다', () => {
+    const train = { 0: { BinaryImage: LONG_B64, Type: true }, 1: { BinaryImage: 'AA==', Type: false }, 2: null, '-1': { BinaryImage: LONG_B64, Type: true } }
+    const ocrBody = { ...body, Step: [{ ...body.Step[1], Metadata: md(2, train) }] }
+    const { skeleton: sk } = buildSkeleton({ process: 'P', model: 'M', name: 'N', crtime: 1, isCurrent: true, body: ocrBody, propertyDoc: {}, performanceDoc: {}, imageBaseUrl: '/img' })
+    const e = editedFromSkeleton(sk)
+    // 정규 키가 아닌 '-1' 은 참조를 만들지 않는다(조립이 raw 의 저장값을 그대로 쓴다)
+    expect(e.steps[0].images.train).toEqual({ 0: { from: 'source', id: 's0-train-0' }, 1: { literal: 'AA==' }, 2: { literal: null } })
+    expect(parseEditedScenario(JSON.parse(JSON.stringify(e)))).toEqual(e)
+  })
   it('기준 화면: image·literal·absent', () => {
     const e = fresh()
     expect(e.steps[0].images.base).toEqual({ from: 'source', id: 's0-bi' })
