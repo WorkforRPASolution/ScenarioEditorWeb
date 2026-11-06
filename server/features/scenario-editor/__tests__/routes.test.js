@@ -21,11 +21,12 @@ afterAll(() => { require('../deps')._setDeps(null); return new Promise((r) => se
 const user = { singleid: 'sew_multi', name: 'M', processRaw: 'CVD;ETCH', processes: ['CVD', 'ETCH'], multiProcess: ['CVD', 'ETCH'], process: 'CVD',
   isMaster: false, authority: 'WRITE', canWrite: true, authorityManager: 3, authorityManagerValid: true, authorityName: 'Manager', duplicateUserDocs: 1 }
 const { parseUser } = require('../domain/processPermission')
+const READERS = { sew_reader: { authority: 'READ', canWrite: false } }
 const MASTERS = { sew_master: parseUser({ singleid: 'sew_master', process: 'MASTER' }), sew_mastercvd: parseUser({ singleid: 'sew_mastercvd', process: 'MASTER;CVD' }) }
 beforeEach(() => {
   let cleared = 0
   Object.assign(fake, {
-    users: { getUser: async (id) => (id === 'sew_none' ? null : { ...user, singleid: id, ...MASTERS[id] }), clear: () => { cleared++ } },
+    users: { getUser: async (id) => (id === 'sew_none' ? null : { ...user, singleid: id, ...MASTERS[id], ...READERS[id] }), clear: () => { cleared++ } },
     scopes: {
       scopeFor: async () => ({ pairs: [{ process: 'CVD', models: [{ model: 'M1', eqpCount: 2 }] }], invalid: [{ eqpId: 'X', reason: 'REQUIRED_EMPTY' }], duplicateEqpIds: ['D'], proxyIpDuplicates: [], valid: [] }),
       assertAllowed: async () => {}, clear: () => { cleared++ }
@@ -182,5 +183,33 @@ describe('이미지', () => {
         chmodSync(png, 0o600)
       }
     })
+  })
+})
+
+describe('POST /check', () => {
+  const post = (body, headers = {}) => fetch(`${base}/check`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) })
+  afterEach(() => { delete require('../../../app').locals.seWriteDisabled })
+  it('WRITE 가 아닌 사용자는 403 WRITE_FORBIDDEN 이고 검사 서비스를 부르지 않는다', async () => {
+    let called = 0
+    fake.check = { check: async () => { called++ } }
+    const res = await post({}, { 'X-SE-User': 'sew_reader' })
+    expect(res.status).toBe(403)
+    expect(await res.json()).toMatchObject({ code: 'WRITE_FORBIDDEN' })
+    expect(called).toBe(0)
+  })
+  it('seWriteDisabled 면 403 WRITE_DISABLED', async () => {
+    fake.check = { check: async () => ({}) }
+    require('../../../app').locals.seWriteDisabled = true
+    const res = await post({})
+    expect(res.status).toBe(403)
+    expect(await res.json()).toMatchObject({ code: 'WRITE_DISABLED' })
+  })
+  it('WRITE 사용자는 사용자·본문을 검사 서비스에 넘기고 data 로 받는다', async () => {
+    const seen = []
+    fake.check = { check: async (u, meta) => { seen.push([u.singleid, meta]); return { blocks: [], warns: [], target: { exists: false, eqpCount: 2 }, conflict: null, targetExists: null } } }
+    const res = await post({ target: { process: 'CVD', model: 'M1', name: 'N' } })
+    expect(res.status).toBe(200)
+    expect((await res.json()).data).toMatchObject({ blocks: [], target: { eqpCount: 2 } })
+    expect(seen).toEqual([['sew_multi', { target: { process: 'CVD', model: 'M1', name: 'N' } }]])
   })
 })

@@ -29,6 +29,8 @@ function sourceChecks(edited, source) {
   if (source && (source.notes || []).some((x) => x.code === 'PARSE_FAILED' && x.params && (x.params.field === 'body' || x.params.field === 'steps'))) {
     out.push(issue('SOURCE_PARSE_FAILED'))
   }
+  // 기준 판 BI 가 스텝보다 길면 남는 BI 는 저장 때 잘린다 — 막지는 않고 알린다
+  if (source && typeof source.biCount === 'number' && source.biCount > edited.steps.length) out.push(issue('BI_LONGER_THAN_STEPS', undefined, { biCount: source.biCount, steps: edited.steps.length }))
   for (const s of edited.steps) {
     const b = s.images && s.images.base
     if (b === null || b === undefined) { out.push(issue('BI_COUNT_MISMATCH', s.uid, { reason: 'missing' })); continue }
@@ -96,8 +98,10 @@ function sizes(ctx) {
   const s = ctx.sizes
   const l = ctx.limits || {}
   if (!s) return out
-  if (typeof l.bodyMax === 'number' && s.bodyBytes > l.bodyMax) out.push(issue('BODY_TOO_LARGE', undefined, { bytes: s.bodyBytes, max: l.bodyMax }))
-  if (typeof l.requestMax === 'number' && s.requestBytes > l.requestMax) out.push(issue('REQUEST_TOO_LARGE', undefined, { bytes: s.requestBytes, max: l.requestMax }))
+  // 한도 값이 없으면 건너뛰지 않고 막는다(fail closed) — 한도를 못 받은 채 큰 본문을 InterfaceServer 로 보내지 않는다.
+  const over = (bytes, max) => typeof max !== 'number' || bytes > max
+  if (over(s.bodyBytes, l.bodyMax)) out.push(issue('BODY_TOO_LARGE', undefined, { bytes: s.bodyBytes, max: typeof l.bodyMax === 'number' ? l.bodyMax : null }))
+  if (over(s.requestBytes, l.requestMax)) out.push(issue('REQUEST_TOO_LARGE', undefined, { bytes: s.requestBytes, max: typeof l.requestMax === 'number' ? l.requestMax : null }))
   return out
 }
 

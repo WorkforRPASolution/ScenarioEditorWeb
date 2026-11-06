@@ -44,6 +44,8 @@ function build(env = process.env) {
   out.opener = createOpenService({ repo, hash, gridfs, scopes, imageCache, log: createLogger('scenario-editor') })
   const { createDataCheckService } = require('./service/dataCheckService')
   out.dataCheck = createDataCheckService({ repo, scopes })
+  const { createCheckService } = require('./service/checkService')
+  out.check = createCheckService({ repo, hash, scopes, opener: out.opener, env })
   return out
 }
 

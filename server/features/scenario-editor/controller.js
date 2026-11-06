@@ -97,4 +97,8 @@ function requireReviewer(req, res, next) {
   return denial ? denyWith(denial, next) : next()
 }
 
-module.exports = { requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, versions, open, dataCheck, image }
+async function check(req, res) {
+  ok(res, await getDeps().check.check(req.seUser, req.body))
+}
+
+module.exports = { check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, versions, open, dataCheck, image }

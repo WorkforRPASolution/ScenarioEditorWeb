@@ -123,7 +123,10 @@ describe('checkScenario 나누기', () => {
     const e10 = fresh(broken); e10.property = { Type: 1, StartDelay: 5, RetryInterval: 1, RetryCnt: 99, Priority: 2, ExecutingLevel: 2, NextScenarioIfSuccess: { Name: '', Text: 'ab' } }; run(e10, broken)
     const unknown = [...emitted].filter((c) => !(c in RULES))
     expect(unknown).toEqual([])
-    const unreachable = Object.keys(RULES).filter((c) => !emitted.has(c))
+    const e12 = fresh(okSource()); run(e12, { ...okSource(), biCount: 5 })
+    // 검사 서비스(checkService)가 직접 내는 코드 — checkScenario 는 내지 않는다
+    const serviceOnly = new Set(['SOURCE_GONE', 'IMAGE_SOURCE_GONE'])
+    const unreachable = Object.keys(RULES).filter((c) => !emitted.has(c) && !serviceOnly.has(c))
     expect(unreachable).toEqual([])
   })
 })

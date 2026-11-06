@@ -54,6 +54,17 @@ describe('시나리오 단위 막힘', () => {
     expect(blocks((e, c) => { c.sizes = big })).toEqual(expect.arrayContaining(['BODY_TOO_LARGE', 'REQUEST_TOO_LARGE']))
     expect(blocks((e, c) => { c.sizes = { bodyBytes: 15 * 1024 * 1024, requestBytes: 100 * 1024 * 1024 } })).toEqual([])
   })
+  it('크기: 한도가 없으면 건너뛰지 않고 막는다(fail closed)', () => {
+    expect(blocks((e, c) => { delete c.limits; c.sizes = { bodyBytes: 1, requestBytes: 1 } })).toEqual(expect.arrayContaining(['BODY_TOO_LARGE', 'REQUEST_TOO_LARGE']))
+    expect(blocks((e, c) => { c.limits = { bodyMax: 15 * 1024 * 1024 }; c.sizes = { bodyBytes: 1, requestBytes: 1 } })).toEqual(['REQUEST_TOO_LARGE'])
+  })
+  it('BI 가 스텝보다 길면 경고(BI_LONGER_THAN_STEPS), 같거나 짧으면 없음', () => {
+    const src = skeletonWith([rawStep({ next: [1, FAIL] }), rawStep({ next: [SUCCESS, FAIL] })], { biCount: 5 })
+    const r = run(none, { src })
+    expect(codesOf(r.warns)).toContain('BI_LONGER_THAN_STEPS')
+    expect(codesOf(r.blocks)).not.toContain('BI_LONGER_THAN_STEPS')
+    expect(warns(none)).not.toContain('BI_LONGER_THAN_STEPS')
+  })
 })
 
 describe('시나리오 단위 경고', () => {
