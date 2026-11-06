@@ -136,6 +136,7 @@ describe('setScenarioStream·delScenario (실제 http 서버)', () => {
   let handler
   const start = async (h) => {
     handler = h
+    received = undefined
     server = http.createServer((req, res) => {
       const rec = { headers: req.headers, chunks: [], aborted: false, ended: false }
       received = rec
@@ -193,7 +194,7 @@ describe('setScenarioStream·delScenario (실제 http 서버)', () => {
     let finished = false
     await start(() => { finished = true })
     const boom = new Error('image read failed')
-    async function* bad() { yield '{"a":"'.padEnd(1000, 'x'); await new Promise((r) => setTimeout(r, 100)); throw boom }
+    async function* bad() { yield '{"a":"'.padEnd(1000, 'x'); yield 'y'.repeat(1000); await new Promise((r) => setTimeout(r, 100)); throw boom }
     let caught
     try { await setScenarioStream({ chunks: bad, contentLength: 5000 }, {}) } catch (e) { caught = e }
     expect(caught).toBe(boom)
@@ -202,6 +203,45 @@ describe('setScenarioStream·delScenario (실제 http 서버)', () => {
     expect(received.ended).toBe(false)
     expect(received.closed).toBe(true)
     expect(Buffer.concat(received.chunks).length).toBeLessThan(5000)
+  })
+  describe('contentLength 가 어긋나면 완전한 본문을 보내지 않고 로컬 오류', () => {
+    const run = async (chunksFn, contentLength) => {
+      let finished = false
+      await start(() => { finished = true })
+      let caught
+      try { await setScenarioStream({ chunks: chunksFn, contentLength }, {}) } catch (e) { caught = e }
+      await new Promise((r) => setTimeout(r, 100))
+      expect(finished).toBe(false)
+      if (received) {
+        expect(received.ended).toBe(false)
+        expect(Buffer.concat(received.chunks).length).toBeLessThan(contentLength)
+      }
+      return caught
+    }
+    it('짧음(contentLength = 실제 + 5)', async () => {
+      const e = await run(gen, bytes + 5)
+      expect(e).toMatchObject({ code: 'CONTENT_LENGTH_MISMATCH' })
+      expect(e.statusCode).toBeUndefined()
+    })
+    it('김(contentLength = 실제 - 5)', async () => {
+      expect(await run(gen, bytes - 5)).toMatchObject({ code: 'CONTENT_LENGTH_MISMATCH' })
+    })
+    it('조각 하나가 contentLength 에서 딱 끝나는데 뒤에 조각이 더 있음 — 그 조각을 보내지 않는다', async () => {
+      const first = pieces[0]
+      expect(await run(gen, Buffer.byteLength(first, 'utf8'))).toMatchObject({ code: 'CONTENT_LENGTH_MISMATCH' })
+    })
+    it('문자열이 아닌 조각', async () => {
+      async function* weird() { yield 'abc'; yield 42 }
+      expect(await run(weird, 10)).toMatchObject({ code: 'CONTENT_LENGTH_MISMATCH' })
+    })
+  })
+  it('시간 초과로 끊으면 반복자 return() 을 부른다', async () => {
+    await start(() => {})
+    let returned = false
+    const iter = { [Symbol.asyncIterator]() { let i = 0; return { next: async () => (i < 2 ? { value: pieces[i++], done: false } : new Promise(() => {})), return: async () => { returned = true; return { done: true } } } } }
+    await expect(setScenarioStream({ chunks: () => iter, contentLength: bytes }, { timeoutMs: 100 })).rejects.toMatchObject({ code: 'UPSTREAM_TIMEOUT' })
+    await new Promise((r) => setTimeout(r, 50))
+    expect(returned).toBe(true)
   })
   it('delScenario 는 function delscenario 와 Process·Model·SCName 만 보낸다', async () => {
     await start(reply(OK))

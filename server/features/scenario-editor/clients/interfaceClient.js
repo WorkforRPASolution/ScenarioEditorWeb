@@ -76,25 +76,57 @@ async function setScenario({ process: proc, model, name, body, bi, property }, {
 // 흘려 보내기 — 본문이 100MB 를 넘을 수 있어 조각 반복자로 보낸다. fetch(undici)는 duplex 'half' 에서 사용자가 단 Content-Length 를 그대로 지킨다(시험으로 확인).
 // chunked 가 아니라 길이를 미리 달아야 InterfaceServer(akka-http)가 max-content-length 를 앞에서 판정한다.
 // 조각을 만들다 던지면 스트림을 오류로 끝내 요청을 끊고(짧은 본문은 완성되지 않는다 — 서버는 저장하지 않는다) 그 오류를 그대로 던진다.
+// 조각 합계가 contentLength 와 다르면(프로그램 오류) 완전한 본문을 보내지 않고 code CONTENT_LENGTH_MISMATCH 로컬 오류를 매핑 없이 던진다.
 async function setScenarioStream({ chunks, contentLength }, { timeoutMs } = {}) {
-  let iterError = null
+  let localError = null
   const it = chunks()[Symbol.asyncIterator]()
+  const stop = () => (typeof it.return === 'function' ? Promise.resolve(it.return()).catch(() => {}) : Promise.resolve())
+  const mismatch = (controller, msg) => {
+    localError = Object.assign(new Error(msg), { code: 'CONTENT_LENGTH_MISMATCH' })
+    controller.error(localError)
+    return stop()
+  }
+  // 한 조각 앞서 본다: 다음 조각(또는 끝)을 받은 뒤에야 쥐고 있던 조각을 보낸다. 그래서 contentLength 를 채우는 마지막 바이트는
+  // 반복자가 끝났다고 알린 뒤에만 나가고, 반복자에 더 있으면 완전한 본문이 서버에 닿지 않는다(InterfaceServer 는 저장하지 않는다).
+  let held = null
+  let sent = 0
+  let exhausted = false
   const body = new ReadableStream({
     async pull(controller) {
       try {
-        const { value, done } = await it.next()
-        if (done) controller.close()
-        else controller.enqueue(Buffer.from(value, 'utf8'))
+        for (;;) {
+          const { value, done } = await it.next()
+          if (done) {
+            exhausted = true
+            const total = sent + (held ? held.length : 0)
+            if (total !== contentLength) return await mismatch(controller, `contentLength ${contentLength} 와 조각 합계 ${total} 바이트가 다릅니다`)
+            if (held) controller.enqueue(held)
+            controller.close()
+            return
+          }
+          if (typeof value !== 'string') return await mismatch(controller, '조각은 문자열이어야 합니다')
+          if (value.length === 0) continue
+          const buf = Buffer.from(value, 'utf8')
+          if (!held) { held = buf; continue }
+          if (sent + held.length >= contentLength) return await mismatch(controller, `조각이 contentLength ${contentLength} 를 넘어섭니다`)
+          controller.enqueue(held)
+          sent += held.length
+          held = buf
+          return
+        }
       } catch (e) {
-        iterError = e
+        localError = e
         controller.error(e)
       }
     },
-    async cancel() {
-      if (typeof it.return === 'function') await it.return().catch(() => {})
-    }
+    cancel: stop
   })
-  await post('setscenario', body, timeoutMs, { headers: { 'Content-Length': String(contentLength) }, duplex: 'half', passThrough: () => iterError })
+  try {
+    await post('setscenario', body, timeoutMs, { headers: { 'Content-Length': String(contentLength) }, duplex: 'half', passThrough: () => localError })
+  } finally {
+    // 시간 초과로 끊으면 undici 가 본문 스트림을 취소하지 않는다 — 반복자를 직접 닫는다(기다리지 않는다: 멈춘 반복자는 return 도 못 끝낸다)
+    if (!exhausted) stop()
+  }
 }
 
 async function delScenario({ process: proc, model, name }) {
