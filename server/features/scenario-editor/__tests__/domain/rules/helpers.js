@@ -6,26 +6,26 @@ export const FAIL = -1
 export const NEXT = 10002
 const LONG_B64 = 'iVBORw0KGgoAAAANSUhEUg=='
 
-const md = (op, train = {}, ocr = {}) => ({
+const md = (op, train = {}, ocr = {}, accept = 0.9) => ({
   SearchArea: op === 0 ? { X: -18, Y: -18, Width: -18, Height: -18 } : { X: 10, Y: 20, Width: 300, Height: 200 },
-  ImageSearchParam: { TrainImageMap: train, AcceptThreshold: 0.9, MaximumNumberToFind: 1, TimeoutEnabled: true, Timeout: 1000 },
+  ImageSearchParam: { TrainImageMap: train, AcceptThreshold: accept, MaximumNumberToFind: 1, TimeoutEnabled: true, Timeout: 1000 },
   ConditionExpression: '',
   OcrParamInfo: { Type: 1, Operation: 1, TextValue: op === 2 ? 'IDLE@@@@1-0' : '1-0', NumberValue: -218, NumberRangeMin: -218, NumberRangeMax: -218, MinMatchingValue: 5, ...ocr }
 })
 
 // kind: none | image | ocr. next = [true쪽, false쪽] 저장 번호. action = [종류, 값].
-export function rawStep({ kind = 'none', action = [0, ''], next = [NEXT, FAIL], desc = '설명', retry = [2, 2000], ocr } = {}) {
+export function rawStep({ kind = 'none', action = [0, ''], next = [NEXT, FAIL], desc = '설명', retry = [2, 2000], ocr, accept } = {}) {
   const op = { none: 0, image: 1, ocr: 2 }[kind]
   const train = kind === 'image' ? { 0: { BinaryImage: LONG_B64, Type: true } } : {}
   return {
-    Operation: op, Metadata: md(op, train, kind === 'ocr' ? ocr : {}), Script: { Type: action[0], Value: action[1], NativeFunction: null },
+    Operation: op, Metadata: md(op, train, kind === 'ocr' ? ocr : {}, accept), Script: { Type: action[0], Value: action[1], NativeFunction: null },
     RetryInterval: retry[1], RetryLimit: retry[0], NextStepIfTrue: next[0], NextStepIfFalse: next[1],
     DescriptionToEmail: desc, DescriptionToDialog: '', IsShowDialog: true
   }
 }
 
-export function skeletonWith(rawSteps, { property = { Priority: 10, Type: 1 }, description = '메일 제목', timeout = 240, biCount } = {}) {
-  const present = new Set(rawSteps.map((s, i) => i)) // 사내는 스텝마다 BI 한 칸
+export function skeletonWith(rawSteps, { property = { Priority: 10, Type: 1 }, description = '메일 제목', timeout = 240, biCount, noBase = [] } = {}) {
+  const present = new Set(rawSteps.map((s, i) => i).filter((i) => !noBase.includes(i))) // 사내는 스텝마다 BI 한 칸
   const { skeleton } = buildSkeleton({
     process: 'P', model: 'M', name: 'N', crtime: 1730000000000, isCurrent: true,
     body: { RevisionNo: 0, TriggerType: 2, ID: 'P-M-N', Text: '', Description: description, Step: rawSteps, TimeoutLimit: timeout },

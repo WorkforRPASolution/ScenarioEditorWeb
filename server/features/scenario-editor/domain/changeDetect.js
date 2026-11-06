@@ -36,6 +36,20 @@ function stepKey(s, uidToStep) {
   })
 }
 
+// 편집 스텝이 기준 판의 어느 스텝에서 왔는지(uid → 기준 위치 또는 null). origin 이 기준 밖이거나 앞선 스텝이 이미 쓴 값이면 null —
+// 브라우저가 보내선 안 되는 값이라 새로 조립하는 쪽(고친 것)으로 본다. 변경 판정과 검사가 같은 해석을 쓴다.
+function resolveOrigins(steps, baseLength) {
+  const used = new Set()
+  const out = new Map()
+  for (const s of steps) {
+    const o = s.origin
+    if (o === null || !Number.isInteger(o) || o < 0 || o >= baseLength || used.has(o)) { out.set(s.uid, null); continue }
+    used.add(o)
+    out.set(s.uid, o)
+  }
+  return out
+}
+
 function changedStepUids(edited, source) {
   const changed = new Set()
   if (!source) { for (const s of edited.steps) changed.add(s.uid); return changed }
@@ -43,13 +57,10 @@ function changedStepUids(edited, source) {
   const uidToStep = new Map(edited.steps.map((s) => [s.uid, s]))
   // 기준 쪽 대상은 기준 스텝의 위치(origin = 인덱스)로 같은 꼴로 바꿔 비교한다.
   const baseUidToStep = new Map(base.map((s) => [s.uid, s]))
-  const used = new Set()
+  const origins = resolveOrigins(edited.steps, base.length)
   for (const s of edited.steps) {
-    // origin 이 기준 밖이거나 이미 다른 편집 스텝이 쓴 값이면 브라우저가 보내선 안 되는 값이다.
-    // 저장 원본을 두 번 재사용하게 되므로 새로 조립하는 쪽(고친 것)이 안전하다.
-    const o = s.origin
-    if (o === null || !Number.isInteger(o) || o < 0 || o >= base.length || used.has(o)) { changed.add(s.uid); continue }
-    used.add(o)
+    const o = origins.get(s.uid)
+    if (o === null) { changed.add(s.uid); continue }
     if (stepKey(s, uidToStep) !== stepKey(base[o], baseUidToStep)) changed.add(s.uid)
   }
   return changed
@@ -67,4 +78,4 @@ function changedPropertyKeys(editedProperty, sourceProperty) {
   return changed
 }
 
-module.exports = { changedStepUids, changedPropertyKeys }
+module.exports = { resolveOrigins, changedStepUids, changedPropertyKeys }

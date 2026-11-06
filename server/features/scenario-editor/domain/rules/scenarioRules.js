@@ -72,7 +72,7 @@ function flow(edited) {
 function header(edited) {
   const out = []
   const d = edited.header.description
-  if (typeof d !== 'string' || d.trim() === '') out.push(issue('MAIL_TITLE_EMPTY'))
+  if (d === undefined || d === null || d === '') out.push(issue('MAIL_TITLE_EMPTY'))
   else if (d.includes(':')) out.push(issue('MAIL_TITLE_COLON'))
   const t = edited.header.timeoutLimit
   if (typeof t !== 'string' || !/^[1-9][0-9]*$/.test(t) || Number(t) > TIMEOUT_MAX) out.push(issue('TIMEOUT_INVALID'))

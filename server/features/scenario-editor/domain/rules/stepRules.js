@@ -3,6 +3,7 @@
 const { CAN_FAIL_ACTIONS } = require('../enums')
 const { encodeAction } = require('../conditionCodec')
 const { editedFromSkeleton } = require('../editedScenario')
+const { resolveOrigins } = require('../changeDetect')
 const { issue, needsBase, isRef } = require('./scenarioRules')
 
 const isInt = (v) => typeof v === 'number' && Number.isInteger(v)
@@ -59,7 +60,7 @@ function customScriptOk(cs) {
   return Array.isArray(cs.email) ? cs.email.every((e) => e === 'success' || e === 'fail') : false
 }
 
-function actionIssues(s, source, out) {
+function actionIssues(s, source, origins, out) {
   const a = s.action
   const u = s.uid
   const t = a.type
@@ -89,7 +90,8 @@ function actionIssues(s, source, out) {
     else if (!customScriptOk(a.customScript)) out.push(issue('SCRIPT_FORMAT', u))
   }
   if (PRESERVE_ONLY.has(t)) {
-    const old = s.origin !== null && source && editedFromSkeleton(source).steps[s.origin]
+    const o = origins.get(s.uid)
+    const old = o !== null && o !== undefined && source && editedFromSkeleton(source).steps[o]
     const same = old && old.action.type === t && (old.action.raw ?? '') === (a.raw ?? '') && JSON.stringify(old.action.native ?? null) === JSON.stringify(a.native ?? null)
     if (!same) out.push(issue('ACTION_NOT_CREATABLE', u, { type: t }))
   }
@@ -108,9 +110,10 @@ function otherIssues(s, ctx, out) {
 
 function stepRules(edited, source, ctx) {
   const out = []
+  const origins = resolveOrigins(edited.steps, source ? source.steps.length : 0)
   for (const s of edited.steps) {
     conditionIssues(s, out)
-    actionIssues(s, source, out)
+    actionIssues(s, source, origins, out)
     otherIssues(s, ctx, out)
   }
   return out
