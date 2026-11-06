@@ -41,8 +41,12 @@ describe('checkScenario 나누기', () => {
     expect(codesOf(checkScenario(e, src, { ...ctx(), user: { authorityManager: 2 } }).blocks)).not.toContain('RETRY_RANGE')
     e.steps[0].retry.limit = 201
     expect(codesOf(checkScenario(e, src, { ...ctx(), user: { authorityManager: 1 } }).blocks)).toContain('RETRY_RANGE')
+    // 3(Manager) 은 1·2 가 아니므로 상한 20 — 150 은 막는다(>= 1 로 잘못 고치면 드러난다)
+    e.steps[0].retry.limit = 150
+    const r3 = checkScenario(e, src, { ...ctx(), user: { authorityManager: 3 } })
+    expect(r3.blocks.filter((i) => i.code === 'RETRY_RANGE')).toEqual([{ code: 'RETRY_RANGE', uid: 's0', params: { max: 20 } }])
   })
-  it('정렬: 시나리오 단위 먼저, 스텝 위치, 코드 순; 같은 {code,uid} 는 한 번', () => {
+  it('정렬: 시나리오 단위 먼저, 스텝 위치, 코드 순; 같은 {code,uid} 라도 쪽(which)이 다르면 둘 다', () => {
     const src = okSource(); const e = fresh(src)
     e.header.description = ''; e.steps[1].descriptionToEmail = ''; e.steps[0].descriptionToEmail = 'a@'
     e.steps[1].next.onTrue = { kind: 'raw', value: 9 }; e.steps[1].next.onFalse = { kind: 'raw', value: 8 }
@@ -50,8 +54,20 @@ describe('checkScenario 나누기', () => {
     const keys = r.blocks.map((i) => `${i.uid ?? '-'}:${i.code}`)
     expect(keys.indexOf('-:MAIL_TITLE_EMPTY')).toBeLessThan(keys.indexOf('s0:STEP_DESC_CHARS'))
     expect(keys.indexOf('s0:STEP_DESC_CHARS')).toBeLessThan(keys.indexOf('s1:NEXT_OUT_OF_RANGE'))
-    expect(keys.filter((k) => k === 's1:NEXT_OUT_OF_RANGE')).toHaveLength(1)
-    expect(keys.indexOf('s1:NEXT_OUT_OF_RANGE')).toBeLessThan(keys.indexOf('s1:STEP_DESC_EMPTY'))
+    expect(r.blocks.filter((i) => i.code === 'NEXT_OUT_OF_RANGE').map((i) => i.params)).toEqual([{ which: 'onTrue', value: 9 }, { which: 'onFalse', value: 8 }])
+    expect(keys.lastIndexOf('s1:NEXT_OUT_OF_RANGE')).toBeLessThan(keys.indexOf('s1:STEP_DESC_EMPTY'))
+  })
+  it('양쪽이 모두 어긋나면 쪽마다 하나씩 낸다(M1 — which 를 잃지 않는다)', () => {
+    const src = okSource()
+    const which = (list, code) => list.filter((i) => i.code === code).map((i) => i.params.which)
+    const e = fresh(src); e.steps[0].next = { onTrue: { kind: 'unresolved' }, onFalse: { kind: 'step', uid: 'gone' } }
+    expect(which(checkScenario(e, src, ctx()).blocks, 'NEXT_UNRESOLVED')).toEqual(['onTrue', 'onFalse'])
+    const e2 = fresh(src); e2.steps[0].next = { onTrue: { kind: 'step', uid: 's0' }, onFalse: { kind: 'step', uid: 's0' } }
+    expect(which(checkScenario(e2, src, ctx()).blocks, 'NEXT_SELF')).toEqual(['onTrue', 'onFalse'])
+    const e3 = fresh(src); e3.steps[1].next = { onTrue: { kind: 'next' }, onFalse: { kind: 'next' } }; e3.steps[0].next.onFalse = { kind: 'end', value: 'SUCCESS' }
+    expect(which(checkScenario(e3, src, ctx()).blocks, 'LAST_STEP_NEXT')).toEqual(['onTrue', 'onFalse'])
+    const e4 = fresh(src); e4.property = { ...e4.property, NextScenarioIfSuccess: { Name: 'X' }, NextScenarioIfFail: { Name: 'Y' } }
+    expect(which(checkScenario(e4, src, ctx()).warns, 'FOLLOW_MISSING')).toEqual(['success', 'fail'])
   })
   it('크기 초과·sizes 없으면 건너뜀', () => {
     const src = okSource(); const e = fresh(src)
@@ -103,6 +119,7 @@ describe('checkScenario 나누기', () => {
     const e7 = fresh(okSource()); e7.steps[0].next.onTrue = { kind: 'end', value: 'SUCCESS' }; e7.steps[0].next.onFalse = { kind: 'next' }; e7.steps[0].action = { type: 8, raw: 'x' }
     e7.steps[0].condition = { kind: 'none', skipPreprocessing: false }; run(e7, okSource())
     const e8 = fresh(okSource()); e8.steps[1].action = { type: 7, raw: 'x' }; run(e8, okSource())
+    const e11 = fresh(okSource()); e11.steps[0].condition = { kind: 'eqpState', skipPreprocessing: null, eqpState: { target: 'MAIN', targetKind: 'main', state: 'IDLE', code: '', raw: 'MAIN,IDLE,_' } }; run(e11, okSource())
     const e10 = fresh(broken); e10.property = { Type: 1, StartDelay: 5, RetryInterval: 1, RetryCnt: 99, Priority: 2, ExecutingLevel: 2, NextScenarioIfSuccess: { Name: '', Text: 'ab' } }; run(e10, broken)
     const unknown = [...emitted].filter((c) => !(c in RULES))
     expect(unknown).toEqual([])

@@ -49,6 +49,8 @@ const RULES = Object.freeze({
   ACTION_NOT_CREATABLE: { scope: C, level: B },
   ACTION_TYPE_INVALID: { scope: C, level: B },
   EQPSTATE_SKIP: { scope: C, level: B },
+  CONDITION_NOT_CREATABLE: { scope: C, level: B },
+  CONDITION_KIND_CHANGED: { scope: C, level: B },
   STEP_DESC_EMPTY: { scope: C, level: B },
   STEP_DESC_CHARS: { scope: C, level: B },
   START_DELAY_RANGE: { scope: A, level: B },

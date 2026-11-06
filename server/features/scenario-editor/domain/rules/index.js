@@ -12,7 +12,8 @@ function checkScenario(edited, source, ctx) {
   const rank = (i) => (i.uid === undefined ? -1 : position.has(i.uid) ? position.get(i.uid) : Number.MAX_SAFE_INTEGER)
   const seen = new Set()
   const all = [...scenarioRules(edited, source, ctx), ...stepRules(edited, source, ctx), ...checkProperty(edited.property, source ? source.property ?? {} : null)].filter((i) => {
-    const k = `${i.code}\u0000${i.uid ?? ''}`
+    // 같은 코드·스텝이라도 쪽(params.which: onTrue·onFalse, success·fail)이 다르면 다른 문제다 — 한쪽만 남기면 다른 쪽 값을 잃는다
+    const k = `${i.code}\u0000${i.uid ?? ''}\u0000${(i.params && i.params.which) ?? ''}`
     if (seen.has(k)) return false
     seen.add(k)
     return true

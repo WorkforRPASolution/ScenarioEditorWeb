@@ -64,22 +64,24 @@ async function changedStep(es, source, indexOfUid, resolveImage) {
     }
     storedTrainDict(isp, values) // 이미지 조건은 아래 encodeCondition 이 trainEntries 로 바꾼다, 그 밖은 이 표가 남는다
   } else {
-    base = newRawStep(es.condition.kind)
+    base = newRawStep(es.condition.kind) // 설비 상태·알 수 없는 조건은 여기서 던진다(검사 CONDITION_NOT_CREATABLE 이 먼저 막는다)
   }
   const trainEntries = sortedKeys(es.images.train).map((k) => [Number(k), { BinaryImage: values.get(k), Type: types.has(k) ? types.get(k) : true }])
-  const { Operation, Metadata } = encodeCondition(es.condition, base.Metadata, trainEntries)
+  // 그대로 두는 조건(설비 상태·알 수 없음)은 고치기 전 스텝의 Operation 을 쓴다(브라우저의 operationRaw 는 믿지 않는다)
+  const { Operation, Metadata } = encodeCondition(es.condition, base.Metadata, trainEntries, origin ? base.Operation : undefined)
   return {
     ...base,
     Operation,
     Metadata,
     Script: encodeAction(es.action, base.Script),
-    RetryLimit: es.retry.limit,
-    RetryInterval: es.retry.intervalMs,
+    // 참거짓·유한 수가 아니면(검사가 먼저 막지만) 바탕 값 — 고치기 전 저장값(빠진 키는 C# 기본값) 또는 새 스텝 기본값
+    RetryLimit: Number.isFinite(es.retry.limit) ? es.retry.limit : base.RetryLimit,
+    RetryInterval: Number.isFinite(es.retry.intervalMs) ? es.retry.intervalMs : base.RetryInterval,
     NextStepIfTrue: fromTarget(es.next.onTrue, indexOfUid),
     NextStepIfFalse: fromTarget(es.next.onFalse, indexOfUid),
     DescriptionToEmail: es.descriptionToEmail,
     DescriptionToDialog: es.descriptionToDialog,
-    IsShowDialog: es.isShowDialog
+    IsShowDialog: typeof es.isShowDialog === 'boolean' ? es.isShowDialog : base.IsShowDialog
   }
 }
 
@@ -93,9 +95,10 @@ async function headerOf(edited, source, id, resolveImage) {
   head.RevisionNo = sh.revisionNo
   head.TriggerType = sh.triggerType
   head.Text = sh.text
-  head.HidingWindowConditionList = clone(sh.hidingWindows) // 저장값이 배열이 아니었으면 뼈대가 [] 로 읽었다(한계)
   const raw = sh.raw || {}
   if (hasOwn(raw, 'TargetWindowCondition')) head.TargetWindowCondition = clone(raw.TargetWindowCondition)
+  // 숨길 창은 저장값(null 포함) 그대로 — 화면용 hidingWindows 는 배열이 아니면 [] 라 쓰지 않는다. 없던 키는 withCsDefaults 가 [] 로 채운다.
+  if (hasOwn(raw, 'HidingWindowConditionList')) head.HidingWindowConditionList = clone(raw.HidingWindowConditionList)
   if (hasOwn(raw, 'Compensation')) {
     const c = clone(raw.Compensation)
     // 보정 그림이 그림이었으면 뼈대 raw 에는 null, 그림은 'ref' 로 떼어 있다

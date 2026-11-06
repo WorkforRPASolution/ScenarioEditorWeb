@@ -1,6 +1,7 @@
 'use strict'
 // 편집 시나리오: 브라우저가 검사·초안·배포 요청에 싣는 구조 값(저장 형식 문자열 없음). 모양·형만 본다(업무 규칙은 rules).
 const { isTrainKey, trainImageId } = require('./trainKey')
+const { CS_DEFAULTS } = require('./csDefaults')
 
 class EditedScenarioError extends Error {
   constructor(path, reason) {
@@ -129,6 +130,9 @@ function parseEditedScenario(json) {
 }
 
 const nullish = (v) => (v === undefined ? null : v)
+// 옛 본문에 없던 스텝 키(undefined)는 사내 편집기가 읽을 때처럼 C# ScenarioStep 생성자 값으로 채운다 — 고쳐 다시 쓰면 그 값이 나간다.
+// 키가 있고 값이 null 이면 null 그대로(저장값에 충실). 기준 쪽(changedStepUids)도 이 함수를 지나므로 고치지 않은 스텝은 그대로 같다.
+const stepValue = (v, key) => (v === undefined ? CS_DEFAULTS.ScenarioStep[key]() : v)
 
 function targetOf(t) {
   if (t && t.kind === 'step') return { kind: 'step', uid: t.uid } // no 는 위치라 끼워 넣으면 낡는다
@@ -147,7 +151,8 @@ function trainOf(step, i) {
   for (const k of Object.keys(map)) {
     if (!isTrainKey(k)) continue
     const entry = map[k]
-    const v = isObject(entry) ? entry.BinaryImage : null
+    // 항목에 BinaryImage 키가 없으면 C# TrainImage 생성자 값(사내가 읽어 다시 쓰는 값), 있던 null 은 null
+    const v = isObject(entry) ? (entry.BinaryImage === undefined ? CS_DEFAULTS.TrainImage.BinaryImage() : entry.BinaryImage) : null
     const id = trainImageId(i, k)
     out[k] = typeof v === 'string' && v.endsWith(`/${id}`) ? { from: 'source', id } : { literal: nullish(clone(v)) }
   }
@@ -173,9 +178,9 @@ function editedFromSkeleton(skeleton, { fileId } = {}) {
       uid: s.uid, origin: i,
       condition: clone(s.condition), action: clone(s.action),
       next: { onTrue: targetOf(s.next.onTrue), onFalse: targetOf(s.next.onFalse) },
-      retry: { limit: nullish(s.retry && s.retry.limit), intervalMs: nullish(s.retry && s.retry.intervalMs) },
-      descriptionToEmail: nullish(s.descriptionToEmail), descriptionToDialog: nullish(s.descriptionToDialog),
-      isShowDialog: nullish(s.isShowDialog),
+      retry: { limit: stepValue(s.retry && s.retry.limit, 'RetryLimit'), intervalMs: stepValue(s.retry && s.retry.intervalMs, 'RetryInterval') },
+      descriptionToEmail: stepValue(s.descriptionToEmail, 'DescriptionToEmail'), descriptionToDialog: stepValue(s.descriptionToDialog, 'DescriptionToDialog'),
+      isShowDialog: stepValue(s.isShowDialog, 'IsShowDialog'),
       images: { train: trainOf(s, i), base: baseOf(s.bi, i) }
     })),
     property: clone(skeleton.property ?? {})

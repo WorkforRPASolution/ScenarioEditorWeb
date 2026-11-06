@@ -172,19 +172,22 @@ function parseAction(step, conditionKind) {
       break
     }
     case 5: {
-      const [text, ...codes] = v.split('@@')
+      // codes = 저장 순서 그대로 모든 코드(에이전트가 이 순서로 누른다, 조립의 정본). keys·unknownCodes 는 보여 주기용 파생 값(P1 화면).
+      const [text, ...tokens] = v.split('@@')
+      const codes = []
       const keys = []
       const unknownCodes = []
       let bad = false
-      for (const c of codes) {
+      for (const c of tokens) {
         if (!INT.test(c)) { bad = true; continue }
         const code = Number(c)
+        codes.push(code)
         if (KEY_CODE_NAMES[code]) keys.push({ code, name: KEY_CODE_NAMES[code] })
         else unknownCodes.push(code)
       }
       if (bad) fail('keyboard')
       if (unknownCodes.length) notes.push(note('info', 'KEY_CODE_UNKNOWN', { codes: unknownCodes }))
-      action.keyboard = { text, keys, unknownCodes }
+      action.keyboard = { text, keys, unknownCodes, codes }
       break
     }
     case 6:
@@ -242,11 +245,15 @@ const exprOf = (c) => (c.skipPreprocessing ? 'SkipPreprocessing' : '')
 const TEXT_OPS = new Set([1, 2, 3, 4])
 const RANGE_OPS = new Set([7, 8])
 
-// base = 고치기 전 스텝의 Metadata(새 스텝이면 newRawStep(kind).Metadata). base 는 바꾸지 않는다.
-function encodeCondition(condition, base, trainEntries) {
+// base = 고치기 전 스텝의 Metadata(새 스텝이면 newRawStep(kind).Metadata), baseOperation = 고치기 전 스텝의 Operation. base 는 바꾸지 않는다.
+function encodeCondition(condition, base, trainEntries, baseOperation) {
   const kind = condition.kind
-  // image·ocr·none 밖(설비 상태는 보존 전용 Q-025, 알 수 없는 종류)은 고칠 수 없으므로 base 를 그대로 둔다
-  if (kind !== 'image' && kind !== 'ocr' && kind !== 'none') return { Operation: kind === 'eqpState' ? 4 : condition.operationRaw, Metadata: base }
+  // image·ocr·none 밖(설비 상태는 보존 전용 Q-025, 알 수 없는 종류)은 고칠 수 없으므로 고치기 전 스텝의 Operation·Metadata 를 그대로 둔다.
+  // 브라우저가 보낸 operationRaw 는 쓰지 않는다. 고치기 전 스텝이 없으면(새 스텝) 만들 수 없다 — 검사 CONDITION_NOT_CREATABLE 이 먼저 막는다.
+  if (kind !== 'image' && kind !== 'ocr' && kind !== 'none') {
+    if (baseOperation === undefined) throw new Error('CONDITION_NOT_CREATABLE')
+    return { Operation: baseOperation, Metadata: base }
+  }
   const md = clone(base || newRawStep(kind === 'none' ? 'none' : kind).Metadata)
   md.ConditionExpression = exprOf(condition)
   if (kind === 'none') return { Operation: 0, Metadata: md }
@@ -296,9 +303,10 @@ function encodeAction(action, base) {
     case 1: case 2: case 3: value = `${action.click.x}:${action.click.y}`; break
     case 4: value = `${action.wheel.notches}@@${action.wheel.delaySec}`; break
     case 5: {
-      // 알려진 키·모르는 코드 순서로 쓴다 — 둘이 섞여 저장된 값은 순서가 바뀐다(해석이 둘을 따로 모으므로)
+      // codes(저장 순서) 가 정본. 없으면(옛 요청) 알려진 키 다음 모르는 코드 — 둘이 섞여 저장된 값은 순서가 바뀐다.
       const k = action.keyboard
-      value = k.text + [...k.keys.map((x) => x.code), ...k.unknownCodes].map((c) => `@@${c}`).join('')
+      const codes = Array.isArray(k.codes) ? k.codes : [...k.keys.map((x) => x.code), ...k.unknownCodes]
+      value = k.text + codes.map((c) => `@@${c}`).join('')
       break
     }
     case 6: value = String(Math.round(action.waitSec * 1000)); break

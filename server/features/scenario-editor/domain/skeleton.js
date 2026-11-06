@@ -34,10 +34,12 @@ function rawWithUrls(step, trainUrls) {
   return copy
 }
 
-// 대상 창·보정은 해석값만 뼈대에 남으므로 저장값을 따로 둔다(키가 없던 것은 없는 채로). 보정 그림은 URL 이 가리키므로 null.
+// 대상 창·숨길 창·보정은 해석값만 뼈대에 남으므로 저장값을 따로 둔다(키가 없던 것은 없는 채로). 보정 그림은 URL 이 가리키므로 null.
+// 숨길 창은 화면용 hidingWindows 가 배열이 아닌 저장값(null 등)을 [] 로 읽으므로 조립은 이 저장값을 쓴다.
 function headerRaw(body) {
   const raw = {}
   if ('TargetWindowCondition' in body) raw.TargetWindowCondition = JSON.parse(JSON.stringify(body.TargetWindowCondition))
+  if (body.HidingWindowConditionList !== undefined) raw.HidingWindowConditionList = JSON.parse(JSON.stringify(body.HidingWindowConditionList))
   if ('Compensation' in body) {
     const c = JSON.parse(JSON.stringify(body.Compensation))
     if (isObject(c) && isImage(c.RefImage)) c.RefImage = null

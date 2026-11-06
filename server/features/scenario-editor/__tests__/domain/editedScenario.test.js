@@ -75,11 +75,17 @@ describe('editedFromSkeleton', () => {
     const e = editedFromSkeleton(skeleton)
     expect(parseEditedScenario(JSON.parse(JSON.stringify(e)))).toEqual(e)
   })
-  it('undefined 는 null 로, 값은 그대로 복사', () => {
+  it('옛 본문에 없던 키(undefined)는 C# ScenarioStep 기본값, 있던 null 은 null, 값은 그대로 복사', () => {
+    // 사내 편집기는 옛 본문을 읽을 때 빠진 키를 생성자 값으로 채운다 — 고쳐서 다시 쓰면 그 값이 나간다(C1)
     const sk = JSON.parse(JSON.stringify(skeleton))
-    delete sk.steps[0].isShowDialog; delete sk.steps[0].descriptionToEmail; sk.steps[0].retry = {}
+    for (const k of ['isShowDialog', 'descriptionToEmail', 'descriptionToDialog']) delete sk.steps[0][k]
+    sk.steps[0].retry = {}
     const s = editedFromSkeleton(sk).steps[0]
-    expect(s).toMatchObject({ isShowDialog: null, descriptionToEmail: null, retry: { limit: null, intervalMs: null } })
+    expect(s).toMatchObject({ isShowDialog: true, descriptionToEmail: '', descriptionToDialog: '', retry: { limit: 2, intervalMs: 2000 } })
+    Object.assign(sk.steps[1], { isShowDialog: null, descriptionToEmail: null, descriptionToDialog: null, retry: { limit: null, intervalMs: null } })
+    expect(editedFromSkeleton(sk).steps[1]).toMatchObject({ isShowDialog: null, descriptionToEmail: null, descriptionToDialog: null, retry: { limit: null, intervalMs: null } })
+    delete sk.steps[2].retry
+    expect(editedFromSkeleton(sk).steps[2].retry).toEqual({ limit: 2, intervalMs: 2000 })
     expect(fresh().steps[0]).toMatchObject({ descriptionToEmail: '누르기', isShowDialog: true, retry: { limit: 2, intervalMs: 2000 } })
   })
   it('property 는 복사본이다', () => {

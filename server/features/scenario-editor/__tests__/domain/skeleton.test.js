@@ -198,12 +198,23 @@ describe('원본 보존', () => {
     expect(skeleton.steps.every((s) => s.bi.kind === 'absent')).toBe(true)
     expect(skeleton.biCount).toBeNull()
   })
-  it('header.raw 는 대상 창·보정을 저장값 그대로, 없던 키는 두지 않는다', () => {
+  it('header.raw 는 대상 창·숨길 창·보정을 저장값 그대로, 없던 키는 두지 않는다', () => {
     const { skeleton } = buildSkeleton({ ...base, body: { ...base.body, TargetWindowCondition: null, Compensation: { RefImage: 'AA==', X: 1, Y: 2 } } })
-    expect(skeleton.header.raw).toEqual({ TargetWindowCondition: null, Compensation: { RefImage: 'AA==', X: 1, Y: 2 } })
-    const { TargetWindowCondition, ...noTwc } = base.body
+    expect(skeleton.header.raw).toEqual({ TargetWindowCondition: null, HidingWindowConditionList: [], Compensation: { RefImage: 'AA==', X: 1, Y: 2 } })
+    const { TargetWindowCondition, HidingWindowConditionList, ...noTwc } = base.body
     expect('TargetWindowCondition' in buildSkeleton({ ...base, body: noTwc }).skeleton.header.raw).toBe(false)
     expect(buildSkeleton({ ...base, body: noTwc }).skeleton.header.raw).toEqual({ Compensation: null })
+  })
+  it('숨길 창 목록이 null·배열이 아니면 header.raw 에 저장값 그대로(화면용 hidingWindows 는 [])', () => {
+    for (const stored of [null, 'x']) {
+      const { skeleton } = buildSkeleton({ ...base, body: { ...base.body, HidingWindowConditionList: stored } })
+      expect(skeleton.header.raw.HidingWindowConditionList).toBe(stored)
+      expect(skeleton.header.hidingWindows).toEqual([])
+    }
+    const list = [{ Text: 'Popup', ClassName: 'Dlg', IsCheckRectEqual: false, Left: 0, Top: 0, Right: 0, Bottom: 0 }]
+    const { skeleton } = buildSkeleton({ ...base, body: { ...base.body, HidingWindowConditionList: list } })
+    expect(skeleton.header.raw.HidingWindowConditionList).toEqual(list)
+    expect(skeleton.header.raw.HidingWindowConditionList).not.toBe(list) // 복사본
   })
   it('이미지가 아닌 조건의 찾을 그림도 떼어 URL 로 바꾼다(이미지 스텝을 OCR·조건 없음으로 바꿔 저장한 판)', () => {
     const train = { 0: { BinaryImage: LONG_B64, Type: true }, 1: { BinaryImage: 'AA==', Type: false } }

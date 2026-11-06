@@ -7,6 +7,7 @@ import { changedStepUids } from '../../domain/changeDetect'
 import { serializeScenario, serializeProperty } from '../../domain/csharpJson'
 import { PLACEHOLDER_BI } from '../../domain/csDefaults'
 import { propertyFromBson } from '../../domain/propertyModel'
+import { checkScenario } from '../../domain/rules'
 
 const require = createRequire(import.meta.url)
 const builders = require('../../../../../tools/scenario-gen/lib/builders') // 사내 C# 생성자 기본값 흉내(시험만 tools 를 읽는다)
@@ -193,6 +194,37 @@ describe('assembleScenario — 이미지가 아닌 조건의 찾을 그림(Task 
   })
 })
 
+describe('assembleScenario — 찾을 그림 항목에서 빠진 키(M5)', () => {
+  // 저장 본문(JSON 객체)의 찾을 그림 항목에서 키를 뺀다
+  const withEntry = (entry) => {
+    const body = JSON.parse(serializeScenario(scenario([imageStep([1, 2, 3, 4], [[0, { BinaryImage: IMG_A0, Type: false }]], '1:1', 'a', [10000, -1])])))
+    body.Step[0].Metadata.ImageSearchParam.TrainImageMap = { 0: entry }
+    return JSON.stringify(body)
+  }
+  it('Type 이 없는 항목은 고치지 않아도 C# 기본값 true 로 쓴다(직렬화가 던지지 않는다)', async () => {
+    const o = open(withEntry({ BinaryImage: IMG_A0 }), [BI_A])
+    const r = await assembleScenario(editedFromSkeleton(o.skeleton), o.skeleton, { id: 'P-M-N', resolveImage: o.resolveImage })
+    expect(r.changed.size).toBe(0)
+    expect(r.bodyString).toContain('"TrainImageMap":{"0":{"BinaryImage":"' + IMG_A0 + '","Type":true}}')
+    const e = editedFromSkeleton(o.skeleton); e.steps[0].descriptionToEmail = '고침'
+    const r2 = await assembleScenario(e, o.skeleton, { id: 'P-M-N', resolveImage: o.resolveImage })
+    expect(r2.body.Step[0].Metadata.ImageSearchParam.TrainImageMap).toEqual([[0, { BinaryImage: IMG_A0, Type: true }]])
+  })
+  it('BinaryImage 가 없는 항목은 null 이 아니라 C# 기본값(자리표시)으로 쓴다', async () => {
+    const o = open(withEntry({ Type: false }), [BI_A])
+    const r = await assembleScenario(editedFromSkeleton(o.skeleton), o.skeleton, { id: 'P-M-N', resolveImage: o.resolveImage })
+    expect(r.bodyString).toContain('"TrainImageMap":{"0":{"BinaryImage":"' + PLACEHOLDER_BI + '","Type":false}}')
+    const e = editedFromSkeleton(o.skeleton); e.steps[0].descriptionToEmail = '고침'
+    const r2 = await assembleScenario(e, o.skeleton, { id: 'P-M-N', resolveImage: o.resolveImage })
+    expect(r2.body.Step[0].Metadata.ImageSearchParam.TrainImageMap).toEqual([[0, { BinaryImage: PLACEHOLDER_BI, Type: false }]])
+  })
+  it('저장값이 null 인 BinaryImage 는 null 그대로', async () => {
+    const o = open(withEntry({ BinaryImage: null, Type: true }), [BI_A])
+    const r = await assembleScenario(editedFromSkeleton(o.skeleton), o.skeleton, { id: 'P-M-N', resolveImage: o.resolveImage })
+    expect(r.bodyString).toContain('"TrainImageMap":{"0":{"BinaryImage":null,"Type":true}}')
+  })
+})
+
 describe('assembleScenario — 정규 표기가 아닌 찾을 그림 키', () => {
   it('"-1" 키 그림은 raw 의 저장값으로 다시 쓴다', async () => {
     const t = serializeScenario(scenario([imageStep([1, 2, 3, 4], [[-1, { BinaryImage: IMG_B0, Type: false }], [0, { BinaryImage: IMG_A0, Type: true }]], '1:1', 'a', [10000, -1])]))
@@ -254,6 +286,65 @@ describe('assembleScenario — 고친 스텝', () => {
   })
 })
 
+describe('assembleScenario — 옛 본문에서 빠진 키를 가진 스텝을 고칠 때(C1)', () => {
+  const ctx = () => ({ user: { authorityManager: 0 }, target: { model: 'M', name: 'N' }, targetNames: new Set(), followGraph: new Map(), limits: {} })
+  it('IsShowDialog·RetryLimit·RetryInterval 이 없는 스텝의 설명만 고치면 막힘 없이 C# 기본값(true·2·2000)을 쓴다', async () => {
+    const raw = rawNone(); delete raw.IsShowDialog; delete raw.RetryLimit; delete raw.RetryInterval
+    const src2 = skeletonWith([raw])
+    const e = editedFromSkeleton(src2); e.steps[0].descriptionToEmail = '고친 설명'
+    expect(checkScenario(e, src2, ctx()).blocks).toEqual([])
+    const r = await assembleScenario(e, src2, { id: 'P-M-N', resolveImage })
+    expect([...r.changed]).toEqual(['s0'])
+    expect(r.body.Step[0]).toMatchObject({ IsShowDialog: true, RetryLimit: 2, RetryInterval: 2000, DescriptionToEmail: '고친 설명' })
+    expect(r.bodyString).toContain('"RetryInterval":2000,"RetryLimit":2,')
+    expect(r.bodyString).toContain('"IsShowDialog":true}')
+    expect(r.bodyString).not.toContain('null}]')
+  })
+  it('저장값이 null 인 키는 고쳐도 null 그대로(저장값에 충실)', async () => {
+    const src2 = skeletonWith([{ ...rawNone(), IsShowDialog: null }])
+    const e = editedFromSkeleton(src2); e.steps[0].descriptionToEmail = '고친 설명'
+    expect(e.steps[0].isShowDialog).toBeNull()
+    const r = await assembleScenario(e, src2, { id: 'P-M-N', resolveImage })
+    expect(r.body.Step[0].IsShowDialog).toBeNull()
+  })
+  it('조립은 참거짓이 아닌 IsShowDialog·숫자가 아닌 재시도 값을 바탕(저장값) 값으로 쓴다', async () => {
+    const e = editedFromSkeleton(src)
+    Object.assign(e.steps[2], { isShowDialog: null, retry: { limit: null, intervalMs: NaN }, descriptionToEmail: '고친 C' })
+    const r = await assembleScenario(e, src, { id: 'P-M-N', resolveImage })
+    expect(r.body.Step[2]).toEqual({ ...SC.Step[2], DescriptionToEmail: '고친 C' })
+  })
+})
+
+describe('assembleScenario — 그대로 두는 조건(설비 상태·알 수 없음)을 가진 스텝을 고칠 때(I2)', () => {
+  const eqpRaw = () => { const s = rawNone(); s.Operation = 4; s.Metadata.ConditionExpression = 'MAIN,IDLE,_'; return s }
+  // 저장값(JSON 객체)과 같되 찾을 그림 표는 직렬화 꼴([[키, 항목]])로
+  const asBody = (raw, over) => { const w = { ...clone(raw), ...over }; w.Metadata.ImageSearchParam.TrainImageMap = []; return w }
+  it('설비 상태 스텝의 설명만 고치면 Operation·Metadata 는 저장값 — 브라우저가 바꾼 operationRaw 는 쓰지 않는다', async () => {
+    const src2 = skeletonWith([eqpRaw()])
+    const e = editedFromSkeleton(src2); e.steps[0].descriptionToEmail = '고친 설명'; e.steps[0].condition.operationRaw = 1
+    const r = await assembleScenario(e, src2, { id: 'P-M-N', resolveImage })
+    expect(r.body.Step[0]).toEqual(asBody(eqpRaw(), { DescriptionToEmail: '고친 설명' }))
+  })
+  it('알 수 없는 조건(Operation 3) 스텝도 저장된 Operation 을 쓴다', async () => {
+    const raw = { ...rawNone(), Operation: 3 }
+    const src2 = skeletonWith([raw])
+    const e = editedFromSkeleton(src2); e.steps[0].descriptionToEmail = '고친 설명'; e.steps[0].condition.operationRaw = 9
+    const r = await assembleScenario(e, src2, { id: 'P-M-N', resolveImage })
+    expect(r.body.Step[0]).toEqual(asBody(raw, { DescriptionToEmail: '고친 설명' }))
+  })
+})
+
+describe('assembleScenario — 키보드 코드 순서(I3)', () => {
+  it('모르는 코드·아는 코드가 섞인 키보드 스텝의 설명만 고쳐도 누르는 순서가 그대로다', async () => {
+    const raw = { ...rawNone(), Script: { Type: 5, Value: 'x@@17@@10', NativeFunction: null } }
+    const src2 = skeletonWith([raw])
+    const e = editedFromSkeleton(src2); e.steps[0].descriptionToEmail = '고친 설명'
+    const r = await assembleScenario(e, src2, { id: 'P-M-N', resolveImage })
+    expect([...r.changed]).toEqual(['s0'])
+    expect(r.body.Step[0].Script).toEqual({ Type: 5, Value: 'x@@17@@10', NativeFunction: null })
+  })
+})
+
 describe('assembleScenario — 형식 검사를 건너뛴 찾을 그림 키', () => {
   it.each(['01', '-1', '1.0'])('images.train 키 %j 는 BAD_TRAIN_KEY(검사가 먼저 막으므로 프로그램 오류)', async (k) => {
     const e = editedFromSkeleton(src)
@@ -277,6 +368,17 @@ describe('assembleScenario — 머리', () => {
     const r = await assembleScenario(editedFromSkeleton(o.skeleton), o.skeleton, { id: 'P-M-N', resolveImage: o.resolveImage })
     expect(r.bodyString).toBe(t)
     expect(o.calls).toContainEqual({ from: 'source', id: 'ref' })
+  })
+  it('숨길 창 목록이 null 이면 null 그대로, 없던 키는 C# 기본값 [] (M4)', async () => {
+    const t = serializeScenario(scenario([noneStep([0, ''], '끝', [10000, -1])], { HidingWindowConditionList: null }))
+    expect(t).toContain('"HidingWindowConditionList":null')
+    const o = open(t, [PLACEHOLDER_BI])
+    const r = await assembleScenario(editedFromSkeleton(o.skeleton), o.skeleton, { id: 'P-M-N', resolveImage: o.resolveImage })
+    expect(r.bodyString).toBe(t)
+    const e = editedFromSkeleton(o.skeleton); e.steps[0].descriptionToEmail = '고침'; e.header.description = '새 제목'
+    expect((await assembleScenario(e, o.skeleton, { id: 'P-M-N', resolveImage: o.resolveImage })).body.HidingWindowConditionList).toBeNull()
+    const noKey = skeletonWith([rawNone()], { HidingWindowConditionList: undefined })
+    expect((await assembleScenario(editedFromSkeleton(noKey), noKey, { id: 'P-M-N', resolveImage })).body.HidingWindowConditionList).toEqual([])
   })
   it('보정 그림이 자리표시면 저장값 그대로', async () => {
     const t = serializeScenario(scenario([noneStep([0, ''], '끝', [10000, -1])], { Compensation: { RefImage: 'AA==', X: 1, Y: 2 } }))

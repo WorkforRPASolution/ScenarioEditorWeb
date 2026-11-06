@@ -49,10 +49,15 @@ const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 // 값 하나를 형에 맞춰 채운다. 객체가 아니거나 null 이면 그대로(틀린 형도 손대지 않는다).
 function fillValue(type, v) {
   if (Array.isArray(type)) {
-    if (type[0] === 'list' && Array.isArray(v) && typeof type[1] === 'string' && SCHEMAS[type[1]]) {
-      return v.map((x) => (isObj(x) ? fillObject(type[1], x) : x))
+    const [kind, inner] = type
+    const fill = (x) => (isObj(x) && typeof inner === 'string' && SCHEMAS[inner] ? fillObject(inner, x) : x)
+    if (kind === 'list' && Array.isArray(v)) return v.map(fill)
+    if (kind === 'dict') {
+      // 사전 항목도 채운다(찾을 그림 항목의 Type 등) — 저장 꼴(객체)과 직렬화 꼴([[키, 항목]]) 모두. 키·항목 순서는 그대로.
+      if (Array.isArray(v)) return v.map((p) => (Array.isArray(p) && p.length === 2 ? [p[0], fill(p[1])] : p))
+      if (isObj(v)) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fill(x)])) // '__proto__' 도 제 키로
     }
-    return v // dict 는 [[키, 값]] 쌍 — 이미지 값은 건드리지 않는다
+    return v
   }
   return isObj(v) && SCHEMAS[type] ? fillObject(type, v) : v
 }

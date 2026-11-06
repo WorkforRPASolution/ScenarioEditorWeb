@@ -71,3 +71,27 @@ describe('생성기 왕복', () => {
     }
   }
 })
+
+// 고친 스텝 길(changedStep)도 저장값을 지키는지: 모든 스텝의 descriptionToEmail 만 고치면, 그 칸 말고는 저장 본문과 같다(JSON 으로 비교).
+describe('생성기 왕복 — 설명만 고친 스텝', () => {
+  for (const { dir, meta } of results) {
+    for (let v = 1; v <= meta.versions; v++) {
+      it(`${meta.set}/${meta.name} v${v} 모든 스텝 설명만 고침`, async () => {
+        const bodyText = read(dir, `body.v${v}.json`)
+        const { skeleton, images, biImages } = openLikeServer(meta, JSON.parse(bodyText), JSON.parse(read(dir, `bi.v${v}.json`)), JSON.parse(read(dir, `property.v${v}.json`)))
+        const e = editedFromSkeleton(skeleton)
+        e.steps.forEach((s, i) => { s.descriptionToEmail = `${s.descriptionToEmail ?? ''}#고침${i}` })
+        const r = await assembleScenario(e, skeleton, { id: skeleton.id, resolveImage: byId(images, biImages) })
+        expect(r.changed.size).toBe(e.steps.length)
+        const got = JSON.parse(r.bodyString)
+        const want = JSON.parse(bodyText)
+        expect(got.Step).toHaveLength(want.Step.length)
+        got.Step.forEach((st, i) => {
+          expect(st.DescriptionToEmail).toBe(e.steps[i].descriptionToEmail)
+          st.DescriptionToEmail = want.Step[i].DescriptionToEmail
+        })
+        expect(got).toEqual(want)
+      })
+    }
+  }
+})

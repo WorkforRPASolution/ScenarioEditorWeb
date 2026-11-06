@@ -71,11 +71,16 @@ describe('parseAction', () => {
     expect(codes(a(6, 'x').notes)).toEqual(['PARSE_FAILED'])
   })
   it('키보드: 문자열 + 기능 키, 이름표에 없는 코드는 알림', () => {
-    expect(a(5, 'RESET@@10@@9').action.keyboard).toEqual({ text: 'RESET', keys: [{ code: 10, name: 'Enter' }, { code: 9, name: 'Tab' }], unknownCodes: [] })
+    expect(a(5, 'RESET@@10@@9').action.keyboard).toEqual({ text: 'RESET', keys: [{ code: 10, name: 'Enter' }, { code: 9, name: 'Tab' }], unknownCodes: [], codes: [10, 9] })
     const r = a(5, 'x@@999')
     expect(r.action.keyboard.unknownCodes).toEqual([999])
+    expect(r.action.keyboard.codes).toEqual([999])
     expect(codes(r.notes)).toEqual(['KEY_CODE_UNKNOWN'])
     expect(codes(a(5, 'a@@b').notes)).toEqual(['PARSE_FAILED'])
+  })
+  it('키보드 codes 는 저장 순서 그대로 모든 코드(keys·unknownCodes 는 보여 주기용 파생 값)', () => {
+    expect(a(5, 'x@@17@@10').action.keyboard).toEqual({ text: 'x', keys: [{ code: 10, name: 'Enter' }], unknownCodes: [17], codes: [17, 10] })
+    expect(a(5, 'ab').action.keyboard).toEqual({ text: 'ab', keys: [], unknownCodes: [], codes: [] })
   })
   it('O.I. Command: EQP_DOWN·RUNDOWN_RELEASE·@COMMENT:', () => {
     expect(a(8, 'EQP_DOWN@10000@A').action.oiCommand).toEqual({ command: 'EQP_DOWN', code: '10000', chamber: 'A' })
@@ -200,7 +205,7 @@ describe('동작 해석 보강·조립', () => {
     expect(actFor('eqpState', 1, '5:6').click.basis).toBe('unknown')
   })
   it('조립 → 해석 왕복(동작 전 종류)', () => {
-    for (const [t, v] of [[1, '-3:7'], [4, '-2@@1'], [5, 'abc@@10@@27'], [5, 'x@@999'], [6, '3000'], [6, '4350'], [6, '1500'], [9, 'A@B'], [9, 'A@B@10@20'],
+    for (const [t, v] of [[1, '-3:7'], [4, '-2@@1'], [5, 'abc@@10@@27'], [5, 'x@@999'], [5, 'x@@17@@10'], [5, '@@999@@10@@17@@27'], [6, '3000'], [6, '4350'], [6, '1500'], [9, 'A@B'], [9, 'A@B@10@20'],
       [11, 'restart.bat'], [12, 'reset;-f;@@timeout:5 minutes,email:fail'], [12, 'only;'], [12, 'n;a;'], [12, 'n;@@email:success,email:fail'],
       [12, 'old@a@b'], [0, '']]) {
       const parsed = act(t, v)
@@ -214,6 +219,11 @@ describe('동작 해석 보강·조립', () => {
     expect(encodeAction(act(15, 'v'), nf)).toEqual(nf)
     const ml = { Type: 10, Value: 'to@x', NativeFunction: null }
     expect(encodeAction(act(10, 'to@x'), ml).Value).toBe('to@x')
+  })
+  it('키보드 조립: codes 가 배열이면 그 순서, 없으면 keys 다음 unknownCodes(옛 요청)', () => {
+    expect(encodeAction({ type: 5, keyboard: { text: 'x', keys: [{ code: 10 }], unknownCodes: [17], codes: [17, 10] } }, null).Value).toBe('x@@17@@10')
+    expect(encodeAction({ type: 5, keyboard: { text: 'x', keys: [{ code: 10 }], unknownCodes: [17] } }, null).Value).toBe('x@@10@@17')
+    expect(encodeAction({ type: 5, keyboard: { text: 'x', keys: [], unknownCodes: [], codes: [] } }, null).Value).toBe('x')
   })
   it('대기 조립은 부동소수 오차 없이 정수 ms', () => {
     expect(encodeAction({ type: 6, waitSec: 4.35 }, null).Value).toBe('4350')
@@ -248,7 +258,16 @@ describe('동작 해석 보강·조립', () => {
     const base = newRawStep('none').Metadata
     expect(encodeCondition({ kind: 'none', skipPreprocessing: false }, base, [])).toEqual({ Operation: 0, Metadata: base })
     const eq = { ...base, ConditionExpression: 'MAIN,RUN,_' }
-    expect(encodeCondition({ kind: 'eqpState' }, eq, [])).toEqual({ Operation: 4, Metadata: eq })
+    expect(encodeCondition({ kind: 'eqpState' }, eq, [], 4)).toEqual({ Operation: 4, Metadata: eq })
+  })
+  it('그대로 두는 조건(설비 상태·알 수 없음)의 Operation 은 바탕(저장값)에서 — 브라우저의 operationRaw 는 쓰지 않는다', () => {
+    const eq = { ...newRawStep('none').Metadata, ConditionExpression: 'MAIN,RUN,_' }
+    expect(encodeCondition({ kind: 'eqpState', operationRaw: 1 }, eq, [], 4)).toEqual({ Operation: 4, Metadata: eq })
+    expect(encodeCondition({ kind: 'unknown', operationRaw: 9 }, eq, [], 3).Operation).toBe(3)
+    expect(encodeCondition({ kind: 'eqpState', operationRaw: 4 }, eq, [], null)).toEqual({ Operation: null, Metadata: eq }) // 저장값 null 도 그대로
+    // 바탕 스텝이 없으면(새 스텝) 만들 수 없다 — 검사 CONDITION_NOT_CREATABLE 이 먼저 막는다
+    expect(() => encodeCondition({ kind: 'eqpState', operationRaw: 4 }, eq, [])).toThrow('CONDITION_NOT_CREATABLE')
+    expect(() => encodeCondition({ kind: 'unknown', operationRaw: 3 }, eq, [])).toThrow('CONDITION_NOT_CREATABLE')
   })
   it('옛 형식 스크립트에 옵션이 생기면 ; 형식으로', () => {
     const cs = act(12, 'old@a@b').customScript
@@ -258,9 +277,11 @@ describe('동작 해석 보강·조립', () => {
   })
   it('알 수 없는 조건 종류는 base 그대로', () => {
     const base = { SearchArea: { X: 9 }, ConditionExpression: 'x' }
-    const r = encodeCondition({ kind: 'unknown', operationRaw: 3, skipPreprocessing: null }, base, [])
+    const r = encodeCondition({ kind: 'unknown', operationRaw: 3, skipPreprocessing: null }, base, [], 3)
     expect(r).toEqual({ Operation: 3, Metadata: base })
     expect(r.Metadata).toBe(base)
+    const nullMd = encodeCondition({ kind: 'eqpState' }, null, [], 4) // 저장 Metadata 가 null 이어도 그대로
+    expect(nullMd).toEqual({ Operation: 4, Metadata: null })
   })
   it('해석 안 된 동작은 같은 종류 base 를 보존하고, 없으면 ACTION_UNSTRUCTURED', () => {
     const base = { Type: 1, Value: 'Set mouse Coordinates.', NativeFunction: null }

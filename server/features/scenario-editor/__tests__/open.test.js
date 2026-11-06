@@ -149,6 +149,7 @@ describe('openService', () => {
       const file = join(t.deps.imageCache.__dir, encodeURIComponent(key), 'skeleton.json')
       const sk = JSON.parse(readFileSync(file, 'utf8'))
       expect(sk.cacheFormat).toBe(SKELETON_CACHE_FORMAT)
+      expect(SKELETON_CACHE_FORMAT).toBe(4) // 4: 숨길 창 저장값(header.raw)·키보드 codes — 3 의 캐시는 다시 푼다
       expect((await t.svc.open({}, 'P', 'M', 'N', 'current')).stats.fromCache).toBe(true)
       for (const old of [undefined, SKELETON_CACHE_FORMAT - 1]) {
         const { cacheFormat, ...rest } = sk

@@ -48,6 +48,19 @@ describe('csDefaults', () => {
     expect(s.Step[0].RetryLimit).toBe(2); expect(s.Step[1]).toBe(null)
     expect(s.HidingWindowConditionList[0]).toEqual({ Text: 't', ClassName: null, IsCheckRectEqual: false, Left: 0, Top: 0, Right: 0, Bottom: 0 })
   })
+  it('사전(찾을 그림 표) 항목도 TrainImage 기본값으로 채운다 — 객체 꼴·[[키, 항목]] 꼴 모두(M5)', () => {
+    const isp = (map) => withCsDefaults('ScenarioStep', { Metadata: { ImageSearchParam: { TrainImageMap: map } } }).Metadata.ImageSearchParam.TrainImageMap
+    expect(isp({ 0: { BinaryImage: 'QUJD' }, 2: { Type: false }, 3: null })).toEqual({ 0: { BinaryImage: 'QUJD', Type: true }, 2: { BinaryImage: PLACEHOLDER_BI, Type: false }, 3: null })
+    expect(isp([[0, { BinaryImage: 'QUJD' }], [1, null], [2, { BinaryImage: 'QUJD', Type: false }]]))
+      .toEqual([[0, { BinaryImage: 'QUJD', Type: true }], [1, null], [2, { BinaryImage: 'QUJD', Type: false }]])
+    const inp = { 0: { BinaryImage: 'QUJD' } }
+    isp(inp)
+    expect(inp).toEqual({ 0: { BinaryImage: 'QUJD' } }) // 입력은 그대로
+    const proto = JSON.parse('{"__proto__":{"BinaryImage":"QUJD"}}')
+    const out = isp(proto)
+    expect(Object.getPrototypeOf(out)).toBe(Object.prototype)
+    expect(Object.keys(out)).toEqual(['__proto__'])
+  })
   it('채운 결과는 직렬화가 던지지 않는다', () => {
     const sc = withCsDefaults('Scenario', { ID: 'P-M-N', Description: 'd', Step: [withCsDefaults('ScenarioStep', { Operation: 0 })] })
     expect(() => serializeScenario(sc)).not.toThrow()
