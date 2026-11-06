@@ -139,7 +139,11 @@ function createDeployService({ check, opener, web, repo, hash, scopes, interface
       const sameKey = base && base.model === t.model && base.name === t.name // 같은 키면 prepare 가 이미 없다고 읽었다
       const baseDoc = base && !sameKey ? await propertyDocOf(base) : null
       owners = ownersOf(baseDoc)
-      performance = copiesPerformanceToNewTarget(user) && baseDoc && isObject(baseDoc.performance) ? baseDoc.performance : emptyPerformance()
+      // 복사할 성과는 Long 을 올리지 않고 읽은 값 — 읽은 숫자를 다시 쓰면 Int64(CitizenDeveloper[].Contribution 등)가 Int32·Double 이 된다.
+      performance = emptyPerformance()
+      if (copiesPerformanceToNewTarget(user) && baseDoc && isObject(baseDoc.performance)) {
+        performance = (await repo.findPerformanceRaw({ process: base.process, model: base.model, name: base.name })) ?? baseDoc.performance
+      }
     }
 
     // 조립(§6.8). 본문은 문자열(15MB 까지), BI 는 그림을 하나씩 읽어 흘려 쓴다 — 요청 전체를 문자열 하나로 만들지 않는다.

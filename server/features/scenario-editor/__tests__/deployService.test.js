@@ -30,7 +30,7 @@ const until = async (cond) => { for (let i = 0; i < 200 && !cond(); i++) await n
 
 // 기준 판 = helpers 의 P-M-N (crtime CUR, 스텝 2개, 기준 화면 s0-bi·s1-bi). 검사는 실제 checkService(prepare·checkScenario), 조립·흘려 쓰기는 실제 P2-A 함수.
 function setup(o = {}) {
-  const calls = { stream: [], sent: [], insert: [], update: [], finish: [], delDraft: [], delImages: [], resolve: [], source: [], getDeploy: [] }
+  const calls = { rawRead: [], stream: [], sent: [], insert: [], update: [], finish: [], delDraft: [], delImages: [], resolve: [], source: [], getDeploy: [] }
   const src = okSource()
   const docs = new Map(Object.entries(o.docs || { 'P|M|N': { scname: 'N', property: propertyDoc, performance: PERF } }))
   const redis = new Map(o.fields || [[`N.${CUR}`, 'old body'], ['OTHER.1', 'x']])
@@ -40,6 +40,7 @@ function setup(o = {}) {
   const repo = {
     findScenarioKeyDocs: async (p, m, n) => (docs.has(`${p}|${m}|${n}`) ? [docs.get(`${p}|${m}|${n}`)] : []),
     findScenarioDocs: async (p, m) => [...docs.entries()].filter(([k]) => k.startsWith(`${p}|${m}|`)).map(([, d]) => d),
+    findPerformanceRaw: async (key) => { calls.rawRead.push(`${key.process}|${key.model}|${key.name}`); return o.rawPerformance !== undefined ? o.rawPerformance : (docs.get(`${key.process}|${key.model}|${key.name}`) || {}).performance || null },
     finishDeploy: async (key, finish) => {
       calls.finish.push([key, finish])
       if (mode === 'throw') throw seError(504, 'UPSTREAM_TIMEOUT', 'EARS DB 응답이 늦습니다')
@@ -346,6 +347,21 @@ describe('deployService.deploy — 새 대상 성과', () => {
     const { svc, calls, meta } = setup({ docs })
     await svc.deploy({ ...user, authorityManager: grade }, meta({ target: { process: 'P', model: 'M', name: 'N2' } }), new Map())
     expect(calls.finish[0][1].performance).toEqual(PERF)
+  })
+  it('복사하는 성과는 Long 을 올리지 않고 읽은 값(findPerformanceRaw) — Int64 가 그대로 finishDeploy 로 간다', async () => {
+    const { Long } = require('mongoose').mongo
+    const rawPerformance = { ...PERF, CitizenDeveloper: [{ KnoxId: 'k', Sdwt: 'S', Name: 'N', Contribution: Long.fromNumber(40) }] }
+    const { svc, calls, meta } = setup({ docs, rawPerformance })
+    await svc.deploy({ ...user, authorityManager: 1 }, meta({ target: { process: 'P', model: 'M', name: 'N2' } }), new Map())
+    expect(calls.rawRead).toEqual(['P|M|N'])
+    const c = calls.finish[0][1].performance.CitizenDeveloper[0].Contribution
+    expect(Long.isLong(c)).toBe(true)
+    expect(c.toNumber()).toBe(40)
+  })
+  it('빈 성과를 쓰는 등급은 raw 읽기를 하지 않는다', async () => {
+    const { svc, calls, meta } = setup({ docs })
+    await svc.deploy({ ...user, authorityManager: 3 }, meta({ target: { process: 'P', model: 'M', name: 'N2' } }), new Map())
+    expect(calls.rawRead).toEqual([])
   })
   it('새 대상의 Owners 는 기준 판 문서의 지금 목록, 기준 키·대상 키 초안을 모두 지운다', async () => {
     const { svc, calls, meta } = setup({ docs })

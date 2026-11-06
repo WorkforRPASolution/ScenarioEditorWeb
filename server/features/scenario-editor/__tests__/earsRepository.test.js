@@ -81,6 +81,16 @@ describe('earsRepository 쓰기', () => {
 })
 
 describe('earsRepository 읽기', () => {
+  it('findPerformanceRaw: Long 을 숫자로 올리지 않는 읽기(promoteLongs:false)이고 performance 만 돌려준다', async () => {
+    const f = fakeDb({ rows: [{ performance: { CitizenDeveloper: [{ Contribution: 5 }] } }] })
+    expect(await repoOf(f).findPerformanceRaw(key)).toEqual({ CitizenDeveloper: [{ Contribution: 5 }] })
+    expect(f.calls[0]).toMatchObject({ name: 'SC_PROPERTY', op: 'find', filter: KEY_FILTER, options: { promoteLongs: false, projection: { _id: 0, performance: 1 } } })
+  })
+  it('findPerformanceRaw: 문서가 없거나 performance 가 없으면 null', async () => {
+    expect(await repoOf(fakeDb({ rows: [] })).findPerformanceRaw(key)).toBeNull()
+    expect(await repoOf(fakeDb({ rows: [{}] })).findPerformanceRaw(key)).toBeNull()
+  })
+
   it('searchUsers: 정규식 특수 문자를 이스케이프하고 password 제외·20건', async () => {
     const f = fakeDb({ rows: [{ singleid: 'a', name: 'b', process: 'P' }] })
     const out = await repoOf(f).searchUsers('a.b')

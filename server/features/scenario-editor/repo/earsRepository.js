@@ -24,6 +24,12 @@ function createEarsRepository(getDb, mongo) {
       .find({ process, eqpModel: model }, { projection: { _id: 0, scname: 1, property: 1, performance: 1 } }).maxTimeMS(MAX).toArray(),
     findScenarioKeyDocs: (process, model, name) => col('SC_PROPERTY')
       .find({ process, eqpModel: model, scname: name }, { projection: { _id: 0 } }).maxTimeMS(MAX).toArray(),
+    // Int64(Long)를 숫자로 올리지 않고 읽는다 — 읽은 값을 그대로 다시 쓸 때 Int64 가 Int32·Double 로 바뀌지 않게(성과 복사·기여자 형 유지).
+    findPerformanceRaw: async (key) => {
+      const docs = await col('SC_PROPERTY').find(keyFilter(key), { promoteLongs: false, projection: { _id: 0, performance: 1 } }).maxTimeMS(MAX).toArray()
+      const p = docs.length ? docs[0].performance : null
+      return p && typeof p === 'object' ? p : null
+    },
     findDuplicateKeys: async (pairs) => {
       if (!pairs.length) return []
       const rows = await col('SC_PROPERTY').aggregate([
