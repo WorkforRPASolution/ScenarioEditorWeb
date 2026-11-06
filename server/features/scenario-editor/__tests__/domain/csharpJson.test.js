@@ -129,7 +129,11 @@ describe('흘려 쓰기', () => {
     expect(bi).toBe(serializeBackupInfo({ ID: 'BI.x', TargetSnapshotList: [] }))
     // 조각 크기 1MiB 경계(1048576 글자)에 쌍이 걸치도록 한다.
     const body = 'x'.repeat(1048575) + '\u{1F600}' + 'y'.repeat(10) + '"'
-    const req = await join(setScenarioRequestChunks({ process: 'P', model: 'M', name: 'N', biChunks: backupInfoChunks('BI.x', [], resolve3), bodyString: body, propertyString: '{}' }))
+    const chunks = []
+    for await (const c of setScenarioRequestChunks({ process: 'P', model: 'M', name: 'N', biChunks: backupInfoChunks('BI.x', [], resolve3), bodyString: body, propertyString: '{}' })) chunks.push(c)
+    // 조각마다 UTF-8 로 따로 인코딩해도 안전해야 한다: 어느 조각도 서로게이트 쌍을 가르지 않는다.
+    for (const c of chunks) expect(c.isWellFormed()).toBe(true)
+    const req = chunks.join('')
     expect(req).toBe(serializeSetScenarioRequest({ Process: 'P', Model: 'M', SCName: 'N', BI: bi, Body: body, Property: '{}' }))
   })
   it('그림은 하나씩 읽는다', async () => {
