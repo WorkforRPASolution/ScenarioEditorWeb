@@ -244,7 +244,8 @@ const RANGE_OPS = new Set([7, 8])
 // base = 고치기 전 스텝의 Metadata(새 스텝이면 newRawStep(kind).Metadata). base 는 바꾸지 않는다.
 function encodeCondition(condition, base, trainEntries) {
   const kind = condition.kind
-  if (kind === 'eqpState') return { Operation: 4, Metadata: base } // 보존 전용(Q-025)
+  // image·ocr·none 밖(설비 상태는 보존 전용 Q-025, 알 수 없는 종류)은 고칠 수 없으므로 base 를 그대로 둔다
+  if (kind !== 'image' && kind !== 'ocr' && kind !== 'none') return { Operation: kind === 'eqpState' ? 4 : condition.operationRaw, Metadata: base }
   const md = clone(base || newRawStep(kind === 'none' ? 'none' : kind).Metadata)
   md.ConditionExpression = exprOf(condition)
   if (kind === 'none') return { Operation: 0, Metadata: md }
@@ -266,10 +267,10 @@ function encodeCondition(condition, base, trainEntries) {
 }
 
 function encodeCustomScript(cs) {
-  if (cs.legacy) return [cs.name, ...cs.args].join('@')
   const opts = []
   if (cs.timeout) opts.push(`timeout:${cs.timeout.value} ${cs.timeout.unit}`)
   for (const e of cs.email) opts.push(`email:${e}`)
+  if (cs.legacy && opts.length === 0) return [cs.name, ...cs.args].join('@') // 옵션이 생기면 ; 형식으로 바뀐다
   if (cs.args.length === 0 && opts.length === 0) return `${cs.name};`
   return [cs.name, ...cs.args, ...(opts.length ? [`@@${opts.join(',')}`] : [])].join(';')
 }
@@ -280,6 +281,14 @@ function encodeAction(action, base) {
   const t = action.type
   if (KEEP_AS_IS.has(t)) {
     return { Type: t, Value: base?.Value ?? '', NativeFunction: t === 15 ? base?.NativeFunction ?? null : null }
+  }
+  // 해석 실패·빈 값으로 구조화 값이 없거나 모르는 종류면 고칠 수 없다 — 같은 종류 base 를 보존하고 없으면 오류
+  const FIELD = { 1: 'click', 2: 'click', 3: 'click', 4: 'wheel', 5: 'keyboard', 9: 'findWindow', 12: 'customScript' }
+  const missing = (t in FIELD && !action[FIELD[t]]) || (t === 6 && typeof action.waitSec !== 'number') || (t === 11 && typeof action.command !== 'string') ||
+    !(Number.isInteger(t) && t >= 0 && t <= 15)
+  if (missing) {
+    if (base && base.Type === t) return base
+    throw new Error('ACTION_UNSTRUCTURED')
   }
   let value = ''
   switch (t) {

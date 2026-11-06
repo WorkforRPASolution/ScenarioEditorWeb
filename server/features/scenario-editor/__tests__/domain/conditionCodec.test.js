@@ -245,4 +245,26 @@ describe('동작 해석 보강·조립', () => {
     const eq = { ...base, ConditionExpression: 'MAIN,RUN,_' }
     expect(encodeCondition({ kind: 'eqpState' }, eq, [])).toEqual({ Operation: 4, Metadata: eq })
   })
+  it('옛 형식 스크립트에 옵션이 생기면 ; 형식으로', () => {
+    const cs = act(12, 'old@a@b').customScript
+    expect(encodeAction({ type: 12, customScript: { ...cs, timeout: { value: 5, unit: 'minutes' }, email: ['fail'] } }, null).Value)
+      .toBe('old;a;b;@@timeout:5 minutes,email:fail')
+    expect(encodeAction({ type: 12, customScript: { ...cs, email: ['fail'] } }, null).Value).toBe('old;a;b;@@email:fail')
+  })
+  it('알 수 없는 조건 종류는 base 그대로', () => {
+    const base = { SearchArea: { X: 9 }, ConditionExpression: 'x' }
+    const r = encodeCondition({ kind: 'unknown', operationRaw: 3, skipPreprocessing: null }, base, [])
+    expect(r).toEqual({ Operation: 3, Metadata: base })
+    expect(r.Metadata).toBe(base)
+  })
+  it('해석 안 된 동작은 같은 종류 base 를 보존하고, 없으면 ACTION_UNSTRUCTURED', () => {
+    const base = { Type: 1, Value: 'Set mouse Coordinates.', NativeFunction: null }
+    const failed = act(1, base.Value)
+    expect(encodeAction(failed, base)).toBe(base)
+    expect(() => encodeAction(failed, null)).toThrow('ACTION_UNSTRUCTURED')
+    expect(() => encodeAction(failed, { ...base, Type: 2 })).toThrow('ACTION_UNSTRUCTURED')
+    for (const t of [9, 12]) expect(() => encodeAction(act(t, ''), null)).toThrow('ACTION_UNSTRUCTURED')
+    expect(() => encodeAction({ type: 99 }, null)).toThrow('ACTION_UNSTRUCTURED')
+    expect(() => encodeAction({ type: 99 }, { Type: 98, Value: 'x' })).toThrow('ACTION_UNSTRUCTURED')
+  })
 })
