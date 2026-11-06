@@ -127,3 +127,90 @@ describe('시간 제한', () => {
     await expect(setScenario(scenario)).rejects.toMatchObject({ statusCode: 504, code: 'UPSTREAM_TIMEOUT' })
   })
 })
+
+// --- 흘려 보내기·삭제 (P2-B Task 5) — 실제 로컬 http 서버로 받은 머리글·본문을 본다 ---
+describe('setScenarioStream·delScenario (실제 http 서버)', () => {
+  const { setScenarioStream, delScenario, countUtf8Bytes } = require('../clients/interfaceClient')
+  let server
+  let received
+  let handler
+  const start = async (h) => {
+    handler = h
+    server = http.createServer((req, res) => {
+      const rec = { headers: req.headers, chunks: [], aborted: false, ended: false }
+      received = rec
+      req.on('data', (d) => rec.chunks.push(d))
+      req.on('aborted', () => { rec.aborted = true })
+      req.on('close', () => { rec.closed = true })
+      req.on('end', () => { rec.ended = true; rec.body = Buffer.concat(rec.chunks).toString('utf8'); handler(req, res, rec) })
+    })
+    await new Promise((r) => server.listen(0, '127.0.0.1', r))
+    process.env.EARS_INTERFACE_URL = `http://127.0.0.1:${server.address().port}`
+  }
+  afterEach(async () => {
+    if (server) { server.closeAllConnections?.(); await new Promise((r) => server.close(r)); server = null }
+  })
+  const reply = (text, status = 200) => (req, res) => { res.statusCode = status; res.end(text) }
+  const pieces = ['{"a":"가', '나다"}', '😀x']
+  async function* gen() { for (const p of pieces) yield p }
+  const bytes = Buffer.byteLength(pieces.join(''), 'utf8')
+
+  it('Content-Length 를 contentLength 로 달고 chunked 없이 조각을 이은 본문을 보낸다', async () => {
+    await start(reply(OK))
+    await setScenarioStream({ chunks: gen, contentLength: bytes }, {})
+    expect(received.headers['content-length']).toBe(String(bytes))
+    expect(received.headers['transfer-encoding']).toBeUndefined()
+    expect(received.headers).toMatchObject({ category: 'scenario', function: 'setscenario', 'content-type': 'application/json' })
+    expect(Buffer.byteLength(received.body, 'utf8')).toBe(bytes)
+    expect(received.body).toBe(pieces.join(''))
+  })
+  it('chunks 는 한 번만 부른다', async () => {
+    await start(reply(OK))
+    let n = 0
+    await setScenarioStream({ chunks: () => { n++; return gen() }, contentLength: bytes }, {})
+    expect(n).toBe(1)
+  })
+  it.each([
+    ['200 success "false"', reply('{"success":"false"}'), 502, 'UPSTREAM_FAILED'],
+    ['HTTP 500', reply('internal', 500), 504, 'UPSTREAM_TIMEOUT'],
+    ['응답 전에 소켓을 끊음', (req, res) => { req.socket.destroy() }, 504, 'UPSTREAM_TIMEOUT']
+  ])('%s', async (_, h, statusCode, code) => {
+    await start(h)
+    await expect(setScenarioStream({ chunks: gen, contentLength: bytes }, {})).rejects.toMatchObject({ statusCode, code })
+  })
+  it('연결 거부(닫힌 포트) → 503', async () => {
+    await start(reply(OK))
+    const closed = server.address().port
+    await new Promise((r) => server.close(r)); server = null
+    process.env.EARS_INTERFACE_URL = `http://127.0.0.1:${closed}`
+    await expect(setScenarioStream({ chunks: gen, contentLength: bytes }, {})).rejects.toMatchObject({ statusCode: 503, code: 'UPSTREAM_DOWN' })
+  })
+  it('시간 초과 → 504', async () => {
+    await start(() => {}) // 답하지 않는다
+    await expect(setScenarioStream({ chunks: gen, contentLength: bytes }, { timeoutMs: 100 })).rejects.toMatchObject({ statusCode: 504, code: 'UPSTREAM_TIMEOUT' })
+  })
+  it('조각을 만들다 던지면 요청을 끊고 원래 오류를 그대로 던진다(저장 안 됨)', async () => {
+    let finished = false
+    await start(() => { finished = true })
+    const boom = new Error('image read failed')
+    async function* bad() { yield '{"a":"'.padEnd(1000, 'x'); await new Promise((r) => setTimeout(r, 100)); throw boom }
+    let caught
+    try { await setScenarioStream({ chunks: bad, contentLength: 5000 }, {}) } catch (e) { caught = e }
+    expect(caught).toBe(boom)
+    await new Promise((r) => setTimeout(r, 100))
+    expect(finished).toBe(false) // 서버는 완전한 본문을 받지 못했다
+    expect(received.ended).toBe(false)
+    expect(received.closed).toBe(true)
+    expect(Buffer.concat(received.chunks).length).toBeLessThan(5000)
+  })
+  it('delScenario 는 function delscenario 와 Process·Model·SCName 만 보낸다', async () => {
+    await start(reply(OK))
+    await expect(delScenario({ process: 'P', model: 'M', name: '한글' })).resolves.toBeUndefined()
+    expect(received.headers).toMatchObject({ category: 'scenario', function: 'delscenario' })
+    expect(JSON.parse(received.body)).toEqual({ Process: 'P', Model: 'M', SCName: '한글' })
+  })
+  it('countUtf8Bytes 는 UTF-8 바이트 수를 센다(대리쌍 포함)', async () => {
+    expect(await countUtf8Bytes(gen())).toBe(bytes)
+    expect(await countUtf8Bytes((async function* () {})())).toBe(0)
+  })
+})
