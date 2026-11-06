@@ -101,4 +101,31 @@ async function check(req, res) {
   ok(res, await getDeps().check.check(req.seUser, req.body))
 }
 
-module.exports = { check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, versions, open, dataCheck, image }
+async function saveDraft(req, res) {
+  ok(res, await getDeps().drafts.save(req.seUser, req.seMeta, req.seImages))
+}
+
+async function listDrafts(req, res) {
+  ok(res, await getDeps().drafts.list(req.seUser, need(req.query.process, 'process'), need(req.query.model, 'model')))
+}
+
+async function getDraft(req, res) {
+  ok(res, await getDeps().drafts.get(req.seUser, req.params.id))
+}
+
+async function draftImage(req, res, next) {
+  const stream = await getDeps().drafts.image(req.seUser, req.params.id, req.params.tempId)
+  res.set({ 'Content-Type': 'image/png', 'Cache-Control': 'private, no-store' })
+  stream.on('error', (e) => {
+    if (res.headersSent) return res.destroy()
+    res.removeHeader('Content-Type'); res.removeHeader('Cache-Control')
+    next(e && e.code ? e : Object.assign(new Error('초안 그림을 읽지 못했습니다'), { statusCode: 500 }))
+  })
+  stream.pipe(res)
+}
+
+async function removeDraft(req, res) {
+  ok(res, await getDeps().drafts.remove(req.seUser, req.params.id))
+}
+
+module.exports = { saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, versions, open, dataCheck, image }

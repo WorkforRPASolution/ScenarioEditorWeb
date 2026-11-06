@@ -213,3 +213,62 @@ describe('POST /check', () => {
     expect(seen).toEqual([['sew_multi', { target: { process: 'CVD', model: 'M1', name: 'N' } }]])
   })
 })
+
+describe('/drafts', () => {
+  afterEach(() => { delete require('../../../app').locals.seWriteDisabled })
+  const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2])
+  const form = () => {
+    const fd = new FormData()
+    fd.append('meta', JSON.stringify({ target: { process: 'CVD', model: 'M1', name: 'N' } }))
+    fd.append('img:t1', new Blob([PNG], { type: 'image/png' }), 'a.png')
+    return fd
+  }
+  it('POST 는 WRITE 가 아니면 403 이고 본문을 읽지 않는다', async () => {
+    let called = 0
+    fake.drafts = { save: async () => { called++ } }
+    const res = await fetch(`${base}/drafts`, { method: 'POST', headers: { 'X-SE-User': 'sew_reader' }, body: form() })
+    expect(res.status).toBe(403)
+    expect(called).toBe(0)
+  })
+  it('POST 는 meta·그림 Map 을 서비스에 넘긴다', async () => {
+    const seen = []
+    fake.drafts = { save: async (u, meta, images) => { seen.push([u.singleid, meta, [...images.keys()], images.get('t1').length]); return { draftId: 'd1', revision: 1 } } }
+    const res = await fetch(`${base}/drafts`, { method: 'POST', body: form() })
+    expect(res.status).toBe(200)
+    expect((await res.json()).data).toEqual({ draftId: 'd1', revision: 1 })
+    expect(seen).toEqual([['sew_multi', { target: { process: 'CVD', model: 'M1', name: 'N' } }, ['t1'], PNG.length]])
+  })
+  it('POST 가 PNG 아닌 파일이면 400', async () => {
+    fake.drafts = { save: async () => ({}) }
+    const fd = new FormData()
+    fd.append('meta', '{}'); fd.append('img:t1', new Blob(['zzzzzzzzzzzz']), 'a.png')
+    expect((await fetch(`${base}/drafts`, { method: 'POST', body: fd })).status).toBe(400)
+  })
+  it('GET 목록은 process·model 이 필요하다', async () => {
+    const seen = []
+    fake.drafts = { list: async (u, p, m) => { seen.push([p, m]); return [{ draftId: 'd1' }] } }
+    expect((await fetch(`${base}/drafts?process=CVD`)).status).toBe(400)
+    const res = await fetch(`${base}/drafts?process=CVD&model=M1`)
+    expect((await res.json()).data).toEqual([{ draftId: 'd1' }])
+    expect(seen).toEqual([['CVD', 'M1']])
+  })
+  it('GET /:id 는 서비스 결과를 data 로 낸다', async () => {
+    fake.drafts = { get: async (u, id) => ({ draftId: id }) }
+    expect((await (await fetch(`${base}/drafts/abc`)).json()).data).toEqual({ draftId: 'abc' })
+  })
+  it('GET 그림은 PNG 에 no-store', async () => {
+    const { Readable } = require('node:stream')
+    fake.drafts = { image: async () => Readable.from([PNG]) }
+    const res = await fetch(`${base}/drafts/abc/images/t1`)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('image/png')
+    expect(res.headers.get('cache-control')).toBe('private, no-store')
+    expect(Buffer.from(await res.arrayBuffer()).equals(PNG)).toBe(true)
+  })
+  it('DELETE 는 WRITE 가 아니면 403, 아니면 서비스 결과', async () => {
+    fake.drafts = { remove: async () => ({ deleted: true }) }
+    expect((await fetch(`${base}/drafts/abc`, { method: 'DELETE', headers: { 'X-SE-User': 'sew_reader' } })).status).toBe(403)
+    const res = await fetch(`${base}/drafts/abc`, { method: 'DELETE' })
+    expect((await res.json()).data).toEqual({ deleted: true })
+  })
+})

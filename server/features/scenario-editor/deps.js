@@ -46,6 +46,8 @@ function build(env = process.env) {
   out.dataCheck = createDataCheckService({ repo, scopes })
   const { createCheckService } = require('./service/checkService')
   out.check = createCheckService({ repo, hash, scopes, opener: out.opener, env })
+  const { createDraftService } = require('./service/draftService')
+  out.drafts = createDraftService({ web, check: out.check, scopes })
   return out
 }
 
