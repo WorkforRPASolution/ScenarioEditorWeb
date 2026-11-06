@@ -91,7 +91,9 @@ describe('earsRepository 읽기', () => {
     expect(x.singleid.$regex).toBe('a\\.b')
     expect(x.singleid.$options).toBe('i')
     expect(y.name.$regex).toBe('a\\.b')
-    expect(c.options.projection.password).toBe(0)
+    // 포함 projection 에 제외(password: 0)를 섞으면 MongoDB 가 거절한다
+    expect(c.options.projection).toEqual({ _id: 0, singleid: 1, name: 1, process: 1 })
+    expect('password' in c.options.projection).toBe(false)
     expect(c.limit).toBe(20)
   })
   it('findSameNameModels: 같은 공정·이름의 eqpModel 정렬', async () => {

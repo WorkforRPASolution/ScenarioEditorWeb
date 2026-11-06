@@ -50,7 +50,7 @@ function createEarsRepository(getDb, mongo) {
     searchUsers: (q) => {
       const rx = { $regex: escapeRegex(q), $options: 'i' }
       return col('ARS_USER_INFO')
-        .find({ $or: [{ singleid: rx }, { name: rx }] }, { projection: { _id: 0, singleid: 1, name: 1, process: 1, password: 0 } })
+        .find({ $or: [{ singleid: rx }, { name: rx }] }, { projection: { _id: 0, singleid: 1, name: 1, process: 1 } })
         .limit(20).maxTimeMS(MAX).toArray()
     },
     findSameNameModels: async (process, name) => {
