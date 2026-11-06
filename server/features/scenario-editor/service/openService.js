@@ -2,13 +2,15 @@
 // 버전 열기: SC_PROPERTY 정확히 1건 확인 → 버전 고르기 → (캐시 없으면) GridFS 본문·BI 를 풀어 뼈대 + PNG 디스크 캐시 → 운영 속성 붙이기.
 // BI 는 흘려 읽어 기준 화면을 바로 디스크에 쓴다. 큰 판도 메모리에 모으지 않는다.
 const { pickCurrent } = require('../domain/versionPick')
-const { buildSkeleton, wantsBaseImage, baseImageId, refreshPropertyParts } = require('../domain/skeleton')
+const { buildSkeleton, isImage, baseImageId, refreshPropertyParts } = require('../domain/skeleton')
 const { scanBi } = require('../domain/biStream')
 const { createSingleFlight } = require('../util/singleFlight')
 const { createSemaphore } = require('../util/semaphore')
 const { seError } = require('../errors')
 
 const enc = encodeURIComponent
+// 디스크 뼈대 캐시 형식 번호. 뼈대에 담는 값이 바뀌면 올린다 — 다른 번호(없음 포함)의 캐시는 없는 것으로 보고 다시 푼다.
+const SKELETON_CACHE_FORMAT = 2
 // 이미지 URL 은 1년 캐시라 내용이 바뀌면 안 된다 — 파일 id 를 넣어 같은 crtime 으로 다시 올라온 파일과 구분한다.
 const baseUrl = (p, m, n, crtime, fileId) => `/scenario-editor/scenarios/${enc(p)}/${enc(m)}/${enc(n)}/versions/${crtime}/files/${enc(fileId)}/images`
 const rss = () => process.memoryUsage().rss
@@ -32,17 +34,22 @@ function createOpenService({ repo, hash, gridfs, scopes, imageCache, log }) {
     const key = versionKey(process, model, name, crtime, fileId)
     return flight.run(key, async () => {
       const cached = await imageCache.readSkeleton(key)
-      if (cached) return { core: cached, fromCache: true }
+      if (cached && cached.cacheFormat === SKELETON_CACHE_FORMAT) {
+        const { cacheFormat, ...core } = cached // 형식 번호는 응답에 새지 않게 뗀다
+        return { core, fromCache: true }
+      }
       return unpacking.run(async () => {
         const file = await gridfs.findFile(fileId)
         if (!file) throw seError(404, 'NOT_FOUND', '그 버전이 없습니다')
         const writer = imageCache.begin(key)
         try {
           const body = file.metadata.body
-          const wanted = wantsBaseImage(body)
           const present = new Set()
+          const literals = new Map()
+          let count = 0
           const state = await scanBi(gridfs.streamContent(file), async (i, value) => {
-            if (!wanted(i, value)) return
+            count++
+            if (!isImage(value)) { literals.set(i, value); return }
             await writer.writeImage(baseImageId(i), value)
             present.add(i)
           })
@@ -50,10 +57,12 @@ function createOpenService({ repo, hash, gridfs, scopes, imageCache, log }) {
           if (state === 'invalid') {
             await writer.removeImages([...present].map(baseImageId))
             present.clear()
+            literals.clear()
+            count = null
           }
-          const { skeleton, images } = buildSkeleton({ process, model, name, crtime, isCurrent: false, body, baseImages: { parseFailed: state === 'invalid', present },
+          const { skeleton, images } = buildSkeleton({ process, model, name, crtime, isCurrent: false, body, baseImages: { parseFailed: state === 'invalid', present, literals, count: count || null },
             propertyDoc: {}, performanceDoc: null, imageBaseUrl: baseUrl(process, model, name, crtime, fileId) })
-          await writer.commit(skeleton, images)
+          await writer.commit({ ...skeleton, cacheFormat: SKELETON_CACHE_FORMAT }, images)
           return { core: skeleton, fromCache: false }
         } catch (e) {
           await writer.abort()
@@ -112,4 +121,4 @@ function createOpenService({ repo, hash, gridfs, scopes, imageCache, log }) {
   return { open, imagePath, clearImages }
 }
 
-module.exports = { createOpenService, baseUrl, versionKey }
+module.exports = { createOpenService, baseUrl, versionKey, SKELETON_CACHE_FORMAT }

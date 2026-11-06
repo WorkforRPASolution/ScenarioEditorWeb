@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildSkeleton, wantsBaseImage, versionNotes, refreshPropertyParts } from '../../domain/skeleton'
+import { buildSkeleton, versionNotes, refreshPropertyParts } from '../../domain/skeleton'
 
 const md = (op, train = {}) => ({
   SearchArea: op === 0 ? { X: -18, Y: -18, Width: -18, Height: -18 } : { X: 10, Y: 20, Width: 300, Height: 200 },
@@ -121,25 +121,6 @@ describe('buildSkeleton', () => {
     })
   })
 
-  describe('wantsBaseImage: BI 를 읽으며 어느 항목을 떼어 낼지', () => {
-    // body: 0 = 이미지 조건, 1 = OCR 조건, 2 = 조건 없음
-    it.each([
-      [0, LONG_B64, true],
-      [1, LONG_B64, true],
-      [2, LONG_B64, false], // 조건 없는 스텝은 기준 화면이 필요 없다
-      [3, LONG_B64, false], // 스텝 수보다 많은 항목
-      [0, 'AA==', false], // 1바이트 자리표시
-      [0, 5, false],
-      [0, {}, false],
-      [0, null, false],
-      [0, ['AAAAAAAA'], false]
-    ])('스텝 %i, 값 %j → %s', (i, value, want) => {
-      expect(wantsBaseImage(body)(i, value)).toBe(want)
-    })
-    it.each([[null], [5], [{ Step: 'abc' }], [[]]])('본문이 %j 면 어느 항목도 떼어 내지 않는다', (bad) => {
-      expect(wantsBaseImage(bad)(0, LONG_B64)).toBe(false)
-    })
-  })
   describe('versionNotes — 현재 운영 속성에 기대지 않는 알림만 남긴다', () => {
     const w = (code, params = {}) => ({ level: 'warning', code, params })
     it('본문이 객체가 아니면 본문 해석 실패만 남는다(SUCCESS 없음·대상 창 표시 차이는 뺀다)', () => {
@@ -189,5 +170,44 @@ describe('refreshPropertyParts', () => {
     expect(r.property.Priority).toBe(3)
     expect(r.performance.scenarioDescription).toBe('새 설명')
     expect(r.notes.map((n) => n.code).sort()).toEqual(['PARSE_FAILED', 'PRIORITY_NONSTANDARD'])
+  })
+})
+
+describe('원본 보존', () => {
+  const noImages = { parseFailed: false, present: new Set(), literals: new Map(), count: null }
+  const withTrain = (v) => ({ ...base.body, Step: [{ ...base.body.Step[0], Metadata: md(1, { 0: { BinaryImage: v, Type: true } }) }] })
+  it('자리표시 찾을 그림은 raw 에 원래 값으로 남는다', () => {
+    const { skeleton } = buildSkeleton({ ...base, body: withTrain('AA=='), baseImages: noImages })
+    expect(skeleton.steps[0].raw.Metadata.ImageSearchParam.TrainImageMap['0'].BinaryImage).toBe('AA==')
+  })
+  it('스텝마다 bi 항목 종류를 남긴다', () => {
+    const baseImages = { parseFailed: false, present: new Set([0]), literals: new Map([[1, 'AA==']]), count: 2 }
+    const { skeleton } = buildSkeleton({ ...base, baseImages })
+    expect(skeleton.steps[0].bi).toEqual({ kind: 'image', id: 's0-bi' })
+    expect(skeleton.steps[1].bi).toEqual({ kind: 'literal', value: 'AA==' })
+    expect(skeleton.steps[2].bi).toEqual({ kind: 'absent' })
+    expect(skeleton.biCount).toBe(2)
+  })
+  it('그림이 필요 없는 스텝의 그림 BI 도 image 로 남긴다(기준 화면 상태는 notNeeded 그대로)', () => {
+    const { skeleton } = buildSkeleton({ ...base, baseImages: { ...noImages, present: new Set([2]), count: 3 } })
+    expect(skeleton.steps[2].bi).toEqual({ kind: 'image', id: 's2-bi' })
+    expect(skeleton.steps[2].baseImage).toEqual({ state: 'notNeeded' })
+  })
+  it('BI 해석 실패면 모든 스텝이 absent 이고 biCount 는 null', () => {
+    const { skeleton } = buildSkeleton({ ...base, baseImages: BROKEN_BI })
+    expect(skeleton.steps.every((s) => s.bi.kind === 'absent')).toBe(true)
+    expect(skeleton.biCount).toBeNull()
+  })
+  it('header.raw 는 대상 창·보정을 저장값 그대로, 없던 키는 두지 않는다', () => {
+    const { skeleton } = buildSkeleton({ ...base, body: { ...base.body, TargetWindowCondition: null, Compensation: { RefImage: 'AA==', X: 1, Y: 2 } } })
+    expect(skeleton.header.raw).toEqual({ TargetWindowCondition: null, Compensation: { RefImage: 'AA==', X: 1, Y: 2 } })
+    const { TargetWindowCondition, ...noTwc } = base.body
+    expect('TargetWindowCondition' in buildSkeleton({ ...base, body: noTwc }).skeleton.header.raw).toBe(false)
+    expect(buildSkeleton({ ...base, body: noTwc }).skeleton.header.raw).toEqual({ Compensation: null })
+  })
+  it('보정 RefImage 가 그림이면 raw 에는 null, URL 은 compensation.refImage 가 가리킨다', () => {
+    const { skeleton } = buildSkeleton({ ...base, body: { ...base.body, Compensation: { RefImage: LONG_B64, X: 1, Y: 2 } } })
+    expect(skeleton.header.raw.Compensation).toEqual({ RefImage: null, X: 1, Y: 2 })
+    expect(skeleton.header.compensation.refImage).toBe('/img/ref')
   })
 })

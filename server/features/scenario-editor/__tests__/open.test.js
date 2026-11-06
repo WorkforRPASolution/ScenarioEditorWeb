@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { mkdtempSync, readdirSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createOpenService, versionKey } from '../service/openService'
+import { createOpenService, versionKey, SKELETON_CACHE_FORMAT } from '../service/openService'
 import { createImageCache } from '../repo/imageCache'
 
 const LONG_B64 = Buffer.from('fake-png-bytes-xxxxxxxx').toString('base64')
@@ -124,12 +124,41 @@ describe('openService', () => {
   describe('BI 흘려 읽기', () => {
     const noteBi = (sk) => sk.notes.filter((n) => n.params && n.params.field === 'bi')
     const pngFiles = (t, key) => readdirSync(join(t.deps.imageCache.__dir, encodeURIComponent(key))).filter((f) => f.endsWith('.png')).sort()
-    it('필요한 스텝의 기준 화면만 PNG 로 쓴다', async () => {
+    it('그림인 BI 항목은 스텝 종류와 상관없이 PNG 로 쓴다(기준 화면 집계는 필요한 스텝만)', async () => {
       const t = setup({ biText: JSON.stringify({ TargetSnapshotList: [LONG_B64, LONG_B64, LONG_B64] }) }) // 스텝은 1개
       const { skeleton } = await t.svc.open({}, 'P', 'M', 'N', 'current')
       expect(skeleton.baseImageSummary).toEqual({ needed: 1, present: 1 })
-      expect(pngFiles(t, versionKey('P', 'M', 'N', 1730000000100, 'f1'))).toEqual(['s0-bi.png', 's0-train-0.png'])
+      expect(pngFiles(t, versionKey('P', 'M', 'N', 1730000000100, 'f1'))).toEqual(['s0-bi.png', 's0-train-0.png', 's1-bi.png', 's2-bi.png'])
       expect(readFileSync(await t.svc.imagePath({}, 'P', 'M', 'N', 1730000000100, 'f1', 's0-bi')).toString()).toBe('fake-png-bytes-xxxxxxxx')
+    })
+    it('그림이 아닌 항목은 literal, 스텝보다 짧으면 absent, 항목 수를 남긴다', async () => {
+      const { skeleton } = await setup({ biText: JSON.stringify({ TargetSnapshotList: ['AA=='] }) }).svc.open({}, 'P', 'M', 'N', 'current')
+      expect(skeleton.steps[0].bi).toEqual({ kind: 'literal', value: 'AA==' })
+      expect(skeleton.biCount).toBe(1)
+      expect('cacheFormat' in skeleton).toBe(false)
+    })
+    it('끝이 깨진 BI 는 모든 스텝 bi 가 absent 이고 biCount 는 null', async () => {
+      const { skeleton } = await setup({ biText: `{"TargetSnapshotList":["${LONG_B64}"` }).svc.open({}, 'P', 'M', 'N', 'current')
+      expect(skeleton.steps[0].bi).toEqual({ kind: 'absent' })
+      expect(skeleton.biCount).toBeNull()
+    })
+    it('형식 번호가 없거나 다른 옛 캐시는 다시 만든다', async () => {
+      const t = setup({ biText: JSON.stringify({ TargetSnapshotList: [LONG_B64] }) })
+      await t.svc.open({}, 'P', 'M', 'N', 'current')
+      const key = versionKey('P', 'M', 'N', 1730000000100, 'f1')
+      const file = join(t.deps.imageCache.__dir, encodeURIComponent(key), 'skeleton.json')
+      const sk = JSON.parse(readFileSync(file, 'utf8'))
+      expect(sk.cacheFormat).toBe(SKELETON_CACHE_FORMAT)
+      expect((await t.svc.open({}, 'P', 'M', 'N', 'current')).stats.fromCache).toBe(true)
+      for (const old of [undefined, SKELETON_CACHE_FORMAT - 1]) {
+        const { cacheFormat, ...rest } = sk
+        writeFileSync(file, JSON.stringify(old === undefined ? rest : { ...rest, cacheFormat: old }))
+        const before = t.reads()
+        const r = await t.svc.open({}, 'P', 'M', 'N', 'current')
+        expect(r.stats.fromCache).toBe(false)
+        expect(t.reads()).toBe(before + 1)
+        expect(r.skeleton.steps[0].bi.kind).toBe('image')
+      }
     })
     it('빈 BI 는 알림 없이 기준 화면 없음이다', async () => {
       const { skeleton } = await setup({ biText: '' }).svc.open({}, 'P', 'M', 'N', 'current')

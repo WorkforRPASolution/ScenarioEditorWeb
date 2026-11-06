@@ -1,6 +1,6 @@
 'use strict'
 // 본문(GridFS metadata.body)·운영 속성·성과 → 브라우저용 뼈대 + 떼어 낼 이미지 목록(설계 §5.3).
-// BI(파일 내용)는 부른 쪽이 흘려 읽어 기준 화면을 먼저 디스크에 쓴다(biStream). 여기는 그 결과 baseImages { parseFailed, present(스텝 번호) } 만 받는다.
+// BI(파일 내용)는 부른 쪽이 흘려 읽어 기준 화면을 먼저 디스크에 쓴다(biStream). 여기는 그 결과 baseImages { parseFailed, present(그림 항목의 스텝 번호), literals, count } 만 받는다.
 const { parseCondition, parseAction, note } = require('./conditionCodec')
 const { toTarget } = require('./nextStep')
 const { graphNotes, scenarioNotes, SCENARIO_NOTE_CODES } = require('./notes')
@@ -22,24 +22,30 @@ function trainMapOf(step) {
 const needsBaseImage = (kind) => kind === 'image' || kind === 'ocr'
 const baseImageId = (i) => `s${i}-bi`
 
-// BI 를 읽으며 어느 항목을 기준 화면으로 떼어 낼지 정한다(스텝 번호, 항목 값 -> 참·거짓).
-function wantsBaseImage(storedBody) {
-  const rawSteps = isObject(storedBody) && Array.isArray(storedBody.Step) ? storedBody.Step : []
-  const needed = new Set()
-  rawSteps.forEach((stored, i) => { if (needsBaseImage(parseCondition(stored).condition.kind)) needed.add(i) })
-  return (i, value) => needed.has(i) && isImage(value)
-}
+// present = 그림인 BI 항목 전부(스텝 종류와 상관없이), literals = 그림이 아닌 항목 값, count = BI 항목 수(해석 실패·빈 파일이면 null).
+const NO_BASE_IMAGES = Object.freeze({ parseFailed: false, present: new Set(), literals: new Map(), count: null })
 
-const NO_BASE_IMAGES = Object.freeze({ parseFailed: false, present: new Set() })
-
+// 찾을 그림은 그림만 URL 로 바꾼다. 자리표시(AA==)·빈 값은 원래 값을 둔다(그대로 다시 조립하려면 원본이 필요).
 function rawWithUrls(step, trainUrl) {
   const copy = JSON.parse(JSON.stringify(step))
   const map = trainMapOf(copy)
-  for (const k of Object.keys(map)) if (isObject(map[k])) map[k].BinaryImage = trainUrl(k, map[k].BinaryImage)
+  for (const k of Object.keys(map)) if (isObject(map[k]) && isImage(map[k].BinaryImage)) map[k].BinaryImage = trainUrl(k, map[k].BinaryImage)
   return copy
 }
 
-function buildSkeleton({ process, model, name, crtime, isCurrent, body: storedBody, baseImages = NO_BASE_IMAGES, propertyDoc, performanceDoc, imageBaseUrl }) {
+// 대상 창·보정은 해석값만 뼈대에 남으므로 저장값을 따로 둔다(키가 없던 것은 없는 채로). 보정 그림은 URL 이 가리키므로 null.
+function headerRaw(body) {
+  const raw = {}
+  if ('TargetWindowCondition' in body) raw.TargetWindowCondition = JSON.parse(JSON.stringify(body.TargetWindowCondition))
+  if ('Compensation' in body) {
+    const c = JSON.parse(JSON.stringify(body.Compensation))
+    if (isObject(c) && isImage(c.RefImage)) c.RefImage = null
+    raw.Compensation = c
+  }
+  return raw
+}
+
+function buildSkeleton({ process, model, name, crtime, isCurrent, body: storedBody, baseImages: biIn = NO_BASE_IMAGES, propertyDoc, performanceDoc, imageBaseUrl }) {
   const notesOut = []
   // 본문이 객체가 아니면 빈 본문으로 열고 알린다(깨진 저장 값은 던지지 않는다 — 설계 §5.6).
   if (!isObject(storedBody)) notesOut.push(note('warning', 'PARSE_FAILED', { field: 'body' }))
@@ -48,6 +54,7 @@ function buildSkeleton({ process, model, name, crtime, isCurrent, body: storedBo
   const rawSteps = Array.isArray(body.Step) ? body.Step : []
   const uids = rawSteps.map((_, i) => `s${i}`)
   const url = (id) => `${imageBaseUrl}/${id}`
+  const baseImages = { ...NO_BASE_IMAGES, ...biIn }
   if (baseImages.parseFailed) notesOut.push(note('warning', 'PARSE_FAILED', { field: 'bi' }))
   const images = []
   let needed = 0
@@ -92,12 +99,15 @@ function buildSkeleton({ process, model, name, crtime, isCurrent, body: storedBo
         notes.push(note('info', 'BASE_IMAGE_MISSING'))
       }
     }
+    const bi = baseImages.parseFailed ? { kind: 'absent' }
+      : baseImages.present.has(i) ? { kind: 'image', id: baseImageId(i) }
+        : baseImages.literals.has(i) ? { kind: 'literal', value: baseImages.literals.get(i) } : { kind: 'absent' }
     return {
       uid: uids[i], no: i + 1, condition: c.condition, action: a.action,
       next: { onTrue: toTarget(st.NextStepIfTrue, uids), onFalse: toTarget(st.NextStepIfFalse, uids) },
       retry: { limit: st.RetryLimit, intervalMs: st.RetryInterval },
       descriptionToEmail: st.DescriptionToEmail, descriptionToDialog: st.DescriptionToDialog, isShowDialog: st.IsShowDialog,
-      baseImage, notes,
+      baseImage, bi, notes,
       raw: rawWithUrls(st, (k) => trainIds.get(String(k)) ?? null)
     }
   })
@@ -120,9 +130,11 @@ function buildSkeleton({ process, model, name, crtime, isCurrent, body: storedBo
     header: {
       description: body.Description, timeoutLimit: body.TimeoutLimit, revisionNo: body.RevisionNo, triggerType: body.TriggerType,
       text: body.Text, targetWindow, hidingWindows: Array.isArray(body.HidingWindowConditionList) ? body.HidingWindowConditionList : [],
-      compensation
+      compensation,
+      raw: headerRaw(body)
     },
     steps,
+    biCount: baseImages.parseFailed ? null : baseImages.count,
     baseImageSummary: { needed, present },
     property: null,
     performance: null,
@@ -146,4 +158,4 @@ function refreshPropertyParts(skeleton, propertyDoc, performanceDoc) {
   return { ...skeleton, property: prop.ok ? prop.value : null, performance: performanceFromBson(performanceDoc), notes }
 }
 
-module.exports = { buildSkeleton, wantsBaseImage, baseImageId, versionNotes, refreshPropertyParts }
+module.exports = { buildSkeleton, isImage, baseImageId, versionNotes, refreshPropertyParts }
