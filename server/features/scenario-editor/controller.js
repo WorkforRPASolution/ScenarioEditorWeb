@@ -166,4 +166,28 @@ async function removeScenario(req, res) {
   ok(res, await getDeps().versionAdmin.remove(req.seUser, { process, model, name }, confirmName))
 }
 
-module.exports = { setEnabled, removeScenario, deploy, deployVerify, deployFinish, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, versions, open, dataCheck, image }
+async function reviewScenario(req, res) {
+  const b = req.body
+  if (!b || typeof b !== 'object' || Array.isArray(b)) throw badBody('body', '객체여야 합니다')
+  const { process, model, name } = req.params
+  ok(res, await getDeps().performance.review(req.seUser, { process, model, name }, { grade: b.grade, comment: b.comment }))
+}
+async function savePerformance(req, res) {
+  const b = req.body
+  if (!b || typeof b !== 'object' || Array.isArray(b)) throw badBody('body', '객체여야 합니다')
+  if (!b.fields || typeof b.fields !== 'object' || Array.isArray(b.fields)) throw badBody('fields', '객체여야 합니다')
+  const { process, model, name } = req.params
+  ok(res, await getDeps().performance.savePerformance(req.seUser, { process, model, name },
+    { fields: b.fields, citizenDevelopers: b.citizenDevelopers, alsoModels: b.alsoModels === undefined ? [] : b.alsoModels }))
+}
+async function sameName(req, res) {
+  ok(res, await getDeps().performance.sameName(req.seUser, req.params.process, req.params.name))
+}
+async function searchUsers(req, res) {
+  ok(res, await getDeps().performance.searchUsers(req.seUser, req.query.q))
+}
+async function nameRule(req, res) {
+  ok(res, await getDeps().performance.nameRule(req.seUser))
+}
+
+module.exports = { reviewScenario, savePerformance, sameName, searchUsers, nameRule, setEnabled, removeScenario, deploy, deployVerify, deployFinish, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, versions, open, dataCheck, image }

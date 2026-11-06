@@ -21,7 +21,7 @@ afterAll(() => { require('../deps')._setDeps(null); return new Promise((r) => se
 const user = { singleid: 'sew_multi', name: 'M', processRaw: 'CVD;ETCH', processes: ['CVD', 'ETCH'], multiProcess: ['CVD', 'ETCH'], process: 'CVD',
   isMaster: false, authority: 'WRITE', canWrite: true, authorityManager: 3, authorityManagerValid: true, authorityName: 'Manager', duplicateUserDocs: 1 }
 const { parseUser } = require('../domain/processPermission')
-const READERS = { sew_reader: { authority: 'READ', canWrite: false } }
+const READERS = { sew_reader: { authority: 'READ', canWrite: false }, sew_adm: { authorityManager: 1 } }
 const MASTERS = { sew_master: parseUser({ singleid: 'sew_master', process: 'MASTER' }), sew_mastercvd: parseUser({ singleid: 'sew_mastercvd', process: 'MASTER;CVD' }) }
 beforeEach(() => {
   let cleared = 0
@@ -337,5 +337,40 @@ describe('PUT /enabled·DELETE /scenarios/:process/:model/:name', () => {
     const res = await fetch(u, { method: 'DELETE', headers: J, body: '{"confirmName":"N"}' })
     expect((await res.json()).data).toEqual({ deleted: true })
     expect(seen).toEqual([[{ process: 'P', model: 'M', name: 'N' }, 'N']])
+  })
+})
+
+describe('심의·성과·같은 이름·사용자 찾기·이름 규칙', () => {
+  const J = { 'Content-Type': 'application/json' }
+  it('PUT review·performance 는 등급 1·2 만(3 은 403 GRADE_FORBIDDEN), 본문이 틀리면 400, 아니면 서비스 결과', async () => {
+    const seen = []
+    fake.performance = {
+      review: async (u, k, b) => { seen.push(['review', u.singleid, k, b]); return { performance: { grade: 3 } } },
+      savePerformance: async (u, k, b) => { seen.push(['perf', k, b]); return { performance: {}, applied: [] } }
+    }
+    const rv = `${base}/scenarios/P/M/N/review`
+    const pf = `${base}/scenarios/P/M/N/performance`
+    const res403 = await fetch(rv, { method: 'PUT', headers: J, body: '{"grade":3}' })
+    expect([res403.status, (await res403.json()).code]).toEqual([403, 'GRADE_FORBIDDEN'])
+    expect((await fetch(pf, { method: 'PUT', headers: J, body: '{"fields":{}}' })).status).toBe(403)
+    const adm = { ...J, 'X-SE-User': 'sew_adm' }
+    expect((await fetch(pf, { method: 'PUT', headers: adm, body: '{"fields":5}' })).status).toBe(400)
+    expect((await fetch(rv, { method: 'PUT', headers: adm, body: '[]' })).status).toBe(400)
+    expect((await (await fetch(rv, { method: 'PUT', headers: adm, body: '{"grade":3,"comment":"zzzzzz"}' })).json()).data).toEqual({ performance: { grade: 3 } })
+    await fetch(pf, { method: 'PUT', headers: adm, body: '{"fields":{"ManWorkLoss":1},"citizenDevelopers":[{"KnoxId":"a","Contribution":5}]}' })
+    expect(seen).toEqual([
+      ['review', 'sew_adm', { process: 'P', model: 'M', name: 'N' }, { grade: 3, comment: 'zzzzzz' }],
+      ['perf', { process: 'P', model: 'M', name: 'N' }, { fields: { ManWorkLoss: 1 }, citizenDevelopers: [{ KnoxId: 'a', Contribution: 5 }], alsoModels: [] }]
+    ])
+  })
+  it('GET same-name·users·name-rule 은 서비스 결과를 data 로', async () => {
+    fake.performance = {
+      sameName: async (u, p, n) => [p, n],
+      searchUsers: async (u, q) => [{ singleid: q, name: 'x' }],
+      nameRule: async () => ({ exists: false, rules: [] })
+    }
+    expect((await (await fetch(`${base}/scenarios/P/same-name/N`)).json()).data).toEqual(['P', 'N'])
+    expect((await (await fetch(`${base}/users?q=ab`)).json()).data).toEqual([{ singleid: 'ab', name: 'x' }])
+    expect((await (await fetch(`${base}/name-rule`)).json()).data).toEqual({ exists: false, rules: [] })
   })
 })
