@@ -77,7 +77,11 @@ function parseImages(im, path) {
   needObject(im, path)
   needObject(im.train, `${path}.train`)
   const train = {}
-  for (const k of Object.keys(im.train)) train[k] = parseImageRef(im.train[k], `${path}.train.${k}`, { allowLiteral: true })
+  for (const k of Object.keys(im.train)) {
+    // 찾을 그림 키는 음이 아닌 정수의 정규 표기만 — "1"·"01" 이 함께 오면 같은 사전 키를 두 번 쓰게 된다. '__proto__' 도 여기서 막혀 대입되지 않는다.
+    if (!isTrainKey(k)) fail(`${path}.train.${k}`, '찾을 그림 키는 음이 아닌 정수(0, 1, …)여야 합니다')
+    train[k] = parseImageRef(im.train[k], `${path}.train.${k}`, { allowLiteral: true })
+  }
   const base = im.base === null || im.base === undefined ? null : parseImageRef(im.base, `${path}.base`, { allowLiteral: true })
   return { train, base }
 }

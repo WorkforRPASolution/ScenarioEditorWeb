@@ -13,9 +13,13 @@ const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k)
 
 // 편집 스텝 images.train 의 값을 키마다 한 번만 푼다: 그림 참조는 resolveImage, { literal } 은 그 값 그대로.
+// 정규 키가 아니면("01"·"-1"·"1.0") 같은 사전 키를 두 번 쓰거나 엉뚱한 키를 쓴다 — 형식 검사(parseEditedScenario)가 먼저 막으므로 프로그램 오류.
 async function trainValues(train, resolveImage) {
   const out = new Map()
-  for (const k of Object.keys(train)) out.set(k, hasOwn(train[k], 'literal') ? train[k].literal : await resolveImage(train[k]))
+  for (const k of Object.keys(train)) {
+    if (!isTrainKey(k)) throw new Error('BAD_TRAIN_KEY')
+    out.set(k, hasOwn(train[k], 'literal') ? train[k].literal : await resolveImage(train[k]))
+  }
   return out
 }
 

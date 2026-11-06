@@ -254,6 +254,19 @@ describe('assembleScenario — 고친 스텝', () => {
   })
 })
 
+describe('assembleScenario — 형식 검사를 건너뛴 찾을 그림 키', () => {
+  it.each(['01', '-1', '1.0'])('images.train 키 %j 는 BAD_TRAIN_KEY(검사가 먼저 막으므로 프로그램 오류)', async (k) => {
+    const e = editedFromSkeleton(src)
+    e.steps[0].images.train[k] = { literal: 'AA==' } // parseEditedScenario 를 거치지 않은 값
+    await expect(assembleScenario(e, src, { id: 'P-M-N', resolveImage })).rejects.toThrow('BAD_TRAIN_KEY')
+  })
+  it('"1" 과 "01" 이 함께 있어도 같은 키를 두 번 쓰지 않고 던진다', async () => {
+    const e = editedFromSkeleton(src)
+    e.steps[0].images.train['01'] = { from: 'upload', tempId: 't1' }
+    await expect(assembleScenario(e, src, { id: 'P-M-N', resolveImage })).rejects.toThrow('BAD_TRAIN_KEY')
+  })
+})
+
 describe('assembleScenario — 머리', () => {
   it('저장된 머리 값(개정 번호·트리거·글·숨길 창·보정 그림)을 그대로 쓴다', async () => {
     const t = serializeScenario(scenario([noneStep([0, ''], '끝', [10000, -1])], {

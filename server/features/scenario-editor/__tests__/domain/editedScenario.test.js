@@ -125,6 +125,25 @@ describe('parseEditedScenario', () => {
     if (mut === null) return expect(() => parseEditedScenario(null)).toThrow(EditedScenarioError)
     expect(bad(mut)).toThrow(EditedScenarioError)
   })
+  it.each(['01', '-1', '1.0', 'abc', '__proto__', ''])('찾을 그림 키 %j 는 거절(음이 아닌 정수의 정규 표기만)', (k) => {
+    const e = fresh()
+    // __proto__ 도 프로토타입 대입이 아니라 자기 키로 넣는다(JSON 본문을 읽은 것과 같다)
+    Object.defineProperty(e.steps[0].images.train, k, { value: { literal: 'AA==' }, enumerable: true, configurable: true, writable: true })
+    expect(Object.keys(e.steps[0].images.train)).toContain(k)
+    try { parseEditedScenario(e) } catch (err) {
+      expect(err).toBeInstanceOf(EditedScenarioError)
+      expect(err.path).toBe(`steps[0].images.train.${k}`)
+      return
+    }
+    throw new Error('던져야 한다')
+  })
+  it('JSON 의 "__proto__" 찾을 그림 키도 거절하고 프로토타입을 바꾸지 않는다', () => {
+    const json = JSON.stringify(fresh()).replace('"train":{"0":', '"train":{"__proto__":{"literal":"AA=="},"0":')
+    const parsed = JSON.parse(json)
+    expect(Object.keys(parsed.steps[0].images.train)).toContain('__proto__')
+    expect(() => parseEditedScenario(parsed)).toThrow(EditedScenarioError)
+    expect(Object.getPrototypeOf(parsed.steps[0].images.train)).toBe(Object.prototype)
+  })
   it('다른 판·업로드 그림 참조와 source null·unresolved 를 받는다', () => {
     const e = fresh()
     e.source = null
