@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { webManagerDbEnabled, connectEarsOnly, disableWebManagerLog, healthWithoutWebManager } from '../../../webManagerDb'
+import { webManagerDbEnabled, connectEarsOnly, connectWebDbOnly, disableWebManagerLog, healthWithoutWebManager } from '../../../webManagerDb'
 import { webManagerConnection } from '../../../shared/db/connection'
 import { WebManagerLog, createErrorLog } from '../../../shared/models/webmanagerLogModel'
 
@@ -49,5 +49,21 @@ describe('WEBMANAGER DB 스위치 (사내 운영 EARS 읽기 시험)', () => {
     })
     expect(healthWithoutWebManager(health('down')).status).toBe('down')
     expect(healthWithoutWebManager(health('ok', 'down')).status).toBe('degraded')
+  })
+})
+
+describe('웹 전용 DB 만 연결 (SE_WEBMANAGER_DB=0)', () => {
+  it('SE_WEB_DB_URI 가 있으면 단독판 접속 이름으로 연다', async () => {
+    const conn = { openUri: vi.fn(async () => {}), on: vi.fn() }
+    const ok = await connectWebDbOnly(conn, { SE_WEBMANAGER_DB: '0', SE_WEB_DB_URI: 'mongodb://h:27017/SE_WEB' })
+    expect(ok).toBe(true)
+    expect(conn.openUri).toHaveBeenCalledWith('mongodb://h:27017/SE_WEB', { appName: 'ScenarioEditorWeb', maxPoolSize: 5, autoIndex: false })
+  })
+
+  it('주소가 없거나 SE_WEBMANAGER_DB 가 0 이 아니면 열지 않는다', async () => {
+    const conn = { openUri: vi.fn(async () => {}), on: vi.fn() }
+    expect(await connectWebDbOnly(conn, { SE_WEBMANAGER_DB: '0' })).toBe(false)
+    expect(await connectWebDbOnly(conn, { SE_WEB_DB_URI: 'mongodb://h/x' })).toBe(false)
+    expect(conn.openUri).not.toHaveBeenCalled()
   })
 })

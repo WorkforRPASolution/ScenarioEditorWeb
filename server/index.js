@@ -3,10 +3,10 @@
 require('dotenv').config();
 const { createLogger } = require('./shared/logger');
 const app = require('./app');
-const { connectDB, closeConnections, earsConnection } = require('./shared/db/connection');
+const { connectDB, closeConnections, earsConnection, webManagerConnection } = require('./shared/db/connection');
 const { connectRedis, closeRedis } = require('./shared/db/redisConnection');
 const { resolveListenAddress } = require('./listen');
-const { webManagerDbEnabled, connectEarsOnly } = require('./webManagerDb');
+const { webManagerDbEnabled, connectEarsOnly, connectWebDbOnly } = require('./webManagerDb');
 
 const serverLog = createLogger('server');
 const { port: PORT, host: HOST } = resolveListenAddress(process.env);
@@ -14,7 +14,10 @@ const { port: PORT, host: HOST } = resolveListenAddress(process.env);
 const startServer = async () => {
   try {
     if (webManagerDbEnabled(process.env)) await connectDB();
-    else await connectEarsOnly(earsConnection, process.env);
+    else {
+      await connectEarsOnly(earsConnection, process.env);
+      await connectWebDbOnly(webManagerConnection, process.env);
+    }
     await connectRedis();
 
     const server = app.listen(PORT, HOST, () => {

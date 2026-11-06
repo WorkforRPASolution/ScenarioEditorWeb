@@ -22,6 +22,17 @@ async function connectEarsOnly(earsConnection, env) {
   earsConnection.on('disconnected', () => log.warn('MongoDB EARS disconnected'))
 }
 
+// SE_WEBMANAGER_DB=0 이어도 초안·배포 기록을 둘 웹 전용 DB 는 따로 연다(SE_WEB_DB_URI). 운영 EARS 가 아닌 DB 이름을 써야 한다.
+// WebManagerLog 저장은 꺼진 그대로다. 주소가 없으면 열지 않는다(쓰기 API 는 getWebDb 의 503 으로 막힌다).
+async function connectWebDbOnly(webManagerConnection, env) {
+  if (webManagerDbEnabled(env) || !env.SE_WEB_DB_URI) return false
+  await webManagerConnection.openUri(env.SE_WEB_DB_URI, { appName: 'ScenarioEditorWeb', maxPoolSize: 5, autoIndex: false })
+  log.info(`MongoDB 웹 전용 DB Connected: ${webManagerConnection.host} (SE_WEB_DB_URI)`)
+  webManagerConnection.on('error', (err) => log.error(`MongoDB 웹 전용 DB connection error: ${err.message}`))
+  webManagerConnection.on('disconnected', () => log.warn('MongoDB 웹 전용 DB disconnected'))
+  return true
+}
+
 // verbatim errorHandler 는 오류마다 WebManagerLog 를 저장한다(단독판에서 WEBMANAGER DB 를 쓰는 곳은 이것뿐이다).
 // 저장을 아무 일도 하지 않게 한다 — 파일 로그(createErrorLog 의 errorLog.error)는 그대로 남는다.
 function disableWebManagerLog({ WebManagerLog }) {
@@ -42,4 +53,4 @@ function healthWithoutWebManager(health) {
   }
 }
 
-module.exports = { webManagerDbEnabled, connectEarsOnly, disableWebManagerLog, healthWithoutWebManager }
+module.exports = { webManagerDbEnabled, connectEarsOnly, connectWebDbOnly, disableWebManagerLog, healthWithoutWebManager }
