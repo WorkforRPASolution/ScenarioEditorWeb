@@ -378,19 +378,37 @@ describe('deployService.deploy — InterfaceServer 결과', () => {
     const { svc, calls, meta, records } = setup({ streamError: upstream(504, 'UPSTREAM_TIMEOUT') })
     const err = await fail(svc.deploy(user, meta(), new Map()))
     expect(err).toMatchObject({ statusCode: 504, code: 'UPSTREAM_TIMEOUT', details: { requestId: RID } })
-    expect(records.get(RID)).toMatchObject({ result: 'unknown', error: { code: 'UPSTREAM_TIMEOUT', status: 504 } })
+    expect(records.get(RID)).toMatchObject({ result: 'unknown', error: { code: 'UPSTREAM_TIMEOUT', status: 504, upstreamText: 'x' } }) // 감사용 원문
     expect(calls.finish).toEqual([])
     expect(calls.delDraft).toEqual([])
   })
-  it.each([[503, 'UPSTREAM_DOWN'], [502, 'UPSTREAM_FAILED']])('%i → 기록 failed·error 후 같은 오류를 다시 던진다', async (status, code) => {
-    const e = upstream(status, code)
+  it('503 → 기록 failed·error(감사용 upstreamText 포함) 후 같은 오류를 다시 던진다 — 응답 details 에 upstreamText 없음', async () => {
+    const e = Object.assign(seError(503, 'UPSTREAM_DOWN', 'InterfaceServer 에 연결하지 못했습니다'), { upstream: { status: 0, text: 'TypeError: fetch failed (ECONNREFUSED)' } })
     const { svc, calls, meta, records } = setup({ streamError: e })
     const err = await fail(svc.deploy(user, meta(), new Map()))
     expect(err).toBe(e)
-    expect(records.get(RID)).toMatchObject({ result: 'failed', error: { code, status } })
+    expect(err.details ?? null).toBeNull()
+    expect(records.get(RID)).toMatchObject({ result: 'failed', error: { code: 'UPSTREAM_DOWN', status: 503, upstreamText: 'TypeError: fetch failed (ECONNREFUSED)' } })
     expect(records.get(RID).finishedAt).toBeInstanceOf(Date)
     expect(calls.finish).toEqual([])
     expect(calls.delDraft).toEqual([])
+  })
+  it('502(거절) → 같은 code·문구에 details.upstreamText(InterfaceServer 문구), 기록 error 에도 같은 문구', async () => {
+    const text = '{"success":"false","message":"X"}'
+    const e = Object.assign(seError(502, 'UPSTREAM_FAILED', 'InterfaceServer 가 요청을 처리하지 못했습니다'), { upstream: { status: 200, text } })
+    const { svc, calls, meta, records } = setup({ streamError: e })
+    const err = await fail(svc.deploy(user, meta(), new Map()))
+    expect(err).toMatchObject({ statusCode: 502, code: 'UPSTREAM_FAILED', message: 'InterfaceServer 가 요청을 처리하지 못했습니다', details: { upstreamText: text } })
+    expect(Object.keys(err.details)).toEqual(['upstreamText']) // 서버 주소 등 다른 내부 정보는 싣지 않는다
+    const failedUpdate = calls.update.find(([, f]) => f.result === 'failed')
+    expect(failedUpdate[1].error).toMatchObject({ code: 'UPSTREAM_FAILED', status: 502, upstreamText: text })
+    expect(records.get(RID)).toMatchObject({ result: 'failed' })
+    expect(calls.finish).toEqual([])
+    expect(calls.delDraft).toEqual([])
+  })
+  it('502 에 upstream 원문이 없으면 details.upstreamText 는 null', async () => {
+    const { svc, meta } = setup({ streamError: seError(502, 'UPSTREAM_FAILED', 'InterfaceServer 가 요청을 처리하지 못했습니다') })
+    expect(await fail(svc.deploy(user, meta(), new Map()))).toMatchObject({ statusCode: 502, code: 'UPSTREAM_FAILED', details: { upstreamText: null } })
   })
   it('보내는 도중 그림 읽기가 실패하면(요청이 끊겨 저장 안 됨) 기록 failed, 500 으로 던진다 — 503·504 가 아니다', async () => {
     // 길이 세기에서 한 번 읽고, 보내는 도중 두 번째 읽기에서 실패. Mongo 시간 초과(504 로 매핑된 값)여도 결과 모름이 아니다.

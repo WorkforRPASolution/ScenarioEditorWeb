@@ -54,6 +54,13 @@ function requestChunks({ id, process, model, name, biEntries, bodyString, proper
 
 const ownersOf = (doc) => (doc && isObject(doc.property) && Array.isArray(doc.property.Owners) ? doc.property.Owners : [])
 const errorOf = (e, status) => ({ code: String((e && (e.code || e.name)) || 'Error'), status, message: String((e && e.message) || '').slice(0, ERROR_TEXT_MAX) })
+// InterfaceServer 원문(interfaceClient 가 UPSTREAM_TEXT_MAX 로 이미 자름). 없으면 null.
+const upstreamTextOf = (e) => (e && e.upstream && typeof e.upstream.text === 'string' ? e.upstream.text : null)
+// 감사 기록용: 원문이 있으면 함께 남긴다(응답에 싣는 것은 502 뿐)
+const upstreamErrorOf = (e, status) => {
+  const text = upstreamTextOf(e)
+  return text === null ? errorOf(e, status) : { ...errorOf(e, status), upstreamText: text }
+}
 
 function createDeployService({ check, opener, web, repo, hash, scopes, interfaceClient, log, now = () => new Date() }) {
   // 프로세스 안 잠금: 대상 시나리오 ID 와 requestId. 서버가 여러 개 뜨는 구성은 단독판에 없다.
@@ -175,12 +182,14 @@ function createDeployService({ check, opener, web, repo, hash, scopes, interface
         throw Object.assign(new Error(`배포 요청을 만들다 멈췄습니다 — InterfaceServer 는 완전한 요청을 받지 못해 저장하지 않았습니다 (${(e && (e.code || e.name)) || 'Error'})`), { statusCode: 500, cause: e })
       }
       if (e && (e.code === 'UPSTREAM_DOWN' || e.code === 'UPSTREAM_FAILED')) {
-        await note(requestId, { result: 'failed', error: errorOf(e, e.statusCode), finishedAt: now() })
+        await note(requestId, { result: 'failed', error: upstreamErrorOf(e, e.statusCode), finishedAt: now() })
+        // 거절이면 서버 문구를 함께 보인다(설계 §6.3·§8). 업무 문구만 싣고 주소 등 내부 정보는 싣지 않는다(공통 설계 §7.1).
+        if (e.code === 'UPSTREAM_FAILED') throw Object.assign(seError(502, 'UPSTREAM_FAILED', e.message, { upstreamText: upstreamTextOf(e) }), { upstream: e.upstream })
         throw e
       }
       // 504 UPSTREAM_TIMEOUT(보낸 뒤 끊김·시간 초과·10초 초과 500)와 그 밖의 뜻밖 오류는 결과를 모른다 — 다시 보내지 않고 확인하게 한다.
       if (!e || e.code !== 'UPSTREAM_TIMEOUT') log.warn(`deploy ${id} ${requestId}: setscenario 뜻밖 오류 — ${(e && e.message) || e}`)
-      await note(requestId, { result: 'unknown', error: errorOf(e, 504) })
+      await note(requestId, { result: 'unknown', error: upstreamErrorOf(e, 504) })
       throw Object.assign(seError(504, 'UPSTREAM_TIMEOUT', 'InterfaceServer 응답을 받지 못해 배포 결과를 모릅니다. 버전 목록을 확인한 뒤 다시 배포하세요', { requestId }), { upstream: e && e.upstream })
     }
 
