@@ -243,7 +243,72 @@ function createDeployService({ check, opener, web, repo, hash, scopes, interface
     }
   }
 
-  return { deploy }
+  // ---- 결과 모름 확인(§6.3)·마무리 다시 쓰기. 기록은 본인 것만 본다(없거나 남의 것이면 404). ----
+  const notFound = () => seError(404, 'NOT_FOUND', '배포 기록을 찾을 수 없습니다')
+  const partialOf = (result) => (result === 'partial' ? ['finish'] : [])
+
+  async function ownRecord(user, requestId) {
+    if (typeof requestId !== 'string' || !UUID.test(requestId)) throw notFound()
+    const record = await web.getDeploy(requestId)
+    if (!record || record.user !== user.singleid) throw notFound()
+    await scopes.assertAllowed(user, record.target.process, record.target.model)
+    return record
+  }
+
+  // 같은 기록을 동시에 확인·다시 쓰지 않게 한다
+  async function exclusive(requestId, fn) {
+    const lock = `request\u0000${requestId}`
+    if (running.has(lock)) throw inProgress('이 배포 기록을 처리하는 중입니다')
+    running.add(lock)
+    try { return await fn() } finally { running.delete(lock) }
+  }
+
+  // 마무리 값을 대상 문서의 지금 Owners 에 내 배포 줄을 더해 다시 만들어 쓴다. 줄은 deploy 때와 같은 값(사용자·시작 시각)이다.
+  // ownersWithLine 이 같은 줄을 두 번 넣지 않으므로 그 사이 남의 줄이 생겨도 지우지 않는다. 문서가 없거나 쓰기가 실패하면 null.
+  async function rewriteFinish(record) {
+    const t = record.target
+    try {
+      const doc = await propertyDocOf(t)
+      if (!doc) return null
+      const finish = { ...record.finish, owners: ownersWithLine(ownersOf(doc), deployLine(record.user, new Date(record.startedAt))) }
+      const r = await repo.finishDeploy({ process: t.process, model: t.model, name: t.name }, finish)
+      return r && r.matched > 0 ? finish : null
+    } catch (e) {
+      log.warn(`deploy ${t.process}-${t.model}-${t.name} ${record.requestId}: 마무리 실패 — ${e.message}`)
+      return null
+    }
+  }
+
+  async function verify(user, requestId) {
+    return exclusive(requestId, async () => {
+      const record = await ownRecord(user, requestId)
+      if (record.result === 'ok' || record.result === 'partial') return { found: 'mine', crtime: record.crtime ?? null, result: record.result, partialFailed: partialOf(record.result) }
+      if (record.result !== 'unknown' && record.result !== 'pending') return { found: 'none', crtime: null } // failed: 저장되지 않았다
+      const t = record.target
+      const hashKey = `${t.process}-${t.model}`
+      const crtime = await pickMine({ name: t.name, fieldsBefore: record.fieldsBefore, fieldsNow: await hash.hkeys(hashKey), valueOf: (f) => hash.hget(hashKey, f), sha: record.bodySha256 })
+      if (crtime === null) return { found: 'none', crtime: null }
+      const finish = await rewriteFinish(record)
+      const result = finish ? 'ok' : 'partial'
+      await note(requestId, { result, crtime, ...(finish ? { finish } : {}), steps: finish ? ['setscenario', 'finish'] : ['setscenario'], finishedAt: now() })
+      log.info(`deploy ${requestId} verify result=${result} crtime=${crtime}`)
+      return { found: 'mine', crtime, result, partialFailed: partialOf(result) }
+    })
+  }
+
+  async function finish(user, requestId) {
+    return exclusive(requestId, async () => {
+      const record = await ownRecord(user, requestId)
+      if (record.result !== 'partial') return { result: record.result, crtime: record.crtime ?? null, partialFailed: partialOf(record.result) }
+      const done = await rewriteFinish(record)
+      if (!done) return { result: 'partial', crtime: record.crtime ?? null, partialFailed: ['finish'] }
+      await note(requestId, { result: 'ok', finish: done, steps: ['setscenario', 'finish'], finishedAt: now() })
+      log.info(`deploy ${requestId} finish rewritten`)
+      return { result: 'ok', crtime: record.crtime ?? null, partialFailed: [] }
+    })
+  }
+
+  return { deploy, verify, finish }
 }
 
 module.exports = { createDeployService, requestChunks }

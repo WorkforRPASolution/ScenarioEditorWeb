@@ -36,13 +36,14 @@ function setup(o = {}) {
   const redis = new Map(o.fields || [[`N.${CUR}`, 'old body'], ['OTHER.1', 'x']])
   const records = new Map(o.records || [])
   const reads = new Map()
+  let mode = o.finish
   const repo = {
     findScenarioKeyDocs: async (p, m, n) => (docs.has(`${p}|${m}|${n}`) ? [docs.get(`${p}|${m}|${n}`)] : []),
     findScenarioDocs: async (p, m) => [...docs.entries()].filter(([k]) => k.startsWith(`${p}|${m}|`)).map(([, d]) => d),
     finishDeploy: async (key, finish) => {
       calls.finish.push([key, finish])
-      if (o.finish === 'throw') throw seError(504, 'UPSTREAM_TIMEOUT', 'EARS DB 응답이 늦습니다')
-      return { matched: o.finish === 'zero' ? 0 : 1 }
+      if (mode === 'throw') throw seError(504, 'UPSTREAM_TIMEOUT', 'EARS DB 응답이 늦습니다')
+      return { matched: mode === 'zero' ? 0 : 1 }
     }
   }
   const hash = {
@@ -101,7 +102,9 @@ function setup(o = {}) {
     target: { process: 'P', model: 'M', name: 'N' }, propertyRev: propertyRev(propertyDoc), scenario: edited(),
     requestId: RID, overwrite: false, force: false, restoredFrom: null, ...over
   })
-  return { svc, calls, meta, edited, records, redis, logs, src }
+  const repoOk = () => { mode = undefined }
+  const setOwners = (list) => { docs.set('P|M|N', { ...docs.get('P|M|N'), property: { ...propertyDoc, Owners: list } }) }
+  return { svc, calls, meta, edited, records, redis, logs, src, repoOk, setOwners }
 }
 
 describe('deployService.deploy — 성공', () => {
@@ -467,6 +470,120 @@ describe('deployService.deploy — 마무리', () => {
     const { svc, meta, logs } = setup({ deleteDraftFails: true, updateFails: true })
     expect(await svc.deploy(user, meta(), new Map())).toEqual({ result: 'ok', crtime: NEW, partialFailed: [], requestId: RID })
     expect(logs.filter(([lv]) => lv === 'warn').length).toBeGreaterThanOrEqual(2)
+  })
+})
+
+// 결과 모름·마무리 실패 기록에서 시작하는 확인·다시 쓰기. 기록은 실제 deploy 가 남긴 것을 쓴다.
+async function unknownCase(o = {}) {
+  const s = setup({ streamError: seError(504, 'UPSTREAM_TIMEOUT', 'x'), ...o })
+  await fail(s.svc.deploy(user, s.meta(), new Map()))
+  expect(s.records.get(RID).result).toBe('unknown')
+  s.calls.finish.length = 0
+  return s
+}
+
+describe('deployService.verify — 결과 모름 확인', () => {
+  it('새 필드(지문 같음)가 있으면 mine·ok, finishDeploy 한 번, 다시 눌러도 같고 더 부르지 않는다', async () => {
+    const s = await unknownCase()
+    const body = s.calls.sent.length ? s.calls.sent[0].Body : null
+    expect(body).not.toBeNull()
+    s.redis.set(`N.${NEW}`, body) // 보냈는데 응답만 못 받은 경우
+    const r = await s.svc.verify(user, RID)
+    expect(r).toEqual({ found: 'mine', crtime: NEW, result: 'ok', partialFailed: [] })
+    expect(s.calls.finish).toHaveLength(1)
+    expect(s.records.get(RID)).toMatchObject({ result: 'ok', crtime: NEW, steps: ['setscenario', 'finish'] })
+    expect(await s.svc.verify(user, RID)).toEqual(r)
+    expect(s.calls.finish).toHaveLength(1)
+  })
+  it('새 필드가 없으면 none, 기록은 unknown 그대로, 쓰지 않는다', async () => {
+    const s = await unknownCase()
+    expect(await s.svc.verify(user, RID)).toEqual({ found: 'none', crtime: null })
+    expect(s.records.get(RID).result).toBe('unknown')
+    expect(s.calls.finish).toEqual([])
+  })
+  it('지문이 다른 새 필드(남의 저장)는 내 판이 아니다', async () => {
+    const s = await unknownCase()
+    s.redis.set(`N.${NEW}`, 'someone else')
+    expect((await s.svc.verify(user, RID)).found).toBe('none')
+  })
+  it('기록이 없거나 다른 사용자 것이면 404', async () => {
+    const s = await unknownCase()
+    expect(await fail(s.svc.verify(user, RID2))).toMatchObject({ statusCode: 404 })
+    expect(await fail(s.svc.verify({ ...user, singleid: 'other' }, RID))).toMatchObject({ statusCode: 404 })
+  })
+  it('찾았는데 마무리가 실패하면 partial 로 기록한다', async () => {
+    const s = await unknownCase({ finish: 'throw' })
+    s.redis.set(`N.${NEW}`, s.calls.sent[0].Body)
+    expect(await s.svc.verify(user, RID)).toEqual({ found: 'mine', crtime: NEW, result: 'partial', partialFailed: ['finish'] })
+    expect(s.records.get(RID)).toMatchObject({ result: 'partial', crtime: NEW, steps: ['setscenario'] })
+  })
+  it('그 사이 남의 줄이 생겼으면 지키고 내 줄은 한 번만(대상 문서 지금 목록 기준)', async () => {
+    const other = 'lee@2026-11-07 11:00:00'
+    const s = await unknownCase()
+    s.setOwners([...propertyDoc.Owners, other])
+    s.redis.set(`N.${NEW}`, s.calls.sent[0].Body)
+    await s.svc.verify(user, RID)
+    expect(s.calls.finish[0][1].owners).toEqual([...propertyDoc.Owners, other, LINE])
+    expect(s.records.get(RID).finish.owners).toEqual([...propertyDoc.Owners, other, LINE])
+  })
+  it('내 줄이 이미 목록에 있으면 다시 넣지 않는다', async () => {
+    const owners = [...propertyDoc.Owners, LINE, 'lee@2026-11-07 11:00:00']
+    const s = await unknownCase()
+    s.setOwners(owners)
+    s.redis.set(`N.${NEW}`, s.calls.sent[0].Body)
+    await s.svc.verify(user, RID)
+    expect(s.calls.finish[0][1].owners).toEqual(owners)
+  })
+})
+
+describe('deployService.finish — 마무리 다시 쓰기', () => {
+  it('다시 쓰기도 실패하면 partial 그대로(기록 안 바뀜)', async () => {
+    const s = setup({ finish: 'throw' })
+    await s.svc.deploy(user, s.meta(), new Map())
+    s.calls.finish.length = 0
+    expect(await s.svc.finish(user, RID)).toEqual({ result: 'partial', crtime: NEW, partialFailed: ['finish'] })
+    expect(s.calls.finish).toHaveLength(1)
+    expect(s.records.get(RID).result).toBe('partial')
+  })
+  it('다시 쓰기가 되면 ok·steps 마무리, 한 번 더 눌러도 아무것도 쓰지 않는다', async () => {
+    const s = setup({ finish: 'zero' })
+    await s.svc.deploy(user, s.meta(), new Map())
+    expect(s.records.get(RID).result).toBe('partial')
+    s.calls.finish.length = 0
+    s.repoOk()
+    expect(await s.svc.finish(user, RID)).toEqual({ result: 'ok', crtime: NEW, partialFailed: [] })
+    expect(s.records.get(RID)).toMatchObject({ result: 'ok', steps: ['setscenario', 'finish'] })
+    expect(s.calls.finish).toHaveLength(1)
+    expect(await s.svc.finish(user, RID)).toEqual({ result: 'ok', crtime: NEW, partialFailed: [] })
+    expect(s.calls.finish).toHaveLength(1)
+  })
+  it('partial 이 아닌 기록(unknown)은 아무것도 쓰지 않고 지금 결과를 돌려준다', async () => {
+    const s = await unknownCase()
+    expect(await s.svc.finish(user, RID)).toMatchObject({ result: 'unknown', crtime: null })
+    expect(s.calls.finish).toEqual([])
+  })
+  it('남의 줄이 그 사이 생겼으면 지키고 내 줄은 한 번만, 내 줄이 이미 있으면 더하지 않는다', async () => {
+    const other = 'lee@2026-11-07 11:00:00'
+    const s = setup({ finish: 'zero' })
+    await s.svc.deploy(user, s.meta(), new Map())
+    s.calls.finish.length = 0
+    s.repoOk()
+    s.setOwners([...propertyDoc.Owners, other])
+    await s.svc.finish(user, RID)
+    expect(s.calls.finish[0][1].owners).toEqual([...propertyDoc.Owners, other, LINE])
+    const s2 = setup({ finish: 'zero' })
+    await s2.svc.deploy(user, s2.meta(), new Map())
+    s2.calls.finish.length = 0
+    s2.repoOk()
+    s2.setOwners([...propertyDoc.Owners, LINE, other])
+    await s2.svc.finish(user, RID)
+    expect(s2.calls.finish[0][1].owners).toEqual([...propertyDoc.Owners, LINE, other])
+  })
+  it('기록이 없거나 다른 사용자 것이면 404', async () => {
+    const s = setup({ finish: 'zero' })
+    await s.svc.deploy(user, s.meta(), new Map())
+    expect(await fail(s.svc.finish({ ...user, singleid: 'other' }, RID))).toMatchObject({ statusCode: 404 })
+    expect(await fail(s.svc.finish(user, RID2))).toMatchObject({ statusCode: 404 })
   })
 })
 

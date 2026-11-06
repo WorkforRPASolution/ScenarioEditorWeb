@@ -143,4 +143,11 @@ async function deploy(req, res) {
   }
 }
 
-module.exports = { deploy, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, versions, open, dataCheck, image }
+async function deployVerify(req, res) {
+  ok(res, await getDeps().deploy.verify(req.seUser, req.params.requestId))
+}
+async function deployFinish(req, res) {
+  ok(res, await getDeps().deploy.finish(req.seUser, req.params.requestId))
+}
+
+module.exports = { deploy, deployVerify, deployFinish, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, versions, open, dataCheck, image }
