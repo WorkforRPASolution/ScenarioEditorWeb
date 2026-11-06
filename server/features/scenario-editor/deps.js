@@ -51,6 +51,8 @@ function build(env = process.env) {
   out.drafts = createDraftService({ web, check: out.check, scopes })
   const { createDeployService } = require('./service/deployService')
   out.deploy = createDeployService({ check: out.check, opener: out.opener, web, repo, hash, scopes, interfaceClient: require('./clients/interfaceClient'), log })
+  const { createVersionAdminService } = require('./service/versionAdminService')
+  out.versionAdmin = createVersionAdminService({ repo, scopes, interfaceClient: require('./clients/interfaceClient'), now })
   return out
 }
 

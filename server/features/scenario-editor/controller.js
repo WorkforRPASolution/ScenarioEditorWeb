@@ -150,4 +150,20 @@ async function deployFinish(req, res) {
   ok(res, await getDeps().deploy.finish(req.seUser, req.params.requestId))
 }
 
-module.exports = { deploy, deployVerify, deployFinish, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, versions, open, dataCheck, image }
+function badBody(path, reason) {
+  return seError(400, 'BAD_REQUEST', '요청 본문이 틀립니다', { path, reason })
+}
+async function setEnabled(req, res) {
+  const enabled = req.body && req.body.enabled
+  if (typeof enabled !== 'boolean') throw badBody('enabled', 'true 또는 false 여야 합니다')
+  const { process, model, name } = req.params
+  ok(res, await getDeps().versionAdmin.setEnabled(req.seUser, { process, model, name }, enabled))
+}
+async function removeScenario(req, res) {
+  const confirmName = req.body && req.body.confirmName
+  if (typeof confirmName !== 'string') throw badBody('confirmName', '문자열이어야 합니다')
+  const { process, model, name } = req.params
+  ok(res, await getDeps().versionAdmin.remove(req.seUser, { process, model, name }, confirmName))
+}
+
+module.exports = { setEnabled, removeScenario, deploy, deployVerify, deployFinish, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, versions, open, dataCheck, image }

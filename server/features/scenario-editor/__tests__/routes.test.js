@@ -315,3 +315,27 @@ describe('POST /deploy', () => {
     expect(await res.json()).toMatchObject({ code: 'UPSTREAM_TIMEOUT', details: { requestId: 'r1' } })
   })
 })
+
+describe('PUT /enabled·DELETE /scenarios/:process/:model/:name', () => {
+  const J = { 'Content-Type': 'application/json' }
+  it('PUT 은 WRITE 가 아니면 403, enabled 가 불리언이 아니면 400, 아니면 서비스 결과', async () => {
+    const seen = []
+    fake.versionAdmin = { setEnabled: async (u, k, e) => { seen.push([u.singleid, k, e]); return { isEnabled: e, propertyRev: 'r' } } }
+    const u = `${base}/scenarios/P/M/N/enabled`
+    expect((await fetch(u, { method: 'PUT', headers: { ...J, 'X-SE-User': 'sew_reader' }, body: '{"enabled":true}' })).status).toBe(403)
+    expect((await fetch(u, { method: 'PUT', headers: J, body: '{"enabled":"yes"}' })).status).toBe(400)
+    const res = await fetch(u, { method: 'PUT', headers: J, body: '{"enabled":false}' })
+    expect((await res.json()).data).toEqual({ isEnabled: false, propertyRev: 'r' })
+    expect(seen).toEqual([[expect.any(String), { process: 'P', model: 'M', name: 'N' }, false]])
+  })
+  it('DELETE 는 WRITE 가 아니면 403, confirmName 이 없으면 400, 아니면 서비스 결과', async () => {
+    const seen = []
+    fake.versionAdmin = { remove: async (u, k, c) => { seen.push([k, c]); return { deleted: true } } }
+    const u = `${base}/scenarios/P/M/N`
+    expect((await fetch(u, { method: 'DELETE', headers: { ...J, 'X-SE-User': 'sew_reader' }, body: '{"confirmName":"N"}' })).status).toBe(403)
+    expect((await fetch(u, { method: 'DELETE', headers: J, body: '{}' })).status).toBe(400)
+    const res = await fetch(u, { method: 'DELETE', headers: J, body: '{"confirmName":"N"}' })
+    expect((await res.json()).data).toEqual({ deleted: true })
+    expect(seen).toEqual([[{ process: 'P', model: 'M', name: 'N' }, 'N']])
+  })
+})
