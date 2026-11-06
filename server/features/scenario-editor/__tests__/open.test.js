@@ -4,8 +4,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createOpenService, versionKey, SKELETON_CACHE_FORMAT } from '../service/openService'
 import { createImageCache } from '../repo/imageCache'
+import { changedStepUids } from '../domain/changeDetect'
+import { propertyRev } from '../domain/deployIdentity'
 
 const LONG_B64 = Buffer.from('fake-png-bytes-xxxxxxxx').toString('base64')
+const HEX1 = '0123456789abcdef01234567'
+const HEX2 = '0123456789abcdef01234568'
 const body = { RevisionNo: 0, TriggerType: 2, ID: 'P-M-N', Text: '', Description: 'd', TimeoutLimit: 240, HidingWindowConditionList: [], Compensation: null,
   TargetWindowCondition: { Text: 'X*', ClassName: 'C', IsCheckRectEqual: false, Left: 0, Top: 0, Right: 0, Bottom: 0 },
   Step: [{ Operation: 1, Script: { Type: 1, Value: '1:1', NativeFunction: null }, RetryInterval: 2000, RetryLimit: 2, NextStepIfTrue: 10000, NextStepIfFalse: -1,
@@ -23,17 +27,17 @@ function* bytes(text, size = 7) {
 function setup(over = {}) {
   let reads = 0
   let fileReads = 0
-  let fileId = 'f1' // 이 판의 최신 파일. 같은 crtime 으로 다시 올라오면 바뀐다
+  let fileId = over.fileId ?? 'f1' // 이 판의 최신 파일. 같은 crtime 으로 다시 올라오면 바뀐다
   const OTHER_B64 = Buffer.from('other-png-bytes-yyyyyyyyy').toString('base64')
-  const biOf = { f1: LONG_B64, f2: OTHER_B64 }
+  const biOf = { f1: LONG_B64, f2: OTHER_B64, [HEX1]: LONG_B64, [HEX2]: OTHER_B64 }
   let property = { Priority: 10, Type: 1 }
   const cacheDir = mkdtempSync(join(tmpdir(), 'sew-open-'))
   const deps = {
     repo: { findScenarioKeyDocs: async () => over.keyDocs ?? [{ property, performance: {} }] },
-    hash: { hkeys: async () => ['N.1730000000100'] },
+    hash: { hkeys: async () => over.fields ?? ['N.1730000000100'] },
     gridfs: {
       findVersionId: async (p, m, n, crtime) => (crtime === 1730000000100 ? fileId : null),
-      findFile: async (id) => { fileReads++; return { _id: id, metadata: { body } } },
+      findFile: async (id) => { fileReads++; return { _id: id, metadata: { process: 'P', model: 'M', name: 'N', crtime: 1730000000100, body, ...(over.metaOf && over.metaOf[String(id)]) } } },
       streamContent: async function* ({ _id: id }) {
         reads++
         await new Promise((r) => setTimeout(r, 20))
@@ -52,7 +56,7 @@ describe('openService', () => {
   it('current 를 열고 이미지 URL 은 API 기준 경로', async () => {
     const { svc } = setup()
     const { skeleton, stats } = await svc.open({}, 'P', 'M', 'N', 'current')
-    expect(skeleton.version).toEqual({ crtime: 1730000000100, isCurrent: true })
+    expect(skeleton.version).toEqual({ crtime: 1730000000100, isCurrent: true, fileId: 'f1' })
     expect(skeleton.steps[0].baseImage.url).toBe('/scenario-editor/scenarios/P/M/N/versions/1730000000100/files/f1/images/s0-bi')
     expect(stats.fromCache).toBe(false)
   })
@@ -86,6 +90,84 @@ describe('openService', () => {
     expect(p).toMatch(/s0-bi\.png$/)
     expect(t.reads()).toBe(2)
     await expect(t.svc.imagePath({}, 'P', 'M', 'N', 1730000000100, 'f1', 'zz')).rejects.toMatchObject({ statusCode: 404 })
+  })
+
+  describe('충돌 기준값(headCrtime·propertyRev·edited)', () => {
+    it('옛 판을 열어도 headCrtime 은 현재 판, propertyRev 는 문서 property 의 지문', async () => {
+      const t = setup({ fields: ['N.1730000000100', 'N.1730000000200'] })
+      const { skeleton } = await t.svc.open({}, 'P', 'M', 'N', '1730000000100')
+      expect(skeleton.version.isCurrent).toBe(false)
+      expect(skeleton.headCrtime).toBe(1730000000200)
+      expect(skeleton.propertyRev).toBe(propertyRev({ Priority: 10, Type: 1 }))
+      t.setProperty({ Priority: 5, Type: 1 })
+      expect((await t.svc.open({}, 'P', 'M', 'N', '1730000000100')).skeleton.propertyRev).toBe(propertyRev({ Priority: 5, Type: 1 }))
+    })
+    it('현재 판이 없으면 headCrtime 은 null', async () => {
+      const t = setup({ fields: [] })
+      expect((await t.svc.open({}, 'P', 'M', 'N', '1730000000100')).skeleton.headCrtime).toBeNull()
+    })
+    it('응답 edited 는 fileId·headCrtime 을 담고 JSON 왕복 뒤에도 고친 스텝이 없다', async () => {
+      const t = setup()
+      const { skeleton: { edited, ...skeleton } } = await t.svc.open({}, 'P', 'M', 'N', 'current')
+      const back = JSON.parse(JSON.stringify(edited))
+      expect(back.source).toMatchObject({ process: 'P', model: 'M', name: 'N', crtime: 1730000000100, fileId: 'f1' })
+      expect(back.headCrtime).toBe(1730000000100)
+      expect(changedStepUids(back, skeleton).size).toBe(0)
+    })
+  })
+
+  describe('기준 판 읽기(source)·그림 base64(resolveImage)', () => {
+    const V = { process: 'P', model: 'M', name: 'N', crtime: 1730000000100, fileId: HEX1 }
+    it('source: 뼈대와 현재 운영 속성·성과 문서를 준다', async () => {
+      const t = setup({ fileId: HEX1 })
+      const r = await t.svc.source({}, V)
+      expect(r.skeleton.steps).toHaveLength(1)
+      expect(r.skeleton.version).toEqual({ crtime: 1730000000100, isCurrent: true, fileId: HEX1 })
+      expect(r.skeleton.headCrtime).toBe(1730000000100)
+      expect(r.propertyDoc).toEqual({ Priority: 10, Type: 1 })
+      expect(r.performanceDoc).toEqual({})
+      expect((await t.svc.source({}, V)).skeleton.steps).toHaveLength(1)
+      expect(t.reads()).toBe(1) // 캐시 재사용
+    })
+    it('source: 다른 이름의 파일·없는 파일·잘못된 id 는 gone', async () => {
+      const t = setup({ fileId: HEX1, metaOf: { [HEX2]: { name: 'OTHER' } } })
+      expect(await t.svc.source({}, { ...V, fileId: HEX2 })).toEqual({ gone: true })
+      expect(await t.svc.source({}, { ...V, crtime: 1 })).toEqual({ gone: true })
+      expect(await t.svc.source({}, { ...V, fileId: 'zzz' })).toEqual({ gone: true })
+      expect(await t.svc.source({}, { ...V, fileId: 5 })).toEqual({ gone: true })
+      expect(t.reads()).toBe(0)
+    })
+    it('source: property 문서가 2건이면 422, 없으면 propertyDoc null', async () => {
+      await expect(setup({ fileId: HEX1, keyDocs: [{ property: {} }, { property: {} }] }).svc.source({}, V)).rejects.toMatchObject({ statusCode: 422, code: 'DATA_INVALID' })
+      const r = await setup({ fileId: HEX1, keyDocs: [] }).svc.source({}, V)
+      expect(r.propertyDoc).toBeNull()
+      expect(r.performanceDoc).toBeNull()
+      expect(r.skeleton.steps).toHaveLength(1)
+    })
+    it('resolveImage: s0-bi 를 base64 로, 캐시를 지워도 다시 풀어 준다', async () => {
+      const t = setup({ fileId: HEX1 })
+      expect(await t.svc.resolveImage(V, 's0-bi')).toBe(LONG_B64)
+      await t.deps.imageCache.clear()
+      expect(await t.svc.resolveImage(V, 's0-bi')).toBe(LONG_B64)
+      expect(t.reads()).toBe(2)
+      await expect(t.svc.resolveImage(V, 'zz')).rejects.toMatchObject({ statusCode: 404, code: 'NOT_FOUND' })
+    })
+    it('resolveImage: 그 판의 파일이 아니면 404', async () => {
+      const t = setup({ fileId: HEX1, metaOf: { [HEX2]: { name: 'OTHER' } } })
+      await expect(t.svc.resolveImage({ ...V, fileId: HEX2 }, 's0-bi')).rejects.toMatchObject({ statusCode: 404 })
+      await expect(t.svc.resolveImage({ ...V, fileId: 'bad' }, 's0-bi')).rejects.toMatchObject({ statusCode: 404 })
+    })
+    it('resolveImage: 형식 번호가 다른 옛 캐시는 읽지 않고 다시 푼다', async () => {
+      const t = setup({ fileId: HEX1 })
+      await t.svc.open({}, 'P', 'M', 'N', 'current')
+      const key = versionKey('P', 'M', 'N', 1730000000100, HEX1)
+      const dir = join(t.deps.imageCache.__dir, encodeURIComponent(key))
+      const file = join(dir, 'skeleton.json')
+      writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, 'utf8')), cacheFormat: SKELETON_CACHE_FORMAT - 1 }))
+      writeFileSync(join(dir, 's0-bi.png'), 'STALE')
+      expect(await t.svc.resolveImage(V, 's0-bi')).toBe(LONG_B64)
+      expect(t.reads()).toBe(2)
+    })
   })
 
   describe('같은 crtime 으로 파일이 다시 올라오면 (캐시 정체성 = fs.files._id)', () => {

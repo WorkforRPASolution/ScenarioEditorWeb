@@ -4,9 +4,13 @@
 const { pickCurrent } = require('../domain/versionPick')
 const { buildSkeleton, isImage, baseImageId, refreshPropertyParts } = require('../domain/skeleton')
 const { scanBi } = require('../domain/biStream')
+const { editedFromSkeleton } = require('../domain/editedScenario')
+const { propertyRev } = require('../domain/deployIdentity')
 const { createSingleFlight } = require('../util/singleFlight')
 const { createSemaphore } = require('../util/semaphore')
 const { seError } = require('../errors')
+const fsp = require('node:fs/promises')
+const { ObjectId } = require('bson')
 
 const enc = encodeURIComponent
 // 디스크 뼈대 캐시 형식 번호. 뼈대에 담는 값이 바뀌면 올린다 — 다른 번호(없음 포함)의 캐시는 없는 것으로 보고 다시 푼다.
@@ -20,6 +24,9 @@ const rss = () => process.memoryUsage().rss
 // 버전 캐시·single-flight 키. 칸마다 인코딩해 '/' 로 잇는다 — '.' 로 이으면 (P,'M.A','B') 와 (P,'M','A.B') 가 같은 키가 된다.
 // imageCache 가 키를 다시 인코딩해 디렉터리 이름 하나로 만든다(길면 해시).
 const versionKey = (p, m, n, crtime, fileId) => [p, m, n, String(crtime), String(fileId)].map(enc).join('/')
+
+// 클라이언트가 보낸 파일 id 문자열 → ObjectId. 24자리 16진수가 아니면 null.
+const toObjectId = (v) => (typeof v === 'string' && /^[0-9a-fA-F]{24}$/.test(v) ? new ObjectId(v) : null)
 
 function createOpenService({ repo, hash, gridfs, scopes, imageCache, log }) {
   const flight = createSingleFlight()
@@ -75,6 +82,49 @@ function createOpenService({ repo, hash, gridfs, scopes, imageCache, log }) {
     })
   }
 
+  // 충돌 기준값. headCrtime = 그 이름의 현재 판(옛 판을 열어도), propertyRev = 문서 property 의 지문.
+  const withHead = (skeleton, current, propertySub) => ({ ...skeleton, headCrtime: current, propertyRev: propertySub === undefined ? null : propertyRev(propertySub) })
+
+  // 판 하나를 (캐시 재사용으로) 푼다. 그 파일이 그 공정·모델·이름·crtime 이 아니거나 없으면 null.
+  // 캐시가 형식까지 맞게 있으면 그 키가 곧 다섯 값의 증거라 파일 문서(본문 최대 16MB)를 읽지 않는다.
+  async function unpackVersion({ process, model, name, crtime, fileId }) {
+    const oid = toObjectId(fileId)
+    if (!oid || !Number.isSafeInteger(crtime)) return null
+    const key = versionKey(process, model, name, crtime, oid)
+    const cached = await imageCache.readSkeleton(key)
+    if (!(cached && cached.cacheFormat === SKELETON_CACHE_FORMAT)) {
+      const file = await gridfs.findFile(oid)
+      const m = file && file.metadata
+      if (!m || m.process !== process || m.model !== model || m.name !== name || m.crtime !== crtime) return null
+    }
+    return unpack(process, model, name, crtime, oid)
+  }
+
+  // 검사·배포가 기준 판으로 읽는다. 현재 운영 속성·성과를 붙인 뼈대와 그 문서(property·performance 하위 문서).
+  async function source(user, version) {
+    const { process, model, name, crtime } = version
+    await scopes.assertAllowed(user, process, model)
+    const unpacked = await unpackVersion(version)
+    if (!unpacked) return { gone: true }
+    const docs = (await repo.findScenarioKeyDocs(process, model, name)).filter((d) => 'property' in d)
+    if (docs.length > 1) throw seError(422, 'DATA_INVALID', '같은 공정·모델·이름의 운영 속성 문서가 둘 이상입니다')
+    const doc = docs[0] ?? null // 없으면(지워진 시나리오) gone 이 아니다 — 충돌 판정이 따로 알린다
+    const current = pickCurrent(await hash.hkeys(`${process}-${model}`), name)
+    const fileId = String(toObjectId(version.fileId))
+    const skeleton = withHead(refreshPropertyParts({ ...unpacked.core, version: { crtime, isCurrent: crtime === current, fileId } }, doc ? doc.property : undefined, doc ? doc.performance : undefined), current, doc ? doc.property : undefined)
+    return { skeleton, propertyDoc: doc ? doc.property : null, performanceDoc: doc ? (doc.performance ?? null) : null }
+  }
+
+  // 기준 판의 그림 하나를 base64 로 — 배포가 손대지 않은 그림을 다시 조립할 때 쓴다. 캐시가 없거나 옛 형식이면 다시 푼 뒤 읽는다.
+  async function resolveImage(version, imageId) {
+    const unpacked = await unpackVersion(version)
+    if (!unpacked) throw seError(404, 'NOT_FOUND', '그 버전이 없습니다')
+    const { process, model, name, crtime } = version
+    const p = await imageCache.imagePath(versionKey(process, model, name, crtime, toObjectId(version.fileId)), imageId)
+    if (!p) throw seError(404, 'NOT_FOUND', '이미지가 없습니다')
+    return (await fsp.readFile(p)).toString('base64')
+  }
+
   async function open(user, process, model, name, crtimeParam) {
     await scopes.assertAllowed(user, process, model)
     const started = Date.now()
@@ -94,7 +144,9 @@ function createOpenService({ repo, hash, gridfs, scopes, imageCache, log }) {
       const fileId = await gridfs.findVersionId(process, model, name, crtime)
       if (fileId === null) throw seError(404, 'NOT_FOUND', '그 버전이 없습니다')
       const { core, fromCache } = await unpack(process, model, name, crtime, fileId)
-      const skeleton = refreshPropertyParts({ ...core, version: { crtime, isCurrent: crtime === current } }, doc.property, doc.performance)
+      const base = withHead(refreshPropertyParts({ ...core, version: { crtime, isCurrent: crtime === current, fileId: String(fileId) } }, doc.property, doc.performance), current, doc.property)
+      // 편집 작업본의 시작점도 서버가 만든다 — 브라우저가 따로 만들면 손대지 않은 스텝이 달라 보여 raw 대신 다시 조립된다.
+      const skeleton = { ...base, edited: editedFromSkeleton(base, { fileId: String(fileId) }) }
       const stats = { ms: Date.now() - started, peakRssMb: Math.round(Math.max(peak, rss()) / 1048576), fromCache }
       log.info(`open ${process}-${model}-${name}@${crtime} ${stats.ms}ms peakRss=${stats.peakRssMb}MB cache=${fromCache} steps=${skeleton.steps.length}`)
       return { skeleton, stats }
@@ -121,7 +173,7 @@ function createOpenService({ repo, hash, gridfs, scopes, imageCache, log }) {
   // 풀기가 끝나기를 기다린다 — 풀던 폴더가 사라지면 그 열기가 실패한다.
   const clearImages = () => unpacking.run(() => imageCache.clear())
 
-  return { open, imagePath, clearImages }
+  return { open, source, resolveImage, imagePath, clearImages }
 }
 
 module.exports = { createOpenService, baseUrl, versionKey, SKELETON_CACHE_FORMAT }
