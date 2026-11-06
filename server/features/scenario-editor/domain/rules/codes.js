@@ -1,0 +1,62 @@
+'use strict'
+// 검사 코드 표. scope: always = 사내 저장 검사·참조 무결성(전체 시나리오), changed = 웹이 더한 값 검사(고친 스텝만 막고 나머지는 경고),
+// special = 코드가 직접 정한다(STEP_LIMIT). 브라우저가 코드로 한글 문구를 쓴다 — 여기에는 문구가 없다.
+const A = 'always'
+const C = 'changed'
+const B = 'block'
+const W = 'warn'
+const RULES = Object.freeze({
+  NO_STEPS: { scope: A, level: B },
+  STEP_LIMIT: { scope: 'special', level: B },
+  BI_COUNT_MISMATCH: { scope: A, level: B },
+  BASE_IMAGE_MISSING: { scope: A, level: B },
+  SOURCE_PARSE_FAILED: { scope: A, level: B },
+  LAST_STEP_NEXT: { scope: A, level: B },
+  NEXT_SELF: { scope: A, level: B },
+  NEXT_OUT_OF_RANGE: { scope: A, level: B },
+  NEXT_UNRESOLVED: { scope: A, level: B },
+  ACCEPT_TOO_LOW: { scope: A, level: B },
+  NO_SUCCESS: { scope: A, level: B },
+  INHOUSE_VALUE_EMPTY: { scope: A, level: B },
+  FAP_TYPE_MISMATCH: { scope: A, level: B },
+  MAIL_TITLE_EMPTY: { scope: A, level: B },
+  MAIL_TITLE_COLON: { scope: A, level: B },
+  TIMEOUT_INVALID: { scope: A, level: B },
+  NAME_EMPTY: { scope: A, level: B },
+  NAME_TOO_LONG: { scope: A, level: B },
+  NAME_CHARS: { scope: A, level: B },
+  MODEL_MISSING: { scope: A, level: B },
+  BODY_TOO_LARGE: { scope: A, level: B },
+  REQUEST_TOO_LARGE: { scope: A, level: B },
+  OCR_MOUSE_CLICK: { scope: C, level: B },
+  NONE_MOUSE_CLICK: { scope: C, level: B },
+  VALUE_REQUIRED: { scope: C, level: B },
+  CLICK_FORMAT: { scope: C, level: B },
+  WHEEL_FORMAT: { scope: C, level: B },
+  WAIT_FORMAT: { scope: C, level: B },
+  KEY_FORMAT: { scope: C, level: B },
+  FINDWINDOW_FORMAT: { scope: C, level: B },
+  SCRIPT_FORMAT: { scope: C, level: B },
+  ACCEPT_TOO_HIGH: { scope: C, level: B },
+  MULTI_RANGE: { scope: C, level: B },
+  MULTI_WITH_ACTION: { scope: C, level: B },
+  OCR_OP_REQUIRED: { scope: C, level: B },
+  OCR_NUMBER_REQUIRED: { scope: C, level: B },
+  OCR_TEXT_FORMAT: { scope: C, level: B },
+  TRAIN_IMAGE_MISSING: { scope: C, level: B },
+  AREA_INVALID: { scope: C, level: B },
+  RETRY_RANGE: { scope: C, level: B },
+  ACTION_NOT_CREATABLE: { scope: C, level: B },
+  ACTION_TYPE_INVALID: { scope: C, level: B },
+  EQPSTATE_SKIP: { scope: C, level: B },
+  STEP_DESC_EMPTY: { scope: C, level: B },
+  STEP_DESC_CHARS: { scope: C, level: B },
+  FALSE_NEXT_WITH_ACTION: { scope: A, level: W },
+  UNREACHABLE: { scope: A, level: W },
+  FOLLOW_MISSING: { scope: A, level: W },
+  FOLLOW_SELF: { scope: A, level: W },
+  FOLLOW_CYCLE: { scope: A, level: W },
+  TYPE_UNSET: { scope: A, level: W }
+})
+
+module.exports = { RULES }
