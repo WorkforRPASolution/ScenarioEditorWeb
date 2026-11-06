@@ -4,13 +4,14 @@ const { changedStepUids } = require('../changeDetect')
 const { RULES } = require('./codes')
 const { scenarioRules } = require('./scenarioRules')
 const { stepRules } = require('./stepRules')
+const { checkProperty } = require('./propertyRules')
 
 function checkScenario(edited, source, ctx) {
   const changed = changedStepUids(edited, source)
   const position = new Map(edited.steps.map((s, i) => [s.uid, i]))
   const rank = (i) => (i.uid === undefined ? -1 : position.has(i.uid) ? position.get(i.uid) : Number.MAX_SAFE_INTEGER)
   const seen = new Set()
-  const all = [...scenarioRules(edited, source, ctx), ...stepRules(edited, source, ctx)].filter((i) => {
+  const all = [...scenarioRules(edited, source, ctx), ...stepRules(edited, source, ctx), ...checkProperty(edited.property, source ? source.property ?? {} : null)].filter((i) => {
     const k = `${i.code}\u0000${i.uid ?? ''}`
     if (seen.has(k)) return false
     seen.add(k)

@@ -1,6 +1,6 @@
 'use strict'
 // 검사 코드 표. scope: always = 사내 저장 검사·참조 무결성(전체 시나리오), changed = 웹이 더한 값 검사(고친 스텝만 막고 나머지는 경고),
-// special = 코드가 직접 정한다(STEP_LIMIT). 브라우저가 코드로 한글 문구를 쓴다 — 여기에는 문구가 없다.
+// special = 코드가 직접 정한다(STEP_LIMIT). 운영 속성 코드는 always 로 두되 checkProperty 가 바뀐 키로 거른다. 브라우저가 코드로 한글 문구를 쓴다 — 여기에는 문구가 없다.
 const A = 'always'
 const C = 'changed'
 const B = 'block'
@@ -51,6 +51,13 @@ const RULES = Object.freeze({
   EQPSTATE_SKIP: { scope: C, level: B },
   STEP_DESC_EMPTY: { scope: C, level: B },
   STEP_DESC_CHARS: { scope: C, level: B },
+  START_DELAY_RANGE: { scope: A, level: B },
+  RETRY_INTERVAL_RANGE: { scope: A, level: B },
+  RETRY_CNT_RANGE: { scope: A, level: B },
+  PRIORITY_VALUE: { scope: A, level: B },
+  EXECUTING_LEVEL_VALUE: { scope: A, level: B },
+  FOLLOW_NAME_REQUIRED: { scope: A, level: B },
+  FOLLOW_DESC_SHORT: { scope: A, level: B },
   FALSE_NEXT_WITH_ACTION: { scope: A, level: W },
   UNREACHABLE: { scope: A, level: W },
   FOLLOW_MISSING: { scope: A, level: W },

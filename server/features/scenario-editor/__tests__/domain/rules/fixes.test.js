@@ -47,6 +47,8 @@ describe('2. RULES 표 고정', () => {
     AREA_INVALID: [C, 'block'], RETRY_RANGE: [C, 'block'], ACTION_NOT_CREATABLE: [C, 'block'], ACTION_TYPE_INVALID: [C, 'block'],
     EQPSTATE_SKIP: [C, 'block'], STEP_DESC_EMPTY: [C, 'block'], STEP_DESC_CHARS: [C, 'block'],
     FALSE_NEXT_WITH_ACTION: [A, 'warn'], UNREACHABLE: [A, 'warn'], FOLLOW_MISSING: [A, 'warn'], FOLLOW_SELF: [A, 'warn'],
+    START_DELAY_RANGE: [A, 'block'], RETRY_INTERVAL_RANGE: [A, 'block'], RETRY_CNT_RANGE: [A, 'block'], PRIORITY_VALUE: [A, 'block'],
+    EXECUTING_LEVEL_VALUE: [A, 'block'], FOLLOW_NAME_REQUIRED: [A, 'block'], FOLLOW_DESC_SHORT: [A, 'block'],
     FOLLOW_CYCLE: [A, 'warn'], TYPE_UNSET: [A, 'warn']
   }
   it('코드·범위·수준이 표와 같다', () => {

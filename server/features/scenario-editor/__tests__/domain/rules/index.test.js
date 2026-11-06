@@ -103,6 +103,7 @@ describe('checkScenario 나누기', () => {
     const e7 = fresh(okSource()); e7.steps[0].next.onTrue = { kind: 'end', value: 'SUCCESS' }; e7.steps[0].next.onFalse = { kind: 'next' }; e7.steps[0].action = { type: 8, raw: 'x' }
     e7.steps[0].condition = { kind: 'none', skipPreprocessing: false }; run(e7, okSource())
     const e8 = fresh(okSource()); e8.steps[1].action = { type: 7, raw: 'x' }; run(e8, okSource())
+    const e10 = fresh(broken); e10.property = { Type: 1, StartDelay: 5, RetryInterval: 1, RetryCnt: 99, Priority: 2, ExecutingLevel: 2, NextScenarioIfSuccess: { Name: '', Text: 'ab' } }; run(e10, broken)
     const unknown = [...emitted].filter((c) => !(c in RULES))
     expect(unknown).toEqual([])
     const unreachable = Object.keys(RULES).filter((c) => !emitted.has(c))
