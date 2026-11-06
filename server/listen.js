@@ -7,4 +7,10 @@ function resolveListenAddress(env) {
   }
 }
 
-module.exports = { resolveListenAddress }
+// 루프백 주소인가. 아니면 쓰기 API 를 막는다(app.js seWriteDisabled).
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', '[::1]', 'localhost'])
+function isLoopbackHost(host) {
+  return LOOPBACK_HOSTS.has(String(host).trim().toLowerCase())
+}
+
+module.exports = { resolveListenAddress, isLoopbackHost }

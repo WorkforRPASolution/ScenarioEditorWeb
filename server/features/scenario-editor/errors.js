@@ -2,8 +2,9 @@
 const { ApiError } = require('../../shared/middleware/errorHandler')
 
 // WebManager ApiError 에 code 를 붙인다(errorHandler 가 { error, code } 로 낸다).
-function seError(status, code, message) {
-  const e = new ApiError(status, message)
+// details 는 ApiError.details 로 실려 응답 { error, code, details } 로 나간다.
+function seError(status, code, message, details = null) {
+  const e = new ApiError(status, message, details)
   e.code = code
   return e
 }

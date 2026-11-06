@@ -10,11 +10,15 @@ const { httpLogger } = require('./shared/logger/httpLogger');
 const { errorHandler, notFoundHandler } = require('./shared/middleware/errorHandler');
 const { webManagerDbEnabled, disableWebManagerLog, healthWithoutWebManager } = require('./webManagerDb');
 const { createLocalGuard } = require('./localGuard');
+const { resolveListenAddress, isLoopbackHost } = require('./listen');
 
 const webManagerDb = webManagerDbEnabled(process.env);
 if (!webManagerDb) disableWebManagerLog(require('./shared/models/webmanagerLogModel'));
 
 const app = express();
+
+// 인증 없는 단독판이 루프백이 아닌 주소에 떠 있으면 쓰기 API 를 전부 막는다(컨트롤러 requireWrite·requireReviewer 가 본다).
+app.locals.seWriteDisabled = !isLoopbackHost(resolveListenAddress(process.env).host);
 
 // Security headers
 app.use(helmet({

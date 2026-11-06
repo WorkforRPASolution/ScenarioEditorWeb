@@ -2,6 +2,7 @@
 const { getDeps } = require('./deps')
 const { seError } = require('./errors')
 const { hasFullScope } = require('./domain/processPermission')
+const { writeDenial, reviewDenial } = require('./domain/writePolicy')
 
 const ok = (res, data) => res.json({ success: true, data })
 
@@ -81,4 +82,19 @@ async function image(req, res, next) {
   })
 }
 
-module.exports = { ok, loadUser, me, scopes, refreshCache, list, versions, open, dataCheck, image }
+// 쓰기 문. 아직 어느 경로에도 붙이지 않았다(쓰기 경로가 loadUser 뒤에 붙인다).
+// seWriteDisabled 는 단독판 app.js 만 정한다 — 편입 뒤에는 값이 없어 WRITE·등급만 본다.
+const denyWith = (denial, next) => next(seError(denial.status, denial.code, denial.message))
+const writeDisabled = (req) => req.app.locals.seWriteDisabled === true
+
+function requireWrite(req, res, next) {
+  const denial = writeDenial(req.seUser, { writeDisabled: writeDisabled(req) })
+  return denial ? denyWith(denial, next) : next()
+}
+
+function requireReviewer(req, res, next) {
+  const denial = reviewDenial(req.seUser, { writeDisabled: writeDisabled(req) })
+  return denial ? denyWith(denial, next) : next()
+}
+
+module.exports = { requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, versions, open, dataCheck, image }

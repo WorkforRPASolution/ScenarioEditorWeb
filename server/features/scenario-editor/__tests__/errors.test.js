@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { withMongoErrors, mapGridfsError } from '../errors'
+import { seError, withMongoErrors, mapGridfsError } from '../errors'
 
 const fail = (name, extra = {}) => async () => { throw Object.assign(new Error('내부 주소 10.0.0.1:27017'), { name, ...extra }) }
 
@@ -58,5 +58,12 @@ describe('mapGridfsError (본문 읽기 도중 오류)', () => {
     expect(mapGridfsError(other)).toBe(other)
     const coded = Object.assign(new Error('x'), { statusCode: 503, code: 'UPSTREAM_DOWN' })
     expect(mapGridfsError(coded)).toBe(coded)
+  })
+})
+
+describe('seError', () => {
+  it('details 를 ApiError 에 싣는다', () => {
+    expect(seError(409, 'X', 'm', { a: 1 }).details).toEqual({ a: 1 })
+    expect(seError(409, 'X', 'm').details).toBe(null)
   })
 })
