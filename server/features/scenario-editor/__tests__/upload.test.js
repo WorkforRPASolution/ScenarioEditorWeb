@@ -2,14 +2,18 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
 const express = require('express')
-const { multipartMeta } = require('../upload')
+const { multipartMeta, createMultipartMeta } = require('../upload')
 
 let server
 let base
 let seen
+let handlerCalls = 0
+let highWater = 0
+let streamBase
 beforeAll(async () => {
   const app = express()
-  app.post('/up', multipartMeta, (req, res) => { seen = { meta: req.seMeta, images: [...req.seImages.entries()].map(([k, v]) => [k, v.length]) }; res.json({ ok: true }) })
+  app.post('/up', multipartMeta, (req, res) => { handlerCalls++; seen = { meta: req.seMeta, images: [...req.seImages.entries()].map(([k, v]) => [k, v.length]) }; res.json({ ok: true }) })
+  app.post('/up2', createMultipartMeta({ onBuffered: (n) => { highWater = Math.max(highWater, n) } }), (req, res) => { handlerCalls++; res.json({ ok: true }) })
   app.use((err, req, res, next) => res.status(err.statusCode || 500).json({ code: err.code, error: err.message }))
   await new Promise((r) => { server = app.listen(0, '127.0.0.1', r) })
   base = `http://127.0.0.1:${server.address().port}`
@@ -81,5 +85,33 @@ describe('multipartMeta', () => {
     fd.append('meta', '{}'); fd.append('other', 'x')
     const res = await fetch(`${base}/up`, { method: 'POST', body: fd })
     expect(res.status).toBe(400)
+  })
+  it('Content-Length 가 한도(합계 50MB + meta 10MB + 여유)를 넘으면 본문을 받기 전에 413 이고 핸들러는 돌지 않는다', async () => {
+    handlerCalls = 0
+    const files = [['img:a', png(35 * 1048576)], ['img:b', png(35 * 1048576)]]
+    const res = await send({ files })
+    expect(res.status).toBe(413)
+    expect((await res.json()).code).toBe('PAYLOAD_TOO_LARGE')
+    expect(handlerCalls).toBe(0)
+  })
+  it('Content-Length 없이 흘려 보내는 요청도 받는 중에 합계 50MB 를 넘으면 413 이고 전부 모아 두지 않는다', async () => {
+    handlerCalls = 0; highWater = 0
+    const B = 'XBOUNDARYX'
+    const chunk = Buffer.alloc(1048576, 1)
+    async function* body() {
+      yield Buffer.from(`--${B}\r\nContent-Disposition: form-data; name="meta"\r\n\r\n{}\r\n`)
+      for (let i = 0; i < 9; i++) { // 9 x 9MB = 81MB
+        yield Buffer.from(`--${B}\r\nContent-Disposition: form-data; name="img:f${i}"; filename="x.png"\r\nContent-Type: image/png\r\n\r\n`)
+        yield PNG_HEAD
+        for (let k = 0; k < 9; k++) yield chunk
+        yield Buffer.from('\r\n')
+      }
+      yield Buffer.from(`--${B}--\r\n`)
+    }
+    const res = await fetch(`${base}/up2`, { method: 'POST', headers: { 'Content-Type': `multipart/form-data; boundary=${B}` }, body: body(), duplex: 'half' })
+    expect(res.status).toBe(413)
+    expect(handlerCalls).toBe(0)
+    expect(highWater).toBeGreaterThan(0)
+    expect(highWater).toBeLessThanOrEqual(50 * 1048576 + 2 * 1048576) // 50MB 를 넘긴 청크에서 멈춘다 — 81MB 전부는 아니다
   })
 })

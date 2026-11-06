@@ -15,15 +15,30 @@ const PNG_HEAD = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 const bad = (message) => seError(400, 'BAD_REQUEST', message)
 const tooLarge = (message) => seError(413, 'PAYLOAD_TOO_LARGE', message)
 
-const parser = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_FILE, files: MAX_FILES, fields: 1, fieldSize: MAX_FIELD },
-  fileFilter: (req, file, cb) => {
-    const m = /^img:(.*)$/.exec(file.fieldname)
-    if (!m || !TEMP_ID.test(m[1])) return cb(bad(`파일 필드 이름이 틀립니다: img:<tempId> (tempId 는 영문·숫자·_·- 1~64자)`))
-    cb(null, true)
+const OVERHEAD = 1 * MB // 멀티파트 경계·머리글 여유
+
+// 메모리 저장소 — multer memoryStorage 와 같되, 받는 중에 요청 전체 파일 합계를 세어 50MB 를 넘는 순간 모으기를 멈추고 오류를 낸다.
+// (200장 × 10MB 가 다 메모리에 올라온 뒤에야 막히면 서버 메모리 목표를 넘긴다.)
+function countingStorage(maxTotal, onBuffered) {
+  return {
+    _handleFile(req, file, cb) {
+      const chunks = []
+      let size = 0
+      const stream = file.stream
+      const fail = (err) => { chunks.length = 0; stream.removeAllListeners('data'); stream.resume(); cb(err) }
+      stream.on('data', (c) => {
+        req._seTotal = (req._seTotal || 0) + c.length
+        if (req._seTotal > maxTotal) return fail(tooLarge('그림 합계는 50MB 를 넘을 수 없습니다'))
+        size += c.length
+        chunks.push(c)
+        if (onBuffered) onBuffered(req._seTotal)
+      })
+      stream.once('error', cb)
+      stream.once('end', () => cb(null, { buffer: Buffer.concat(chunks, size), size }))
+    },
+    _removeFile(req, file, cb) { delete file.buffer; cb(null) }
   }
-}).any()
+}
 
 function mapMulterError(e) {
   if (!(e instanceof multer.MulterError)) return e
@@ -33,8 +48,27 @@ function mapMulterError(e) {
   return bad(`멀티파트 요청이 틀립니다 (${e.code})`)
 }
 
-function multipartMeta(req, res, next) {
-  parser(req, res, (err) => {
+function createMultipartMeta({ onBuffered } = {}) {
+  const parser = multer({
+    storage: countingStorage(MAX_TOTAL, onBuffered),
+    limits: { fileSize: MAX_FILE, files: MAX_FILES, fields: 1, fieldSize: MAX_FIELD },
+    fileFilter: (req, file, cb) => {
+      const m = /^img:(.*)$/.exec(file.fieldname)
+      if (!m || !TEMP_ID.test(m[1])) return cb(bad('파일 필드 이름이 틀립니다: img:<tempId> (tempId 는 영문·숫자·_·- 1~64자)'))
+      cb(null, true)
+    }
+  }).any()
+  return function multipartMeta(req, res, next) {
+    // 길이를 미리 알리는 요청은 본문을 받기 전에 막는다 — 읽지 않고 흘려 버린다.
+    const len = Number(req.headers['content-length'])
+    if (Number.isFinite(len) && len > MAX_TOTAL + MAX_FIELD + OVERHEAD) {
+      req.resume()
+      return next(tooLarge('요청이 너무 큽니다'))
+    }
+    parse(req, res, next)
+  }
+  function parse(req, res, next) {
+    parser(req, res, (err) => {
     if (err) return next(mapMulterError(err))
     try {
       const raw = req.body && req.body.meta
@@ -55,7 +89,10 @@ function multipartMeta(req, res, next) {
       req.seImages = images
       next()
     } catch (e) { next(e) }
-  })
+    })
+  }
 }
 
-module.exports = { multipartMeta }
+const multipartMeta = createMultipartMeta()
+
+module.exports = { multipartMeta, createMultipartMeta }
