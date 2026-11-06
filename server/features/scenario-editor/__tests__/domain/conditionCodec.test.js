@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { parseCondition, parseAction } from '../../domain/conditionCodec'
+import { parseCondition, parseAction, encodeCondition, encodeAction } from '../../domain/conditionCodec'
+import { newRawStep } from '../../domain/csDefaults'
 
 const md = (over = {}) => ({
   SearchArea: { X: 10, Y: 20, Width: 30, Height: 40 },
@@ -53,9 +54,9 @@ describe('parseCondition', () => {
 
 describe('parseAction', () => {
   const a = (type, value, kind = 'none', nf = null) => parseAction({ Script: { Type: type, Value: value, NativeFunction: nf } }, kind)
-  it('마우스: 이미지 스텝은 학습 이미지 기준, 그 밖은 절대', () => {
+  it('마우스: 이미지 스텝은 학습 이미지 기준, 조건 없음은 화면 왼쪽 위(SE-023)', () => {
     expect(a(1, '24:12', 'image').action.click).toEqual({ x: 24, y: 12, basis: 'trainImage' })
-    expect(a(3, '-3:7', 'none').action.click).toEqual({ x: -3, y: 7, basis: 'absolute' })
+    expect(a(3, '-3:7', 'none').action.click).toEqual({ x: -3, y: 7, basis: 'screenOrigin' })
     expect(codes(a(1, '5:5', 'ocr').notes)).toEqual(['OCR_WITH_MOUSE_CLICK'])
     expect(codes(a(1, 'Set mouse Coordinates.', 'image').notes)).toEqual(['PARSE_FAILED'])
   })
@@ -155,5 +156,93 @@ describe('parseAction: 잘못된 입력에도 예외가 없다', () => {
       action: { type: null, typeName: null, raw: null },
       notes: [warn('step')]
     })
+  })
+})
+
+describe('동작 해석 보강·조립', () => {
+  const act = (t, v) => parseAction({ Script: { Type: t, Value: v } }, 'image').action
+  const actFor = (kind, t, v) => parseAction({ Script: { Type: t, Value: v } }, kind).action
+  const actNotes = (t, v) => parseAction({ Script: { Type: t, Value: v } }, 'image').notes
+  const ocrCond = (ocr) => ({ kind: 'ocr', skipPreprocessing: false, searchArea: { x: 1, y: 2, w: 3, h: 4 }, ocr })
+
+  it('창 찾기 해석', () => {
+    expect(act(9, 'EQ Control*@WindowsForms10').findWindow).toEqual({ title: 'EQ Control*', className: 'WindowsForms10', x: null, y: null })
+    expect(act(9, 'A@B@10@20').findWindow).toEqual({ title: 'A', className: 'B', x: 10, y: 20 })
+    expect(actNotes(9, 'A@B@10').map((n) => n.code)).toContain('PARSE_FAILED')
+    expect(act(9, 'A@B@10').findWindow).toBeUndefined()
+    expect(actNotes(9, 'A@B@x@y').map((n) => n.code)).toContain('PARSE_FAILED')
+    expect(act(9, 'A@B@x@y').findWindow).toBeUndefined()
+  })
+  it('명령 실행 해석', () => {
+    expect(act(11, 'restart.bat').command).toBe('restart.bat')
+  })
+  it('사용자 스크립트 해석', () => {
+    expect(act(12, 'reset;-f;x;@@timeout:5 minutes,email:fail').customScript)
+      .toEqual({ name: 'reset', args: ['-f', 'x'], timeout: { value: 5, unit: 'minutes' }, email: ['fail'], legacy: false })
+    expect(act(12, 'old@a@b').customScript).toEqual({ name: 'old', args: ['a', 'b'], timeout: null, email: [], legacy: true })
+    expect(act(12, 'only;').customScript).toEqual({ name: 'only', args: [], timeout: null, email: [], legacy: false })
+  })
+  it('사용자 스크립트: 옵션이 잘못되면 해석 실패', () => {
+    for (const v of ['a;@@timeout:5 days', 'a;@@timeout:x minutes', 'a;@@bogus:1', 'a;@@email:maybe']) {
+      expect(actNotes(12, v).map((n) => n.code)).toContain('PARSE_FAILED')
+      expect(act(12, v).customScript).toBeUndefined()
+    }
+  })
+  it('클릭 기준', () => {
+    expect(actFor('image', 1, '5:6').click.basis).toBe('trainImage')
+    expect(actFor('none', 1, '5:6').click.basis).toBe('screenOrigin')
+    expect(actFor('ocr', 1, '5:6').click.basis).toBe('unknown')
+    expect(actFor('eqpState', 1, '5:6').click.basis).toBe('unknown')
+  })
+  it('조립 → 해석 왕복(동작 전 종류)', () => {
+    for (const [t, v] of [[1, '-3:7'], [4, '-2@@1'], [5, 'abc@@10@@27'], [5, 'x@@999'], [6, '3000'], [6, '4350'], [6, '1500'], [9, 'A@B'], [9, 'A@B@10@20'],
+      [11, 'restart.bat'], [12, 'reset;-f;@@timeout:5 minutes,email:fail'], [12, 'only;'], [12, 'n;a;'], [12, 'n;@@email:success,email:fail'],
+      [12, 'old@a@b'], [0, '']]) {
+      const parsed = act(t, v)
+      expect(encodeAction(parsed, null)).toEqual({ Type: t, Value: v, NativeFunction: null })
+    }
+  })
+  it('보존 전용 동작은 base 그대로', () => {
+    const base = { Type: 8, Value: 'EQP_DOWN@E1@A@COMMENT:x', NativeFunction: null }
+    expect(encodeAction(act(8, base.Value), base)).toEqual(base)
+    const nf = { Type: 15, Value: 'v', NativeFunction: { FunctionName: 'f' } }
+    expect(encodeAction(act(15, 'v'), nf)).toEqual(nf)
+    const ml = { Type: 10, Value: 'to@x', NativeFunction: null }
+    expect(encodeAction(act(10, 'to@x'), ml).Value).toBe('to@x')
+  })
+  it('대기 조립은 부동소수 오차 없이 정수 ms', () => {
+    expect(encodeAction({ type: 6, waitSec: 4.35 }, null).Value).toBe('4350')
+  })
+  it('이미지 조건 조립', () => {
+    const base = newRawStep('image').Metadata
+    const r = encodeCondition({ kind: 'image', skipPreprocessing: false, searchArea: { x: 1, y: 2, w: 3, h: 4 },
+      image: { accept: 0.85, multi: { count: '3', op: 1 } } }, base, [[0, { BinaryImage: 'QUJD', Type: true }]])
+    expect(r.Operation).toBe(1)
+    expect(r.Metadata.SearchArea).toEqual({ X: 1, Y: 2, Width: 3, Height: 4 })
+    expect(r.Metadata.ImageSearchParam.AcceptThreshold).toBe(0.85)
+    expect(r.Metadata.OcrParamInfo.TextValue).toBe('3-1')
+    expect(r.Metadata.ImageSearchParam.TrainImageMap).toEqual([[0, { BinaryImage: 'QUJD', Type: true }]])
+    expect(r.Metadata.ConditionExpression).toBe('')
+    expect(base.SearchArea).toEqual({ X: 0, Y: 0, Width: 0, Height: 0 }) // base 는 바꾸지 않는다
+  })
+  it('SkipPreprocessing 은 ConditionExpression 으로', () => {
+    const base = newRawStep('ocr').Metadata
+    const c = ocrCond({ op: 1, text: 'A', multi: { count: '1', op: 0 } })
+    expect(encodeCondition({ ...c, skipPreprocessing: true }, base, []).Metadata.ConditionExpression).toBe('SkipPreprocessing')
+  })
+  it('OCR 조건 조립: 문자·범위·숫자', () => {
+    const base = newRawStep('ocr').Metadata
+    expect(encodeCondition(ocrCond({ op: 1, text: 'IDLE', multi: { count: '1', op: 0 } }), base, []).Metadata.OcrParamInfo)
+      .toMatchObject({ Type: 1, Operation: 1, TextValue: 'IDLE@@@@1-0', MinMatchingValue: 10 })
+    expect(encodeCondition(ocrCond({ op: 7, min: 1.5, max: 3, multi: { count: '1', op: 0 } }), base, []).Metadata.OcrParamInfo)
+      .toMatchObject({ Type: 2, Operation: 7, TextValue: '@@@@1-0', NumberRangeMin: 1.5, NumberRangeMax: 3 })
+    const n = encodeCondition(ocrCond({ op: 5, number: 42, text: 'ignored', multi: { count: '2', op: 1 } }), base, []).Metadata.OcrParamInfo
+    expect(n).toMatchObject({ Type: 2, Operation: 5, TextValue: '@@@@2-1', NumberValue: 42, NumberRangeMin: base.OcrParamInfo.NumberRangeMin })
+  })
+  it('조건 없음·설비 상태', () => {
+    const base = newRawStep('none').Metadata
+    expect(encodeCondition({ kind: 'none', skipPreprocessing: false }, base, [])).toEqual({ Operation: 0, Metadata: base })
+    const eq = { ...base, ConditionExpression: 'MAIN,RUN,_' }
+    expect(encodeCondition({ kind: 'eqpState' }, eq, [])).toEqual({ Operation: 4, Metadata: eq })
   })
 })
