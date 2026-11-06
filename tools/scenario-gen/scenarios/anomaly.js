@@ -34,7 +34,7 @@ module.exports = [
       steps: [
         S('none', null, 'NEXT', 'FAIL', 'notNeeded', ['ACTION_INVALID']),
         S('ocr', 'MouseLeftClick', 'NEXT', 'FAIL', 'present', ['OCR_OP_NONE', 'OCR_WITH_MOUSE_CLICK']),
-        S('none', 'Wait', 'NEXT', 'NEXT', 'notNeeded', ['FALSE_NEXT_WITH_ACTION']),
+        S('none', 'Wait', 'NEXT', 'NEXT', 'notNeeded'),
         S('none', 'RunCommand', '→6', 'FAIL', 'notNeeded', ['VALUE_EMPTY']),
         S('none', 'Wait', '?-2', 'FAIL', 'notNeeded', ['NEXT_OUT_OF_RANGE', 'UNREACHABLE']),
         S('none', 'None', '→6', 'NEXT', 'notNeeded', ['NEXT_SELF']),

@@ -49,7 +49,7 @@ module.exports = [
       S('none', 'Keyboard', 'NEXT', 'FAIL', 'notNeeded'), S('none', 'Wait', 'NEXT', 'FAIL', 'notNeeded'),
       S('none', 'Variable', 'NEXT', 'FAIL', 'notNeeded', ['ACTION_NOT_IN_COMBO']), S('none', 'OICommand', 'NEXT', 'FAIL', 'notNeeded', ['ACTION_NOT_IN_COMBO']),
       S('none', 'OICommand', 'NEXT', 'FAIL', 'notNeeded', ['ACTION_NOT_IN_COMBO']), S('none', 'OICommand', 'NEXT', 'FAIL', 'notNeeded', ['ACTION_NOT_IN_COMBO']),
-      S('none', 'FindWindow', 'NEXT', 'FAIL', 'notNeeded'), S('none', 'SendEmail', 'NEXT', 'FAIL', 'notNeeded'),
+      S('none', 'FindWindow', 'NEXT', 'FAIL', 'notNeeded', ['PARSE_FAILED']), S('none', 'SendEmail', 'NEXT', 'FAIL', 'notNeeded'),
       S('none', 'RunCommand', 'NEXT', 'FAIL', 'notNeeded'), S('none', 'CustomScript', 'NEXT', 'FAIL', 'notNeeded'),
       S('none', 'FAP', 'NEXT', 'FAIL', 'notNeeded', ['ACTION_NOT_IN_COMBO']), S('none', 'ACS', 'NEXT', 'FAIL', 'notNeeded', ['ACTION_NOT_IN_COMBO']),
       S('none', 'NativeFunction', 'NEXT', 'FAIL', 'notNeeded', ['ACTION_NOT_IN_COMBO']), S('none', 'None', 'SUCCESS', 'FAIL', 'notNeeded')
