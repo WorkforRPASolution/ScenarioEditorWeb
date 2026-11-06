@@ -21,6 +21,8 @@ const KEY_CODE_NAMES = Object.freeze({
   37: 'Left', 38: 'Up', 39: 'Right', 40: 'Down', 112: 'F1', 113: 'F2', 114: 'F3', 115: 'F4', 116: 'F5', 117: 'F6', 118: 'F7',
   119: 'F8', 120: 'F9', 121: 'F10', 122: 'F11', 123: 'F12', 127: 'Delete', 154: 'PrintScreen', 155: 'Insert', 524: 'Win'
 })
+// 실패를 돌려줄 수 있는 동작: O.I. Command(8)·창 찾기(9)·명령 실행(11)·사용자 스크립트(12)·FAP(13)·ACS(14)·에이전트 함수(15) [42 Q-101]
+const CAN_FAIL_ACTIONS = Object.freeze(new Set([8, 9, 11, 12, 13, 14, 15]))
 const NOT_ENTERED = 'Not entered' // StringLib.Common_NotEntered 기본 resx 값 — 심의자가 없을 때 채우는 값
 // 저장될 수 있는 미입력 문자열 = 사내 resx 값: 기본·zh(키 없음 → 기본) Not entered, ko 미입력, vi Chưa nhập [사용자 확인 2026-11-02, Q-015]
 const NOT_ENTERED_VALUES = ['Not entered', '미입력', 'Chưa nhập']
@@ -30,5 +32,5 @@ const nameOf = (list, v) => (Number.isInteger(v) && v >= 0 && v < list.length ? 
 module.exports = {
   NEXT_STEP, OPERATION_NAMES, SCRIPT_TYPE_NAMES, OCR_VALUE_TYPE_NAMES, OCR_OPERATION_NAMES, SCENARIO_TYPE_NAMES,
   TRIGGER_TYPE_NAMES, TRIGGER_NAMES, GRADE_NAMES, PERFORM_TYPE_NAMES, ACCIDENT_TYPE_NAMES, AUTHORITY_NAMES, KEY_CODE_NAMES,
-  NOT_ENTERED, NOT_ENTERED_VALUES, nameOf
+  CAN_FAIL_ACTIONS, NOT_ENTERED, NOT_ENTERED_VALUES, nameOf
 }

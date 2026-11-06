@@ -39,7 +39,7 @@ const joinList = (v) => (Array.isArray(v) ? v.join(', ') : '') || '(없음)'
 
 export function actionDetails(a) {
   const rows = [['종류', actionLabel(a.typeName)]]
-  if (a.click) rows.push(['좌표', `${a.click.x}:${a.click.y}`], ['기준', LABELS.clickBasis[a.click.basis === 'trainImage' ? 'trainImage' : 'absolute']])
+  if (a.click) rows.push(['좌표', `${a.click.x}:${a.click.y}`], ['기준', LABELS.clickBasis[a.click.basis] ?? String(a.click.basis)])
   if (a.wheel) rows.push(['칸 수', String(a.wheel.notches)], ['대기', `${a.wheel.delaySec}초`])
   if (a.keyboard) {
     rows.push(['입력 문자열', a.keyboard.text || '(없음)'], ['기능 키', a.keyboard.keys.map((k) => k.name).join(' ') || '(없음)'])

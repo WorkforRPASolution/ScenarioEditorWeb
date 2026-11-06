@@ -5,7 +5,7 @@ import { t, errorCode, errorMessage, noteMessage, MESSAGES } from '../messages'
 
 // 서버가 PARSE_FAILED 에 싣는 field 전부(server/features/scenario-editor/domain — skeleton·conditionCodec).
 const PARSE_FAILED_FIELDS = ['body', 'steps', 'bi', 'property', 'step', 'metadata', 'script', 'trainImage', 'imageMulti', 'ocrMulti', 'eqpState',
-  'TextValue', 'ConditionExpression', 'click', 'wheel', 'keyboard', 'wait', 'fap', 'native']
+  'TextValue', 'ConditionExpression', 'click', 'wheel', 'keyboard', 'wait', 'fap', 'native', 'findWindow', 'customScript']
 // 서버 domain 소스에서 field 이름을 읽는다 — 서버가 새 field 를 내면 여기서 문구 누락이 드러난다.
 function serverParseFailedFields() {
   const dir = join(__dirname, '../../../../../server/features/scenario-editor/domain')
@@ -20,12 +20,12 @@ function serverParseFailedFields() {
 }
 
 const NOTE_CODES = ['CONDITION_UNKNOWN', 'ACTION_INVALID', 'OCR_OP_NONE', 'PARSE_FAILED', 'NEXT_OUT_OF_RANGE', 'NEXT_SELF', 'LAST_STEP_NEXT',
-  'FALSE_NEXT_WITH_ACTION', 'VALUE_EMPTY', 'OCR_WITH_MOUSE_CLICK', 'UNREACHABLE', 'NO_SUCCESS', 'ACTION_NOT_IN_COMBO', 'EQPSTATE_SKIP_PREPROCESSING',
+  'FALSE_NEXT_WITH_ACTION', 'VALUE_EMPTY', 'OCR_WITH_MOUSE_CLICK', 'NONE_WITH_MOUSE_CLICK', 'UNREACHABLE', 'NO_SUCCESS', 'ACTION_NOT_IN_COMBO', 'EQPSTATE_SKIP_PREPROCESSING',
   'BASE_IMAGE_MISSING', 'KEY_CODE_UNKNOWN', 'PRIORITY_NONSTANDARD', 'TARGET_WINDOW_DIFFERS']
 const ERROR_CODES = ['USER_NOT_REGISTERED', 'PROCESS_FORBIDDEN', 'MASTER_REQUIRED', 'HOST_FORBIDDEN', 'ORIGIN_FORBIDDEN', 'FILE_DAMAGED', 'NOT_FOUND', 'DATA_INVALID', 'UPSTREAM_DOWN', 'UPSTREAM_TIMEOUT', 'UPSTREAM_FAILED', 'BAD_REQUEST', 'NETWORK', 'TIMEOUT', 'UNKNOWN']
 
 describe('messages', () => {
-  it('경고·알림 코드 18개 모두 문구가 있다', () => {
+  it('경고·알림 코드 19개 모두 문구가 있다', () => {
     for (const c of NOTE_CODES) expect(noteMessage({ code: c, params: {} })).not.toMatch(/^\[/)
   })
   it('PARSE_FAILED 는 field 별 문구를 먼저 찾고, 없으면 공통 문구', () => {

@@ -162,6 +162,7 @@ function parseAction(step, conditionKind) {
       if (m) action.click = { x: Number(m[1]), y: Number(m[2]), basis: CLICK_BASIS[conditionKind] || 'unknown' }
       else fail('click')
       if (conditionKind === 'ocr') notes.push(note('warning', 'OCR_WITH_MOUSE_CLICK'))
+      if (conditionKind === 'none') notes.push(note('warning', 'NONE_WITH_MOUSE_CLICK')) // SE-023
       break
     }
     case 4: {

@@ -60,6 +60,11 @@ describe('parseAction', () => {
     expect(codes(a(1, '5:5', 'ocr').notes)).toEqual(['OCR_WITH_MOUSE_CLICK'])
     expect(codes(a(1, 'Set mouse Coordinates.', 'image').notes)).toEqual(['PARSE_FAILED'])
   })
+  it('조건 없음 + 마우스 클릭 경고(SE-023)', () => {
+    expect(codes(a(2, '1:1', 'none').notes)).toContain('NONE_WITH_MOUSE_CLICK')
+    expect(codes(a(2, '1:1', 'image').notes)).not.toContain('NONE_WITH_MOUSE_CLICK')
+    expect(codes(a(2, '1:1', 'eqpState').notes)).not.toContain('NONE_WITH_MOUSE_CLICK')
+  })
   it('휠·대기', () => {
     expect(a(4, '-3@@2').action.wheel).toEqual({ notches: -3, delaySec: 2 })
     expect(a(6, '30000').action.waitSec).toBe(30)

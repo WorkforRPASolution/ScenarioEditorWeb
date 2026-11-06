@@ -18,9 +18,15 @@ describe('actionDetails', () => {
       .toEqual([['종류', 'O.I. Command'], ['명령', 'EQP_DOWN'], ['다운 코드', '10000'], ['챔버', 'A'], ['저장 값', 'EQP_DOWN@10000@A']])
     expect(actionDetails({ typeName: null, raw: '' })).toEqual([['종류', '알 수 없는 동작'], ['저장 값', '(빈 값)']])
   })
-  it('절대 좌표 클릭은 화면 절대', () => {
-    expect(actionDetails({ typeName: 'MouseLeftClick', raw: '-3:7', click: { x: -3, y: 7, basis: 'absolute' } }))
-      .toEqual([['종류', '마우스 클릭'], ['좌표', '-3:7'], ['기준', '화면 절대'], ['저장 값', '-3:7']])
+  it('조건 없음 클릭은 화면 (0,0) 안내, 화면 절대는 나오지 않는다', () => {
+    const rows = actionDetails({ typeName: 'MouseLeftClick', raw: '-3:7', click: { x: -3, y: 7, basis: 'screenOrigin' } })
+    expect(JSON.stringify(rows)).not.toContain('화면 절대')
+    expect(rows[2]).toEqual(['기준', '실행 때 저장 좌표와 상관없이 화면 왼쪽 위(0,0)를 누릅니다'])
+  })
+  it('기준을 알 수 없는 클릭·예상 밖 값', () => {
+    expect(actionDetails({ typeName: 'MouseLeftClick', raw: '1:1', click: { x: 1, y: 1, basis: 'unknown' } })[2])
+      .toEqual(['기준', '이 조건에서는 클릭 기준을 알 수 없습니다'])
+    expect(actionDetails({ typeName: 'MouseLeftClick', raw: '1:1', click: { x: 1, y: 1, basis: 'zzz' } })[2]).toEqual(['기준', 'zzz'])
   })
   it('에이전트 함수의 인자·출력이 배열이 아니어도 던지지 않는다', () => {
     expect(actionDetails({ typeName: 'NativeFunction', raw: 'f', native: { functionName: 'f', params: undefined, outputs: 'x' } }))

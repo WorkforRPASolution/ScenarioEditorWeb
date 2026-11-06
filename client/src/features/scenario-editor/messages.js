@@ -40,12 +40,15 @@ export const MESSAGES = {
   SEW_NOTE_PARSE_FAILED_keyboard: '키보드 값의 키 코드가 숫자가 아닙니다.',
   SEW_NOTE_PARSE_FAILED_wait: '대기 값이 숫자(밀리초)가 아닙니다.',
   SEW_NOTE_PARSE_FAILED_fap: 'FAP 값이 "@" 로 나눈 네 칸이 아닙니다.',
+  SEW_NOTE_PARSE_FAILED_findWindow: '창 찾기 값이 "창 제목@클래스" 또는 "창 제목@클래스@x@y" 형식이 아닙니다.',
+  SEW_NOTE_PARSE_FAILED_customScript: '사용자 스크립트 값을 해석하지 못했습니다.',
   SEW_NOTE_PARSE_FAILED_native: '에이전트 함수 정보(NativeFunction)가 없습니다.',
   SEW_NOTE_NEXT_OUT_OF_RANGE: '다음 스텝 번호가 범위를 벗어났습니다.',
   SEW_NOTE_NEXT_SELF: '다음 스텝이 자기 자신입니다(사내 편집기는 저장을 막습니다).',
   SEW_NOTE_LAST_STEP_NEXT: '마지막 스텝의 다음이 NEXT 입니다(사내 편집기는 저장을 막습니다).',
   SEW_NOTE_FALSE_NEXT_WITH_ACTION: '동작이 있는데 실패 쪽 다음이 NEXT 입니다. 동작이 실패하면 결과 보고 없이 끝날 수 있습니다.',
   SEW_NOTE_VALUE_EMPTY: '값이 필요한 동작인데 값이 비어 있습니다.',
+  SEW_NOTE_NONE_WITH_MOUSE_CLICK: '조건 없음 스텝의 마우스 클릭은 저장된 좌표와 상관없이 실행 때 화면 왼쪽 위(0,0)를 누릅니다.',
   SEW_NOTE_OCR_WITH_MOUSE_CLICK: 'OCR 스텝에 마우스 클릭 동작이 있습니다(사내 편집기는 추가를 막습니다).',
   SEW_NOTE_UNREACHABLE: '1번 스텝에서 출발해 닿지 않는 스텝입니다.',
   SEW_NOTE_NO_SUCCESS: 'SUCCESS 로 가는 스텝이 없습니다(사내 편집기는 저장을 막습니다).',
@@ -128,7 +131,7 @@ export const LABELS = {
   matchMode: { partial: '부분 일치', exact: '정확 일치' },
   skipPreprocessing: { na: '해당 없음', yes: '예 (숨길 창 옮기기 건너뜀)', no: '아니오' },
   flowChip: { lastNext: 'NEXT (다음 없음)', self: '↺ 자기 자신' },
-  clickBasis: { trainImage: '학습 이미지 왼쪽 위', absolute: '화면 절대' }
+  clickBasis: { trainImage: '학습 이미지 왼쪽 위', screenOrigin: '실행 때 저장 좌표와 상관없이 화면 왼쪽 위(0,0)를 누릅니다', unknown: '이 조건에서는 클릭 기준을 알 수 없습니다' }
 }
 
 export function t(key, params = {}) {

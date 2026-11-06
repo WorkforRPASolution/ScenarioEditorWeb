@@ -16,13 +16,20 @@ describe('graphNotes', () => {
   it('범위 밖·자기 참조·마지막 NEXT·동작 있는 실패 쪽 NEXT·도달 불가', () => {
     expect(run([
       st(10002, -1),         // s0
-      st(3, 10002, 6),       // s1 → s3, 실패 쪽 NEXT + 동작 Wait
+      st(3, 10002, 11),      // s1 → s3, 실패 쪽 NEXT + 동작 명령 실행
       st(-2, -1),            // s2: s1 의 실패 NEXT 로 도달, 범위 밖
       st(3, 10001),          // s3: 자기 참조
       st(10002, -1)          // s4: 도달 불가, 마지막 NEXT
     ])).toEqual([
       [], ['FALSE_NEXT_WITH_ACTION'], ['NEXT_OUT_OF_RANGE'], ['NEXT_SELF'], ['LAST_STEP_NEXT', 'UNREACHABLE']
     ])
+  })
+})
+
+describe('graphNotes — 실패 쪽 NEXT', () => {
+  it('실패를 돌려주는 동작만 경고한다', () => {
+    expect(run([st(10000, 10002, 1), st(10000, -1)])[0]).not.toContain('FALSE_NEXT_WITH_ACTION') // 마우스 클릭
+    expect(run([st(10000, 10002, 11), st(10000, -1)])[0]).toContain('FALSE_NEXT_WITH_ACTION') // 명령 실행
   })
 })
 
