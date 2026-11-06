@@ -10,9 +10,15 @@ describe('conflict', () => {
     expect(detectConflict({ ...base, currentPropertyRev: 'q' })).toEqual({ kind: 'property' })
     expect(detectConflict({ ...base, sameScenario: false, currentCrtime: 2 })).toBe(null)
   })
-  it('새 시나리오는 문서가 있어도 deleted 가 아니다', () => {
-    expect(detectConflict({ ...base, headCrtime: null, currentCrtime: null })).toBe(null)
-    expect(detectConflict({ ...base, headCrtime: null, currentCrtime: null, docExists: false })).toBe(null)
+  it('새 시나리오(sameScenario false)는 문서가 있어도 본 적 없다', () => {
+    expect(detectConflict({ ...base, sameScenario: false, headCrtime: null, currentCrtime: null })).toBe(null)
+    expect(detectConflict({ ...base, sameScenario: false, headCrtime: null, currentCrtime: 5 })).toBe(null)
+  })
+  it('현재 판 없이 연 기존 시나리오도 충돌을 본다', () => {
+    const nb = { ...base, headCrtime: null, currentCrtime: null }
+    expect(detectConflict({ ...nb, currentCrtime: 5 })).toEqual({ kind: 'newVersion', by: 'k', at: '2026-11-06 09:00:00' })
+    expect(detectConflict({ ...nb, docExists: false })).toEqual({ kind: 'deleted' })
+    expect(detectConflict(nb)).toBe(null)
   })
   it('누가·언제 없으면 null', () => {
     expect(detectConflict({ ...base, currentCrtime: 2, owners: [] })).toEqual({ kind: 'newVersion', by: null, at: null })
