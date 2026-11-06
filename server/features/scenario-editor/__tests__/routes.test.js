@@ -272,3 +272,46 @@ describe('/drafts', () => {
     expect((await res.json()).data).toEqual({ deleted: true })
   })
 })
+
+describe('POST /deploy', () => {
+  afterEach(() => { delete require('../../../app').locals.seWriteDisabled })
+  const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2])
+  const form = () => {
+    const fd = new FormData()
+    fd.append('meta', JSON.stringify({ requestId: 'r1', target: { process: 'CVD', model: 'M1', name: 'N' } }))
+    fd.append('img:t1', new Blob([PNG], { type: 'image/png' }), 'a.png')
+    return fd
+  }
+  it('WRITE 가 아니면 403 이고 배포 서비스를 부르지 않는다', async () => {
+    let called = 0
+    fake.deploy = { deploy: async () => { called++ } }
+    const res = await fetch(`${base}/deploy`, { method: 'POST', headers: { 'X-SE-User': 'sew_reader' }, body: form() })
+    expect(res.status).toBe(403)
+    expect(await res.json()).toMatchObject({ code: 'WRITE_FORBIDDEN' })
+    expect(called).toBe(0)
+  })
+  it('seWriteDisabled 면 403 WRITE_DISABLED', async () => {
+    fake.deploy = { deploy: async () => ({}) }
+    require('../../../app').locals.seWriteDisabled = true
+    const res = await fetch(`${base}/deploy`, { method: 'POST', body: form() })
+    expect(res.status).toBe(403)
+    expect(await res.json()).toMatchObject({ code: 'WRITE_DISABLED' })
+  })
+  it('meta·그림 Map 을 서비스에 넘기고, X-SE-Deploy-Stats 를 싣고, CORS 가 그 헤더를 노출한다', async () => {
+    const seen = []
+    fake.deploy = { deploy: async (u, meta, images) => { seen.push([u.singleid, meta, [...images.keys()]]); return { result: 'ok', crtime: 5, partialFailed: [], requestId: 'r1' } } }
+    const res = await fetch(`${base}/deploy`, { method: 'POST', headers: { Origin: 'http://localhost:5173' }, body: form() })
+    expect(res.status).toBe(200)
+    expect((await res.json()).data).toEqual({ result: 'ok', crtime: 5, partialFailed: [], requestId: 'r1' })
+    expect(seen).toEqual([['sew_multi', { requestId: 'r1', target: { process: 'CVD', model: 'M1', name: 'N' } }, ['t1']]])
+    expect(res.headers.get('x-se-deploy-stats')).toMatch(/^ms=\d+;peakRssMb=\d+$/)
+    expect(res.headers.get('access-control-expose-headers')).toContain('X-SE-Deploy-Stats')
+  })
+  it('서비스 오류는 code·details 를 그대로 낸다', async () => {
+    const { seError } = require('../errors')
+    fake.deploy = { deploy: async () => { throw seError(504, 'UPSTREAM_TIMEOUT', 'x', { requestId: 'r1' }) } }
+    const res = await fetch(`${base}/deploy`, { method: 'POST', body: form() })
+    expect(res.status).toBe(504)
+    expect(await res.json()).toMatchObject({ code: 'UPSTREAM_TIMEOUT', details: { requestId: 'r1' } })
+  })
+})

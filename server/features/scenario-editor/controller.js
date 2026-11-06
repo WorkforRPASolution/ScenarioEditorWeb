@@ -82,7 +82,7 @@ async function image(req, res, next) {
   })
 }
 
-// 쓰기 문. 아직 어느 경로에도 붙이지 않았다(쓰기 경로가 loadUser 뒤에 붙인다).
+// 쓰기 문. 쓰기 경로가 loadUser 뒤에 붙인다(req.seUser 를 본다).
 // seWriteDisabled 는 단독판 app.js 만 정한다 — 편입 뒤에는 값이 없어 WRITE·등급만 본다.
 const denyWith = (denial, next) => next(seError(denial.status, denial.code, denial.message))
 const writeDisabled = (req) => req.app.locals.seWriteDisabled === true
@@ -128,4 +128,19 @@ async function removeDraft(req, res) {
   ok(res, await getDeps().drafts.remove(req.seUser, req.params.id))
 }
 
-module.exports = { saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, versions, open, dataCheck, image }
+// 배포. 걸린 시간·최대 상주 메모리를 열기(X-SE-Open-Stats)와 같은 방식(100ms 간격 표본)으로 재어 머리글에 싣는다 — 큰 시나리오 측정이 읽는다.
+const rssNow = () => process.memoryUsage().rss
+async function deploy(req, res) {
+  const started = Date.now()
+  let peak = rssNow()
+  const timer = setInterval(() => { peak = Math.max(peak, rssNow()) }, 100)
+  try {
+    const out = await getDeps().deploy.deploy(req.seUser, req.seMeta, req.seImages)
+    res.set('X-SE-Deploy-Stats', `ms=${Date.now() - started};peakRssMb=${Math.round(Math.max(peak, rssNow()) / 1048576)}`)
+    ok(res, out)
+  } finally {
+    clearInterval(timer)
+  }
+}
+
+module.exports = { deploy, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, versions, open, dataCheck, image }

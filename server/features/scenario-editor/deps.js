@@ -41,13 +41,16 @@ function build(env = process.env) {
   out.versions = createVersionService({ gridfs, hash, scopes })
   const { createOpenService } = require('./service/openService')
   const { createLogger } = require('../../shared/logger')
-  out.opener = createOpenService({ repo, hash, gridfs, scopes, imageCache, log: createLogger('scenario-editor') })
+  const log = createLogger('scenario-editor')
+  out.opener = createOpenService({ repo, hash, gridfs, scopes, imageCache, log })
   const { createDataCheckService } = require('./service/dataCheckService')
   out.dataCheck = createDataCheckService({ repo, scopes })
   const { createCheckService } = require('./service/checkService')
   out.check = createCheckService({ repo, hash, scopes, opener: out.opener, env })
   const { createDraftService } = require('./service/draftService')
   out.drafts = createDraftService({ web, check: out.check, scopes })
+  const { createDeployService } = require('./service/deployService')
+  out.deploy = createDeployService({ check: out.check, opener: out.opener, web, repo, hash, scopes, interfaceClient: require('./clients/interfaceClient'), log })
   return out
 }
 
