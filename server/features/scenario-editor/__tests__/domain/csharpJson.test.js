@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { csJsonDouble, csJsonString, serializeScenario, serializeBackupInfo, serializeProperty, serializeSetScenarioRequest } from '../../domain/csharpJson'
+import { csJsonDouble, csJsonString, serializeScenario, serializeBackupInfo, serializeProperty, serializeSetScenarioRequest, csJsonEscape, backupInfoChunks, setScenarioRequestChunks } from '../../domain/csharpJson'
 
 // 기대 글자는 실제 Newtonsoft 12.0.1 출력이다(2026-11-01 실측, 사본 DataStruct 그대로 실행).
 const md = (x, y, w, h, train, textValue) => ({
@@ -101,5 +101,64 @@ describe('serializeSetScenarioRequest', () => {
   it('안쪽 JSON 은 문자열로 한 번 더 이스케이프된다', () => {
     const out = serializeSetScenarioRequest({ Process: 'CVD', Model: 'M100', SCName: 'X', BI: '{"ID":"BI.X"}', Body: '{"a":1}', Property: '{}' })
     expect(out).toBe('{"Process":"CVD","Model":"M100","SCName":"X","BI":"{\\"ID\\":\\"BI.X\\"}","Body":"{\\"a\\":1}","Property":"{}"}')
+  })
+})
+
+// ---- 흘려 쓰기 ----
+const join = async (it) => { let o = ''; for await (const c of it) o += c; return o }
+const tick = () => new Promise((r) => setTimeout(r, 1))
+const entries3 = [{ kind: 'image', ref: { from: 'source', id: 'a' } }, { kind: 'literal', value: 'AA==' }, { kind: 'literal', value: null }]
+const resolve3 = async (r) => ({ a: 'QUJD' })[r.id]
+
+describe('흘려 쓰기', () => {
+  it('csJsonEscape 는 csJsonString 에서 따옴표를 뺀 것이고 조각별로 해도 같다', () => {
+    const s = 'a b\u0085c\u0001"\\\u2028\u2029\t\n\r\f\b\u{1F600}é'
+    expect(csJsonString(s)).toBe('"' + csJsonEscape(s) + '"')
+    expect(csJsonEscape(s.slice(0, 5)) + csJsonEscape(s.slice(5))).toBe(csJsonEscape(s))
+  })
+  it('조각을 이으면 한 번에 직렬화한 글자와 같다', async () => {
+    const bi = await join(backupInfoChunks('BI.P-M-N', entries3, resolve3))
+    expect(bi).toBe(serializeBackupInfo({ ID: 'BI.P-M-N', TargetSnapshotList: ['QUJD', 'AA==', null] }))
+    const body = serializeScenario({ ...sample, Description: 'a b\u0085c\u0001"\\\u{1F600}' })
+    const prop = serializeProperty(property)
+    const req = await join(setScenarioRequestChunks({ process: 'P', model: 'M', name: 'N', biChunks: backupInfoChunks('BI.P-M-N', entries3, resolve3), bodyString: body, propertyString: prop }))
+    expect(req).toBe(serializeSetScenarioRequest({ Process: 'P', Model: 'M', SCName: 'N', BI: bi, Body: body, Property: prop }))
+  })
+  it('빈 목록·큰 본문(조각 경계에 서로게이트 쌍)도 같다', async () => {
+    const bi = await join(backupInfoChunks('BI.x', [], resolve3))
+    expect(bi).toBe(serializeBackupInfo({ ID: 'BI.x', TargetSnapshotList: [] }))
+    // 조각 크기 1MiB 경계(1048576 글자)에 쌍이 걸치도록 한다.
+    const body = 'x'.repeat(1048575) + '\u{1F600}' + 'y'.repeat(10) + '"'
+    const req = await join(setScenarioRequestChunks({ process: 'P', model: 'M', name: 'N', biChunks: backupInfoChunks('BI.x', [], resolve3), bodyString: body, propertyString: '{}' }))
+    expect(req).toBe(serializeSetScenarioRequest({ Process: 'P', Model: 'M', SCName: 'N', BI: bi, Body: body, Property: '{}' }))
+  })
+  it('그림은 하나씩 읽는다', async () => {
+    let inFlight = 0, max = 0, calls = 0
+    const resolve = async () => { inFlight++; calls++; max = Math.max(max, inFlight); await tick(); inFlight--; return 'QUJD' }
+    await join(backupInfoChunks('BI.x', Array.from({ length: 5 }, (_, i) => ({ kind: 'image', ref: { from: 'source', id: String(i) } })), resolve))
+    expect(max).toBe(1)
+    expect(calls).toBe(5)
+  })
+  it('요청 조각은 BI 조각을 게으르게 소비한다', async () => {
+    const log = []
+    async function* bi() { for (let i = 0; i < 3; i++) { log.push('bi' + i); yield 'AB' } }
+    const it = setScenarioRequestChunks({ process: 'P', model: 'M', name: 'N', biChunks: bi(), bodyString: 'b', propertyString: 'p' })
+    let n = 0
+    for await (const c of it) { log.push('out'); if (++n >= 3) break }
+    expect(log.filter((x) => x.startsWith('bi')).length).toBeLessThan(3)
+  })
+  it('1MB 그림 50개를 문자열 하나로 모으지 않고 흘려 보내도 길이가 산술값과 같다', async () => {
+    const MB = 'A'.repeat(1 << 20)
+    const ents = Array.from({ length: 50 }, (_, i) => ({ kind: 'image', ref: { from: 'source', id: String(i) } }))
+    let total = 0, biLen = 0
+    const counted = async function* () { for await (const c of backupInfoChunks('BI.big', ents, async () => MB)) { biLen += c.length; yield c } }
+    for await (const c of setScenarioRequestChunks({ process: 'P', model: 'M', name: 'N', biChunks: counted(), bodyString: 'body', propertyString: 'prop' })) total += c.length
+    const header = '{"ID":"BI.big","TargetSnapshotList":['
+    const expectedBi = header.length + 50 * (MB.length + 2) + 49 + 2
+    expect(biLen).toBe(expectedBi)
+    // 요청 안에서 BI 의 따옴표(머리 6개 + 그림 50개 × 2)마다 역슬래시가 하나 붙는다.
+    const quotes = header.match(/"/g).length + 100
+    const wrap = '{"Process":"P","Model":"M","SCName":"N","BI":"'.length + '","Body":"body","Property":"prop"}'.length
+    expect(total).toBe(wrap + expectedBi + quotes)
   })
 })

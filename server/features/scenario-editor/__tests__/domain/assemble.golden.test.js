@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { buildSkeleton, isImage, baseImageId } from '../../domain/skeleton'
 import { editedFromSkeleton } from '../../domain/editedScenario'
 import { assembleScenario, assembleProperty } from '../../domain/assemble'
+import { backupInfoChunks } from '../../domain/csharpJson'
 
 const require = createRequire(import.meta.url)
 const { generate, SETS } = require('../../../../../tools/scenario-gen/lib/generate') // 시험만 tools 를 읽는다
@@ -59,12 +60,14 @@ describe('생성기 왕복', () => {
         expect(r.bodyString).toBe(bodyText)
         expect(assembleProperty(skeleton.property, { id: skeleton.id })).toBe(propText)
         expect(r.changed.size).toBe(0)
-        // BI 글자 비교는 Task 8(backupInfoChunks) 뒤에 켠다. 여기서는 BI 항목을 풀면 원래 목록인지만 본다.
+        // BI 항목을 풀면 원래 목록이고, 조각을 이으면 생성기가 쓴 BI 글자와 같다(ID 는 생성기가 쓴 그대로).
         const resolved = []
         for (const e of r.biEntries) resolved.push(e.kind === 'image' ? await resolveImage(e.ref) : e.value)
         expect(resolved).toEqual(bi.TargetSnapshotList)
+        let joined = ''
+        for await (const c of backupInfoChunks(bi.ID, r.biEntries, resolveImage)) joined += c
+        expect(joined).toBe(biText)
       })
-      it.todo(`${meta.set}/${meta.name} v${v} BI 글자 왕복 (Task 8 — backupInfoChunks)`)
     }
   }
 })
