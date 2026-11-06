@@ -131,6 +131,13 @@ describe('openService', () => {
       expect(pngFiles(t, versionKey('P', 'M', 'N', 1730000000100, 'f1'))).toEqual(['s0-bi.png', 's0-train-0.png', 's1-bi.png', 's2-bi.png'])
       expect(readFileSync(await t.svc.imagePath({}, 'P', 'M', 'N', 1730000000100, 'f1', 's0-bi')).toString()).toBe('fake-png-bytes-xxxxxxxx')
     })
+    it('정규 base64 가 아닌 BI 항목은 PNG 로 쓰지 않고 literal 로 둔다', async () => {
+      const odd = 'iVBORw0KGgoAAAANSUhEUg' // 패딩 빠짐
+      const t = setup({ biText: JSON.stringify({ TargetSnapshotList: [odd, LONG_B64] }) })
+      const { skeleton } = await t.svc.open({}, 'P', 'M', 'N', 'current')
+      expect(skeleton.steps[0].bi).toEqual({ kind: 'literal', value: odd })
+      expect(pngFiles(t, versionKey('P', 'M', 'N', 1730000000100, 'f1'))).toEqual(['s0-train-0.png', 's1-bi.png'])
+    })
     it('그림이 아닌 항목은 literal, 스텝보다 짧으면 absent, 항목 수를 남긴다', async () => {
       const { skeleton } = await setup({ biText: JSON.stringify({ TargetSnapshotList: ['AA=='] }) }).svc.open({}, 'P', 'M', 'N', 'current')
       expect(skeleton.steps[0].bi).toEqual({ kind: 'literal', value: 'AA==' })
@@ -149,7 +156,7 @@ describe('openService', () => {
       const file = join(t.deps.imageCache.__dir, encodeURIComponent(key), 'skeleton.json')
       const sk = JSON.parse(readFileSync(file, 'utf8'))
       expect(sk.cacheFormat).toBe(SKELETON_CACHE_FORMAT)
-      expect(SKELETON_CACHE_FORMAT).toBe(4) // 4: 숨길 창 저장값(header.raw)·키보드 codes — 3 의 캐시는 다시 푼다
+      expect(SKELETON_CACHE_FORMAT).toBe(5) // 5: 정규 base64 만 그림 — 4 의 캐시는 다시 푼다
       expect((await t.svc.open({}, 'P', 'M', 'N', 'current')).stats.fromCache).toBe(true)
       for (const old of [undefined, SKELETON_CACHE_FORMAT - 1]) {
         const { cacheFormat, ...rest } = sk

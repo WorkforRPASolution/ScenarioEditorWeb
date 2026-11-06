@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildSkeleton, versionNotes, refreshPropertyParts } from '../../domain/skeleton'
+import { buildSkeleton, isImage, versionNotes, refreshPropertyParts } from '../../domain/skeleton'
 
 const md = (op, train = {}) => ({
   SearchArea: op === 0 ? { X: -18, Y: -18, Width: -18, Height: -18 } : { X: 10, Y: 20, Width: 300, Height: 200 },
@@ -25,6 +25,27 @@ const base = { process: 'P', model: 'M', name: 'N', crtime: 1730000000000, isCur
   performanceDoc: { ScenarioDescription: '설명' }, imageBaseUrl: '/img' }
 
 const BROKEN_BI = { parseFailed: true, present: new Set() }
+
+describe('isImage — 정규 base64 만 그림이다(다시 인코딩해도 같아야 배포가 저장값을 바꾸지 않는다)', () => {
+  it('정규 base64(길이 5 이상)만 true', () => {
+    expect(isImage(LONG_B64)).toBe(true)
+    expect(isImage('AA==')).toBe(false)
+    expect(isImage('AAAAAAAA\n')).toBe(false) // 줄바꿈
+    expect(isImage('iVBORw0KGgoAAAANSUhEUg')).toBe(false) // 패딩 빠짐
+    expect(isImage('hello world!')).toBe(false) // base64 가 아닌 글
+    expect(isImage(123)).toBe(false)
+  })
+  it('정규가 아닌 찾을 그림·보정 그림은 떼지 않고 저장값 그대로', () => {
+    const odd = 'iVBORw0KGgoAAAANSUhEUg' // 패딩 빠짐
+    const b = { ...body, Compensation: { X: 1, Y: 2, RefImage: odd },
+      Step: [{ ...body.Step[0], Metadata: md(1, { 0: { BinaryImage: odd, Type: true }, 1: { BinaryImage: LONG_B64, Type: true } }) }] }
+    const { skeleton, images } = buildSkeleton({ ...base, body: b })
+    expect(images.map((i) => i.id).sort()).toEqual(['s0-train-1'])
+    expect(skeleton.steps[0].raw.Metadata.ImageSearchParam.TrainImageMap['0'].BinaryImage).toBe(odd)
+    expect(skeleton.header.compensation.refImage).toBeNull()
+    expect(skeleton.header.raw.Compensation.RefImage).toBe(odd)
+  })
+})
 
 describe('buildSkeleton', () => {
   it('스텝을 구조화하고 이미지를 떼어 URL 로 바꾼다', () => {

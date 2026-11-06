@@ -9,7 +9,9 @@ const { propertyFromBson } = require('./propertyModel')
 const { performanceFromBson } = require('./performanceModel')
 const { isTrainKey, trainImageId } = require('./trainKey')
 
-const isImage = (b64) => typeof b64 === 'string' && b64.length > 4 // "AA==" = 1바이트 자리표시(조건 없음·설비 상태)
+// "AA==" = 1바이트 자리표시(조건 없음·설비 상태). 정규 base64 만 그림이다 — 줄바꿈·패딩 빠짐·base64 가 아닌 글은
+// PNG 로 풀었다 다시 인코딩하면 글자가 달라져 손대지 않은 스텝이 배포에서 바뀌므로 저장값 그대로(literal) 둔다.
+const isImage = (b64) => typeof b64 === 'string' && b64.length > 4 && Buffer.from(b64, 'base64').toString('base64') === b64
 
 const isObject = (v) => v !== null && typeof v === 'object'
 
