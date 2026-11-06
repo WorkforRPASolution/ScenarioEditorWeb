@@ -39,6 +39,10 @@ function createGridfsRepository(getDb, mongo) {
       }
       return (await latest({ filename: `${process}.${model}.${name}.${crtime}`, ...version })) ?? latest(version)
     },
+    // 있는지·어느 판인지만 본다 — 본문이 든 metadata.body(최대 16MB)는 읽지 않는다.
+    async findFileMeta(fileId) {
+      return files().findOne({ _id: fileId }, { projection: { length: 1, 'metadata.process': 1, 'metadata.model': 1, 'metadata.name': 1, 'metadata.crtime': 1 }, maxTimeMS: MAX })
+    },
     async findFile(fileId) {
       return files().findOne({ _id: fileId }, { maxTimeMS: MAX })
     }

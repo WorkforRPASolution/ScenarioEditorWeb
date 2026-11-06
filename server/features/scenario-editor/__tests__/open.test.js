@@ -38,6 +38,7 @@ function setup(over = {}) {
     gridfs: {
       findVersionId: async (p, m, n, crtime) => (crtime === 1730000000100 ? fileId : null),
       findFile: async (id) => { fileReads++; return { _id: id, metadata: { process: 'P', model: 'M', name: 'N', crtime: 1730000000100, body, ...(over.metaOf && over.metaOf[String(id)]) } } },
+      findFileMeta: async (id) => ({ _id: id, length: 1, metadata: { process: 'P', model: 'M', name: 'N', crtime: 1730000000100, ...(over.metaOf && over.metaOf[String(id)]) } }),
       streamContent: async function* ({ _id: id }) {
         reads++
         await new Promise((r) => setTimeout(r, 20))
@@ -156,6 +157,33 @@ describe('openService', () => {
       const t = setup({ fileId: HEX1, metaOf: { [HEX2]: { name: 'OTHER' } } })
       await expect(t.svc.resolveImage({ ...V, fileId: HEX2 }, 's0-bi')).rejects.toMatchObject({ statusCode: 404 })
       await expect(t.svc.resolveImage({ ...V, fileId: 'bad' }, 's0-bi')).rejects.toMatchObject({ statusCode: 404 })
+    })
+    it('캐시가 따뜻해도 파일이 없어졌으면 source 는 gone, resolveImage 는 404', async () => {
+      const t = setup({ fileId: HEX1 })
+      await t.svc.source({}, V)
+      await t.svc.resolveImage(V, 's0-bi')
+      t.deps.gridfs.findFileMeta = async () => null
+      expect(await t.svc.source({}, V)).toEqual({ gone: true })
+      await expect(t.svc.resolveImage(V, 's0-bi')).rejects.toMatchObject({ statusCode: 404, code: 'NOT_FOUND' })
+    })
+    it('캐시가 따뜻해도 메타데이터가 달라졌으면 gone·404', async () => {
+      const t = setup({ fileId: HEX1 })
+      await t.svc.source({}, V)
+      t.deps.gridfs.findFileMeta = async (id) => ({ _id: id, length: 1, metadata: { process: 'P', model: 'M', name: 'OTHER', crtime: 1730000000100 } })
+      expect(await t.svc.source({}, V)).toEqual({ gone: true })
+      await expect(t.svc.resolveImage(V, 's0-bi')).rejects.toMatchObject({ statusCode: 404 })
+    })
+    it('캐시가 맞는 경로는 본문이 든 파일 문서(findFile)를 읽지 않고 메타만 읽는다', async () => {
+      const t = setup({ fileId: HEX1 })
+      await t.svc.source({}, V)
+      const before = t.fileReads()
+      let metaReads = 0
+      const meta = t.deps.gridfs.findFileMeta
+      t.deps.gridfs.findFileMeta = async (id) => { metaReads++; return meta(id) }
+      await t.svc.source({}, V)
+      await t.svc.resolveImage(V, 's0-bi')
+      expect(t.fileReads()).toBe(before)
+      expect(metaReads).toBe(2)
     })
     it('resolveImage: 형식 번호가 다른 옛 캐시는 읽지 않고 다시 푼다', async () => {
       const t = setup({ fileId: HEX1 })

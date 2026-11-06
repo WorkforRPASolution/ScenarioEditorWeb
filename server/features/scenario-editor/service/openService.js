@@ -86,17 +86,13 @@ function createOpenService({ repo, hash, gridfs, scopes, imageCache, log }) {
   const withHead = (skeleton, current, propertySub) => ({ ...skeleton, headCrtime: current, propertyRev: propertySub === undefined ? null : propertyRev(propertySub) })
 
   // 판 하나를 (캐시 재사용으로) 푼다. 그 파일이 그 공정·모델·이름·crtime 이 아니거나 없으면 null.
-  // 캐시가 형식까지 맞게 있으면 그 키가 곧 다섯 값의 증거라 파일 문서(본문 최대 16MB)를 읽지 않는다.
+  // 캐시는 파일이 지워져도 남으므로 파일 존재·메타데이터는 매번 본다(본문 없이 projection 으로 가볍게).
   async function unpackVersion({ process, model, name, crtime, fileId }) {
     const oid = toObjectId(fileId)
     if (!oid || !Number.isSafeInteger(crtime)) return null
-    const key = versionKey(process, model, name, crtime, oid)
-    const cached = await imageCache.readSkeleton(key)
-    if (!(cached && cached.cacheFormat === SKELETON_CACHE_FORMAT)) {
-      const file = await gridfs.findFile(oid)
-      const m = file && file.metadata
-      if (!m || m.process !== process || m.model !== model || m.name !== name || m.crtime !== crtime) return null
-    }
+    const file = await gridfs.findFileMeta(oid)
+    const m = file && file.metadata
+    if (!m || m.process !== process || m.model !== model || m.name !== name || m.crtime !== crtime) return null
     return unpack(process, model, name, crtime, oid)
   }
 

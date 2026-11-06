@@ -43,6 +43,18 @@ describe('findVersionId', () => {
   })
 })
 
+describe('findFileMeta', () => {
+  it('본문(metadata.body)을 빼고 정체성 필드만 projection 으로 읽는다', async () => {
+    const calls = []
+    const db = { collection: () => ({ findOne: async (filter, options) => { calls.push({ filter, options }); return { _id: 'f', length: 3, metadata: { process: 'P' } } } }) }
+    const repo = createGridfsRepository(() => db, {})
+    expect(await repo.findFileMeta('f')).toEqual({ _id: 'f', length: 3, metadata: { process: 'P' } })
+    expect(calls[0].filter).toEqual({ _id: 'f' })
+    expect(calls[0].options.projection).toEqual({ length: 1, 'metadata.process': 1, 'metadata.model': 1, 'metadata.name': 1, 'metadata.crtime': 1 })
+    expect(JSON.stringify(calls[0].options.projection)).not.toContain('body')
+  })
+})
+
 describe('streamContent', () => {
   // openDownloadStream 만 흉내 낸다
   function repoReading(body) {
