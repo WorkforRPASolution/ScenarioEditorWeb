@@ -5,7 +5,7 @@ import { copySteps, pasteSteps, deleteSteps, moveSteps, setCell, movedRefKeys, a
 import { sameStep, canonicalJson } from '../editor/diff'
 import { checkStepFields } from '../editor/fieldRules'
 import { firstError, CLICK_TYPES } from '../editor/panel'
-import { refUrl, loadBitmap, newTempId } from '../editor/images'
+import { refUrl, loadBitmap, newTempId, uploadIdsOf } from '../editor/images'
 import { cropPng, imageDataOf } from '../editor/crop'
 import { locate } from '../editor/locate'
 import { CAP_FLOWS, MIN_CAPTURE, LOCATE_MS, isRect, clipRect, nextStage, newStepDraft, baseRefFor, firstTrainRef } from '../editor/capture'
@@ -27,6 +27,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   const panel = shallowRef(emptyPanel())
   const undo = shallowRef([])
   const redo = shallowRef([])
+  // 붙여넣기 묶음 Clip(+ uploads: 묶음이 쓰는 올릴 그림 tempId → Blob, R-P3). 세션이 바뀌어도(다른 시나리오 열기) 남는다.
   const clip = shallowRef(null)
   // 올릴 그림(tempId → Blob). Blob 을 반응형으로 감싸지 않게 shallowRef 이고, 바꿀 때마다 새 Map 으로 바꾼다(setUpload).
   const uploads = shallowRef(new Map())
@@ -54,7 +55,6 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     panel.value = emptyPanel()
     undo.value = []
     redo.value = []
-    clip.value = null
     uploads.value = new Map()
     capture.value = null
     locating.value = false
@@ -67,13 +67,21 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     clearMoved()
   }
 
+  // 붙여넣기 묶음은 세션을 넘어 남긴다(다른 시나리오에 붙이기). 잘라내기는 같은 작업본 안 옮기기라(R-T2a) 세션이 바뀌면
+  // 복사 묶음이 된다 — 새 작업본의 같은 uid 스텝을 옮기거나 흐리게 보이지 않게.
+  function carryClip() {
+    if (clip.value?.cut) clip.value = { ...clip.value, cut: false }
+  }
+
   function begin(skeleton, me) {
     reset()
+    carryClip()
     session.value = beginSession(skeleton, me)
   }
 
   function end() {
     reset()
+    carryClip()
     session.value = null
   }
 
@@ -284,13 +292,26 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     if (!uids.length) return false
     const r = copySteps(session.value.working, uids, session.value.source, cut)
     if (r.refused) { refused(r.refused); return false }
-    clip.value = r
+    // R-P3: 묶음이 쓰는 올릴 그림의 Blob 을 함께 든다 — 다른 시나리오를 열면 이 세션의 올릴 그림은 비워진다
+    const own = uploads.value
+    clip.value = { ...r, uploads: new Map(uploadIdsOf(r.steps).filter((id) => own.has(id)).map((id) => [id, own.get(id)])) }
     notify(t(cut ? 'SEW_CMD_CUT' : 'SEW_CMD_COPIED', { n: r.uids.length }))
     return true
   }
 
+  // 묶음이 든 올릴 그림을 이 세션의 올릴 그림에 넣는다(R-P3) — 붙인 스텝의 그림이 보이고, 저장 요청에 실린다.
+  function takeUploads(c) {
+    const add = [...(c.uploads ?? [])].filter(([id]) => !uploads.value.has(id))
+    if (!add.length) return
+    const m = new Map(uploads.value)
+    for (const [id, blob] of add) m.set(id, blob)
+    uploads.value = m
+  }
+
   // where: 'after' | 'before' | 'end'. 새 스텝이 되는 설비 상태 스텝이 든 묶음은 먼저 알린다(서버가 origin 없는 설비 상태 스텝을
   // CONDITION_NOT_CREATABLE 로 막는다) — confirmed 면 그대로 붙인다. 같은 작업본 안에서 잘라 옮기면 원래 스텝(origin 유지)이라 알리지 않는다.
+  // 다른 판(sameSource 거짓 — 다른 시나리오·다른 판·출처 없는 새 시나리오)에 붙이면 묶음 밖 갈 곳은 미해결, 기준 판 그림은 묶음 판의 참조가
+  // 된다(commands.pasteSteps). 붙인 뒤 첫 미해결 스텝을 고르고, 없으면 붙인 스텝들(초점은 첫 스텝, 목업 doPaste).
   function pasteClip(where, { confirmed = false } = {}) {
     const c = clip.value
     if (!c) return false
@@ -305,6 +326,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     const makeUid = () => { const [uid, next] = nextUid(s, 'p'); s = next; return uid }
     const r = pasteSteps(working, c, { where, anchorUid }, { sameSource, makeUid })
     if (r.refused) { refused(r.refused); return false }
+    if (!moving) takeUploads(c)
     const n = r.pasted.length
     const label = moving ? t('SEW_CMD_MOVED', { n }) : r.unresolved ? t('SEW_CMD_PASTED_UNRESOLVED', { n, open: r.unresolved }) : t('SEW_CMD_PASTED', { n })
     const firstOpen = moving ? null : r.working.steps.find((st) => r.pasted.includes(st.uid) && (st.next.onTrue.kind === 'unresolved' || st.next.onFalse.kind === 'unresolved'))

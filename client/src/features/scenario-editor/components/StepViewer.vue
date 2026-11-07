@@ -39,6 +39,10 @@ const src = computed(() => {
   if (isNew.value) return newSrc.value
   return step.value?.baseImage.state === 'present' ? imageSrc(step.value.baseImage) : null
 })
+// 다른 시나리오 판의 그림(붙여 온 스텝, 그 기준 화면으로 시작한 새 스텝) — 불러오지 못하면 그 판을 찾지 못했다고 알린다(배포는 서버가 IMAGE_SOURCE_GONE 으로 막는다)
+const srcOther = computed(() => (isNew.value ? edit.panel.draft.images?.base?.from === 'other' : !!step.value?.baseImage?.other))
+// 쓸 수 있는 세션의 스텝이 하나도 없을 때(목업 조작판 20 empty)
+const noSteps = computed(() => edit.editable && !store.steps.length)
 const editLayer = computed(() => !!draft.value && (kind.value === 'image' || kind.value === 'ocr'))
 const cap = computed(() => (draft.value ? edit.capture : null))
 const capNow = computed(() => (cap.value ? cap.value.flow.indexOf(cap.value.stage) : -1))
@@ -200,10 +204,10 @@ defineExpose({ onLoad, fit })
       {{ t('SEW_UI_BASE_IMAGE_HINT') }}<button class="ml-auto underline" data-testid="se-hint-close" @click="closeHint">닫기</button>
     </div>
     <div ref="box" class="flex-1 min-h-0 relative overflow-hidden bg-gray-50 dark:bg-dark-bg select-none" @wheel.prevent="onWheel" @mousedown="onDown">
-      <div v-if="!shown" class="h-full" />
+      <div v-if="!shown" class="h-full flex items-center justify-center text-sm text-gray-400 px-6 text-center">{{ noSteps ? t('SEW_EDIT_VIEWER_EMPTY') : '' }}</div>
       <div v-else-if="baseState === 'notNeeded'" class="h-full flex items-center justify-center text-sm text-gray-400 px-6 text-center">{{ t('SEW_UI_BASE_IMAGE_NOT_NEEDED') }}</div>
       <div v-else-if="baseState === 'missing'" class="h-full flex items-center justify-center text-sm text-gray-400 px-6 text-center">{{ biUnreadable ? t('SEW_UI_BASE_IMAGE_UNREADABLE') : t('SEW_UI_BASE_IMAGE_MISSING') }}</div>
-      <div v-else-if="failed" class="h-full flex items-center justify-center text-sm text-gray-400">{{ t('SEW_UI_IMAGE_LOAD_FAILED') }}</div>
+      <div v-else-if="failed" class="h-full flex items-center justify-center text-sm text-gray-400 px-6 text-center">{{ srcOther ? t('SEW_EDIT_IMAGE_SOURCE_GONE') : t('SEW_UI_IMAGE_LOAD_FAILED') }}</div>
       <div v-if="src && !failed" class="absolute left-0 top-0 origin-top-left"
         :style="{ transform: `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`, width: natural ? `${natural.w}px` : 'auto', height: natural ? `${natural.h}px` : 'auto' }">
         <img :src="src" alt="" class="block max-w-none shadow-md" data-testid="se-base-image" draggable="false" @load="onLoad" @error="failed = true" />

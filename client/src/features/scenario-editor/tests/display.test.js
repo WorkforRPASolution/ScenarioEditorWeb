@@ -95,6 +95,16 @@ describe('displaySteps', () => {
     expect(out[1].action.typeName).toBe('RunCommand')
   })
 
+  it('다른 판 기준 화면(다른 시나리오에서 붙여 온 스텝)은 그 판 경로이고 other 표시가 붙는다 — 큰 화면이 불러오기 실패 문구를 가른다', () => {
+    const { skeleton, session, edited } = make()
+    const other = { from: 'other', process: 'P', model: 'M', name: 'A', crtime: 3, fileId: 'G', id: 's5-bi' }
+    const p = { ...edited.steps[1], uid: 'p1', origin: null, images: { train: {}, base: other } }
+    const out = displaySteps(withWorking(session, insertStep(edited, p, { beforeUid: null }).working), skeleton)
+    expect(out[3].baseImage).toEqual({ state: 'present', src: 'http://x/api/scenario-editor/scenarios/P/M/A/versions/3/files/G/images/s5-bi', other: true })
+    const changed = applyStep(edited, { ...edited.steps[0], descriptionToEmail: '고침' }).working
+    expect(displaySteps(withWorking(session, changed), skeleton)[0].baseImage).toEqual({ state: 'present', src: 'http://x/api/scenario-editor/scenarios/P/M/N/versions/7/files/F/images/s0-bi' })
+  })
+
   it('작업본에 없는 uid 를 가리키는 갈 곳은 미해결로 보인다', () => {
     const { skeleton, session, edited } = make()
     const a = { ...edited.steps[0], next: { onTrue: { kind: 'step', uid: 'gone' }, onFalse: { kind: 'unresolved', value: 7 } } }

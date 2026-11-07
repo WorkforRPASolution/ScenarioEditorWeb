@@ -66,7 +66,8 @@ function fromEdited(st, no, pos, ctx, notes) {
   let baseImage = { state: 'notNeeded' }
   if (needsBaseImage(c.kind)) {
     const src = isRef(images.base) ? refUrl(images.base, ctx) : null
-    baseImage = src ? { state: 'present', src } : { state: 'missing' }
+    // other = 다른 시나리오 판의 그림(붙여 온 스텝) — 큰 화면이 불러오지 못했을 때 "그 버전을 찾지 못했습니다" 를 가른다
+    baseImage = !src ? { state: 'missing' } : images.base.from === 'other' ? { state: 'present', src, other: true } : { state: 'present', src }
   }
   const action = st.action || {}
   return {

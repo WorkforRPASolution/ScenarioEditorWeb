@@ -201,6 +201,17 @@ export const MESSAGES = {
   SEW_EDIT_ROW_PENDING: '오른쪽에서 고치는 중, 적용 전',
   SEW_EDIT_UNRESOLVED: '미해결',
   SEW_EDIT_UNRESOLVED_FROM: '미해결 {value}',
+  // 다른 시나리오 붙여넣기·빈 시나리오(목업 조작판 15 paste·20 empty)
+  SEW_EDIT_PICK_UNRESOLVED: '갈 곳을 고르세요.',
+  SEW_EDIT_PICK_UNRESOLVED_FROM: '갈 곳을 고르세요(원래 {value}번).',
+  SEW_EDIT_IMAGE_SOURCE_GONE: '원래 시나리오의 그 버전을 찾지 못했습니다.',
+  SEW_EDIT_EMPTY_TITLE: '스텝이 아직 없습니다.',
+  SEW_EDIT_EMPTY_NEW: '조건 없는 스텝 만들기',
+  SEW_EDIT_EMPTY_PASTE: '복사해 둔 스텝 붙여넣기',
+  SEW_EDIT_EMPTY_PASTE_NONE: '다른 시나리오를 열어 스텝을 복사한 뒤 붙여넣을 수 있습니다.',
+  SEW_EDIT_EMPTY_HELP: '이미지·OCR 스텝은 기준 화면이 있어야 만들 수 있습니다.',
+  SEW_EDIT_EMPTY_HELP_PASTE: '다른 시나리오에서 스텝을 복사해 붙이면 그 기준 화면도 함께 옵니다.',
+  SEW_EDIT_VIEWER_EMPTY: '기준 화면이 아직 없습니다.',
   // 적용 안 한 변경 확인(목업 dlgHtml guard, 조작판 16 guard·22 saveguard)
   SEW_EDIT_GUARD_TITLE: '{no}번 스텝에 적용하지 않은 변경이 있습니다',
   SEW_EDIT_GUARD_BODY_MOVE: '{n}개 값이 바뀌었습니다. 다른 스텝으로 가기 전에 정하세요.',
@@ -554,6 +565,14 @@ export function errorCode(err) {
 export function errorMessage(err) {
   const code = errorCode(err)
   return t(ERROR_KEYS[code] ?? `SEW_ERR_${code}`)
+}
+
+// 칸 오류 문구(칸 검사 결과 { code, params } — 패널 칸 옆·적용 줄·표 갈 곳 칸). 문구는 RULE_<code> 이고, 미해결 갈 곳은
+// 칸 앞에서 할 일만 짧게 — 원래 번호를 알면 함께 보인다(목업 validate "갈 곳을 고르세요(원래 N번)."). 저장 창 목록은 RULE_ 문구 그대로.
+export function fieldMessage(e) {
+  const params = e?.params || {}
+  if (e?.code === 'NEXT_UNRESOLVED') return t(params.value === undefined || params.value === null ? 'SEW_EDIT_PICK_UNRESOLVED' : 'SEW_EDIT_PICK_UNRESOLVED_FROM', params)
+  return t(`RULE_${e?.code}`, params)
 }
 
 // 경고·알림 문구. params.field 가 있으면 그 field 의 문구(예: SEW_NOTE_PARSE_FAILED_bi)를 먼저 찾고, 없으면 코드 공통 문구.

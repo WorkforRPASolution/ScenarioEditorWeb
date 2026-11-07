@@ -177,6 +177,34 @@ describe('StepToolbar', () => {
     w.unmount()
   })
 
+  it('빈 시나리오(목업 조작판 20): 이미지·OCR 새 스텝은 꺼지고(이유), 다른 시나리오에서 복사해 둔 묶음은 맨 끝에 붙인다', async () => {
+    const a = fixture()
+    a.e.setSelection({ uids: ['s1', 's2'], anchor: 's1' })
+    a.e.copySelection(false)
+    const other = (n) => ({ ...a.e.session.source, name: n })
+    // 다른 시나리오 E(스텝 0)를 연다 — 묶음은 남는다
+    const edited = { source: other('E'), headCrtime: 1, header: { description: '', timeoutLimit: '1' }, steps: [], property: {} }
+    a.s.skeleton = { process: 'P', model: 'M', name: 'E', headCrtime: 1, version: { crtime: 1, isCurrent: true, fileId: 'F' }, steps: [], notes: [], edited }
+    a.e.begin(a.s.skeleton, { canWrite: true })
+    const w = mountHost()
+    await tool(w, 'new').trigger('click')
+    const item = (k) => w.find(`[data-new="${k}"]`)
+    expect([off(item('image')), off(item('ocr')), off(item('none'))]).toEqual([true, true, false])
+    expect(item('ocr').text()).toContain('기준 화면이 있는 스텝이 없습니다')
+    await tool(w, 'new').trigger('click') // 닫기
+    expect(off(tool(w, 'paste'))).toBe(false)
+    expect(tool(w, 'paste').text()).toContain('2개')
+    await tool(w, 'paste').trigger('click')
+    expect(w.findAll('[data-paste]').map((b) => b.attributes('data-paste'))).toEqual(['end'])
+    await w.find('[data-paste="end"]').trigger('click')
+    expect(uids(a.e)).toHaveLength(2)
+    expect(a.e.session.working.steps[1].next.onTrue).toStrictEqual({ kind: 'unresolved', value: 1 }) // s2 성공 → s0(묶음 밖)
+    expect(a.e.session.working.steps[0].images.base.from).toBe('other')
+    await tool(w, 'new').trigger('click')
+    expect(off(item('image'))).toBe(false) // 붙여 온 기준 화면이 생겼다
+    w.unmount()
+  })
+
   it('되돌리기·다시 하기 버튼', async () => {
     const { e } = fixture()
     const w = mountHost()

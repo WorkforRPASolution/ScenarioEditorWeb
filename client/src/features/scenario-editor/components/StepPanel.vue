@@ -9,7 +9,7 @@ import { useEditStore } from '../stores/editStore'
 import { refUrl } from '../editor/images'
 import { CAN_FAIL, CLICK_TYPES, PRESERVE_ONLY, PANEL_OWN_CODES, changedFields, diffLines, errorFields, firstError, sentence, trainMapDropped, keyboardTokensDropped } from '../editor/panel'
 import { typeNameOf } from '../editor/display'
-import { t, noteMessage } from '../messages'
+import { t, noteMessage, fieldMessage } from '../messages'
 import { conditionLabel } from '../format'
 import FieldError from './panel/FieldError.vue'
 import LookStation from './panel/LookStation.vue'
@@ -48,10 +48,12 @@ const skStep = computed(() => (store.skeleton?.steps ?? []).find((s) => s.uid ==
 const ctx = computed(() => ({ session: edit.session, uploads: edit.uploads, draftId: edit.draftId ?? null }))
 const isRef = (r) => !!r && typeof r === 'object' && 'from' in r
 const baseSrc = computed(() => (isRef(d.value?.images?.base) ? refUrl(d.value.images.base, ctx.value) : null))
+// other = 다른 시나리오 판의 그림(붙여 온 스텝) — 불러오지 못하면 그림 자리에 "그 버전을 찾지 못했습니다"
+const baseOther = computed(() => d.value?.images?.base?.from === 'other')
 const trainPics = computed(() => {
   const train = d.value?.images?.train ?? {}
   return Object.keys(train).sort((a, b) => Number(a) - Number(b))
-    .map((key) => ({ key, src: isRef(train[key]) ? refUrl(train[key], ctx.value) : null })).filter((x) => x.src)
+    .map((key) => ({ key, src: isRef(train[key]) ? refUrl(train[key], ctx.value) : null, other: train[key]?.from === 'other' })).filter((x) => x.src)
 })
 const clickOutside = ref(false)
 watch(() => d.value?.uid, () => { clickOutside.value = false })
@@ -89,7 +91,7 @@ watch(() => edit.focusReq, (r) => { if (r) focusField(r.field) })
 const apply = () => edit.applyPanel()
 // 새 스텝: 넣을 자리(고른 스텝)의 지금 번호, [넣기]가 막힌 이유(칸마다 하나, 같은 문구는 한 번)
 const insertNo = computed(() => { const a = p.value.isNew ? p.value.insertBefore : null; const i = a ? steps.value.findIndex((s) => s.uid === a) : -1; return i >= 0 ? i + 1 : null })
-const newErrors = computed(() => [...new Set(Object.values(errs.value).filter((e) => e.level === 'error').map((e) => t(`RULE_${e.code}`, e.params)))])
+const newErrors = computed(() => [...new Set(Object.values(errs.value).filter((e) => e.level === 'error').map(fieldMessage))])
 
 const head = 'shrink-0 px-3 pt-2.5 pb-2 border-b border-gray-200 dark:border-dark-border'
 const navBtn = 'w-6 h-6 rounded-md inline-flex items-center justify-center text-gray-500 hover:enabled:bg-gray-100 dark:hover:enabled:bg-gray-700 disabled:opacity-35'
@@ -136,7 +138,7 @@ const btnS = 'h-8 px-3 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray
         </div>
 
         <div class="se-rail">
-          <LookStation v-if="kind === 'image' || kind === 'ocr'" :draft="d" :errs="errs" :changed="changed" :base-src="baseSrc" :is-new="p.isNew" />
+          <LookStation v-if="kind === 'image' || kind === 'ocr'" :draft="d" :errs="errs" :changed="changed" :base-src="baseSrc" :base-other="baseOther" :is-new="p.isNew" />
           <FindStation :draft="d" :errs="errs" :changed="changed" :train-pics="trainPics" @outside="clickOutside = $event" />
           <ActionStation :draft="d" :errs="errs" :changed="changed" :click-outside="clickOutside && CLICK_TYPES.includes(type)" />
           <FlowStation :draft="d" :errs="errs" :changed="changed" :is-new="p.isNew" />
@@ -158,7 +160,7 @@ const btnS = 'h-8 px-3 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray
       <div v-else-if="changed.length" class="shrink-0 border-t border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 py-2" data-testid="se-panel-foot">
         <div v-if="bad.length" class="mb-1.5 text-xs leading-normal text-red-700 dark:text-red-300">
           <button type="button" class="underline font-medium" data-testid="se-panel-firsterr" @click="edit.requestFocus(firstBad)">{{ t('SEW_PANEL_FIX_N', { n: bad.length }) }}</button>
-          — {{ t(`RULE_${errs[firstBad].code}`, errs[firstBad].params) }}
+          — {{ fieldMessage(errs[firstBad]) }}
         </div>
         <div v-else class="mb-1.5 max-h-[62px] overflow-auto text-xs leading-normal text-gray-700 dark:text-gray-200">
           <div v-for="l in diffs" :key="l.field"><b class="font-medium text-gray-500 dark:text-gray-400">{{ l.label }}</b> {{ l.before }}<template v-if="l.before || l.after"> → </template>{{ l.after }}</div>

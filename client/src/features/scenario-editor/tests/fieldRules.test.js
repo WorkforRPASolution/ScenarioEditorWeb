@@ -109,6 +109,10 @@ describe('checkStepFields', () => {
     expect(codes(check(next({ kind: 'step', uid: 'u1' })))).toEqual({ onTrue: 'NEXT_SELF' })
     expect(codes(check(next({ kind: 'end', value: 'SUCCESS' }, { kind: 'unresolved', value: 9 })))).toEqual({ onFalse: 'NEXT_UNRESOLVED' })
     expect(codes(check(next({ kind: 'step', uid: 'gone' })))).toEqual({ onTrue: 'NEXT_UNRESOLVED' })
+    // 칸 문구가 원래 번호를 보이도록(목업 validate "갈 곳을 고르세요(원래 N번).") 미해결의 원래 번호를 params 에 싣는다 — 모르면 싣지 않는다
+    expect(check(next({ kind: 'end', value: 'SUCCESS' }, { kind: 'unresolved', value: 9 })).onFalse.params).toStrictEqual({ which: 'onFalse', value: 9 })
+    expect(check(next({ kind: 'unresolved' })).onTrue.params).toStrictEqual({ which: 'onTrue' })
+    expect(check(next({ kind: 'step', uid: 'gone' })).onTrue.params).toStrictEqual({ which: 'onTrue' })
     const last = next({ kind: 'next' })
     expect(codes(checkStepFields(last, { working: { steps: [imageStep({ uid: 'u0' }), last] }, isNew: false, base: last, user: {} }))).toEqual({ onTrue: 'LAST_STEP_NEXT' })
     expect(codes(checkStepFields(last, { working: { steps: [last, imageStep({ uid: 'u0' })] }, isNew: false, base: last, user: {} }))).toEqual({})

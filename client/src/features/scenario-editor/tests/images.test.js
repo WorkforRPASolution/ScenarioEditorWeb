@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { refUrl, newTempId } from '../editor/images'
+import { refUrl, newTempId, uploadIdsOf } from '../editor/images'
 
 const session = { source: { process: 'P 1', model: 'M/2', name: 'N', crtime: 1700000000000, fileId: 'F9' } }
 
@@ -31,6 +31,18 @@ describe('refUrl', () => {
   it('literal·null 은 null', () => {
     expect(refUrl({ literal: 'x' }, { session })).toBeNull()
     expect(refUrl(null, { session })).toBeNull()
+  })
+})
+
+describe('uploadIdsOf', () => {
+  it('스텝들의 올릴 그림 참조 tempId — 기준 화면·찾을 그림, 겹치지 않게, 다른 출처 참조·literal 은 빼고', () => {
+    const steps = [
+      { images: { base: { from: 'upload', tempId: 'b1' }, train: { 0: { from: 'upload', tempId: 't1' }, 1: { from: 'source', id: 'x' } } } },
+      { images: { base: { literal: 'AA==' }, train: { 0: { from: 'upload', tempId: 't1' }, 2: { from: 'other', process: 'P', model: 'M', name: 'N', crtime: 1, fileId: 'F', id: 'y' } } } },
+      { images: { base: null, train: {} } }, {}
+    ]
+    expect(uploadIdsOf(steps)).toEqual(['b1', 't1'])
+    expect(uploadIdsOf([])).toEqual([])
   })
 })
 

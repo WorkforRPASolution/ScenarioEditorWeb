@@ -851,3 +851,160 @@ describe('editStore — 큰 화면 잡기·[다시 찍기]·새 스텝(Task 7)',
     expect(e.uploads.size).toBe(1)
   })
 })
+
+// ── 다른 시나리오 붙여넣기·빈 시나리오(Task 8) ──
+import { applyStep as _apply } from '../editor/commands'
+describe('editStore — 다른 시나리오 붙여넣기·빈 시나리오(Task 8)', () => {
+  beforeEach(() => { setActivePinia(createPinia()); Object.values(api).forEach((f) => f.mockReset()) })
+  // 시나리오 name 의 열기 응답(뼈대 + edited). 판 = crtime·fileId.
+  const scenarioOf = (name, steps, { crtime = 1, fileId = 'F' } = {}) => {
+    const ed = { source: { process: 'P', model: 'M', name, crtime, fileId }, headCrtime: crtime, header: { description: '', timeoutLimit: '1' }, steps, property: {} }
+    return {
+      process: 'P', model: 'M', name, headCrtime: crtime, propertyRev: 'r', version: { crtime, isCurrent: true, fileId }, notes: [],
+      steps: steps.map((s, i) => ({ ...s, no: i + 1, notes: [], baseImage: { state: 'present', url: `/u/${name}/${s.uid}` } })), edited: ed
+    }
+  }
+  // A: s1 성공 → s2(묶음 안), s1 실패 → s0(묶음 밖, 원래 1번). B: 다른 시나리오.
+  const A = (ver) => scenarioOf('A', [imageStep(0), imageStep(1, { next: { onTrue: { kind: 'step', uid: 's2' }, onFalse: { kind: 'step', uid: 's0' } } }), noneStep(2)], ver)
+  const B = () => scenarioOf('B', [imageStep(0), noneStep(1)])
+  const A_SRC = { process: 'P', model: 'M', name: 'A', crtime: 1, fileId: 'F' }
+  const start = () => { const s = useEditorStore(); s.me = { singleid: 'u', canWrite: true, authorityManager: 3 }; return { s, e: useEditStore() } }
+  const open = async (sk) => { api.open.mockReturnValueOnce(ok(sk)); await useEditorStore().openScenario({ process: sk.process, model: sk.model, name: sk.name }) }
+  const copy = (e, uids, cut = false) => { e.setSelection({ uids, anchor: uids[0] }); return e.copySelection(cut) }
+  const uidsOf = (e) => e.session.working.steps.map((x) => x.uid)
+
+  it('A 에서 복사 → B 열기 → 붙여넣기: 묶음은 남고, 묶음 밖 갈 곳은 미해결(원래 1번)·그림은 A 판 참조, 첫 미해결 스텝을 고른다', async () => {
+    const { s, e } = start()
+    await open(A())
+    copy(e, ['s1', 's2'])
+    const b = B()
+    await open(b)
+    expect(e.session.source.name).toBe('B')
+    expect(e.clip?.uids).toEqual(['s1', 's2'])
+    expect(e.pasteClip('after')).toBe(true) // 고른 줄 = B 의 첫 스텝
+    const steps = e.session.working.steps
+    expect(steps).toHaveLength(4)
+    expect(steps[0]).toBe(b.edited.steps[0])
+    expect(steps[3]).toBe(b.edited.steps[1])
+    const [p1, p2] = [steps[1], steps[2]]
+    expect(p1.uid).toMatch(/^p/)
+    expect(p1.origin).toBe(null)
+    expect(p1.next.onTrue).toEqual({ kind: 'step', uid: p2.uid })
+    expect(p1.next.onFalse).toStrictEqual({ kind: 'unresolved', value: 1 })
+    expect(p1.images.base).toEqual({ from: 'other', ...A_SRC, id: 's1-bi' })
+    expect(p1.images.train[0]).toEqual({ from: 'other', ...A_SRC, id: 's1-train-0' })
+    expect(p2.images.base).toEqual({ literal: 'AA==' })
+    expect(e.toast.text).toBe(t('SEW_CMD_PASTED_UNRESOLVED', { n: 2, open: 1 }))
+    expect(e.selection).toEqual({ uids: [p1.uid], anchor: p1.uid })
+    expect(s.selectedUid).toBe(p1.uid)
+    expect(e.panel.uid).toBe(p1.uid)
+    expect(e.panelErrors().onFalse).toMatchObject({ code: 'NEXT_UNRESOLVED', level: 'error', params: { which: 'onFalse', value: 1 } })
+    // 표·큰 화면이 읽는 표시 스텝: 그림은 A 판 경로, 다른 판 표시
+    const shown = s.steps.find((x) => x.uid === p1.uid)
+    expect(shown.baseImage).toMatchObject({ state: 'present', other: true })
+    expect(shown.baseImage.src).toContain('/scenario-editor/scenarios/P/M/A/versions/1/files/F/images/s1-bi')
+    expect(shown.next.onFalse).toEqual({ kind: 'unresolved', value: 1 })
+  })
+  it('A 의 같은 판을 다시 열어 붙이면 같은 판(sameSource) — 그림·갈 곳 참조를 그대로 둔다', async () => {
+    const { e } = start()
+    await open(A())
+    copy(e, ['s1'])
+    await open(B())
+    await open(A())
+    e.pasteClip('end')
+    const p = e.session.working.steps[3]
+    expect(p.uid).toMatch(/^p/)
+    expect(p.images.base).toEqual({ from: 'source', id: 's1-bi' })
+    expect(p.images.train[0]).toEqual({ from: 'source', id: 's1-train-0' })
+    expect(p.next).toEqual({ onTrue: { kind: 'step', uid: 's2' }, onFalse: { kind: 'step', uid: 's0' } })
+    expect(e.toast.text).toBe(t('SEW_CMD_PASTED', { n: 1 }))
+  })
+  it('같은 이름이라도 판(crtime·fileId)이 다르면 다른 판으로 붙인다 — 다섯 칸이 모두 같아야 같은 판', async () => {
+    const { e } = start()
+    await open(A())
+    copy(e, ['s1'])
+    await open(A({ crtime: 1, fileId: 'G' }))
+    e.pasteClip('end')
+    const p = e.session.working.steps[3]
+    expect(p.images.base).toEqual({ from: 'other', ...A_SRC, id: 's1-bi' })
+    expect(p.next.onFalse).toStrictEqual({ kind: 'unresolved', value: 1 })
+  })
+  it('출처가 없는 세션(새 시나리오)은 어느 묶음과도 같은 판이 아니다', async () => {
+    const { e } = start()
+    await open(A())
+    copy(e, ['s1'])
+    e.session = { ...e.session, source: null }
+    e.pasteClip('end')
+    const p = e.session.working.steps[3]
+    expect(p.images.base.from).toBe('other')
+    expect(p.next.onFalse).toStrictEqual({ kind: 'unresolved', value: 1 })
+  })
+  it('잘라낸 묶음은 다른 시나리오를 열면 복사 묶음이 된다 — 옮기기는 같은 작업본 안에서만(R-T2a), 잘라낸 스텝은 제자리', async () => {
+    const { e } = start()
+    await open(A())
+    copy(e, ['s1'], true)
+    expect(e.clip.cut).toBe(true)
+    await open(B())
+    expect(e.clip.cut).toBe(false)
+    e.pasteClip('end')
+    expect(uidsOf(e)).toEqual(['s0', 's1', 'p1'])
+    expect(e.clip?.uids).toEqual(['s1']) // 복사 묶음이라 남는다
+    await open(A())
+    e.setSelection({ uids: ['s0'], anchor: 's0' })
+    e.pasteClip('after')
+    expect(uidsOf(e)).toEqual(['s0', 'p1', 's1', 's2'])
+  })
+  it('묶음은 열기에 실패해도(세션 끝) 남고, 다른 편집 상태는 비운다', async () => {
+    const { s, e } = start()
+    await open(A())
+    copy(e, ['s1'])
+    e.editCell('s0', 'skip', true)
+    api.open.mockRejectedValueOnce({ response: { status: 404, data: { code: 'NOT_FOUND' } } })
+    await s.openScenario({ process: 'P', model: 'M', name: 'X' })
+    expect(e.session).toBe(null)
+    expect(e.undo).toEqual([])
+    expect(e.selection).toEqual({ uids: [], anchor: null })
+    expect(e.clip?.uids).toEqual(['s1'])
+    await open(B())
+    expect(e.pasteClip('end')).toBe(true)
+    expect(e.session.working.steps).toHaveLength(3)
+  })
+  it('R-P3: 올릴 그림(upload)이 든 스텝을 복사하면 묶음이 그 그림을 들고 가고, 다른 시나리오에 붙이면 그 저장소의 올릴 그림에 들어가 보인다', async () => {
+    const { s, e } = start()
+    await open(A())
+    const blob = new Blob(['png'], { type: 'image/png' })
+    e.setUpload('t1', blob)
+    e.setUpload('t9', new Blob(['other']))
+    const st = e.session.working.steps[1]
+    e.run('x', (w) => _apply(w, { ...st, images: { ...st.images, train: { 0: { from: 'upload', tempId: 't1' } } } }))
+    copy(e, ['s1'])
+    expect([...e.clip.uploads.keys()]).toEqual(['t1']) // 묶음이 쓰는 그림만
+    expect(e.clip.uploads.get('t1')).toBe(blob)
+    await open(B())
+    expect(e.uploads.size).toBe(0) // 세션의 올릴 그림은 비운다
+    e.pasteClip('end')
+    expect(e.uploads.get('t1')).toBe(blob)
+    expect(e.uploads.has('t9')).toBe(false)
+    const p = e.session.working.steps[2]
+    expect(p.images.train[0]).toEqual({ from: 'upload', tempId: 't1' })
+    globalThis.URL.createObjectURL = vi.fn(() => 'blob:t1')
+    try {
+      const shown = s.steps.find((x) => x.uid === p.uid)
+      expect(shown.condition.image.trainImages[0].src).toBe('blob:t1')
+    } finally { delete globalThis.URL.createObjectURL }
+  })
+  it('빈 시나리오(스텝 0)에도 붙인다 — 끝(=맨 앞)에 넣고 기준 화면을 함께 가져와, 그 기준 화면으로 이미지 새 스텝을 시작할 수 있다', async () => {
+    const { e } = start()
+    await open(A())
+    copy(e, ['s1', 's2'])
+    await open(scenarioOf('E', []))
+    expect(e.editable).toBe(true)
+    expect(e.startNew('image')).toBe(false) // 기준 화면이 있는 스텝이 없다
+    expect(e.toast.text).toBe(t('SEW_EDIT_NEW_NO_BASE'))
+    expect(e.pasteClip('after')).toBe(true) // 고른 줄이 없으면 끝에
+    expect(e.session.working.steps).toHaveLength(2)
+    expect(e.session.working.steps[0].images.base).toEqual({ from: 'other', ...A_SRC, id: 's1-bi' })
+    expect(e.startNew('image')).toBe(true)
+    expect(e.panel.draft.images.base).toEqual({ from: 'other', ...A_SRC, id: 's1-bi' })
+  })
+})

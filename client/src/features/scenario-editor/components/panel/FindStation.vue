@@ -16,7 +16,7 @@ const props = defineProps({
   draft: { type: Object, required: true },
   errs: { type: Object, default: () => ({}) },
   changed: { type: Array, default: () => [] },
-  trainPics: { type: Array, default: () => [] } // [{ key, src }]
+  trainPics: { type: Array, default: () => [] } // [{ key, src, other }] — other = 다른 시나리오 판의 그림(붙여 온 스텝)
 })
 const emit = defineEmits(['outside'])
 const edit = useEditStore()
@@ -63,7 +63,7 @@ const row = 'flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 
     <div class="flex gap-2 items-start flex-wrap" :class="ch('train') ? 'ring-2 ring-primary-300 rounded' : ''">
       <div v-for="p in trainPics" :key="p.key">
         <div :class="pic">{{ markerFor(p) ? t('SEW_PANEL_TRAIN_CLICK') : t('SEW_PANEL_TRAIN') }}{{ p.key !== '0' ? ` (${p.key})` : '' }}</div>
-        <CropView :src="p.src" :width="110" :marker="markerFor(p)" @outside="emit('outside', $event)" />
+        <CropView :src="p.src" :width="110" :marker="markerFor(p)" :fail-text="p.other ? t('SEW_EDIT_IMAGE_SOURCE_GONE') : null" @outside="emit('outside', $event)" />
       </div>
       <div v-if="!trainPics.length">
         <div :class="pic">{{ t('SEW_PANEL_TRAIN') }}</div>

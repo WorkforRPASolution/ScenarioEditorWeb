@@ -112,7 +112,8 @@ export function checkStepFields(step, { working, isNew, base, user } = {}) {
     if (!tg) continue
     if (tg.kind === 'step' && tg.uid === step.uid) put(which, 'NEXT_SELF', { which })
     else if (tg.kind === 'step' && !known.has(tg.uid)) put(which, 'NEXT_UNRESOLVED', { which })
-    else if (tg.kind === 'unresolved') put(which, 'NEXT_UNRESOLVED', { which })
+    // 다른 시나리오에서 붙여 온 미해결은 원래 번호를 실어 칸 문구가 "원래 N번" 을 보이게 한다(목업 validate). 모르면 싣지 않는다.
+    else if (tg.kind === 'unresolved') put(which, 'NEXT_UNRESOLVED', tg.value === undefined || tg.value === null ? { which } : { which, value: tg.value })
     else if (tg.kind === 'next' && idx >= 0 && idx === steps.length - 1) put(which, 'LAST_STEP_NEXT', { which })
   }
 

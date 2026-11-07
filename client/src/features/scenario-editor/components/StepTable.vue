@@ -115,6 +115,9 @@ function onReady(e) { gridApi.value = e.api; syncSelection() }
 watch(() => edit.dialog, (now, before) => { if (before && !now) nextTick(() => gridApi.value?.refreshCells?.({ force: true })) })
 function onGone() { gridApi.value = null } // 스텝 0개 등으로 표가 지워지면 옛 api 를 놓는다
 
+// ── 빈 시나리오(목업 조작판 20 empty): 조건 없는 새 스텝·복사해 둔 스텝 붙여넣기. 이미지·OCR 은 기준 화면이 있어야 해서 여기 없다. ──
+const clipCount = computed(() => edit.clip?.uids.length ?? 0)
+
 // ── 다음 스텝 고르기 ──
 const picker = ref(null)
 const pickerStep = computed(() => (picker.value ? edit.session?.working?.steps.find((s) => s.uid === picker.value.uid) ?? null : null))
@@ -186,7 +189,18 @@ function onKey(e) {
 
 <template>
   <div ref="tableEl" class="h-full outline-none" tabindex="0" data-testid="se-step-table" @keydown="onKey">
-    <div v-if="!rows.length" class="h-full flex items-center justify-center text-sm text-gray-400">{{ t('SEW_UI_NO_STEPS') }}</div>
+    <div v-if="!rows.length && editable" class="h-full flex flex-col items-center justify-center gap-2.5 px-6 text-center text-sm text-gray-500 dark:text-gray-400" data-testid="se-table-empty">
+      <p class="text-gray-700 dark:text-gray-200">{{ t('SEW_EDIT_EMPTY_TITLE') }}</p>
+      <div class="flex gap-2">
+        <button type="button" data-testid="se-empty-new" class="h-7 px-3 rounded-md text-xs font-medium text-white bg-primary-500 hover:bg-primary-600" @click="edit.startNew('none')">{{ t('SEW_EDIT_EMPTY_NEW') }}</button>
+        <button type="button" data-testid="se-empty-paste" :disabled="!clipCount" :title="clipCount ? undefined : t('SEW_EDIT_EMPTY_PASTE_NONE')"
+          class="h-7 px-3 rounded-md text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:enabled:bg-gray-300 dark:hover:enabled:bg-gray-600 disabled:opacity-50" @click="edit.pasteClip('end')">
+          {{ t('SEW_EDIT_EMPTY_PASTE') }}<span v-if="clipCount" class="ml-1 text-gray-500 dark:text-gray-400">{{ t('SEW_EDIT_PASTE_COUNT', { n: clipCount }) }}</span>
+        </button>
+      </div>
+      <small class="text-xs leading-relaxed text-gray-400 dark:text-gray-500">{{ t('SEW_EDIT_EMPTY_HELP') }}<br>{{ t('SEW_EDIT_EMPTY_HELP_PASTE') }}</small>
+    </div>
+    <div v-else-if="!rows.length" class="h-full flex items-center justify-center text-sm text-gray-400">{{ t('SEW_UI_NO_STEPS') }}</div>
     <AgGridVue v-else :theme="theme" :row-data="rows" :column-defs="columnDefs" :get-row-id="(p) => p.data.uid" :suppress-cell-focus="true"
       :default-col-def="defaultColDef" :row-selection="rowSelection" :row-class-rules="rowClassRules" :context="gridContext" style="width: 100%; height: 100%"
       @grid-ready="onReady" @grid-pre-destroyed="onGone" @cell-clicked="onCellClicked" @row-data-updated="syncSelection" />

@@ -162,6 +162,14 @@ describe('copySteps·pasteSteps (12 §5.2 복사)', () => {
     expect(r.unresolved).toBe(1)
     expect(r.working.steps[0].origin).toBe(null)
   })
+  it('묶음 밖 참조가 복사할 때 이미 없던 스텝이면 원래 번호 없이 { kind: unresolved } — value 키를 두지 않는다(서버가 받는 모양)', () => {
+    const src = edited(['a', 'b'], { b: { onTrue: 'gone' } })
+    const clip = copySteps(src, ['b'], ORIGIN, false)
+    expect(clip.outsideNo).toEqual({})
+    const r = pasteSteps(edited([]), clip, { where: 'end' }, { sameSource: false, makeUid })
+    expect(r.working.steps[0].next.onTrue).toStrictEqual({ kind: 'unresolved' })
+    expect(r.unresolved).toBe(1)
+  })
   it('특수값·원문 갈 곳은 그대로, 업로드·다른 판·리터럴 그림은 그대로', () => {
     const other = { from: 'other', process: 'Q', model: 'M', name: 'N', crtime: 1, fileId: 'f', id: 'x' }
     const w = edited(['a'])

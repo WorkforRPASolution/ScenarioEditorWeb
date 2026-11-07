@@ -264,3 +264,65 @@ describe('StepPanel — 안내(옛 값·보존 전용·잃는 값)', () => {
     w.unmount()
   })
 })
+
+describe('StepPanel — 다른 시나리오에서 붙인 스텝(Task 8)', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+  const OTHER = { from: 'other', process: 'P', model: 'M', name: 'A', crtime: 1, fileId: 'F' }
+  const GONE = '원래 시나리오의 그 버전을 찾지 못했습니다'
+  const pasted = (over) => imageStep(1, { uid: 'p1', origin: null, ...over })
+
+  it('미해결 갈 곳: "미해결 7"·"원래 7번 · 눌러서 고르세요", 칸 오류 "갈 곳을 고르세요(원래 7번)." — 고를 때까지 [적용]이 막힌다', async () => {
+    const { s, e, edited } = panelFixture([imageStep(0), pasted({ next: { onTrue: { kind: 'next' }, onFalse: { kind: 'unresolved', value: 7 } } }), noneStep(2)])
+    s.select('p1')
+    const w = mountPanel(); await flushPromises()
+    const btn = w.find('[data-target="onFalse"]')
+    expect(btn.text()).toContain(t('SEW_EDIT_UNRESOLVED_FROM', { value: 7 }))
+    expect(btn.text()).toContain('원래 7번 · 눌러서 고르세요')
+    expect(btn.classes()).toContain('border-red-500')
+    expect(errText(w, 'onFalse').text()).toBe('갈 곳을 고르세요(원래 7번).')
+    await input(w, '[data-field="desc"]', '붙여 온 스텝')
+    expect(w.find('[data-testid="se-panel-foot"]').text()).toContain('갈 곳을 고르세요(원래 7번).')
+    await w.find('[data-testid="se-panel-apply"]').trigger('click')
+    expect(e.session.working).toBe(edited)
+    expect(e.focusReq.field).toBe('onFalse')
+    await btn.trigger('click')
+    w.findComponent({ name: 'TargetPicker' }).vm.$emit('pick', { kind: 'step', uid: 's0' })
+    await flushPromises()
+    expect(errText(w, 'onFalse').exists()).toBe(false)
+    await w.find('[data-testid="se-panel-apply"]').trigger('click')
+    expect(e.session.working.steps[1].next.onFalse).toEqual({ kind: 'step', uid: 's0' })
+    w.unmount()
+  })
+
+  it('원래 번호를 모르는 미해결(복사할 때 이미 없던 스텝)은 "갈 곳을 고르세요" 만 — "원래 N번" 없이', async () => {
+    const { s } = panelFixture([imageStep(0), pasted({ next: { onTrue: { kind: 'unresolved' }, onFalse: { kind: 'end', value: 'FAIL' } } })])
+    s.select('p1')
+    const w = mountPanel(); await flushPromises()
+    const btn = w.find('[data-target="onTrue"]')
+    expect(btn.text()).toContain(t('SEW_EDIT_UNRESOLVED'))
+    expect(btn.text()).toContain(t('SEW_PANEL_TARGET_PICK'))
+    expect(btn.text()).not.toContain('원래')
+    expect(errText(w, 'onTrue').text()).toBe('갈 곳을 고르세요.')
+    w.unmount()
+  })
+
+  it('다른 판 그림을 불러오지 못하면(404) 그림 자리에 "원래 시나리오의 그 버전을 찾지 못했습니다" — 기준 판 그림은 P1 처럼 "없음"', async () => {
+    const images = { train: { 0: { ...OTHER, id: 's1-train-0' } }, base: { ...OTHER, id: 's1-bi' } }
+    const { s } = panelFixture([imageStep(0), pasted({ images })])
+    s.select('p1')
+    const w = mountPanel(); await flushPromises()
+    const pics = () => [...w.findAll('[data-station="look"] img'), ...w.findAll('[data-station="find"] img')]
+    const imgs = pics()
+    expect(imgs).toHaveLength(3) // 기준 화면·검색 영역·찾을 그림
+    expect(imgs[0].attributes('src')).toContain('/scenario-editor/scenarios/P/M/A/versions/1/files/F/images/s1-bi')
+    for (const i of imgs) await i.trigger('error')
+    expect(w.find('[data-station="look"]').text().split(GONE)).toHaveLength(3) // 두 칸 모두
+    expect(w.find('[data-station="find"]').text()).toContain(GONE)
+    s.select('s0')
+    await flushPromises()
+    for (const i of pics()) await i.trigger('error')
+    expect(w.find('[data-station="look"]').text()).not.toContain(GONE)
+    expect(w.find('[data-station="look"]').text()).toContain('없음')
+    w.unmount()
+  })
+})

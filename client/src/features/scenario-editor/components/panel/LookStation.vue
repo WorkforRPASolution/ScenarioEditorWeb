@@ -17,6 +17,7 @@ const props = defineProps({
   errs: { type: Object, default: () => ({}) },
   changed: { type: Array, default: () => [] },
   baseSrc: { type: String, default: null },
+  baseOther: { type: Boolean, default: false }, // 기준 화면이 다른 시나리오 판의 그림(붙여 온 스텝)
   isNew: { type: Boolean, default: false }
 })
 const edit = useEditStore()
@@ -27,6 +28,7 @@ const area = computed(() => {
   return a && ['x', 'y', 'w', 'h'].every((k) => Number.isFinite(a[k])) && a.w > 0 && a.h > 0 ? a : null
 })
 const name = computed(() => t(ocr.value ? 'SEW_PANEL_OCR_AREA' : 'SEW_PANEL_AREA'))
+const failText = computed(() => (props.baseOther ? t('SEW_EDIT_IMAGE_SOURCE_GONE') : null))
 const pic = 'text-[11px] text-gray-500 dark:text-gray-400 mb-0.5 whitespace-nowrap'
 </script>
 
@@ -40,10 +42,10 @@ const pic = 'text-[11px] text-gray-500 dark:text-gray-400 mb-0.5 whitespace-nowr
     <p v-if="!edit.canCapture" class="mb-1.5 text-xs leading-snug text-gray-500 dark:text-gray-400" data-testid="se-cap-look-why">{{ t('SEW_CAP_NO_BASE_IMAGE') }}</p>
     <div class="flex gap-2 items-start">
       <button v-if="baseSrc && !ocr && !isNew" type="button" class="text-left" data-testid="se-look-base" :title="t('SEW_CAP_VIEW_ALL')" @click="edit.requestView('all')">
-        <div :class="pic">{{ t('SEW_PANEL_BASE') }}</div><CropView :src="baseSrc" :width="92" />
+        <div :class="pic">{{ t('SEW_PANEL_BASE') }}</div><CropView :src="baseSrc" :width="92" :fail-text="failText" />
       </button>
       <button v-if="baseSrc && area" type="button" class="text-left" :class="changed.includes('area') ? 'ring-2 ring-primary-300 rounded' : ''" data-testid="se-look-area" :title="t('SEW_CAP_FOCUS_AREA')" @click="edit.requestView('area')">
-        <div :class="pic">{{ name }}</div><CropView :src="baseSrc" :rect="area" :width="ocr ? 200 : 112" />
+        <div :class="pic">{{ name }}</div><CropView :src="baseSrc" :rect="area" :width="ocr ? 200 : 112" :fail-text="failText" />
       </button>
       <div v-else-if="!area">
         <div :class="pic">{{ name }}</div>

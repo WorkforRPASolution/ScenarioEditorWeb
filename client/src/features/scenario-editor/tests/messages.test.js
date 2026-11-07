@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { t, errorCode, errorMessage, noteMessage, MESSAGES } from '../messages'
+import { t, errorCode, errorMessage, noteMessage, fieldMessage, MESSAGES } from '../messages'
 
 // 서버가 PARSE_FAILED 에 싣는 field 전부(server/features/scenario-editor/domain — skeleton·conditionCodec).
 const PARSE_FAILED_FIELDS = ['body', 'steps', 'bi', 'property', 'step', 'metadata', 'script', 'trainImage', 'imageMulti', 'ocrMulti', 'eqpState',
@@ -90,6 +90,13 @@ describe('messages', () => {
     expect(noteMessage({ code: 'RETRY_RANGE', params: { max: 20 } })).toBe(t('RULE_RETRY_RANGE', { max: 20 }))
     expect(noteMessage({ code: 'LAST_STEP_NEXT', params: {} })).toBe(MESSAGES.SEW_NOTE_LAST_STEP_NEXT)
     expect(noteMessage({ code: 'NOPE_CODE', params: {} })).toBe('[SEW_NOTE_NOPE_CODE]')
+  })
+  it('칸 오류 문구(fieldMessage): RULE_<code>, 미해결 갈 곳은 원래 번호를 알면 함께(목업 validate)', () => {
+    expect(fieldMessage({ code: 'ACCEPT_TOO_LOW', params: {} })).toBe(MESSAGES.RULE_ACCEPT_TOO_LOW)
+    expect(fieldMessage({ code: 'RETRY_RANGE', params: { max: 20 } })).toBe(t('RULE_RETRY_RANGE', { max: 20 }))
+    expect(fieldMessage({ code: 'NEXT_UNRESOLVED', params: { which: 'onFalse', value: 7 } })).toBe('갈 곳을 고르세요(원래 7번).')
+    expect(fieldMessage({ code: 'NEXT_UNRESOLVED', params: { which: 'onTrue' } })).toBe('갈 곳을 고르세요.')
+    expect(fieldMessage({ code: 'NEXT_UNRESOLVED' })).toBe('갈 곳을 고르세요.')
   })
   it('P2 편집 코드(편집기·편집 저장소·편집 부품)에는 화면 문구(한글 글자)를 직접 쓰지 않는다 — 문구는 messages.js 한 곳', () => {
     const files = import.meta.glob(['../editor/*.js', '../stores/editStore.js', '../stepRows.js', '../components/{StepToolbar,TargetPicker,EditDialogs,MultiSelection,StepPanel,CaptureLayer}.vue', '../components/panel/**/*.vue'],

@@ -5,6 +5,8 @@ vi.mock('../api', () => ({ imageUrl: (p) => `http://x/api${p}` }))
 import StepViewer from '../components/StepViewer.vue'
 import CropView from '../components/CropView.vue'
 import { useEditorStore } from '../stores/editorStore'
+import { panelFixture, imageStep } from './panelFixture'
+import { t } from '../messages'
 
 const step = (over = {}) => ({ uid: 's0', no: 1, notes: [], action: {}, next: {}, retry: {},
   condition: { kind: 'image', searchArea: { x: 576, y: 336, w: 846, h: 480 } }, baseImage: { state: 'present', url: '/scenario-editor/x/images/s0-bi' }, ...over })
@@ -72,6 +74,13 @@ describe('StepViewer', () => {
     const w = mount(StepViewer)
     await w.find('[data-testid="se-base-image"]').trigger('error')
     expect(w.text()).toContain('불러오지 못했습니다')
+  })
+  it('다른 판 기준 화면(다른 시나리오에서 붙여 온 스텝)을 불러오지 못하면 "원래 시나리오의 그 버전을 찾지 못했습니다"', async () => {
+    open(step({ baseImage: { state: 'present', src: 'http://x/api/other-bi', other: true } }))
+    const w = mount(StepViewer)
+    await w.find('[data-testid="se-base-image"]').trigger('error')
+    expect(w.text()).toContain('원래 시나리오의 그 버전을 찾지 못했습니다')
+    expect(w.text()).not.toContain('기준 화면을 불러오지 못했습니다')
   })
   it('기준 화면 데이터(시나리오 단위 PARSE_FAILED bi)를 해석하지 못해 없는 스텝은 그 사실을 알린다', () => {
     const st = useEditorStore()
@@ -220,6 +229,28 @@ describe('StepViewer', () => {
   })
 })
 
+describe('StepViewer — 편집 세션(Task 8)', () => {
+  beforeEach(() => { setActivePinia(createPinia()); localStorage.clear(); vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} }) })
+  afterEach(() => { vi.unstubAllGlobals() })
+  const OTHER = { from: 'other', process: 'P', model: 'M', name: 'A', crtime: 1, fileId: 'F' }
+
+  it('다른 판 기준 화면으로 시작한 새 스텝도 그 그림을 불러오지 못하면 같은 안내', async () => {
+    const { e } = panelFixture([imageStep(0, { uid: 'p1', origin: null, images: { train: {}, base: { ...OTHER, id: 's1-bi' } } })])
+    e.startNew('image')
+    const w = mount(StepViewer)
+    expect(w.find('[data-testid="se-base-image"]').attributes('src')).toContain('/scenario-editor/scenarios/P/M/A/versions/1/files/F/images/s1-bi')
+    await w.find('[data-testid="se-base-image"]').trigger('error')
+    expect(w.text()).toContain('원래 시나리오의 그 버전을 찾지 못했습니다')
+    w.unmount()
+  })
+  it('스텝이 0개인 쓸 수 있는 세션은 "기준 화면이 아직 없습니다"(목업 조작판 20)', () => {
+    panelFixture([])
+    const w = mount(StepViewer)
+    expect(w.text()).toContain(t('SEW_EDIT_VIEWER_EMPTY'))
+    w.unmount()
+  })
+})
+
 describe('CropView', () => {
   const mk = (props) => mount(CropView, { props: { src: 'http://x/a.png', width: 100, ...props } })
   const load = async (w, nw = 400, nh = 200) => { w.vm.onLoad({ target: { naturalWidth: nw, naturalHeight: nh } }); await w.vm.$nextTick() }
@@ -253,6 +284,11 @@ describe('CropView', () => {
     const w = mk({})
     await w.find('img').trigger('error')
     expect(w.text()).toContain('없음')
+  })
+  it('불러오지 못했을 때 보일 문구를 받으면 그 문구(다른 판 그림 — Task 8)', async () => {
+    const w = mk({ failText: '원래 시나리오의 그 버전을 찾지 못했습니다.' })
+    await w.find('img').trigger('error')
+    expect(w.text()).toBe('원래 시나리오의 그 버전을 찾지 못했습니다.')
   })
   it('src 가 바뀌면 불러오기 실패 표시를 지운다', async () => {
     const w = mk({})

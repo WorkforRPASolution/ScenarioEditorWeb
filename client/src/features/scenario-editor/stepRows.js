@@ -1,5 +1,5 @@
 import { targetLabel, targetKind, intervalSec, actionLabel, conditionLabel } from './format'
-import { t } from './messages'
+import { t, fieldMessage } from './messages'
 
 const finite = (v) => typeof v === 'number' && Number.isFinite(v)
 const fixed2 = (v) => (v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v).toFixed(2) : '')
@@ -36,6 +36,8 @@ export function renderTarget(params) {
   const el = document.createElement(editable ? 'button' : 'span')
   el.textContent = params.value
   el.className = `se-pill se-pill-${targetKind(target)}`
+  // 다른 시나리오에서 붙여 온 미해결 갈 곳 — 짚으면 할 일(원래 번호를 알면 함께)
+  if (target?.kind === 'unresolved') el.title = fieldMessage({ code: 'NEXT_UNRESOLVED', params: target.value == null ? {} : { value: target.value } })
   if (editable) {
     el.type = 'button'
     el.dataset.pick = `${params.data.uid}:${field}`

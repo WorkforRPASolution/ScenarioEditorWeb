@@ -116,7 +116,11 @@ export function pasteSteps(working, clip, { where, anchorUid }, { sameSource, ma
     for (const key of KEYS) {
       const t = s.next[key]
       if (isStepRef(t) && map.has(t.uid)) next[key] = { kind: 'step', uid: map.get(t.uid) }
-      else if (isStepRef(t) && !sameSource) next[key] = { kind: 'unresolved', value: clip.outsideNo[`${s.uid}:${key}`] }
+      else if (isStepRef(t) && !sameSource) {
+        // 원래 번호는 복사할 때 가리키던 스텝이 있었을 때만 안다 — 모르면 value 키 없이(서버가 받는 모양)
+        const no = clip.outsideNo[`${s.uid}:${key}`]
+        next[key] = no === undefined ? { kind: 'unresolved' } : { kind: 'unresolved', value: no }
+      }
       if (next[key].kind === 'unresolved') unresolved++
     }
     return { ...s, uid: map.get(s.uid), origin: null, next, images: sameSource ? s.images : mapImages(s.images, clip.origin) }

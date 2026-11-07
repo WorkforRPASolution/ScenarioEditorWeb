@@ -3,6 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 vi.mock('../gridTheme', () => ({ registerGrid: () => {}, useGridTheme: () => ({ value: {} }) }))
 import { toRows, renderTarget, renderNo } from '../stepRows'
+import { t } from '../messages'
 import StepTable from '../components/StepTable.vue'
 import { useEditorStore } from '../stores/editorStore'
 
@@ -386,5 +387,58 @@ describe('StepTable — 편집', () => {
     expect(col(w, 'accept').cellRenderer).toBeUndefined()
     expect(cell(w, 'onFalse', 's1').tagName).toBe('SPAN')
     w.unmount()
+  })
+})
+
+// ── 빈 시나리오·다른 시나리오에서 붙인 스텝(Task 8) ──
+import { panelFixture, imageStep, noneStep } from './panelFixture'
+describe('StepTable — 빈 시나리오·미해결 갈 곳(Task 8)', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+  const AgStub = { name: 'AgGridVue', props: ['rowData', 'rowSelection', 'defaultColDef', 'columnDefs', 'context'], template: '<div />' }
+  const mountTable = () => mount(StepTable, { global: { stubs: { AgGridVue: AgStub } }, attachTo: document.body })
+
+  it('스텝이 0개인 쓸 수 있는 세션: 빈 안내(목업 조작판 20) — [조건 없는 스텝 만들기]는 새 스텝 초안, [복사해 둔 스텝 붙여넣기]는 묶음이 있을 때만', async () => {
+    // 다른 시나리오에서 복사해 둔 묶음
+    const { e } = panelFixture([imageStep(0), noneStep(1)])
+    e.setSelection({ uids: ['s0', 's1'], anchor: 's0' })
+    e.copySelection(false)
+    const clip = { ...e.clip, origin: { ...e.clip.origin, name: 'A' } } // 다른 시나리오 A 에서 복사한 것으로
+    setActivePinia(createPinia())
+    const { e: e2 } = panelFixture([])
+    const w = mountTable()
+    const empty = w.find('[data-testid="se-table-empty"]')
+    expect(empty.text()).toContain('스텝이 아직 없습니다.')
+    expect(empty.text()).toContain(t('SEW_EDIT_EMPTY_HELP'))
+    expect(w.findComponent({ name: 'AgGridVue' }).exists()).toBe(false)
+    const paste = w.find('[data-testid="se-empty-paste"]')
+    expect(paste.attributes('disabled')).toBeDefined()
+    await w.find('[data-testid="se-empty-new"]').trigger('click')
+    expect(e2.panel).toMatchObject({ isNew: true })
+    expect(e2.panel.draft.condition.kind).toBe('none')
+    e2.cancelNew()
+    e2.clip = clip
+    await flushPromises()
+    expect(paste.attributes('disabled')).toBeUndefined()
+    await paste.trigger('click')
+    expect(e2.session.working.steps).toHaveLength(2)
+    expect(e2.session.working.steps[0].images.base).toEqual({ from: 'other', process: 'P', model: 'M', name: 'A', crtime: 1, fileId: 'F', id: 's0-bi' })
+    await flushPromises()
+    expect(w.find('[data-testid="se-table-empty"]').exists()).toBe(false)
+    w.unmount()
+  })
+  it('읽기 전용 세션의 스텝 0개는 P1 안내 그대로', () => {
+    panelFixture([], { canWrite: false })
+    const w = mountTable()
+    expect(w.text()).toContain('스텝이 없습니다.')
+    expect(w.find('[data-testid="se-table-empty"]').exists()).toBe(false)
+    w.unmount()
+  })
+  it('미해결 갈 곳 칸은 "미해결 N" 이고 짚으면 "갈 곳을 고르세요(원래 N번)."(원래 번호를 모르면 "갈 곳을 고르세요.")', () => {
+    const el = renderTarget({ value: '미해결 7', colDef: { field: 'onFalse' }, data: { uid: 'p1', onFalseTarget: { kind: 'unresolved', value: 7 } }, context: { editable: true } })
+    expect(el.title).toBe('갈 곳을 고르세요(원래 7번).')
+    const el2 = renderTarget({ value: '미해결', colDef: { field: 'onTrue' }, data: { uid: 'p1', onTrueTarget: { kind: 'unresolved' } }, context: { editable: true } })
+    expect(el2.title).toBe('갈 곳을 고르세요.')
+    const el3 = renderTarget({ value: 'NEXT', colDef: { field: 'onTrue' }, data: { uid: 'p1', onTrueTarget: { kind: 'next' } }, context: { editable: true } })
+    expect(el3.title).toBe('')
   })
 })
