@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, toRaw } from 'vue'
 import { scenarioEditorApi as api } from '../api'
 import { errorCode, errorMessage } from '../messages'
+import { useEditStore } from './editStore'
 
 const fail = (e) => ({ code: errorCode(e), message: errorMessage(e) })
 
@@ -58,10 +59,12 @@ export const useEditorStore = defineStore('scenarioEditor', () => {
       const next = (await api.open(process, model, name, crtime)).data.data
       if (id !== openSeq) return
       skeleton.value = next
+      useEditStore().begin(toRaw(next), me.value)
       selectedUid.value = next.steps[0]?.uid ?? null
     } catch (e) {
       if (id !== openSeq) return
       skeleton.value = null
+      useEditStore().end()
       selectedUid.value = null
       openError.value = { ...fail(e), target: { process, model, name, crtime } }
     } finally {
