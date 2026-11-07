@@ -109,6 +109,12 @@ describe('messages', () => {
     }
     expect(bad).toEqual([])
   })
+  it('만들던 새 스텝 확인 창 문구는 버튼 이름을 화면에 보이는 그대로 부른다([계속 만들기]·[N번 앞에 넣기]·[맨 끝에 추가])', () => {
+    const body = t('SEW_EDIT_GUARD_NEW_BODY')
+    expect(body).toContain(`[${t('SEW_EDIT_GUARD_NEW_KEEP')}]`)
+    expect(body).toContain(`[${t('SEW_PANEL_NEW_BEFORE', { no: 'N' })}]`)
+    expect(body).toContain(`[${t('SEW_PANEL_NEW_END')}]`)
+  })
   it('화면 코드가 쓰는 문구 키가 모두 있다', () => {
     const sources = import.meta.glob(['../**/*.vue', '../**/*.js', '!../tests/**'], { query: '?raw', import: 'default', eager: true })
     const keys = new Set()

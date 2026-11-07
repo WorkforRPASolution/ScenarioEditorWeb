@@ -1067,3 +1067,194 @@ describe('editStore — 다른 시나리오 붙여넣기·빈 시나리오(Task 
     expect(e.panel.draft.images.base).toEqual({ from: 'other', ...A_SRC, id: 's1-bi' })
   })
 })
+
+// ── P2-C 최종 검토 반영 ──
+describe('editStore — 최종 검토 반영(P2-C)', () => {
+  beforeEach(() => { setActivePinia(createPinia()); Object.values(api).forEach((f) => f.mockReset()) })
+  const setAccept = (e, v) => e.updateDraft((d) => ({ ...d, condition: { ...d.condition, image: { ...d.condition.image, accept: v } } }))
+  const uidsOf = (e) => e.session.working.steps.map((x) => x.uid)
+  const four = () => panelFixture([noneStep(0), noneStep(1), noneStep(2), noneStep(3)])
+
+  it('#1 다른 시나리오를 여는 동안은 고칠 수 없다 — 패널 초안·적용·표 칸·명령을 거절하고(확인 창도 세우지 않는다), 열기가 끝나면 새 세션을 고칠 수 있다', async () => {
+    const { s, e, edited, skeleton } = panelFixture([imageStep(0), imageStep(1), noneStep(2)])
+    e.editCell('s1', 'skip', true) // 되돌릴 것 하나
+    e.setSelection({ uids: ['s0'], anchor: 's0' })
+    e.copySelection(false)
+    const clip = e.clip
+    let resolve
+    api.open.mockReturnValueOnce(new Promise((res) => { resolve = res }))
+    const opened = s.openScenario({ process: 'P', model: 'M', name: 'B' })
+    expect(s.opening).not.toBe(null)
+    expect(e.editable).toBe(false)
+    const w = e.session.working
+    const draft = e.panel.draft
+    setAccept(e, 0.5)
+    expect(e.panel.draft).toBe(draft) // 여는 동안 친 값은 받지 않는다
+    e.panel = { ...e.panel, draft: { ...draft, descriptionToEmail: '여는 중' } } // 이미 고치던 값이 있어도
+    expect(e.applyPanel()).toBe(false)
+    expect(e.editCell('s0', 'skip', true)).toBe(false)
+    expect(e.deleteSelection()).toBe(false)
+    expect(e.moveSelected(1)).toBe(false)
+    expect(e.copySelection(true)).toBe(false)
+    expect(e.pasteClip('end')).toBe(false)
+    expect(e.undoCommand()).toBe(false)
+    expect(e.redoCommand()).toBe(false)
+    expect(e.startNew('none')).toBe(false)
+    expect(e.run('x', (x) => ({ working: { ...x, steps: x.steps.slice(1) } }))?.working).toBeUndefined()
+    expect(e.session.working).toBe(w)
+    expect(e.undo).toHaveLength(1)
+    expect(e.dialog).toBe(null)
+    expect(e.clip).toBe(clip)
+    const B = { ...skeleton, name: 'B', edited: { ...edited, source: { ...edited.source, name: 'B' } } }
+    resolve({ data: { success: true, data: B } })
+    await opened
+    expect(s.opening).toBe(null)
+    expect(e.session.source.name).toBe('B')
+    expect(e.editable).toBe(true)
+    expect(e.panel.uid).toBe('s0') // 새 세션의 첫 스텝을 패널이 연다(여는 중 표시를 먼저 내리고 세션을 시작한다)
+    expect(e.panel.draft).toBe(B.edited.steps[0])
+    expect(e.editCell('s0', 'skip', true)).toBe(true)
+    expect(e.undo).toHaveLength(1)
+  })
+
+  it('#2 잘라낸 줄을 고른 채로 [맨 끝에 붙여넣기] 는 옮긴다 — 잘라낸 범위 안 검사는 끝에 붙일 때 보지 않는다', () => {
+    const { e, edited } = four()
+    e.setSelection({ uids: ['s1', 's2'], anchor: 's1' })
+    e.copySelection(true)
+    expect(e.pasteClip('end')).toBe(true)
+    expect(uidsOf(e)).toEqual(['s0', 's3', 's1', 's2'])
+    expect(e.session.working.steps[2]).toBe(edited.steps[1])
+    expect(e.clip).toBe(null)
+    expect(e.toast.text).toBe(t('SEW_CMD_MOVED', { n: 2 }))
+    expect(e.undo).toHaveLength(1)
+  })
+
+  it('#3 [적용하고 이동] 이 칸 오류로 막히면 [계속 고치기] 처럼 onKeep 을 부른다(주소를 열린 시나리오로 되돌리게), 미룬 일은 하지 않는다', () => {
+    const { e } = panelFixture([imageStep(0), imageStep(1)])
+    e.updateDraft((d) => ({ ...d, descriptionToEmail: 'a@b' }))
+    const next = vi.fn(); const keep = vi.fn()
+    e.guard(next, { action: 'open', onKeep: keep })
+    expect(e.guardApply()).toBe(false)
+    expect(keep).toHaveBeenCalledTimes(1)
+    expect(next).not.toHaveBeenCalled()
+    expect(e.dialog).toBe(null)
+    expect(e.focusReq.field).toBe('desc')
+    expect(e.panel.draft.descriptionToEmail).toBe('a@b')
+  })
+
+  it('#4 표 칸을 열 때 값으로 되돌리면 저장 기준점의 그 스텝 객체를 다시 쓴다 — 표시·알림이 P1 으로 돌아온다', () => {
+    const note = { level: 'warning', code: 'ACCEPT_LOW', params: {} }
+    const { s, e, edited } = panelFixture([imageStep(0), imageStep(1)], { skOver: { s0: { notes: [note] } } })
+    e.editCell('s0', 'accept', 0.7)
+    expect(e.session.working.steps[0]).not.toBe(edited.steps[0])
+    expect(s.steps[0].notes).toEqual([])
+    e.editCell('s0', 'accept', 0.9)
+    expect(e.session.working.steps[0]).toBe(edited.steps[0])
+    expect(s.steps[0].notes).toEqual([note])
+    expect(e.undo).toHaveLength(2)
+    e.editCell('s1', 'skip', true); e.editCell('s1', 'skip', false)
+    expect(e.session.working.steps[1]).toBe(edited.steps[1])
+    e.editCell('s1', 'onFalse', { kind: 'step', uid: 's0' }); e.editCell('s1', 'onFalse', { kind: 'end', value: 'FAIL' })
+    expect(e.session.working.steps[1]).toBe(edited.steps[1])
+    expect(e.panel.draft).toBe(edited.steps[0]) // 패널도 그 객체를 연다
+  })
+
+  it('#5 모두 지우고 되돌린 뒤 다시 하면 초점이 지운 스텝에 남지 않는다', () => {
+    const { s, e } = panelFixture([noneStep(0), noneStep(1)])
+    e.setSelection({ uids: ['s0', 's1'], anchor: 's0' })
+    expect(e.deleteSelection()).toBe(true)
+    expect(s.selectedUid).toBe(null)
+    e.undoCommand()
+    expect(s.selectedUid).toBe('s0')
+    e.redoCommand()
+    expect(e.session.working.steps).toEqual([])
+    expect(s.selectedUid).toBe(null)
+    expect(e.selection).toEqual({ uids: [], anchor: null })
+    expect(e.panel.uid).toBe(null)
+  })
+  it('#5 고른 줄 없이 맨 끝에 추가한 새 스텝을 되돌리면 초점이 사라진 새 스텝에 남지 않는다', () => {
+    const { s, e } = panelFixture([noneStep(0), noneStep(1, { next: { onTrue: { kind: 'end', value: 'SUCCESS' }, onFalse: { kind: 'end', value: 'FAIL' } } })])
+    e.setSelection({ uids: [], anchor: null })
+    e.startNew('none')
+    e.updateDraft((d) => ({ ...d, descriptionToEmail: '새 스텝', action: { ...d.action, command: 'run.bat' } }))
+    expect(e.addNew('end')).toBe(true)
+    expect(s.selectedUid).toBe('n1')
+    e.undoCommand()
+    expect(uidsOf(e)).toEqual(['s0', 's1'])
+    expect(s.selectedUid).toBe(null)
+    expect(e.panel.uid).toBe(null)
+  })
+  it('#5 되돌린 선택에 지금 없는 uid 가 있으면 빼고, 기준 줄이 없으면 남은 첫 줄을 기준으로 한다', () => {
+    const { s, e, edited } = four()
+    e.selection = { uids: ['s1', 'zz'], anchor: 'zz' }
+    e.run('x', (w) => ({ working: { ...w, steps: w.steps.slice(0, 3) } }))
+    e.undoLast()
+    expect(e.session.working.steps).toBe(edited.steps)
+    expect(e.selection).toEqual({ uids: ['s1'], anchor: 's1' })
+    expect(s.selectedUid).toBe('s1')
+  })
+
+  it('#6 run: 결과 스텝이 그대로(같은 스텝 객체·같은 순서)면 되돌리기·다시 하기·알림을 건드리지 않는다', () => {
+    const { e, edited } = four()
+    const redo = [{ steps: edited.steps, selection: { uids: [], anchor: null } }]
+    e.redo = redo
+    const r = e.run('바꿈', (w) => ({ working: { ...w, steps: w.steps.slice() } }))
+    expect(r.noop).toBe(true)
+    expect(e.session.working).toBe(edited)
+    expect(e.undo).toEqual([])
+    expect(e.redo).toBe(redo)
+    expect(e.toast).toBe(null)
+  })
+  it('#6 잘라낸 뒤 그 줄을 지우고 붙이면 거절한다 — 알림은 이유, 되돌리기는 지우기 하나, 묶음은 그대로', () => {
+    const { e } = four()
+    e.setSelection({ uids: ['s1', 's2'], anchor: 's1' })
+    e.copySelection(true)
+    const clip = e.clip
+    expect(e.deleteSelection()).toBe(true)
+    e.setSelection({ uids: ['s0'], anchor: 's0' })
+    expect(e.pasteClip('after')).toBe(false)
+    expect(e.toast).toEqual({ text: t('SEW_CMD_REFUSED_CUT_GONE'), undoable: false })
+    expect(e.undo).toHaveLength(1)
+    expect(e.clip).toBe(clip)
+    expect(uidsOf(e)).toEqual(['s0', 's3'])
+    e.undoCommand() // 지우기를 되돌리면 다시 옮길 수 있다
+    e.setSelection({ uids: ['s3'], anchor: 's3' })
+    expect(e.pasteClip('after')).toBe(true)
+    expect(uidsOf(e)).toEqual(['s0', 's3', 's1', 's2'])
+  })
+  it('#6 없는 uid 만 고른 지우기는 아무것도 하지 않는다, 섞여 있으면 있는 줄만 지운다', () => {
+    const { s, e } = four()
+    e.selection = { uids: ['zz'], anchor: 'zz' }
+    expect(e.deleteSelection()).toBe(false)
+    expect(e.undo).toEqual([])
+    expect(e.toast).toBe(null)
+    expect(s.selectedUid).toBe('s0')
+    e.selection = { uids: ['s1', 'zz'], anchor: 's1' }
+    expect(e.deleteSelection()).toBe(true)
+    expect(uidsOf(e)).toEqual(['s0', 's2', 's3'])
+    expect(e.toast.text).toBe(t('SEW_CMD_DELETED', { nos: '2' }))
+  })
+  it('#6 잘라낸 스텝을 같은 자리에 붙이면(앞 줄 뒤·뒤 줄 앞·이미 끝인 묶음을 끝에) 쌓지 않고 묶음을 남긴다 — 알림은 같은 자리라는 안내', () => {
+    const { e, edited } = four()
+    e.setSelection({ uids: ['s1', 's2'], anchor: 's1' })
+    e.copySelection(true)
+    const clip = e.clip
+    for (const [anchor, where] of [['s0', 'after'], ['s3', 'before']]) {
+      e.setSelection({ uids: [anchor], anchor })
+      e.toast = null
+      expect(e.pasteClip(where)).toBe(false)
+      expect(e.session.working).toBe(edited)
+      expect(e.undo).toEqual([])
+      expect(e.clip).toBe(clip)
+      expect(e.toast).toEqual({ text: t('SEW_CMD_PASTE_SAME_PLACE'), undoable: false })
+    }
+    e.setSelection({ uids: ['s2', 's3'], anchor: 's2' })
+    e.copySelection(true)
+    const tail = e.clip
+    expect(e.pasteClip('end')).toBe(false)
+    expect(e.session.working).toBe(edited)
+    expect(e.undo).toEqual([])
+    expect(e.clip).toBe(tail)
+    expect(e.toast.text).toBe(t('SEW_CMD_PASTE_SAME_PLACE'))
+  })
+})

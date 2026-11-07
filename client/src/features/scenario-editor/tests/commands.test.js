@@ -78,6 +78,10 @@ describe('deleteSteps (12 §5.2 삭제)', () => {
     expect(noOfRef(r.working, r.working.steps[0], 'onTrue')).toBe(3)
     expect(r.working.steps[2]).toBe(fixed.steps[3])
   })
+  it('지울 스텝이 작업본에 없으면 입력 작업본을 그대로 돌려준다', () => {
+    const w = edited(['a', 'b'])
+    expect(deleteSteps(w, ['zz']).working).toBe(w)
+  })
   it('지울 스텝끼리의 참조는 막지 않는다', () => {
     const w = edited(['a', 'b', 'c'], { b: { onTrue: 'c' }, c: { onFalse: 'b' } })
     expect(uids(deleteSteps(w, ['b', 'c']).working)).toEqual(['a'])
@@ -239,6 +243,28 @@ describe('잘라내기 붙여넣기', () => {
     const w = edited(['A', 'B', 'C'])
     const r = pasteSteps(w, copySteps(w, ['A'], ORIGIN, true), { where: 'end' }, { sameSource: true, makeUid })
     expect(uids(r.working)).toEqual(['B', 'C', 'A'])
+  })
+  it('끝에 붙일 때는 기준 줄이 잘라낸 범위 안이어도 옮긴다(끝은 잘라낸 범위 안이 아니다)', () => {
+    const w = edited(['A', 'B', 'C', 'D'])
+    const r = pasteSteps(w, copySteps(w, ['B', 'C'], ORIGIN, true), { where: 'end', anchorUid: 'B' }, { sameSource: true, makeUid })
+    expect(uids(r.working)).toEqual(['A', 'D', 'B', 'C'])
+    expect(r.working.steps[2]).toBe(w.steps[1])
+  })
+  it('자리가 그대로인 옮기기(같은 자리·이미 끝인 묶음을 끝에)는 입력 작업본을 그대로 돌려준다', () => {
+    const w = edited(['A', 'B', 'C', 'D'])
+    const mid = copySteps(w, ['B', 'C'], ORIGIN, true)
+    expect(pasteSteps(w, mid, { where: 'after', anchorUid: 'A' }, { sameSource: true, makeUid }).working).toBe(w)
+    expect(pasteSteps(w, mid, { where: 'before', anchorUid: 'D' }, { sameSource: true, makeUid }).working).toBe(w)
+    const tail = copySteps(w, ['C', 'D'], ORIGIN, true)
+    const r = pasteSteps(w, tail, { where: 'end', anchorUid: 'C' }, { sameSource: true, makeUid })
+    expect(r.working).toBe(w)
+    expect(r.pasted).toEqual(['C', 'D'])
+  })
+  it('잘라낸 스텝이 작업본에 하나도 없으면(지웠다) 거절 CUT_GONE', () => {
+    const w = edited(['A', 'B', 'C'])
+    const clip = copySteps(w, ['B'], ORIGIN, true)
+    const gone = deleteSteps(w, ['B']).working
+    expect(pasteSteps(gone, clip, { where: 'end' }, { sameSource: true, makeUid })).toEqual({ refused: 'CUT_GONE' })
   })
   it('sameSource 거짓이면 복사처럼: 새 p 번호, 밖 참조 미해결, source 그림은 other, 잘라낸 쪽은 그대로(R-T2a)', () => {
     const src = edited(['a', 'b'], { b: { onTrue: 'a' } })

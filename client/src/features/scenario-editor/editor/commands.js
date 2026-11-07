@@ -6,6 +6,8 @@ const KEYS = ['onTrue', 'onFalse']
 const idx = (w, uid) => w.steps.findIndex((s) => s.uid === uid)
 const withSteps = (w, steps) => ({ ...w, steps })
 const isStepRef = (t) => t?.kind === 'step'
+// 두 스텝 배열이 같은 스텝 객체를 같은 순서로 담았나 — 명령 결과가 아무것도 바꾸지 않았는지 본다.
+export const sameOrder = (a, b) => a === b || (a.length === b.length && a.every((s, i) => s === b[i]))
 
 export function applyStep(working, step) {
   return { working: withSteps(working, working.steps.map((s) => (s.uid === step.uid ? step : s))) }
@@ -34,7 +36,8 @@ export function deleteSteps(working, uids) {
   const blocked = refsTo(working, uids)
   if (blocked.length) return { blocked }
   const set = new Set(uids)
-  return { working: withSteps(working, working.steps.filter((s) => !set.has(s.uid))) }
+  const steps = working.steps.filter((s) => !set.has(s.uid))
+  return { working: steps.length === working.steps.length ? working : withSteps(working, steps) } // 지울 것이 없으면 그대로
 }
 
 // 번호 순으로 정렬한 인덱스. 없는 uid 가 있으면 null.
@@ -127,13 +130,16 @@ export function pasteSteps(working, clip, { where, anchorUid }, { sameSource, ma
   const pos = pastePos(working, where, anchorUid)
   if (clip.cut && sameSource) {
     // 같은 작업본 안 이동 — 스텝 객체·uid 그대로, 갈 곳은 uid 라 따라간다.
-    if (anchorUid != null && clip.uids.includes(anchorUid)) return { refused: 'INSIDE_CUT' }
+    // 끝에 붙이기는 기준 줄을 보지 않으므로 잘라낸 범위 안이 아니다(묶음이 이미 끝이면 아래에서 그대로).
+    if (where !== 'end' && anchorUid != null && clip.uids.includes(anchorUid)) return { refused: 'INSIDE_CUT' }
     const moving = new Set(clip.uids)
     const items = working.steps.filter((s) => moving.has(s.uid))
+    if (!items.length) return { refused: 'CUT_GONE' } // 잘라낸 스텝을 그 뒤에 지웠다(또는 되돌려 없어졌다)
     const shift = working.steps.slice(0, pos).filter((s) => moving.has(s.uid)).length
     const steps = working.steps.filter((s) => !moving.has(s.uid))
     steps.splice(pos - shift, 0, ...items)
-    return { working: withSteps(working, steps), pasted: items.map((s) => s.uid), unresolved: 0 }
+    // 같은 자리에 붙이면 순서가 그대로 — 입력 작업본을 그대로 돌려준다(저장소가 아무것도 쌓지 않는다)
+    return { working: sameOrder(steps, working.steps) ? working : withSteps(working, steps), pasted: items.map((s) => s.uid), unresolved: 0 }
   }
   if (working.steps.length + k > STEP_MAX) return { refused: 'STEP_LIMIT' }
   const map = new Map(clip.uids.map((u) => [u, makeUid()]))

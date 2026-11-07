@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, shallowRef, computed } from 'vue'
 import { beginSession, nextUid, stepNo } from '../editor/session'
-import { copySteps, pasteSteps, detachClip, deleteSteps, moveSteps, setCell, movedRefKeys, applyStep, insertStep, STEP_MAX } from '../editor/commands'
+import { copySteps, pasteSteps, detachClip, deleteSteps, moveSteps, setCell, movedRefKeys, applyStep, insertStep, sameOrder, STEP_MAX } from '../editor/commands'
 import { sameStep, canonicalJson } from '../editor/diff'
 import { checkStepFields } from '../editor/fieldRules'
 import { firstError, CLICK_TYPES } from '../editor/panel'
@@ -48,7 +48,9 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   let pending = null
 
   // 고칠 수 있는 세션: 작업본이 있고 읽기 전용이 아니다(작업본이 없는 뼈대는 P1 처럼 보기만).
-  const editable = computed(() => !!session.value?.working && session.value.readOnly === null)
+  // 다른 시나리오를 여는 동안(editorStore.opening)도 아니다 — 열기가 끝나면 begin() 이 작업본을 갈아 끼우므로, 그 사이 친 값은 받지 않는다.
+  // 도구 줄·패널·편집 창·표 칸 고치기·단축키가 모두 이 값을 본다.
+  const editable = computed(() => !!session.value?.working && session.value.readOnly === null && !useEditorStore().opening)
 
   function reset() {
     selection.value = emptySelection()
@@ -139,7 +141,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   }
   function updateDraft(fn) {
     const p = panel.value
-    if (!p.draft) return
+    if (!p.draft || !editable.value) return
     panel.value = { ...p, draft: fn(p.draft) }
   }
   // 칸 검사(서버 code 이름). base = 저장 기준점의 같은 uid 스텝(옛 값 안내를 가른다), 새 스텝이면 null.
@@ -187,10 +189,11 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   function closeGuard() { const p = pending; pending = null; if (dialog.value?.kind === 'guard') dialog.value = null; return p ?? {} }
   function guardKeep() { closeGuard().onKeep?.() }
   function guardDrop() { const { next } = closeGuard(); discardPanel(); next?.() }
+  // 적용이 칸 오류로 막히면 그 스텝에 남는다 — [계속 고치기]와 같으므로 onKeep 을 부른다(예: 주소를 열린 시나리오로 되돌리기).
   function guardApply() {
     if (dialog.value?.kind === 'guard' && (NO_APPLY.has(dialog.value.action) || dialog.value.isNew)) return false
-    const { next } = closeGuard()
-    if (!applyPanel()) return false
+    const { next, onKeep } = closeGuard()
+    if (!applyPanel()) { onKeep?.(); return false }
     next?.()
     return true
   }
@@ -224,19 +227,28 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
 
   // ── 명령 ──
   const snapshot = () => ({ steps: session.value.working.steps, selection: selection.value })
+  // 되돌린 선택은 되돌린 스텝에 있는 줄만 둔다. 기준 줄이 없으면 남은 첫 줄, 남은 줄이 없으면 초점을 비운다(지우기와 같다) —
+  // 초점이 사라진 스텝에 남지 않게(예: 모두 지우기 → 되돌리기 → 다시 하기, 고른 줄 없이 넣은 새 스텝 되돌리기).
   function restore(snap) {
     const w = session.value.working
     session.value = { ...session.value, working: { ...w, steps: snap.steps } }
-    setSelection(snap.selection)
+    const has = new Set(snap.steps.map((s) => s.uid))
+    const uids = snap.selection.uids.filter((u) => has.has(u))
+    const anchor = has.has(snap.selection.anchor) ? snap.selection.anchor : (uids[0] ?? null)
+    setSelection({ uids, anchor })
+    if (anchor === null) useEditorStore().selectedUid = null
     syncPanel()
   }
 
   // 명령 실행 — fn(working) 이 { working, selection? } 를 주면 반영하고, 거절·막힘이면 그대로 돌려준다.
-  // 번호가 바뀐 갈 곳은 잠깐 강조하고 알림에 그 수를 붙인다(목업 command).
+  // 결과 스텝이 그대로(같은 스텝 객체·같은 순서)면 아무 일도 없던 것 — 되돌리기·다시 하기·알림을 건드리지 않고 { ...r, noop: true }.
+  // 번호가 바뀐 갈 곳은 잠깐 강조하고 알림에 그 수를 붙인다(목업 command). 고칠 수 없는 때(읽기 전용·여는 중)는 null.
   function run(label, fn) {
+    if (!editable.value) return null
     const before = session.value.working
     const r = fn(before)
     if (!r?.working) return r
+    if (sameOrder(r.working.steps, before.steps)) return { ...r, noop: true }
     undo.value = [...undo.value, snapshot()].slice(-UNDO_MAX)
     redo.value = []
     session.value = { ...session.value, working: r.working }
@@ -278,6 +290,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   const guarded = (fn, action = 'command') => { if (!panelDirty()) return false; guard(fn, { action }); return true }
 
   function undoCommand() {
+    if (!editable.value) return false
     if (guarded(undoCommand, 'undo')) return false
     if (!undoLast()) return false
     clearMoved()
@@ -285,6 +298,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     return true
   }
   function redoCommand() {
+    if (!editable.value) return false
     if (guarded(redoCommand, 'redo')) return false
     if (!redoLast()) return false
     clearMoved()
@@ -294,7 +308,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
 
   function copySelection(cut) {
     const uids = selection.value.uids
-    if (!uids.length) return false
+    if (!editable.value || !uids.length) return false
     const r = copySteps(session.value.working, uids, session.value.source, cut)
     if (r.refused) { refused(r.refused); return false }
     // R-P3: 묶음이 쓰는 올릴 그림의 Blob 을 함께 든다 — 다른 시나리오를 열면 이 세션의 올릴 그림은 비워진다
@@ -315,7 +329,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   // 된다(commands.pasteSteps). 붙인 뒤 첫 미해결 스텝을 고르고, 없으면 붙인 스텝들(초점은 첫 스텝, 목업 doPaste).
   function pasteClip(where, { confirmed = false } = {}) {
     const c = clip.value
-    if (!c) return false
+    if (!editable.value || !c) return false
     if (guarded(() => pasteClip(where, { confirmed }))) return false
     const sameSource = sameSourceOf(c.origin, session.value.source)
     const moving = c.cut && sameSource
@@ -327,6 +341,8 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     const makeUid = () => { const [uid, next] = nextUid(s, 'p'); s = next; return uid }
     const r = pasteSteps(working, c, { where, anchorUid }, { sameSource, makeUid })
     if (r.refused) { refused(r.refused); return false }
+    // 잘라낸 스텝을 같은 자리에 붙였다 — 쌓지 않고 묶음을 남긴다(다른 자리를 고르면 된다)
+    if (r.working === working) { notify(t('SEW_CMD_PASTE_SAME_PLACE')); return false }
     if (!moving) takeUploads(c)
     const n = r.pasted.length
     const label = moving ? t('SEW_CMD_MOVED', { n }) : r.unresolved ? t('SEW_CMD_PASTED_UNRESOLVED', { n, open: r.unresolved }) : t('SEW_CMD_PASTED', { n })
@@ -339,7 +355,8 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   }
 
   function deleteSelection() {
-    const uids = selection.value.uids
+    if (!editable.value) return false
+    const uids = selection.value.uids.filter((u) => workingStep(u)) // 작업본에 없는 줄은 뺀다 — 모두 없으면 아무 일도 없다
     if (!uids.length) return false
     if (guarded(deleteSelection)) return false
     const working = session.value.working
@@ -355,7 +372,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
 
   function moveSelected(dir) {
     const uids = selection.value.uids
-    if (!uids.length) return false
+    if (!editable.value || !uids.length) return false
     if (guarded(() => moveSelected(dir))) return false
     const nos = uids.map(noOf).sort((a, b) => a - b)
     const r = moveSteps(session.value.working, uids, dir)
@@ -368,6 +385,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   const targetText = (tg) => (tg.kind === 'next' ? 'NEXT' : tg.kind === 'end' ? tg.value : tg.kind === 'step' ? t('SEW_CMD_TARGET_STEP', { no: noOf(tg.uid) }) : '—')
   // 표 칸 바로 고치기(설계 §4.2): 정확도·전처리 스킵·성공/실패 갈 곳. 값이 같으면 아무것도 쌓지 않는다.
   function editCell(uid, field, value) {
+    if (!editable.value) return false
     const step = session.value.working.steps.find((s) => s.uid === uid)
     if (!step) return false
     const cur = field === 'accept' ? step.condition?.image?.accept : field === 'skip' ? step.condition?.skipPreprocessing : step.next[field]
@@ -377,7 +395,12 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     const label = field === 'accept' ? t('SEW_CMD_CELL_ACCEPT', { no, v: value.toFixed(2) })
       : field === 'skip' ? t(value ? 'SEW_CMD_CELL_SKIP_ON' : 'SEW_CMD_CELL_SKIP_OFF', { no })
         : t('SEW_CMD_CELL_TARGET', { no, which: t(field === 'onTrue' ? 'SEW_CMD_WHICH_ON_TRUE' : 'SEW_CMD_WHICH_ON_FALSE'), to: targetText(value) })
-    run(label, (w) => setCell(w, uid, field, value))
+    // 저장 기준점과 같은 값으로 돌아오면 그 스텝 객체를 다시 쓴다(applyPanel 과 같다 — 표시·알림이 P1 으로, 서버가 고친 스텝으로 보지 않게)
+    run(label, (w) => {
+      const r = setCell(w, uid, field, value)
+      const sb = saveBaseStep(uid)
+      return sb && sameStep(r.working.steps.find((s) => s.uid === uid), sb) ? applyStep(w, sb) : r
+    })
     return true
   }
 
@@ -424,7 +447,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   async function captureNext(value) {
     const c = capture.value
     const d = panel.value.draft
-    if (!c || !d) return false
+    if (!c || !d || !editable.value) return false
     if (c.stage === 'click') {
       const tr = c.train
       if (!CLICK_TYPES.includes(d.action?.type)) { capture.value = null; return false } // 잡는 사이 동작을 클릭이 아닌 것으로 바꿨다
@@ -455,7 +478,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
       if (capture.value === c) notify(t('SEW_CAP_CROP_FAILED'))
       return false
     }
-    if (capture.value !== c) return false // 자르는 사이 취소했거나 다른 스텝으로 갔다
+    if (capture.value !== c || !editable.value) return false // 자르는 사이 취소했거나 다른 스텝으로 갔거나 다른 시나리오를 열기 시작했다
     const tempId = newTempId()
     setUpload(tempId, blob)
     updateDraft((s) => {

@@ -184,6 +184,42 @@ describe('ScenarioEditorView', () => {
       expect(api.open).toHaveBeenCalledTimes(1)
       expect(e.panel.draft.condition.image.accept).toBe(0.85)
     })
+    it('돌아왔을 때 [적용하고 이동] 이 칸 오류로 막혀도 주소를 열린 시나리오로 되돌린다(열지 않는다)', async () => {
+      api.me.mockReturnValue(ok({ singleid: 'u', canWrite: true }))
+      route.query = { p: 'P', m: 'M', n: 'A', v: 'current' }
+      api.open.mockReturnValue(ok(writable('A', 5)))
+      const { leave, back } = mountKept(); await flushPromises()
+      useEditStore().updateDraft((d) => ({ ...d, descriptionToEmail: 'a@b' })) // 칸 오류
+      await leave()
+      route.query = { p: 'P', m: 'M', n: 'B', v: 'current' }
+      replace.mockClear()
+      await back()
+      const e = useEditStore()
+      expect(e.dialog).toEqual({ kind: 'guard', action: 'open', to: null })
+      expect(e.guardApply()).toBe(false)
+      await flushPromises()
+      expect(replace).toHaveBeenCalledWith({ name: 'ScenarioEditor', query: { p: 'P', m: 'M', n: 'A', v: 'current' } })
+      expect(api.open).toHaveBeenCalledTimes(1)
+      expect(useEditorStore().skeleton.name).toBe('A')
+    })
+    it('다른 시나리오를 여는 동안은 도구 줄·편집 패널·편집 창을 내리고 P1 상세만 보인다, 열리면 다시 단다', async () => {
+      const w = await openA()
+      const d = defer()
+      api.open.mockReturnValue(d.promise)
+      w.findComponent({ name: 'LoadDialog' }).vm.$emit('open', target)
+      await nextTick()
+      expect(useEditorStore().opening).not.toBe(null)
+      expect(useEditStore().editable).toBe(false)
+      expect(w.findComponent({ name: 'StepToolbar' }).exists()).toBe(false)
+      expect(w.findComponent({ name: 'StepPanel' }).exists()).toBe(false)
+      expect(w.findComponent({ name: 'EditDialogs' }).exists()).toBe(false)
+      expect(w.findComponent({ name: 'StepDetail' }).exists()).toBe(true)
+      d.resolve({ data: { data: writable('B', 7) } }); await flushPromises()
+      expect(useEditorStore().skeleton.name).toBe('B')
+      expect(w.findComponent({ name: 'StepToolbar' }).exists()).toBe(true)
+      expect(w.findComponent({ name: 'StepPanel' }).exists()).toBe(true)
+      expect(w.findComponent({ name: 'EditDialogs' }).exists()).toBe(true)
+    })
   })
 
   describe('내 정보를 못 읽었을 때', () => {

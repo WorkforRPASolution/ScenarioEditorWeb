@@ -62,6 +62,8 @@ export const useEditorStore = defineStore('scenarioEditor', () => {
   }
 
   // 열기 요청이 겹치면 마지막 요청만 화면 상태를 바꾼다(앞 요청의 늦은 성공·실패·진행 표시 해제를 무시).
+  // 여는 동안(opening)은 편집 저장소가 고치기를 막는다(editable) — 새 세션을 시작하기 전에 여는 중 표시를 먼저 내려야
+  // 새 세션의 패널이 첫 스텝을 연다.
   let openSeq = 0
   async function openScenario({ process, model, name, crtime = 'current' }) {
     const id = ++openSeq
@@ -71,6 +73,7 @@ export const useEditorStore = defineStore('scenarioEditor', () => {
     try {
       const next = (await api.open(process, model, name, crtime)).data.data
       if (id !== openSeq) return
+      opening.value = null
       skeleton.value = next
       edit.begin(toRaw(next), me.value)
       selectedUid.value = next.steps[0]?.uid ?? null

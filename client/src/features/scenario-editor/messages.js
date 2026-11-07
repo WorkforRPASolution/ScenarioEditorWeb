@@ -135,6 +135,8 @@ export const MESSAGES = {
   SEW_CMD_REFUSED_NOT_CONTIGUOUS: '연속한 스텝만 고를 수 있습니다.',
   SEW_CMD_REFUSED_AT_EDGE: '더 옮길 수 없습니다.',
   SEW_CMD_REFUSED_INSIDE_CUT: '잘라낸 범위 안에는 붙여넣을 수 없습니다. 다른 자리를 고르세요.',
+  SEW_CMD_REFUSED_CUT_GONE: '잘라낸 스텝이 지금 표에 없습니다(잘라낸 뒤 지웠거나 되돌렸습니다). 옮길 스텝을 다시 잘라내세요.',
+  SEW_CMD_PASTE_SAME_PLACE: '잘라낸 스텝이 이미 그 자리에 있습니다. 옮길 다른 자리를 고르세요.',
   SEW_CMD_BLOCKED_DELETE: '다른 스텝이 이 스텝을 가리키고 있어 지울 수 없습니다. 갈 곳을 먼저 바꾸세요.',
   SEW_CMD_EQP_STATE_WARN: '설비 상태 스텝 {n}개가 들어 있습니다. 새로 만들 수 없는 조건이라 저장할 때 막힙니다.',
   SEW_CMD_ADDED_END: '맨 끝에 스텝을 추가했습니다.',
@@ -231,7 +233,7 @@ export const MESSAGES = {
   SEW_EDIT_GUARD_DROP_REDO: '버리고 다시 하기',
   SEW_EDIT_GUARD_BLOCKED: '검사에 걸린 값이 있어 적용할 수 없습니다. 누르면 고칠 칸으로 갑니다.',
   SEW_EDIT_GUARD_NEW_TITLE: '만들던 새 스텝을 아직 표에 넣지 않았습니다',
-  SEW_EDIT_GUARD_NEW_BODY: '버리면 잡은 영역과 넣은 값이 사라집니다. 표에 넣으려면 [계속 만들기]를 누르고 [앞에 넣기]나 [맨 끝에 추가]를 누르세요.',
+  SEW_EDIT_GUARD_NEW_BODY: '버리면 잡은 영역과 넣은 값이 사라집니다. 표에 넣으려면 [계속 만들기]를 누르고 [N번 앞에 넣기]나 [맨 끝에 추가]를 누르세요.',
   SEW_EDIT_GUARD_NEW_KEEP: '계속 만들기',
   // 큰 화면 잡기(목업 CAP_FLOW·CAP_LABEL·CAP_HINT·overlay, 조작판 1·3~7)
   SEW_CAP_STEPS: '잡기 단계',
