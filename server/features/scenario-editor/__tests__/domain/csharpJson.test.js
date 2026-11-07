@@ -87,6 +87,29 @@ describe('serializeBackupInfo', () => {
   })
 })
 
+// 정규가 아닌 저장값(판정 R5): 열기는 줄바꿈 든 base64 를 literal 로 두고 배포는 그 글자를 그대로 다시 쓴다.
+// C# Convert.FromBase64String 은 공백(스페이스·탭·CR·LF)을 건너뛰므로 사내가 읽는 값이다 — 직렬화가 막으면 손대지 않은 스텝 때문에 배포가 500 이 된다.
+describe('bytes: 공백이 든 base64 는 저장값 그대로', () => {
+  const odd = 'iVBORw0K\nGgo=\r\n'
+  it('본문 찾을 그림·BI 항목이 줄바꿈을 품어도 JSON 이스케이프만 해서 쓴다', () => {
+    const s = structuredClone(sample)
+    s.Step[0].Metadata.ImageSearchParam.TrainImageMap = [[0, { BinaryImage: odd, Type: true }]]
+    expect(serializeScenario(s)).toContain('"TrainImageMap":{"0":{"BinaryImage":"iVBORw0K\\nGgo=\\r\\n","Type":true}}')
+    expect(serializeBackupInfo({ ID: 'BI.x', TargetSnapshotList: [odd, 'A A\tA='] })).toBe('{"ID":"BI.x","TargetSnapshotList":["iVBORw0K\\nGgo=\\r\\n","A A\\tA="]}')
+  })
+  it('흘려 쓴 BI 도 한 번에 직렬화한 글자와 같다', async () => {
+    const ents = [{ kind: 'literal', value: odd }, { kind: 'image', ref: { from: 'source', id: 'a' } }]
+    expect(await join(backupInfoChunks('BI.x', ents, resolve3))).toBe(serializeBackupInfo({ ID: 'BI.x', TargetSnapshotList: [odd, 'QUJD'] }))
+  })
+  it('base64 글자가 아닌 것은 여전히 막는다', async () => {
+    const s = structuredClone(sample)
+    s.Step[0].Metadata.ImageSearchParam.TrainImageMap = [[0, { BinaryImage: 'hello world!', Type: true }]]
+    expect(() => serializeScenario(s)).toThrowError(/base64/)
+    expect(() => serializeBackupInfo({ ID: 'BI.x', TargetSnapshotList: ['AA==\u000b'] })).toThrowError(/base64/)
+    await expect(join(backupInfoChunks('BI.x', [{ kind: 'literal', value: 'a"b' }], resolve3))).rejects.toThrow(/base64/)
+  })
+})
+
 describe('serializeProperty (NullValueHandling.Ignore)', () => {
   it('Newtonsoft 출력과 같고 null 키를 뺀다', () => {
     expect(serializeProperty(property)).toBe('{"ID":"CVD-M100-ALARM_RECOVERY_01","Owners":["user01@2026-11-01 10:00:00"],"ScenarioTriggerType":0,"DoNotSendEmailWhenSuccess":false,"DoNotSendEmailWhenStop":false,"DoNotSendEmailWhenFail":false,"StartDelay":0,"RetryCnt":0,"RetryInterval":10,"Type":1,"DetailedDescriptionTitle":"","DetailedDescription":"","DescriptionFromConductor":"","EDMLink":"","IsEnabled":true,"ExecutingLevel":0,"IsShowDialog":true,"Priority":10,"LcncType":0,"LowcodeExtension":""}')

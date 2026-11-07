@@ -86,6 +86,10 @@ function csJsonEscape(s) {
 const csJsonString = (s) => '"' + csJsonEscape(s) + '"'
 
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/
+// C# Convert.FromBase64String 은 공백(스페이스·탭·CR·LF)을 건너뛴다. 줄바꿈 든 저장값처럼 정규가 아니어도 사내가 읽는 값이면
+// 글자 그대로 쓴다(판정 R5 — 열기가 literal 로 둔 값을 배포가 막으면 손대지 않은 스텝 때문에 배포할 수 없다).
+const CS_SPACE = /[\t\n\r ]/g
+const isCsBase64 = (v) => typeof v === 'string' && (BASE64.test(v) || BASE64.test(v.replace(CS_SPACE, '')))
 
 function writeValue(type, v, path, ignoreNull) {
   if (v === null) return 'null'
@@ -114,7 +118,7 @@ function writeValue(type, v, path, ignoreNull) {
       if (typeof v !== 'string') throw new Error(`${path}: 문자열이어야 함`)
       return csJsonString(v)
     case 'bytes':
-      if (typeof v !== 'string' || !BASE64.test(v)) throw new Error(`${path}: base64 문자열이어야 함`)
+      if (!isCsBase64(v)) throw new Error(`${path}: base64 문자열이어야 함`)
       return csJsonString(v)
     default:
       return writeObject(type, v, path, ignoreNull)
@@ -142,7 +146,7 @@ const serializeSetScenarioRequest = (o) => writeObject('SetScenarioRequest', o, 
 
 // ---- 흘려 쓰기 ----
 // BI 는 그림 base64 를 이어 붙여 약 115MB 라 문자열 하나로 만들지 않는다. 그림은 하나씩 읽어 그 base64 를 조각 하나로 낸다.
-// base64 는 ASCII 라 서로게이트 문제가 없다(BASE64 검사로 보장).
+// base64 는 ASCII 라 서로게이트 문제가 없다(isCsBase64 검사로 보장). 정규 base64 는 이스케이프할 글자가 없어 그대로, 공백이 든 저장값만 이스케이프한다.
 async function* backupInfoChunks(id, entries, resolveImage) {
   yield '{' + csJsonString('ID') + ':' + csJsonString(id) + ',' + csJsonString('TargetSnapshotList') + ':['
   let first = true
@@ -150,12 +154,13 @@ async function* backupInfoChunks(id, entries, resolveImage) {
     let v
     if (e.kind === 'image') v = await resolveImage(e.ref)
     else v = e.value
-    if (v !== null && (typeof v !== 'string' || !BASE64.test(v))) throw new Error(`TargetSnapshotList: base64 문자열이어야 함`)
+    const plain = typeof v === 'string' && BASE64.test(v) // 큰 그림을 두 번 훑지 않게 한 번만 본다
+    if (v !== null && !plain && !isCsBase64(v)) throw new Error(`TargetSnapshotList: base64 문자열이어야 함`)
     const lead = first ? '' : ','
     first = false
     if (v === null) { yield lead + 'null'; continue }
     yield lead + '"'
-    yield v
+    yield plain ? v : csJsonEscape(v)
     yield '"'
   }
   yield ']}'
