@@ -15,7 +15,7 @@ const steps = computed(() => edit.session?.working?.steps ?? [])
 const noOf = (uid) => steps.value.findIndex((s) => s.uid === uid) + 1
 const descOf = (uid) => steps.value.find((s) => s.uid === uid)?.descriptionToEmail ?? ''
 const delTitle = computed(() => (dialog.value?.kind === 'delblock'
-  ? t('SEW_EDIT_DELBLOCK_TITLE', { nos: dialog.value.targets.map(noOf).sort((a, b) => a - b).map((n) => `${n}번`).join('·') }) : ''))
+  ? t('SEW_EDIT_DELBLOCK_TITLE', { nos: dialog.value.targets.map(noOf).sort((a, b) => a - b).map((no) => t('SEW_CMD_TARGET_STEP', { no })).join('·') }) : ''))
 
 const close = () => { edit.dialog = null }
 // 목록의 스텝으로 가서 갈 곳을 고치게 한다(목업 goref).

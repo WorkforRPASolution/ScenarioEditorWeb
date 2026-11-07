@@ -5,6 +5,7 @@ const api = vi.hoisted(() => ({ me: vi.fn(), scopes: vi.fn(), dataCheck: vi.fn()
 vi.mock('../api', () => ({ scenarioEditorApi: api }))
 import { useEditorStore } from '../stores/editorStore'
 import { useEditStore } from '../stores/editStore'
+import { t } from '../messages'
 
 const ok = (data) => Promise.resolve({ data: { success: true, data } })
 const edited = { source: { process: 'P', model: 'M', name: 'N', crtime: 1, fileId: 'f' }, headCrtime: 1, header: {}, steps: [{ uid: 's0' }], property: {} }
@@ -228,6 +229,33 @@ describe('editStore 선택 — 여러 줄 선택과 초점(editorStore.selectedU
     const ids = e.session.working.steps.map((x) => x.uid)
     expect(ids).toHaveLength(6)
     expect(new Set(ids).size).toBe(6)
+  })
+  it('같은 작업본 안에서 잘라 옮기면 설비 상태 스텝이 있어도 알리지 않는다(원래 스텝이라 서버가 막지 않음), 복사는 알린다', () => {
+    const { e } = mk()
+    const eqp = { ...e.session.working.steps[0], condition: { kind: 'eqpState' } }
+    e.session = { ...e.session, working: { ...e.session.working, steps: [eqp, ...e.session.working.steps.slice(1)] } }
+    e.setSelection({ uids: ['a'], anchor: 'a' })
+    e.copySelection(true)
+    expect(e.clip.eqpStateCount).toBe(1)
+    e.setSelection({ uids: ['d'], anchor: 'd' })
+    expect(e.pasteClip('after')).toBe(true)
+    expect(e.dialog).toBe(null)
+    expect(e.session.working.steps.map((x) => x.uid)).toEqual(['b', 'c', 'd', 'a'])
+    e.setSelection({ uids: ['a'], anchor: 'a' })
+    e.copySelection(false)
+    expect(e.pasteClip('end')).toBe(false)
+    expect(e.dialog).toEqual({ kind: 'pasteWarn', where: 'end', n: 1 })
+  })
+  it('알림 문구는 messages.js 에서 온다(옮김·갈 곳 바꿈)', () => {
+    const { e } = mk()
+    e.setSelection({ uids: ['a'], anchor: 'a' })
+    e.moveSelected(1)
+    expect(e.toast.text).toBe(t('SEW_CMD_MOVED_DOWN', { what: t('SEW_CMD_WHAT_STEP', { no: 1 }) }))
+    e.setSelection({ uids: ['a', 'c'], anchor: 'a' })
+    e.moveSelected(1)
+    expect(e.toast.text).toBe(t('SEW_CMD_MOVED_DOWN', { what: t('SEW_CMD_WHAT_STEPS', { n: 2 }) }))
+    e.editCell('b', 'onFalse', { kind: 'step', uid: 'd' })
+    expect(e.toast.text).toBe(t('SEW_CMD_CELL_TARGET', { no: 1, which: t('SEW_CMD_WHICH_ON_FALSE'), to: t('SEW_CMD_TARGET_STEP', { no: 2 }) })) // [b, d, a, c]
   })
   it('떨어진 줄 복사는 막고 이유를 알린다', () => {
     const { e } = mk()

@@ -22,7 +22,7 @@ const twText = computed(() => {
 const twDiffers = computed(() => !!tw.value && tw.value.agentFinds !== tw.value.inHouseShowsSet)
 // 시나리오 단위 경고·알림(본문·기준 화면·운영 속성 해석 실패, SUCCESS 없음, 비표준 우선순위 등).
 // 대상 창 알림(TARGET_WINDOW_DIFFERS)은 대상 창 자리에 이미 나오므로 뺀다.
-const scenarioNotes = computed(() => (sk.value?.notes ?? []).filter((n) => n.code !== 'TARGET_WINDOW_DIFFERS'))
+const scenarioNotes = computed(() => store.scenarioNotes.filter((n) => n.code !== 'TARGET_WINDOW_DIFFERS'))
 
 // "경고 n · 알림 n": 스텝 경고가 있으면 그 스텝을 차례로 고르고, 시나리오 경고만 있으면 그 줄(없으면 대상 창 안내)로 포커스·강조한다.
 const notesEl = ref(null)

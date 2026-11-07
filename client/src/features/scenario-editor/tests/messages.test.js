@@ -84,6 +84,24 @@ describe('messages', () => {
     expect(Object.keys(MESSAGES).filter((k) => k.startsWith('SEW_CMD_')).length).toBeGreaterThan(15)
     expect(t('SEW_CMD_APPLIED', { no: 3 })).toBe('3번 스텝을 적용했습니다.')
   })
+  it('편집 중 실시간 알림(칸 검사 code)은 SEW_NOTE_ 문구가 없으면 RULE_ 문구를 쓴다', () => {
+    expect(noteMessage({ code: 'NEXT_UNRESOLVED', params: { which: 'onTrue' } })).toBe(MESSAGES.RULE_NEXT_UNRESOLVED)
+    expect(noteMessage({ code: 'ACCEPT_TOO_LOW', params: {} })).toBe(MESSAGES.RULE_ACCEPT_TOO_LOW)
+    expect(noteMessage({ code: 'RETRY_RANGE', params: { max: 20 } })).toBe(t('RULE_RETRY_RANGE', { max: 20 }))
+    expect(noteMessage({ code: 'LAST_STEP_NEXT', params: {} })).toBe(MESSAGES.SEW_NOTE_LAST_STEP_NEXT)
+    expect(noteMessage({ code: 'NOPE_CODE', params: {} })).toBe('[SEW_NOTE_NOPE_CODE]')
+  })
+  it('P2 편집 코드(편집기·편집 저장소·편집 부품)에는 화면 문구(한글 글자)를 직접 쓰지 않는다 — 문구는 messages.js 한 곳', () => {
+    const files = import.meta.glob(['../editor/*.js', '../stores/editStore.js', '../stepRows.js', '../components/{StepToolbar,TargetPicker,EditDialogs,MultiSelection}.vue'],
+      { query: '?raw', import: 'default', eager: true })
+    expect(Object.keys(files).length).toBeGreaterThan(10)
+    const bad = []
+    for (const [f, src] of Object.entries(files)) {
+      const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/<!--[\s\S]*?-->/g, '').replace(/(^|[^:'"`])\/\/.*$/gm, '$1')
+      for (const line of code.split('\n')) if (/[\uac00-\ud7a3]/.test(line)) bad.push(`${f}: ${line.trim()}`)
+    }
+    expect(bad).toEqual([])
+  })
   it('화면 코드가 쓰는 문구 키가 모두 있다', () => {
     const sources = import.meta.glob(['../**/*.vue', '../**/*.js', '!../tests/**'], { query: '?raw', import: 'default', eager: true })
     const keys = new Set()

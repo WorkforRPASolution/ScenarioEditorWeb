@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import ScenarioBar from '../components/ScenarioBar.vue'
 import { useEditorStore } from '../stores/editorStore'
+import { useEditStore } from '../stores/editStore'
 import { MESSAGES } from '../messages'
 
 const ModalStub = { name: 'ModalShell', props: ['modelValue', 'title'], template: '<div v-if="modelValue" :data-title="title"><slot /></div>' }
@@ -20,6 +21,19 @@ describe('ScenarioBar', () => {
   beforeEach(() => setActivePinia(createPinia()))
   const mountBar = () => mount(ScenarioBar, { global: { stubs: { ModalShell: ModalStub } } })
 
+  it('스텝을 바꾸면 시나리오 경고 줄에서도 낡은 NO_SUCCESS 가 빠진다(경고 수와 같게)', async () => {
+    const next = { onTrue: { kind: 'end', value: 'FAIL' }, onFalse: { kind: 'end', value: 'FAIL' } }
+    const step = { uid: 's0', origin: 0, condition: { kind: 'none', skipPreprocessing: false }, action: { type: 0 }, retry: { limit: 0, intervalMs: 2000 }, next, descriptionToEmail: 'a', images: { train: {}, base: null } }
+    const edited = { source: null, headCrtime: 1, header: {}, steps: [step], property: {} }
+    const sk = skeleton({ notes: [{ level: 'warning', code: 'NO_SUCCESS', params: {} }, { level: 'info', code: 'PRIORITY_NONSTANDARD', params: { priority: 3 } }], steps: [{ ...step, no: 1, notes: [] }], edited })
+    const s = useEditorStore(); s.skeleton = sk
+    const e = useEditStore(); e.begin(sk, { canWrite: true })
+    const w = mountBar()
+    expect(w.find('[data-testid="se-scenario-notes"]').text()).toContain(MESSAGES.SEW_NOTE_NO_SUCCESS)
+    e.session = { ...e.session, working: { ...edited, steps: [...edited.steps] } } // 스텝 배열이 기준점과 달라짐
+    await w.vm.$nextTick()
+    expect(w.find('[data-testid="se-scenario-notes"]').text()).not.toContain(MESSAGES.SEW_NOTE_NO_SUCCESS)
+  })
   it('열린 시나리오가 없으면 불러오기만', () => {
     const w = mountBar()
     expect(w.find('[data-testid="se-load"]').exists()).toBe(true)

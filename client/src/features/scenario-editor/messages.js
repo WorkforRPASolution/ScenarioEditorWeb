@@ -122,6 +122,11 @@ export const MESSAGES = {
   SEW_CMD_CELL_SKIP_ON: '{no}번 전처리 스킵을 켰습니다.',
   SEW_CMD_CELL_SKIP_OFF: '{no}번 전처리 스킵을 껐습니다.',
   SEW_CMD_CELL_TARGET: '{no}번 {which} 시를 {to} 로 바꿨습니다.',
+  SEW_CMD_WHAT_STEP: '{no}번 스텝을',
+  SEW_CMD_WHAT_STEPS: '스텝 {n}개를',
+  SEW_CMD_WHICH_ON_TRUE: '성공',
+  SEW_CMD_WHICH_ON_FALSE: '실패',
+  SEW_CMD_TARGET_STEP: '{no}번',
   SEW_CMD_RENUMBERED: '다른 스텝의 번호 {n}곳이 새 번호를 따라갔습니다.',
   SEW_CMD_UNDONE: '되돌렸습니다.',
   SEW_CMD_REDONE: '다시 했습니다.',
@@ -193,6 +198,7 @@ export const MESSAGES = {
   SEW_EDIT_ROW_CHANGED: '바뀜, 저장 전',
   SEW_EDIT_ROW_PENDING: '오른쪽에서 고치는 중, 적용 전',
   SEW_EDIT_UNRESOLVED: '미해결',
+  SEW_EDIT_UNRESOLVED_FROM: '미해결 {value}',
   // 서버 검사 코드(RULES·성과 코드)별 칸·저장 창 문구. 키 = RULE_<code>
   RULE_NO_STEPS: '스텝이 하나도 없습니다. 스텝을 하나 이상 넣으세요.',
   RULE_STEP_LIMIT: '시나리오 스텝 제한({max}개)을 넘습니다. 시나리오를 나누고 연계하는 방법으로 작성하세요.',
@@ -319,8 +325,12 @@ export function errorMessage(err) {
 }
 
 // 경고·알림 문구. params.field 가 있으면 그 field 의 문구(예: SEW_NOTE_PARSE_FAILED_bi)를 먼저 찾고, 없으면 코드 공통 문구.
+// 편집 중 실시간 알림(칸 검사 code, 예: NEXT_UNRESOLVED·ACCEPT_TOO_LOW)은 SEW_NOTE_ 문구가 없으면 칸 문구 RULE_<code> 를 쓴다.
 export function noteMessage(note) {
   const params = note.params || {}
   const specific = typeof params.field === 'string' ? `SEW_NOTE_${note.code}_${params.field}` : null
-  return t(specific && MESSAGES[specific] !== undefined ? specific : `SEW_NOTE_${note.code}`, params)
+  if (specific && MESSAGES[specific] !== undefined) return t(specific, params)
+  const key = `SEW_NOTE_${note.code}`
+  if (MESSAGES[key] === undefined && MESSAGES[`RULE_${note.code}`] !== undefined) return t(`RULE_${note.code}`, params)
+  return t(key, params)
 }

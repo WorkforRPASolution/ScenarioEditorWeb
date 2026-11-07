@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { t } from '../messages'
 import { targetLabel, targetKind, multiLabel, formatCrtime, intervalSec, actionLabel, conditionLabel, scenarioTypeLabel, enabledLabel } from '../format'
 
 describe('format', () => {
@@ -6,6 +7,8 @@ describe('format', () => {
     expect(targetLabel({ kind: 'next' })).toBe('NEXT')
     expect(targetLabel({ kind: 'end', value: 'SUCCESS' })).toBe('SUCCESS')
     expect(targetLabel({ kind: 'step', uid: 's2', no: 3 })).toBe('→3')
+    expect(targetLabel({ kind: 'unresolved', value: 7 })).toBe(t('SEW_EDIT_UNRESOLVED_FROM', { value: 7 }))
+    expect(targetLabel({ kind: 'unresolved' })).toBe(t('SEW_EDIT_UNRESOLVED'))
     expect(targetLabel({ kind: 'raw', value: -2 })).toBe('? -2')
     expect(targetKind({ kind: 'end', value: 'FAIL' })).toBe('end-fail')
     expect(targetKind({ kind: 'raw', value: 9 })).toBe('raw')

@@ -3,7 +3,7 @@ import { setActivePinia, createPinia } from 'pinia'
 vi.mock('../api', () => ({ scenarioEditorApi: {}, imageUrl: (p) => `http://x/api${p}` }))
 import { displaySteps, imageSrc } from '../editor/display'
 import { beginSession } from '../editor/session'
-import { insertStep, setCell, applyStep } from '../editor/commands'
+import { insertStep, setCell, applyStep, moveSteps } from '../editor/commands'
 import { useEditorStore } from '../stores/editorStore'
 import { useEditStore } from '../stores/editStore'
 
@@ -104,6 +104,63 @@ describe('displaySteps', () => {
   })
 })
 
+describe('displaySteps — 갈 곳·칸 알림(R-T5c)', () => {
+  const codes = (s) => s.notes.map((n) => `${n.level}:${n.code}`)
+  it('고친 것이 없으면 뼈대의 흐름 알림(UNREACHABLE 등)을 그대로 보인다', () => {
+    const { skeleton, session } = make()
+    skeleton.steps[1].notes = [{ level: 'warning', code: 'UNREACHABLE', params: {} }]
+    expect(codes(displaySteps(session, skeleton)[1])).toEqual(['warning:UNREACHABLE'])
+  })
+  it('스텝을 바꾸면 손대지 않은 스텝의 흐름 알림(UNREACHABLE·LAST_STEP_NEXT·NEXT_SELF·NEXT_OUT_OF_RANGE)은 빠지고 다른 알림은 남는다', () => {
+    const { skeleton, session, edited } = make()
+    skeleton.steps[1].notes = [{ level: 'warning', code: 'UNREACHABLE', params: {} }, { level: 'warning', code: 'NEXT_OUT_OF_RANGE', params: {} }, { level: 'info', code: 'BASE_IMAGE_MISSING', params: {} }]
+    skeleton.steps[2].notes = [{ level: 'warning', code: 'LAST_STEP_NEXT', params: {} }, { level: 'warning', code: 'FALSE_NEXT_WITH_ACTION', params: {} }]
+    const out = displaySteps(withWorking(session, setCell(edited, 's0', 'skip', true).working), skeleton)
+    expect(codes(out[1])).toEqual(['info:BASE_IMAGE_MISSING'])
+    expect(codes(out[2])).toEqual(['warning:FALSE_NEXT_WITH_ACTION'])
+  })
+  it('마지막 스텝을 위로 옮기면 새 마지막 스텝(손대지 않음, 성공 NEXT)에 ⚠ LAST_STEP_NEXT', () => {
+    const { skeleton, session, edited } = make()
+    const out = displaySteps(withWorking(session, moveSteps(edited, ['s2'], -1).working), skeleton)
+    expect(out.map((s) => s.uid)).toEqual(['s0', 's2', 's1'])
+    expect(codes(out[2])).toContain('warning:LAST_STEP_NEXT')
+    expect(codes(out[2]).filter((c) => c === 'warning:LAST_STEP_NEXT')).toHaveLength(1)
+    expect(codes(out[1])).not.toContain('warning:LAST_STEP_NEXT')
+    expect(out[0].notes).toBe(skeleton.steps[0].notes) // 바뀐 알림이 없으면 같은 배열
+  })
+  it('손대지 않은 스텝이 자기 자신·없는 스텝을 가리키면 NEXT_SELF·NEXT_UNRESOLVED 경고', () => {
+    const { skeleton, session, edited } = make()
+    const w = { ...edited, steps: [{ ...edited.steps[0] }, ...edited.steps.slice(1)] }
+    // 저장 기준점의 스텝을 그대로 둔 채 갈 곳만 다른 판을 흉내 낸다(기준점도 같은 스텝 객체를 쓰도록)
+    const self = { ...edited.steps[1], next: { onTrue: { kind: 'step', uid: 's1' }, onFalse: { kind: 'step', uid: 'gone' } } }
+    const base = { ...edited, steps: [edited.steps[0], self, edited.steps[2]] }
+    const sess = { ...session, saveBase: base, working: { ...w, steps: [w.steps[0], self, edited.steps[2]] } }
+    const out = displaySteps(sess, skeleton)
+    expect(codes(out[1])).toEqual(expect.arrayContaining(['warning:NEXT_SELF', 'warning:NEXT_UNRESOLVED']))
+  })
+  it('고친 스텝은 칸 오류(error)를 ⚠ 로 보인다, 재시도 상한은 사용자 등급을 따른다', () => {
+    const { skeleton, session, edited } = make()
+    const w = setCell(edited, 's1', 'accept', 0.3).working
+    expect(codes(displaySteps(withWorking(session, w), skeleton)[1])).toEqual(['warning:ACCEPT_TOO_LOW'])
+    const many = applyStep(edited, { ...edited.steps[1], retry: { limit: 50, intervalMs: 2000 } }).working
+    expect(codes(displaySteps(withWorking(session, many), skeleton, { user: { authorityManager: 3 } })[1])).toEqual(['warning:RETRY_RANGE'])
+    expect(codes(displaySteps(withWorking(session, many), skeleton, { user: { authorityManager: 1 } })[1])).toEqual([])
+  })
+  it('찾을 그림은 trainImages 와 images.train 키를 합쳐 images.train 참조로 보인다(다시 잡은 그림)', () => {
+    const { skeleton, session, edited } = make()
+    globalThis.URL.createObjectURL = vi.fn(() => 'blob:new')
+    try {
+      const changed = { ...edited.steps[0], condition: { ...edited.steps[0].condition, image: { ...edited.steps[0].condition.image, trainImages: [] } },
+        images: { train: { 0: { from: 'upload', tempId: 't9' } }, base: edited.steps[0].images.base } }
+      const out = displaySteps(withWorking(session, applyStep(edited, changed).working), skeleton, { uploads: new Map([['t9', new Blob(['x'])]]) })
+      expect(out[0].condition.image.trainImages).toEqual([{ key: 0, type: null, url: null, src: 'blob:new' }])
+      const both = { ...edited.steps[1], images: { train: { 0: { from: 'source', id: 's1-train-0' }, 2: { from: 'upload', tempId: 't9' } }, base: edited.steps[1].images.base } }
+      const out2 = displaySteps(withWorking(session, applyStep(edited, both).working), skeleton, { uploads: new Map([['t9', new Blob(['x'])]]) })
+      expect(out2[1].condition.image.trainImages.map((x) => [x.key, x.type, !!x.src])).toEqual([[0, 0, true], [2, null, true]])
+    } finally { delete globalThis.URL.createObjectURL }
+  })
+})
+
 describe('imageSrc', () => {
   it('src 가 있으면 그것, 없으면 뼈대 url 을 imageUrl 로', () => {
     expect(imageSrc({ src: 'blob:1', url: '/a' })).toBe('blob:1')
@@ -129,5 +186,22 @@ describe('editorStore.steps 는 편집 중이면 작업본을 보인다', () => 
     e.undoLast()
     expect(s.steps.map((x) => x.uid)).toEqual(['s0', 's1', 's2'])
     expect(edited.steps.length).toBe(3)
+  })
+  it('스텝을 바꾸면 경고 수에서 시나리오 NO_SUCCESS 가 빠지고 실시간 갈 곳 경고가 들어간다, 되돌리면 P1 그대로', () => {
+    const { skeleton } = make()
+    skeleton.notes = [{ level: 'warning', code: 'NO_SUCCESS', params: {} }, { level: 'info', code: 'PRIORITY_NONSTANDARD', params: {} }]
+    skeleton.steps.forEach((x) => { x.notes = [] })
+    const s = useEditorStore()
+    s.skeleton = skeleton
+    const e = useEditStore()
+    e.begin(skeleton, { canWrite: true })
+    expect([s.warningCount, s.infoCount]).toEqual([1, 1])
+    expect(s.scenarioNotes.map((n) => n.code)).toEqual(['NO_SUCCESS', 'PRIORITY_NONSTANDARD'])
+    e.run('옮김', (w) => moveSteps(w, ['s2'], -1)) // s1(성공 NEXT)이 마지막이 된다
+    expect(s.scenarioNotes.map((n) => n.code)).toEqual(['PRIORITY_NONSTANDARD'])
+    expect([s.warningCount, s.infoCount]).toEqual([1, 1])
+    expect(s.steps[2].notes.map((n) => n.code)).toEqual(['LAST_STEP_NEXT'])
+    e.undoLast()
+    expect(s.scenarioNotes.map((n) => n.code)).toEqual(['NO_SUCCESS', 'PRIORITY_NONSTANDARD'])
   })
 })

@@ -175,21 +175,22 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     return true
   }
 
-  // where: 'after' | 'before' | 'end'. 설비 상태 스텝이 든 묶음은 먼저 알린다(서버가 CONDITION_NOT_CREATABLE 로 막는다) — confirmed 면 그대로 붙인다.
+  // where: 'after' | 'before' | 'end'. 새 스텝이 되는 설비 상태 스텝이 든 묶음은 먼저 알린다(서버가 origin 없는 설비 상태 스텝을
+  // CONDITION_NOT_CREATABLE 로 막는다) — confirmed 면 그대로 붙인다. 같은 작업본 안에서 잘라 옮기면 원래 스텝(origin 유지)이라 알리지 않는다.
   function pasteClip(where, { confirmed = false } = {}) {
     const c = clip.value
     if (!c) return false
-    if (c.eqpStateCount > 0 && !confirmed) { dialog.value = { kind: 'pasteWarn', where, n: c.eqpStateCount }; return false }
+    const sameSource = sameSourceOf(c.origin, session.value.source)
+    const moving = c.cut && sameSource
+    if (c.eqpStateCount > 0 && !moving && !confirmed) { dialog.value = { kind: 'pasteWarn', where, n: c.eqpStateCount }; return false }
     const working = session.value.working
     const anchor = selection.value.anchor
     const anchorUid = anchor && working.steps.some((s) => s.uid === anchor) ? anchor : null
-    const sameSource = sameSourceOf(c.origin, session.value.source)
     let s = session.value
     const makeUid = () => { const [uid, next] = nextUid(s, 'p'); s = next; return uid }
     const r = pasteSteps(working, c, { where, anchorUid }, { sameSource, makeUid })
     if (r.refused) { refused(r.refused); return false }
     const n = r.pasted.length
-    const moving = c.cut && sameSource
     const label = moving ? t('SEW_CMD_MOVED', { n }) : r.unresolved ? t('SEW_CMD_PASTED_UNRESOLVED', { n, open: r.unresolved }) : t('SEW_CMD_PASTED', { n })
     const firstOpen = moving ? null : r.working.steps.find((st) => r.pasted.includes(st.uid) && (st.next.onTrue.kind === 'unresolved' || st.next.onFalse.kind === 'unresolved'))
     const sel = firstOpen ? { uids: [firstOpen.uid], anchor: firstOpen.uid } : { uids: r.pasted, anchor: r.pasted[0] }
@@ -219,12 +220,12 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     const nos = uids.map(noOf).sort((a, b) => a - b)
     const r = moveSteps(session.value.working, uids, dir)
     if (r.refused) { refused(r.refused); return false }
-    const what = nos.length > 1 ? `스텝 ${nos.length}개를` : `${nos[0]}번 스텝을`
+    const what = nos.length > 1 ? t('SEW_CMD_WHAT_STEPS', { n: nos.length }) : t('SEW_CMD_WHAT_STEP', { no: nos[0] })
     run(t(dir < 0 ? 'SEW_CMD_MOVED_UP' : 'SEW_CMD_MOVED_DOWN', { what }), () => r)
     return true
   }
 
-  const targetText = (tg) => (tg.kind === 'next' ? 'NEXT' : tg.kind === 'end' ? tg.value : tg.kind === 'step' ? `${noOf(tg.uid)}번` : '—')
+  const targetText = (tg) => (tg.kind === 'next' ? 'NEXT' : tg.kind === 'end' ? tg.value : tg.kind === 'step' ? t('SEW_CMD_TARGET_STEP', { no: noOf(tg.uid) }) : '—')
   // 표 칸 바로 고치기(설계 §4.2): 정확도·전처리 스킵·성공/실패 갈 곳. 값이 같으면 아무것도 쌓지 않는다.
   function editCell(uid, field, value) {
     const step = session.value.working.steps.find((s) => s.uid === uid)
@@ -234,7 +235,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     const no = noOf(uid)
     const label = field === 'accept' ? t('SEW_CMD_CELL_ACCEPT', { no, v: value.toFixed(2) })
       : field === 'skip' ? t(value ? 'SEW_CMD_CELL_SKIP_ON' : 'SEW_CMD_CELL_SKIP_OFF', { no })
-        : t('SEW_CMD_CELL_TARGET', { no, which: field === 'onTrue' ? '성공' : '실패', to: targetText(value) })
+        : t('SEW_CMD_CELL_TARGET', { no, which: t(field === 'onTrue' ? 'SEW_CMD_WHICH_ON_TRUE' : 'SEW_CMD_WHICH_ON_FALSE'), to: targetText(value) })
     run(label, (w) => setCell(w, uid, field, value))
     return true
   }

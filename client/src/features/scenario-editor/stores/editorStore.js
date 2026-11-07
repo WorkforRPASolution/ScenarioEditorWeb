@@ -23,12 +23,18 @@ export const useEditorStore = defineStore('scenarioEditor', () => {
   // 편집 중(작업본이 있음)이면 작업본을 뼈대 스텝 모양으로 — 표·순서도·큰 화면·상세가 고친 내용을 따라간다. 고친 것이 없으면 뼈대 배열 그대로.
   const steps = computed(() => {
     const session = edit.session
-    if (session?.working && skeleton.value) return displaySteps(session, skeleton.value, { uploads: edit.uploads, draftId: edit.draftId ?? null })
+    if (session?.working && skeleton.value) return displaySteps(session, skeleton.value, { uploads: edit.uploads, draftId: edit.draftId ?? null, user: me.value })
     return skeleton.value?.steps ?? []
+  })
+  // 시나리오 알림. 스텝을 바꾸면 저장된 순서로 계산한 NO_SUCCESS 는 낡으므로 뺀다(R-T5c — 저장 창의 서버 /check 가 다시 본다).
+  const scenarioNotes = computed(() => {
+    const notes = skeleton.value?.notes ?? []
+    const s = edit.session
+    return s?.working && s.working.steps !== s.saveBase?.steps ? notes.filter((n) => n.code !== 'NO_SUCCESS') : notes
   })
   const selectedStep = computed(() => steps.value.find((s) => s.uid === selectedUid.value) ?? null)
   const count = (level) => steps.value.reduce((a, s) => a + s.notes.filter((n) => n.level === level).length, 0)
-    + (skeleton.value?.notes ?? []).filter((n) => n.level === level).length
+    + scenarioNotes.value.filter((n) => n.level === level).length
   const warningCount = computed(() => count('warning'))
   const infoCount = computed(() => count('info'))
   const dataCheckCount = computed(() => {
@@ -106,7 +112,7 @@ export const useEditorStore = defineStore('scenarioEditor', () => {
 
   return {
     me, meError, scopes, dataCheck, skeleton, opening, openError, selectedUid, view, expanded,
-    steps, selectedStep, warningCount, infoCount, dataCheckCount,
+    steps, scenarioNotes, selectedStep, warningCount, infoCount, dataCheckCount,
     init, refreshCaches, openScenario, select, selectByNo, moveSelection, nextNoted
   }
 })
