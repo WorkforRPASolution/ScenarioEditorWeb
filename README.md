@@ -84,7 +84,8 @@ Windows 방화벽 허용 창이 뜨면 허용하지 않아도 된다(이 PC 안�
 시험 데이터(SEW)와 로컬 인프라를 전제로 한 명령이다.
 
 - `npm run seed` — 시험 데이터를 EARS 에 넣고 지운다
-- `npm --prefix server run test:integration`, `npm run e2e`
+- `npm --prefix server run test:integration`, `npm run e2e` — 통합 시험은 InterfaceServer 로 `SEW_W_` 시나리오를 배포·삭제하고 SC_PROPERTY 에 직접 쓴다
+- `node tools/measure/open-big.js`·`deploy-big.js` — 큰 시험 시나리오(BIG_200)를 열고, deploy-big 은 새 판으로 배포한다
 
 ### 7. 문제 해결
 
