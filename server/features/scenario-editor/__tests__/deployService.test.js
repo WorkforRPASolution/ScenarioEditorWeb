@@ -26,6 +26,22 @@ const b64 = (s) => Buffer.from(s).toString('base64')
 const imgOf = (id) => b64(`img:${id}`)
 const user = { singleid: 'sew_x', authorityManager: 3 }
 const fail = async (p) => { try { await p } catch (e) { return e } throw new Error('통과하면 안 됨') }
+// 드라이버처럼 BSON 으로 저장·읽는 배포 기록 컬렉션 — findOne 의 promoteLongs 를 지킨다(기본은 Long 을 숫자로 올린다)
+function bsonWebDb() {
+  const { BSON } = require('mongoose').mongo
+  const rows = new Map()
+  const read = (buf, opts) => BSON.deserialize(buf, { promoteLongs: !(opts && opts.promoteLongs === false) })
+  const col = {
+    createIndex: async () => 'ok',
+    insertOne: async (doc) => {
+      if (rows.has(doc.requestId)) throw Object.assign(new Error('E11000 duplicate key'), { code: 11000 })
+      rows.set(doc.requestId, BSON.serialize(doc))
+    },
+    updateOne: async ({ requestId }, { $set }) => { rows.set(requestId, BSON.serialize({ ...read(rows.get(requestId), { promoteLongs: false }), ...$set })) },
+    findOne: async ({ requestId }, opts) => (rows.has(requestId) ? read(rows.get(requestId), opts) : null)
+  }
+  return { collection: () => col }
+}
 const until = async (cond) => { for (let i = 0; i < 200 && !cond(); i++) await new Promise((r) => setTimeout(r, 0)); if (!cond()) throw new Error('기다리던 상태가 오지 않음') }
 
 // 기준 판 = helpers 의 P-M-N (crtime CUR, 스텝 2개, 기준 화면 s0-bi·s1-bi). 검사는 실제 checkService(prepare·checkScenario), 조립·흘려 쓰기는 실제 P2-A 함수.
@@ -91,8 +107,24 @@ function setup(o = {}) {
       calls.sent.push(req)
       if (o.streamError) throw o.streamError
       if (!o.noRedisWrite) redis.set(`${req.SCName}.${NEW}`, req.Body)
+      // InterfaceServer 는 운영 속성 문서도 보낸 property 로 쓴다(없으면 만든다). 성과는 건드리지 않는다.
+      const k = `${req.Process}|${req.Model}|${req.SCName}`
+      docs.set(k, { ...(docs.get(k) || { scname: req.SCName }), property: JSON.parse(req.Property) })
       for (const [f, v] of o.alsoWrite || []) redis.set(f, v) // 그 사이 남이 저장한 판
+      if (o.duringSend) o.duringSend(docs) // 응답 전에 남이 한 일(켜기·끄기의 Owners 줄 등)
     }
+  }
+  if (o.bsonWeb) {
+    // 배포 기록만 실제 webRepository + BSON 컬렉션으로 — 기록을 다시 읽을 때의 형 변환까지 본다
+    const { createWebRepository } = require('../repo/webRepository')
+    const { ObjectId } = require('mongoose').mongo
+    const db = bsonWebDb()
+    const real = createWebRepository(() => db, { GridFSBucket: function GridFSBucket() {}, ObjectId })
+    Object.assign(web, {
+      getDeploy: async (rid) => { calls.getDeploy.push(rid); return real.getDeploy(rid) },
+      insertDeploy: async (r) => { calls.insert.push(r); await real.insertDeploy(r) },
+      updateDeploy: async (rid, f) => { calls.update.push([rid, f]); await real.updateDeploy(rid, f) }
+    })
   }
   const check = createCheckService({ repo, hash, scopes, opener, env: o.env || {} })
   const logs = []
@@ -105,7 +137,14 @@ function setup(o = {}) {
   })
   const repoOk = () => { mode = undefined }
   const setOwners = (list) => { docs.set('P|M|N', { ...docs.get('P|M|N'), property: { ...propertyDoc, Owners: list } }) }
-  return { svc, calls, meta, edited, records, redis, logs, src, repoOk, setOwners }
+  // InterfaceServer 가 저장은 했는데 답을 못 받은 경우: 보낸 요청대로 Redis 판과 운영 속성 문서를 남긴다
+  const applySent = (i = 0) => {
+    const req = calls.sent[i]
+    redis.set(`${req.SCName}.${NEW}`, req.Body)
+    const k = `${req.Process}|${req.Model}|${req.SCName}`
+    docs.set(k, { ...(docs.get(k) || { scname: req.SCName }), property: JSON.parse(req.Property) })
+  }
+  return { svc, calls, meta, edited, records, redis, logs, src, repoOk, setOwners, docs, applySent }
 }
 
 describe('deployService.deploy — 성공', () => {
@@ -206,15 +245,26 @@ describe('deployService.deploy — 잠금', () => {
     await a
     expect(calls.stream).toHaveLength(1)
   })
-  it('같은 requestId 의 배포 기록이 이미 있으면(재전송) 409 SAVE_IN_PROGRESS 이고 보내지 않는다', async () => {
+  it('같은 requestId 를 보내는 중에 다시 보내면 409 SAVE_IN_PROGRESS 에 details.requestId(어느 기록인지), setscenario 는 한 번', async () => {
+    let open
+    const gate = new Promise((r) => { open = r })
+    const { svc, calls, meta } = setup({ gate })
+    const first = svc.deploy(user, meta(), new Map())
+    await until(() => calls.stream.length === 1)
+    expect(await fail(svc.deploy(user, meta(), new Map()))).toMatchObject({ statusCode: 409, code: 'SAVE_IN_PROGRESS', details: { requestId: RID } })
+    open()
+    expect((await first).result).toBe('ok')
+    expect(calls.stream).toHaveLength(1)
+  })
+  it('같은 requestId 의 배포 기록이 이미 있으면(재전송) 409 SAVE_IN_PROGRESS·details.requestId 이고 보내지 않는다', async () => {
     const { svc, calls, meta } = setup({ records: [[RID, { requestId: RID, user: 'sew_x', result: 'ok' }]] })
-    expect(await fail(svc.deploy(user, meta(), new Map()))).toMatchObject({ statusCode: 409, code: 'SAVE_IN_PROGRESS' })
+    expect(await fail(svc.deploy(user, meta(), new Map()))).toMatchObject({ statusCode: 409, code: 'SAVE_IN_PROGRESS', details: { requestId: RID } })
     expect(calls.insert).toHaveLength(0)
     expect(calls.stream).toHaveLength(0)
   })
-  it('기록을 넣다가 requestId 가 겹치면(E11000) 409 SAVE_IN_PROGRESS', async () => {
+  it('기록을 넣다가 requestId 가 겹치면(E11000) 409 SAVE_IN_PROGRESS·details.requestId', async () => {
     const { svc, calls, meta } = setup({ insertError: Object.assign(new Error('E11000 duplicate key'), { code: 11000 }) })
-    expect(await fail(svc.deploy(user, meta(), new Map()))).toMatchObject({ statusCode: 409, code: 'SAVE_IN_PROGRESS' })
+    expect(await fail(svc.deploy(user, meta(), new Map()))).toMatchObject({ statusCode: 409, code: 'SAVE_IN_PROGRESS', details: { requestId: RID } })
     expect(calls.stream).toHaveLength(0)
   })
   it('오류로 끝나도 잠금이 풀린다', async () => {
@@ -482,6 +532,31 @@ describe('deployService.deploy — 마무리', () => {
     const { svc, meta } = setup({ alsoWrite: [[`N.${NEW + 1}`, 'someone else']] })
     expect((await svc.deploy(user, meta(), new Map())).crtime).toBe(NEW)
   })
+  // 보내는 데 120초까지 걸릴 수 있다 — 그 사이 남긴 줄을 미리 만든 목록으로 덮어쓰지 않는다
+  const addOwner = (key, line) => (docs) => { const d = docs.get(key); docs.set(key, { ...d, property: { ...d.property, Owners: [...d.property.Owners, line] } }) }
+  const TOGGLE = 'lee@2026-11-07 10:02:30@Scenario Deactivated'
+  it('보내는 사이 남긴 Owners 줄(켜기·끄기)을 지키고 내 줄은 한 번 — 마무리 때 대상 문서의 지금 목록으로 다시 만들고 기록 finish 도 쓴 값', async () => {
+    const { svc, calls, meta, records } = setup({ duringSend: addOwner('P|M|N', TOGGLE) })
+    expect((await svc.deploy(user, meta(), new Map())).result).toBe('ok')
+    expect(calls.insert[0].finish.owners).toEqual([...propertyDoc.Owners, LINE]) // 보내기 전 계획
+    expect(calls.finish).toHaveLength(1)
+    expect(calls.finish[0][1]).toEqual({ owners: [...propertyDoc.Owners, TOGGLE, LINE], scCategory: 1, performance: null })
+    expect(records.get(RID).finish).toEqual(calls.finish[0][1])
+  })
+  it('새 대상도 InterfaceServer 가 만든 문서의 지금 목록에 내 줄 — 성과는 미리 정한 값', async () => {
+    const docs = { 'P|M|N': { scname: 'N', property: propertyDoc, performance: PERF } }
+    const { svc, calls, meta, records } = setup({ docs, duringSend: addOwner('P|M|N2', TOGGLE) })
+    const r = await svc.deploy({ ...user, authorityManager: 1 }, meta({ target: { process: 'P', model: 'M', name: 'N2' } }), new Map())
+    expect(r.result).toBe('ok')
+    expect(calls.finish[0][0]).toEqual({ process: 'P', model: 'M', name: 'N2' })
+    expect(calls.finish[0][1]).toEqual({ owners: [...propertyDoc.Owners, TOGGLE, LINE], scCategory: 1, performance: PERF })
+    expect(records.get(RID).finish.owners).toEqual([...propertyDoc.Owners, TOGGLE, LINE])
+  })
+  it('보낸 뒤 대상 문서가 없으면(0건) partial, finishDeploy 는 부르지 않는다', async () => {
+    const { svc, calls, meta } = setup({ duringSend: (docs) => docs.delete('P|M|N') })
+    expect(await svc.deploy(user, meta(), new Map())).toMatchObject({ result: 'partial', partialFailed: ['finish'] })
+    expect(calls.finish).toEqual([])
+  })
   it('초안 지우기·기록 마무리 실패는 결과에 영향 없음(로그만)', async () => {
     const { svc, meta, logs } = setup({ deleteDraftFails: true, updateFails: true })
     expect(await svc.deploy(user, meta(), new Map())).toEqual({ result: 'ok', crtime: NEW, partialFailed: [], requestId: RID })
@@ -623,6 +698,35 @@ describe('deployService.finish — 마무리 다시 쓰기', () => {
     await s.svc.deploy(user, s.meta(), new Map())
     expect(await fail(s.svc.finish({ ...user, singleid: 'other' }, RID))).toMatchObject({ statusCode: 404 })
     expect(await fail(s.svc.finish(user, RID2))).toMatchObject({ statusCode: 404 })
+  })
+})
+
+describe('배포 기록의 Int64 — 확인·다시 쓰기도 Long 그대로 (기록을 드라이버처럼 BSON 으로 저장·읽기)', () => {
+  const { Long } = require('mongoose').mongo
+  const rawPerformance = { ...PERF, CitizenDeveloper: [{ KnoxId: 'k', Sdwt: 'S', Name: 'N', Contribution: Long.fromNumber(40) }] }
+  const docs = { 'P|M|N': { scname: 'N', property: propertyDoc, performance: PERF } }
+  const target = { process: 'P', model: 'M', name: 'N2' }
+  const admin = { ...user, authorityManager: 1 }
+  const contributionOf = (finish) => finish.performance.CitizenDeveloper[0].Contribution
+  it('결과 모름 → 확인(verify)이 마무리할 때 새 대상 성과의 Contribution 이 Long 으로 finishDeploy 에 간다', async () => {
+    const s = setup({ docs, rawPerformance, bsonWeb: true, streamError: seError(504, 'UPSTREAM_TIMEOUT', 'x') })
+    await fail(s.svc.deploy(admin, s.meta({ target }), new Map()))
+    s.applySent()
+    expect(await s.svc.verify(admin, RID)).toMatchObject({ found: 'mine', result: 'ok' })
+    const c = contributionOf(s.calls.finish[0][1])
+    expect(Long.isLong(c)).toBe(true)
+    expect(c.toNumber()).toBe(40)
+  })
+  it('마무리 실패 → 다시 쓰기(finish)도 Contribution 이 Long 으로 finishDeploy 에 간다', async () => {
+    const s = setup({ docs, rawPerformance, bsonWeb: true, finish: 'throw' })
+    expect((await s.svc.deploy(admin, s.meta({ target }), new Map())).result).toBe('partial')
+    s.applySent()
+    s.calls.finish.length = 0
+    s.repoOk()
+    expect(await s.svc.finish(admin, RID)).toMatchObject({ result: 'ok' })
+    const c = contributionOf(s.calls.finish[0][1])
+    expect(Long.isLong(c)).toBe(true)
+    expect(c.toNumber()).toBe(40)
   })
 })
 

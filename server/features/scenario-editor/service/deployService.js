@@ -16,7 +16,9 @@ const ERROR_TEXT_MAX = 300
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 const nonEmpty = (v) => typeof v === 'string' && v !== ''
 const bad = (message, details) => seError(400, 'BAD_REQUEST', message, details)
-const inProgress = (message) => seError(409, 'SAVE_IN_PROGRESS', message)
+const inProgress = (message, details) => seError(409, 'SAVE_IN_PROGRESS', message, details)
+// 같은 requestId 를 다시 받았을 때 — 어느 기록인지 알려 화면이 확인(verify)으로 이어 가게 한다
+const sameRequest = (message, requestId) => inProgress(message, { requestId })
 const blocked = (blocks) => seError(422, 'VALIDATION_FAILED', '검사에서 막힌 항목이 있어 배포할 수 없습니다', { blocks })
 
 // 잠금 전에 볼 수 있는 것: 요청 모양과 대상 키. 편집 시나리오 해석은 prepare 가 한다.
@@ -73,8 +75,9 @@ function createDeployService({ check, opener, web, repo, hash, scopes, interface
     const id = `${t.process}-${t.model}-${t.name}`
     const targetLock = `target\u0000${id}`
     const requestLock = `request\u0000${opts.requestId}`
+    // 같은 요청의 재전송을 먼저 본다(대상도 같아 대상 잠금에 먼저 걸리면 어느 기록인지 알려 줄 수 없다)
+    if (running.has(requestLock)) throw sameRequest('이미 받은 배포 요청입니다', opts.requestId)
     if (running.has(targetLock)) throw inProgress('같은 시나리오의 배포가 진행 중입니다')
-    if (running.has(requestLock)) throw inProgress('이미 받은 배포 요청입니다')
     running.add(targetLock)
     running.add(requestLock)
     try {
@@ -88,7 +91,7 @@ function createDeployService({ check, opener, web, repo, hash, scopes, interface
   // 잠근 뒤에 기준 판·대상 문서를 읽는다 — 충돌 판단과 Owners 목록이 잠근 시점 이후의 값이 된다.
   async function deployLocked(user, meta, images, opts, id) {
     const { requestId, target: t } = opts
-    if (await web.getDeploy(requestId)) throw inProgress('이미 받은 배포 요청입니다(같은 requestId 의 기록이 있음)')
+    if (await web.getDeploy(requestId)) throw sameRequest('이미 받은 배포 요청입니다(같은 requestId 의 기록이 있음)', requestId)
     const p = await check.prepare(user, meta)
     const { edited, sourceSkeleton, ctx } = p
     const base = edited.source
@@ -154,7 +157,8 @@ function createDeployService({ check, opener, web, repo, hash, scopes, interface
     const sized = checkScenario(edited, sourceSkeleton, { ...ctx, sizes: { bodyBytes: Buffer.byteLength(bodyString, 'utf8'), requestBytes: contentLength } })
     if (sized.blocks.length) throw blocked(sized.blocks)
 
-    // 배포 기록(§6.4) — 보내기 전에 남긴다. finish 는 7단계 값을 미리 적어 둔 것이다(확인·다시 쓰기가 같은 값을 쓴다). steps 는 끝낸 단계(setscenario·finish).
+    // 배포 기록(§6.4) — 보내기 전에 남긴다. finish 는 7단계 값을 미리 적어 둔 것이다(scCategory·성과는 확인·다시 쓰기가 같은 값을 쓴다).
+    // owners 는 보내기 전 계획이고, 실제 마무리는 그때 대상 문서의 지금 목록으로 다시 만들어(rewriteFinish) 쓴 값을 기록에 남긴다. steps 는 끝낸 단계(setscenario·finish).
     const at = now()
     const hashKey = `${t.process}-${t.model}`
     const fieldsBefore = (await hash.hkeys(hashKey)).filter((f) => f.startsWith(`${t.name}.`))
@@ -162,13 +166,14 @@ function createDeployService({ check, opener, web, repo, hash, scopes, interface
     // scCategory 는 보내는 property 의 Type — 작업본에 빠진 키는 assembleProperty 가 C# 기본값으로 채운 뒤라 그 값과 같게 한다
     const scCategory = JSON.parse(propertyString).Type
     const finish = { owners: ownersWithLine(owners, deployLine(user.singleid, at)), scCategory, performance }
+    const record = {
+      requestId, user: user.singleid, source: baseVersion, target: { ...t }, headCrtime: edited.headCrtime, restoredFrom: opts.restoredFrom,
+      fieldsBefore, bodySha256: sha, startedAt: at, result: 'pending', crtime: null, steps: [], finish, error: null, finishedAt: null
+    }
     try {
-      await web.insertDeploy({
-        requestId, user: user.singleid, source: baseVersion, target: { ...t }, headCrtime: edited.headCrtime, restoredFrom: opts.restoredFrom,
-        fieldsBefore, bodySha256: sha, startedAt: at, result: 'pending', crtime: null, steps: [], finish, error: null, finishedAt: null
-      })
+      await web.insertDeploy({ ...record })
     } catch (e) {
-      if (e && e.code === 11000) throw inProgress('이미 받은 배포 요청입니다(같은 requestId 의 기록이 있음)')
+      if (e && e.code === 11000) throw sameRequest('이미 받은 배포 요청입니다(같은 requestId 의 기록이 있음)', requestId)
       throw e
     }
 
@@ -204,21 +209,16 @@ function createDeployService({ check, opener, web, repo, hash, scopes, interface
     } catch (e) {
       log.warn(`deploy ${id} ${requestId}: 내 판을 찾지 못했습니다 — ${e.message}`)
     }
-    let finished = false
-    try {
-      const r = await repo.finishDeploy({ process: t.process, model: t.model, name: t.name }, finish)
-      finished = !!r && r.matched > 0
-      if (!finished) log.warn(`deploy ${id} ${requestId}: 마무리 0건(운영 속성 문서 없음)`)
-    } catch (e) {
-      log.warn(`deploy ${id} ${requestId}: 마무리 실패 — ${e.message}`)
-    }
+    // 보내는 데 120초까지 걸릴 수 있다 — 그 사이 남이 남긴 Owners 줄(켜기·끄기 등)을 지키도록 지금 목록에 내 줄을 더해 쓴다(확인·다시 쓰기와 같은 함수)
+    const written = await rewriteFinish(record)
+    const finished = written !== null
     const result = finished ? 'ok' : 'partial'
     const partialFailed = finished ? [] : ['finish']
 
     // 그 뒤는 결과에 영향 없음(로그만): 내 초안(기준 키, 새 이름이면 대상 키도)과 기록 마무리
     await dropDraft(user.singleid, draftKey.process, draftKey.model, draftKey.name)
     if (draftKey.model !== t.model || draftKey.name !== t.name) await dropDraft(user.singleid, t.process, t.model, t.name)
-    await note(requestId, { result, crtime, steps: finished ? ['setscenario', 'finish'] : ['setscenario'], finishedAt: now() })
+    await note(requestId, { result, crtime, ...(written ? { finish: written } : {}), steps: finished ? ['setscenario', 'finish'] : ['setscenario'], finishedAt: now() })
     log.info(`deploy ${id} ${requestId} result=${result} crtime=${crtime} bytes=${contentLength}`)
     return { result, crtime, partialFailed, requestId }
   }
@@ -267,18 +267,21 @@ function createDeployService({ check, opener, web, repo, hash, scopes, interface
     try { return await fn() } finally { running.delete(lock) }
   }
 
-  // 마무리 값을 대상 문서의 지금 Owners 에 내 배포 줄을 더해 다시 만들어 쓴다. 줄은 deploy 때와 같은 값(사용자·시작 시각)이다.
-  // ownersWithLine 이 같은 줄을 두 번 넣지 않으므로 그 사이 남의 줄이 생겨도 지우지 않는다. 문서가 없거나 쓰기가 실패하면 null.
+  // 마무리 값을 대상 문서의 지금 Owners 에 내 배포 줄을 더해 다시 만들어 쓴다(배포 직후·확인·다시 쓰기 모두). 줄은 deploy 때와 같은 값(사용자·시작 시각)이다.
+  // ownersWithLine 이 같은 줄을 두 번 넣지 않으므로 그 사이 남의 줄이 생겨도 지우지 않는다. 쓴 finish 를 돌려주고, 문서가 없거나 0건·쓰기 실패면 null.
   async function rewriteFinish(record) {
     const t = record.target
+    const where = `deploy ${t.process}-${t.model}-${t.name} ${record.requestId}`
     try {
       const doc = await propertyDocOf(t)
-      if (!doc) return null
+      if (!doc) { log.warn(`${where}: 마무리 0건(운영 속성 문서 없음)`); return null }
       const finish = { ...record.finish, owners: ownersWithLine(ownersOf(doc), deployLine(record.user, new Date(record.startedAt))) }
       const r = await repo.finishDeploy({ process: t.process, model: t.model, name: t.name }, finish)
-      return r && r.matched > 0 ? finish : null
+      if (r && r.matched > 0) return finish
+      log.warn(`${where}: 마무리 0건(운영 속성 문서 없음)`)
+      return null
     } catch (e) {
-      log.warn(`deploy ${t.process}-${t.model}-${t.name} ${record.requestId}: 마무리 실패 — ${e.message}`)
+      log.warn(`${where}: 마무리 실패 — ${e.message}`)
       return null
     }
   }

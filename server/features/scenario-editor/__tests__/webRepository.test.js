@@ -79,4 +79,10 @@ describe('webRepository', () => {
     expect(await repo.getDeploy('r1')).toBeNull()
     expect(col('SCENARIO_EDITOR_DEPLOYS').findOne.mock.calls[0][0]).toEqual({ requestId: 'r1' })
   })
+
+  it('getDeploy 는 Long 을 올리지 않고 읽는다 — 기록의 finish.performance(Int64 Contribution 등)를 그대로 다시 쓰기 때문', async () => {
+    const { col, repo } = fake()
+    await repo.getDeploy('r1')
+    expect(col('SCENARIO_EDITOR_DEPLOYS').findOne.mock.calls[0][1]).toMatchObject({ promoteLongs: false })
+  })
 })

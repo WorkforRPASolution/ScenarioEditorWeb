@@ -89,8 +89,10 @@ function createWebRepository(getWebDb, mongo) {
     async updateDeploy(requestId, fields) {
       await deploys().updateOne({ requestId }, { $set: fields })
     },
+    // Long 을 올리지 않고 읽는다 — 확인·다시 쓰기가 기록의 finish(새 대상 성과의 Int64 Contribution 등)를 그대로 운영 문서에 쓴다.
+    // 숫자로 올리면 Int64 가 Int32·Double 로 바뀌어 써진다. 기록의 다른 숫자(crtime 등)는 Double·Int32 라 그대로 숫자다.
     async getDeploy(requestId) {
-      return (await deploys().findOne({ requestId }, { maxTimeMS: MAX })) || null
+      return (await deploys().findOne({ requestId }, { maxTimeMS: MAX, promoteLongs: false })) || null
     }
   })
   // 흘려 읽는 스트림이라 withMongoErrors(async 로 감쌈)를 거치지 않는다. 읽는 쪽이 오류를 처리한다.

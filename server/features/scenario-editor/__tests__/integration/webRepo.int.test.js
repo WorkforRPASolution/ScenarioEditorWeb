@@ -15,6 +15,8 @@ beforeAll(async () => {
   const { connectDB, webManagerConnection } = require('../../../../shared/db/connection')
   await connectDB()
   webDb = webManagerConnection.db
+  // WEBMANAGER_DB_URI 가 비면 연결 코드가 WebManager 의 실제 로그 DB 로 떨어진다 — 아무것도 쓰기 전에 멈춘다(afterAll 도 repo 가 없어 지우지 않는다)
+  if (webDb.databaseName !== 'SE_WEB_DEV') throw new Error(`웹 전용 DB 가 SE_WEB_DEV 가 아니다: ${webDb.databaseName}`)
   const mongoose = require('mongoose')
   const { createWebRepository } = require('../../repo/webRepository')
   repo = createWebRepository(() => webDb, mongoose.mongo)
@@ -74,5 +76,22 @@ describe('웹 전용 DB 저장소 (로컬 SE_WEB_DEV)', () => {
     expect(got).toMatchObject({ requestId, result: 'ok', crtime: 123, steps: ['setscenario'] })
     expect(await repo.getDeploy('nope')).toBeNull()
     await expect(repo.insertDeploy({ requestId })).rejects.toBeTruthy()
+  })
+
+  it('배포 기록의 Int64(finish.performance 의 Contribution)는 Long 그대로 읽는다 — 확인·다시 쓰기가 그 값을 운영 문서에 쓴다', async () => {
+    const { Long } = require('mongoose').mongo
+    const requestId = `sew_w_test_long_${Date.now()}`
+    requestIds.push(requestId)
+    const performance = { Grade: 2, CitizenDeveloper: [{ KnoxId: 'k', Sdwt: 'S', Name: 'N', Contribution: Long.fromNumber(40) }] }
+    await repo.insertDeploy({ requestId, user: OWNER, target: { process: 'SEWCVD', model: 'SEWMODELA', name: 'SEW_W_DEP' }, startedAt: new Date(), result: 'unknown', crtime: null, steps: [], finish: { owners: ['a@2026-11-07 10:00:00'], scCategory: 1, performance }, error: null })
+    await repo.updateDeploy(requestId, { crtime: 1730000000000 })
+    const got = await repo.getDeploy(requestId)
+    const c = got.finish.performance.CitizenDeveloper[0].Contribution
+    expect(Long.isLong(c)).toBe(true)
+    expect(c.toNumber()).toBe(40)
+    expect(got.finish.performance.Grade).toBe(2) // Int32 는 숫자
+    expect(got.finish.scCategory).toBe(1)
+    expect(got.crtime).toBe(1730000000000) // Double 은 숫자
+    expect(got.startedAt).toBeInstanceOf(Date)
   })
 })
