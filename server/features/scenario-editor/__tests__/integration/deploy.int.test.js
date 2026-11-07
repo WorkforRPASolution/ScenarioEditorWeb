@@ -182,7 +182,9 @@ async function withProxy(mode, fn) {
   try {
     return await fn()
   } finally {
-    process.env.EARS_INTERFACE_URL = direct
+    // 원래 없던 값이면 지운다 — 대입하면 문자열 "undefined" 가 남아 뒤 시험이 undefined/EARS/Interface 를 부른다
+    if (direct === undefined) delete process.env.EARS_INTERFACE_URL
+    else process.env.EARS_INTERFACE_URL = direct
     await proxy.setMode('pass')
   }
 }
