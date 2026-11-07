@@ -68,6 +68,22 @@ describe('messages', () => {
   it('문구에 BI 라는 말이 없다', () => {
     for (const v of Object.values(MESSAGES)) expect(v).not.toMatch(/\bBI\b/)
   })
+  it('서버 검사 코드(RULES)와 성과 코드 모두 칸 문구 RULE_<code> 가 있다', () => {
+    const dir = join(__dirname, '../../../../../server/features/scenario-editor/domain/rules')
+    const codesSrc = readFileSync(join(dir, 'codes.js'), 'utf8')
+    const ruleCodes = [...codesSrc.matchAll(/^\s{2}([A-Z][A-Z_]+):\s*\{/gm)].map((m) => m[1])
+    expect(ruleCodes.length).toBeGreaterThan(60)
+    expect(ruleCodes).toContain('CONDITION_KIND_CHANGED')
+    const perfSrc = readFileSync(join(dir, 'performanceRules.js'), 'utf8')
+    const perfCodes = [...perfSrc.match(/PERFORMANCE_CODES = Object\.freeze\(\[([^\]]*)\]/)[1].matchAll(/'([A-Z_]+)'/g)].map((m) => m[1])
+    expect(perfCodes).toContain('TRIGGER_REQUIRED')
+    expect(perfCodes).toContain('DEV_TOTAL')
+    for (const c of [...ruleCodes, ...perfCodes]) expect(MESSAGES[`RULE_${c}`], `RULE_${c}`).toBeTruthy()
+  })
+  it('명령 알림·거절 문구 SEW_CMD_* 가 있고 자리표시자가 남지 않는다', () => {
+    expect(Object.keys(MESSAGES).filter((k) => k.startsWith('SEW_CMD_')).length).toBeGreaterThan(15)
+    expect(t('SEW_CMD_APPLIED', { no: 3 })).toBe('3번 스텝을 적용했습니다.')
+  })
   it('화면 코드가 쓰는 문구 키가 모두 있다', () => {
     const sources = import.meta.glob(['../**/*.vue', '../**/*.js', '!../tests/**'], { query: '?raw', import: 'default', eager: true })
     const keys = new Set()
