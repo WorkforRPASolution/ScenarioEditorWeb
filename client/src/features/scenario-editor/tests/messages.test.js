@@ -82,7 +82,7 @@ describe('messages', () => {
   })
   it('명령 알림·거절 문구 SEW_CMD_* 가 있고 자리표시자가 남지 않는다', () => {
     expect(Object.keys(MESSAGES).filter((k) => k.startsWith('SEW_CMD_')).length).toBeGreaterThan(15)
-    expect(t('SEW_CMD_APPLIED', { no: 3 })).toBe('3번 스텝을 적용했습니다.')
+    expect(t('SEW_CMD_APPLIED', { no: 3 })).toBe('3번 스텝에 적용했습니다. 아직 저장 전입니다.')
   })
   it('편집 중 실시간 알림(칸 검사 code)은 SEW_NOTE_ 문구가 없으면 RULE_ 문구를 쓴다', () => {
     expect(noteMessage({ code: 'NEXT_UNRESOLVED', params: { which: 'onTrue' } })).toBe(MESSAGES.RULE_NEXT_UNRESOLVED)
@@ -92,9 +92,9 @@ describe('messages', () => {
     expect(noteMessage({ code: 'NOPE_CODE', params: {} })).toBe('[SEW_NOTE_NOPE_CODE]')
   })
   it('P2 편집 코드(편집기·편집 저장소·편집 부품)에는 화면 문구(한글 글자)를 직접 쓰지 않는다 — 문구는 messages.js 한 곳', () => {
-    const files = import.meta.glob(['../editor/*.js', '../stores/editStore.js', '../stepRows.js', '../components/{StepToolbar,TargetPicker,EditDialogs,MultiSelection}.vue'],
+    const files = import.meta.glob(['../editor/*.js', '../stores/editStore.js', '../stepRows.js', '../components/{StepToolbar,TargetPicker,EditDialogs,MultiSelection,StepPanel}.vue', '../components/panel/**/*.vue'],
       { query: '?raw', import: 'default', eager: true })
-    expect(Object.keys(files).length).toBeGreaterThan(10)
+    expect(Object.keys(files).length).toBeGreaterThan(20)
     const bad = []
     for (const [f, src] of Object.entries(files)) {
       const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/<!--[\s\S]*?-->/g, '').replace(/(^|[^:'"`])\/\/.*$/gm, '$1')

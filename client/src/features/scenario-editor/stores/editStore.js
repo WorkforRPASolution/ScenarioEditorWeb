@@ -1,8 +1,10 @@
 import { defineStore } from 'pinia'
 import { ref, shallowRef, computed } from 'vue'
 import { beginSession, nextUid, stepNo } from '../editor/session'
-import { copySteps, pasteSteps, deleteSteps, moveSteps, setCell, movedRefKeys } from '../editor/commands'
+import { copySteps, pasteSteps, deleteSteps, moveSteps, setCell, movedRefKeys, applyStep } from '../editor/commands'
 import { sameStep, canonicalJson } from '../editor/diff'
+import { checkStepFields } from '../editor/fieldRules'
+import { firstError } from '../editor/panel'
 import { t } from '../messages'
 import { useEditorStore } from './editorStore'
 
@@ -27,7 +29,11 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   const toast = ref(null)
   const dialog = ref(null)
   const moved = shallowRef(new Set())
+  // 패널이 초점을 옮길 칸({ field, n } — n 은 같은 칸을 다시 요청해도 감시가 울리게)
+  const focusReq = shallowRef(null)
   let movedTimer = null
+  // 적용 안 한 변경 확인 창이 미뤄 둔 일(확인 창 dialog 는 화면 값만 — 함수는 여기에)
+  let pendingNext = null
 
   // 고칠 수 있는 세션: 작업본이 있고 읽기 전용이 아니다(작업본이 없는 뼈대는 P1 처럼 보기만).
   const editable = computed(() => !!session.value?.working && session.value.readOnly === null)
@@ -42,6 +48,8 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     capture.value = null
     toast.value = null
     dialog.value = null
+    focusReq.value = null
+    pendingNext = null
     clearMoved()
   }
 
@@ -66,20 +74,91 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     selection.value = sel
     if (sel.anchor !== null && sel.anchor !== undefined) useEditorStore().selectedUid = sel.anchor
   }
-  // 초점이 다른 경로로 바뀌면 그 한 줄로 접는다(기준 줄과 같으면 그대로 — 여러 줄 선택 중 초점 이동이 아님).
+  // 초점이 다른 경로로 바뀌면 그 한 줄로 접는다(기준 줄과 같으면 그대로 — 여러 줄 선택 중 초점 이동이 아님). 패널도 초점을 따라간다.
   function syncFocus(uid) {
-    if (selection.value.anchor === uid && (uid === null || selection.value.uids.includes(uid))) return
-    selection.value = uid === null || uid === undefined ? emptySelection() : { uids: [uid], anchor: uid }
+    if (!(selection.value.anchor === uid && (uid === null || selection.value.uids.includes(uid)))) {
+      selection.value = uid === null || uid === undefined ? emptySelection() : { uids: [uid], anchor: uid }
+    }
+    syncPanel(uid)
   }
 
-  // 패널에 적용하지 않은 변경(Task 6 이 패널을 단다). 지금은 초안이 마지막 적용 값과 다르면.
+  // ── 오른쪽 편집 패널(목업 renderPanel·apply·guard) ──
+  // panel.base = 패널을 연(또는 마지막으로 적용한) 작업본 스텝 객체, panel.draft = 고치는 중인 값(불변으로 바꾼다).
   const panelDirty = () => { const p = panel.value; return !!p.draft && !sameStep(p.draft, p.base) }
+  const focusUid = () => useEditorStore().selectedUid
+  const workingStep = (uid) => (uid == null ? null : session.value?.working?.steps.find((s) => s.uid === uid) ?? null)
+  const saveBaseStep = (uid) => session.value?.saveBase?.steps.find((s) => s.uid === uid) ?? null
 
-  // 다른 줄로 가기 — 패널에 적용 안 한 변경이 있으면 세 갈래 확인 창을 세우고 멈춘다(확인 창은 Task 6).
-  function requestSelect(uid) {
-    if (panelDirty() && uid !== panel.value.uid) { dialog.value = { kind: 'guard', to: uid }; return false }
-    setSelection({ uids: [uid], anchor: uid })
+  // 그 스텝으로 패널을 연다(초안 = 기준 = 작업본 스텝 그대로).
+  function openPanel(uid) {
+    const step = workingStep(uid)
+    panel.value = step ? { uid, isNew: false, draft: step, base: step } : emptyPanel()
+  }
+  // 초점·작업본이 바뀌면 패널을 맞춘다. 적용 안 한 변경은 지우지 않는다 — 다른 줄로 가는 길은 guard 가 먼저 묻고,
+  // 묻지 않는 여러 줄 선택(Shift·Ctrl)은 초안을 그대로 두었다가 그 줄로 돌아오면 이어서 고친다.
+  function syncPanel(uid = focusUid()) {
+    if (!editable.value) { if (panel.value.uid !== null || panel.value.draft) panel.value = emptyPanel(); return }
+    const p = panel.value
+    if (p.isNew) return // 새 스텝 초안(Task 7)
+    if (panelDirty() && workingStep(p.uid)) return
+    const step = workingStep(uid)
+    if (p.uid === uid && p.base === step && step) return
+    openPanel(uid)
+  }
+  function updateDraft(fn) {
+    const p = panel.value
+    if (!p.draft) return
+    panel.value = { ...p, draft: fn(p.draft) }
+  }
+  // 칸 검사(서버 code 이름). base = 저장 기준점의 같은 uid 스텝(옛 값 안내를 가른다), 새 스텝이면 null.
+  function panelErrors() {
+    const p = panel.value
+    if (!p.draft || !session.value?.working) return {}
+    return checkStepFields(p.draft, { working: session.value.working, isNew: p.isNew, base: p.isNew ? null : saveBaseStep(p.uid), user: useEditorStore().me })
+  }
+  function requestFocus(field) { focusReq.value = { field, n: (focusReq.value?.n ?? 0) + 1 } }
+  // [적용]: 오류가 있으면 막고 첫 오류 칸으로 초점. 기준과 같으면 아무것도 쌓지 않는다. 저장 기준점과 같은 값이면 그 객체를 다시 쓴다.
+  function applyPanel() {
+    const p = panel.value
+    if (!p.draft || p.isNew || !editable.value) return false
+    const bad = firstError(panelErrors())
+    if (bad) { requestFocus(bad); return false }
+    if (sameStep(p.draft, p.base)) { if (p.draft !== p.base) panel.value = { ...p, draft: p.base }; return true }
+    const sb = saveBaseStep(p.uid)
+    const step = sb && sameStep(p.draft, sb) ? sb : p.draft
+    panel.value = { uid: p.uid, isNew: false, draft: step, base: step }
+    run(t('SEW_CMD_APPLIED', { no: noOf(p.uid) }), (w) => applyStep(w, step))
     return true
+  }
+  // [되돌리기]: 패널을 마지막 적용 값으로
+  function discardPanel() {
+    const p = panel.value
+    if (p.draft && p.draft !== p.base) panel.value = { ...p, draft: p.base }
+  }
+
+  // 적용 안 한 변경이 있으면 세 갈래 확인 창을 세우고 next 를 미룬다(없으면 바로 한다). 다른 줄·새 스텝·저장 창·다른 시나리오 열기 앞에서 부른다.
+  // to = 가려는 스텝 uid, 저장 창이면 '__save', 그 밖이면 null(확인 창 문구를 고른다).
+  function guard(next, to = null) {
+    if (!panelDirty()) { next(); return true }
+    pendingNext = next
+    dialog.value = { kind: 'guard', to }
+    return false
+  }
+  function closeGuard() { const next = pendingNext; pendingNext = null; if (dialog.value?.kind === 'guard') dialog.value = null; return next }
+  function guardKeep() { closeGuard() }
+  function guardDrop() { const next = closeGuard(); discardPanel(); next?.() }
+  function guardApply() {
+    const next = closeGuard()
+    if (!applyPanel()) return false
+    next?.()
+    return true
+  }
+
+  // 다른 줄로 가기 — 패널에 적용 안 한 변경이 있으면 묻는다.
+  function requestSelect(uid) {
+    const go = () => setSelection({ uids: [uid], anchor: uid })
+    if (uid === panel.value.uid) { go(); return true }
+    return guard(go, uid)
   }
 
   // 표 줄 누르기(목업 select): 그냥 = 한 줄, Shift = 기준 줄부터 범위, Ctrl/Cmd = 더하기·빼기. 번호 순으로 둔다.
@@ -108,6 +187,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     const w = session.value.working
     session.value = { ...session.value, working: { ...w, steps: snap.steps } }
     setSelection(snap.selection)
+    syncPanel()
   }
 
   // 명령 실행 — fn(working) 이 { working, selection? } 를 주면 반영하고, 거절·막힘이면 그대로 돌려준다.
@@ -127,6 +207,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
       movedTimer = setTimeout(clearMoved, MOVED_MS)
     }
     toast.value = { text: keys.size ? `${label} ${t('SEW_CMD_RENUMBERED', { n: keys.size })}` : label, undoable: true }
+    syncPanel()
     return r
   }
 
@@ -152,13 +233,18 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   const refused = (code) => notify(t(`SEW_CMD_REFUSED_${code}`))
   const noOf = (uid) => stepNo(session.value.working, uid)
 
+  // 작업본을 바꾸거나 초점을 옮기는 명령은 패널에 적용 안 한 변경이 있으면 먼저 묻는다.
+  const guarded = (fn) => { if (!panelDirty()) return false; guard(fn); return true }
+
   function undoCommand() {
+    if (guarded(undoCommand)) return false
     if (!undoLast()) return false
     clearMoved()
     notify(t('SEW_CMD_UNDONE'))
     return true
   }
   function redoCommand() {
+    if (guarded(redoCommand)) return false
     if (!redoLast()) return false
     clearMoved()
     notify(t('SEW_CMD_REDONE'))
@@ -180,6 +266,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   function pasteClip(where, { confirmed = false } = {}) {
     const c = clip.value
     if (!c) return false
+    if (guarded(() => pasteClip(where, { confirmed }))) return false
     const sameSource = sameSourceOf(c.origin, session.value.source)
     const moving = c.cut && sameSource
     if (c.eqpStateCount > 0 && !moving && !confirmed) { dialog.value = { kind: 'pasteWarn', where, n: c.eqpStateCount }; return false }
@@ -203,6 +290,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   function deleteSelection() {
     const uids = selection.value.uids
     if (!uids.length) return false
+    if (guarded(deleteSelection)) return false
     const working = session.value.working
     const r = deleteSteps(working, uids)
     if (r.blocked) { dialog.value = { kind: 'delblock', targets: [...uids], refs: r.blocked }; return false }
@@ -232,6 +320,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     if (!step) return false
     const cur = field === 'accept' ? step.condition?.image?.accept : field === 'skip' ? step.condition?.skipPreprocessing : step.next[field]
     if (canonicalJson(cur) === canonicalJson(value)) return false
+    if (guarded(() => editCell(uid, field, value))) return false
     const no = noOf(uid)
     const label = field === 'accept' ? t('SEW_CMD_CELL_ACCEPT', { no, v: value.toFixed(2) })
       : field === 'skip' ? t(value ? 'SEW_CMD_CELL_SKIP_ON' : 'SEW_CMD_CELL_SKIP_OFF', { no })
@@ -241,9 +330,11 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   }
 
   return {
-    session, selection, panel, undo, redo, clip, uploads, capture, toast, dialog, moved, editable,
+    session, selection, panel, undo, redo, clip, uploads, capture, toast, dialog, moved, focusReq, editable,
     begin, end, run, undoLast, redoLast,
     setSelection, syncFocus, requestSelect, clickRow, panelDirty, notify,
+    openPanel, syncPanel, updateDraft, panelErrors, applyPanel, discardPanel, requestFocus,
+    guard, guardKeep, guardDrop, guardApply,
     undoCommand, redoCommand, copySelection, pasteClip, deleteSelection, moveSelected, editCell
   }
 })

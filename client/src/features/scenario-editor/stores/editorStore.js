@@ -90,23 +90,28 @@ export const useEditorStore = defineStore('scenarioEditor', () => {
   // 편집 저장소가 여러 줄을 고를 때는 기준 줄을 먼저 정하고 초점을 옮기므로 접히지 않는다.
   watch(selectedUid, (uid) => edit.syncFocus(uid), { flush: 'sync' })
 
-  const select = (uid) => { selectedUid.value = uid }
-  const selectByNo = (no) => { const s = steps.value[no - 1]; if (s) selectedUid.value = s.uid }
+  // 초점 옮기기. 오른쪽 패널에 적용 안 한 변경이 있으면 편집 저장소가 먼저 묻는다(순서도·경고 순회·상세의 갈 곳 표시도 같은 길).
+  function focus(uid) {
+    if (uid !== selectedUid.value && edit.panelDirty() && uid !== edit.panel.uid) { edit.requestSelect(uid); return }
+    selectedUid.value = uid
+  }
+  const select = (uid) => focus(uid)
+  const selectByNo = (no) => { const s = steps.value[no - 1]; if (s) focus(s.uid) }
   function moveSelection(delta) {
     if (!steps.value.length) return
     const i = steps.value.findIndex((s) => s.uid === selectedUid.value)
     if (i < 0) {
-      selectedUid.value = steps.value[delta < 0 ? steps.value.length - 1 : 0].uid
+      focus(steps.value[delta < 0 ? steps.value.length - 1 : 0].uid)
       return
     }
-    selectedUid.value = steps.value[Math.min(steps.value.length - 1, Math.max(0, i + delta))].uid
+    focus(steps.value[Math.min(steps.value.length - 1, Math.max(0, i + delta))].uid)
   }
   // 경고·알림이 있는 스텝을 차례로 고른다. 옮겼으면 true — 스텝 경고가 없으면(시나리오 경고만) false 라 바가 시나리오 경고 줄을 보인다.
   function nextNoted() {
     const list = steps.value.filter((s) => s.notes.length)
     if (!list.length) return false
     const i = list.findIndex((s) => s.uid === selectedUid.value)
-    selectedUid.value = list[(i + 1) % list.length].uid
+    focus(list[(i + 1) % list.length].uid)
     return true
   }
 

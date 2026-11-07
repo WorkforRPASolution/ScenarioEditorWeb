@@ -25,9 +25,9 @@ function liveNotes(errs, fields = null) {
 }
 
 // 사내 ScriptType 순서(server domain/enums.js SCRIPT_TYPE_NAMES)
-const SCRIPT_TYPE_NAMES = ['None', 'MouseLeftClick', 'MouseLeftDoubleClick', 'MouseRightClick', 'MouseMove', 'Keyboard', 'Wait', 'Variable',
+export const SCRIPT_TYPE_NAMES = ['None', 'MouseLeftClick', 'MouseLeftDoubleClick', 'MouseRightClick', 'MouseMove', 'Keyboard', 'Wait', 'Variable',
   'OICommand', 'FindWindow', 'SendEmail', 'RunCommand', 'CustomScript', 'FAP', 'ACS', 'NativeFunction']
-const typeNameOf = (t) => (Number.isInteger(t) && t >= 0 && t < SCRIPT_TYPE_NAMES.length ? SCRIPT_TYPE_NAMES[t] : null)
+export const typeNameOf = (t) => (Number.isInteger(t) && t >= 0 && t < SCRIPT_TYPE_NAMES.length ? SCRIPT_TYPE_NAMES[t] : null)
 const needsBaseImage = (kind) => kind === 'image' || kind === 'ocr'
 const isRef = (r) => !!r && typeof r === 'object' && 'from' in r
 

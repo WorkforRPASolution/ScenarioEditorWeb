@@ -3,7 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
 import { imageSrc } from '../editor/display'
 import { t, LABELS, noteMessage } from '../messages'
-import { targetLabel, targetKind, multiLabel, actionDetails, conditionLabel, actionLabel, intervalSec } from '../format'
+import { targetLabel, targetKind, multiLabel, actionDetails, conditionLabel, actionLabel, intervalSec, stepExtraRows } from '../format'
 import CropView from './CropView.vue'
 import '../pills.css'
 
@@ -26,16 +26,7 @@ const retryText = computed(() => {
   return `${show(r.limit)}회 · ${Number.isFinite(r.intervalMs) ? `${intervalSec(r.intervalMs)}초` : '—'}`
 })
 const go = (target) => { if (target?.kind === 'step') store.select(target.uid) }
-const raw = computed(() => s.value?.raw ?? {})
-const extra = computed(() => {
-  const isp = raw.value.Metadata?.ImageSearchParam ?? {}
-  const ocr = raw.value.Metadata?.OcrParamInfo ?? {}
-  const train = c.value?.image?.trainImages ?? []
-  return [
-    ['MaximumNumberToFind', show(isp.MaximumNumberToFind)], ['Timeout', show(isp.Timeout)], ['TimeoutEnabled', show(isp.TimeoutEnabled)], ['MinMatchingValue', show(ocr.MinMatchingValue)],
-    ['학습 이미지(키·Type)', train.map((x) => `${x.key}:${show(x.type)}`).join(', ') || '—'], ['DescriptionToDialog', s.value?.descriptionToDialog || '—'], ['IsShowDialog', show(s.value?.isShowDialog)]
-  ]
-})
+const extra = computed(() => stepExtraRows(s.value))
 const sec = 'px-3 py-2.5 border-b border-gray-200 dark:border-dark-border'
 const lab = 'text-[11px] font-semibold text-gray-500 dark:text-gray-400 mb-2'
 </script>

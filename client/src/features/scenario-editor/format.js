@@ -57,3 +57,16 @@ export function actionDetails(a) {
   rows.push(['저장 값', a.raw ? a.raw : '(빈 값)'])
   return rows
 }
+
+// 사내 화면에 안 보이던 값(상세·편집 패널의 "자세히"). step = 표시 스텝(뼈대 모양, 손대지 않은 스텝만 raw 가 있다).
+const shown = (v) => (v === undefined || v === null || (typeof v === 'number' && !Number.isFinite(v)) ? '—' : String(v))
+export function stepExtraRows(step) {
+  const raw = step?.raw ?? {}
+  const isp = raw.Metadata?.ImageSearchParam ?? {}
+  const ocr = raw.Metadata?.OcrParamInfo ?? {}
+  const train = step?.condition?.image?.trainImages ?? []
+  return [
+    ['MaximumNumberToFind', shown(isp.MaximumNumberToFind)], ['Timeout', shown(isp.Timeout)], ['TimeoutEnabled', shown(isp.TimeoutEnabled)], ['MinMatchingValue', shown(ocr.MinMatchingValue)],
+    ['학습 이미지(키·Type)', train.map((x) => `${x.key}:${shown(x.type)}`).join(', ') || '—'], ['DescriptionToDialog', step?.descriptionToDialog || '—'], ['IsShowDialog', shown(step?.isShowDialog)]
+  ]
+}

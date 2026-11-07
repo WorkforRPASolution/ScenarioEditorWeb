@@ -79,15 +79,17 @@ const editColumns = baseColumns.map((c) => {
 })
 const columnDefs = computed(() => (editable.value ? editColumns : baseColumns))
 
-// 칸 렌더러가 부르는 것. editable 은 읽을 때마다 지금 값.
+// 칸 렌더러가 부르는 것. editable 은 읽을 때마다 지금 값. 패널에 적용 안 한 변경이 있으면 editCell 이 먼저 묻는다(guard).
+// 확인 창이 떠 있는 동안에는 받지 않는다(창이 닫히면 칸을 작업본 값으로 다시 그린다).
 function onAccept(uid, text) {
+  if (edit.dialog) return null
   const v = String(text).trim() === '' ? NaN : Number(text)
   const code = acceptCode(v)
   if (code) { const msg = t(`RULE_${code}`); edit.notify(msg); return msg }
   edit.editCell(uid, 'accept', v)
   return null
 }
-const onSkip = (uid, checked) => edit.editCell(uid, 'skip', checked)
+const onSkip = (uid, checked) => { if (!edit.dialog) edit.editCell(uid, 'skip', checked) }
 const gridContext = { get editable() { return edit.editable }, onAccept, onSkip }
 
 function syncSelection() {
@@ -109,12 +111,15 @@ watch(() => edit.selection, () => nextTick(syncSelection))
 // 같은 줄 객체를 다시 쓰므로 편집 여부가 바뀌면(읽기 전용 판 ↔ 쓸 수 있는 판) 칸을 새로 그린다.
 watch(editable, () => nextTick(() => { gridApi.value?.redrawRows?.(); syncSelection() }))
 function onReady(e) { gridApi.value = e.api; syncSelection() }
+// 확인 창(적용 안 한 변경 등)이 닫히면 칸을 작업본 값으로 다시 그린다 — 묻는 동안 칸에 친 값·체크가 남지 않게.
+watch(() => edit.dialog, (now, before) => { if (before && !now) nextTick(() => gridApi.value?.refreshCells?.({ force: true })) })
 function onGone() { gridApi.value = null } // 스텝 0개 등으로 표가 지워지면 옛 api 를 놓는다
 
 // ── 다음 스텝 고르기 ──
 const picker = ref(null)
 const pickerStep = computed(() => (picker.value ? edit.session?.working?.steps.find((s) => s.uid === picker.value.uid) ?? null : null))
 function openPicker(uid, key, el) {
+  if (edit.dialog) return
   if (!edit.selection.uids.includes(uid) && !edit.requestSelect(uid)) return
   const r = el.getBoundingClientRect()
   const vw = window.innerWidth || 1280
@@ -155,8 +160,10 @@ function neighbor(delta) {
   return list[Math.min(list.length - 1, Math.max(0, i + delta))].uid
 }
 // 단축키는 표에 초점이 있을 때만(목업 keydown). 칸 입력 중이면 브라우저 기본 동작에 맡긴다.
+// 확인 창이 떠 있는 동안에는 표 단축키를 듣지 않는다(미뤄 둔 이동을 덮어쓰지 않게).
 function onKey(e) {
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName ?? '')) return
+  if (editable.value && edit.dialog) { if (e.key === 'ArrowDown' || e.key === 'ArrowUp') e.preventDefault(); return }
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     e.preventDefault()
     const d = e.key === 'ArrowDown' ? 1 : -1
@@ -165,7 +172,7 @@ function onKey(e) {
     if (uid && uid !== store.selectedUid) edit.requestSelect(uid)
     return
   }
-  if (!editable.value || edit.dialog) return
+  if (!editable.value) return
   const cmd = e.ctrlKey || e.metaKey
   const k = (e.key ?? '').toLowerCase()
   if (cmd && k === 'z') { e.preventDefault(); if (e.shiftKey) edit.redoCommand(); else edit.undoCommand() }

@@ -13,6 +13,7 @@ import StepTable from './components/StepTable.vue'
 import StepFlow from './components/StepFlow.vue'
 import StepViewer from './components/StepViewer.vue'
 import StepDetail from './components/StepDetail.vue'
+import StepPanel from './components/StepPanel.vue'
 import StepToolbar from './components/StepToolbar.vue'
 import MultiSelection from './components/MultiSelection.vue'
 import EditDialogs from './components/EditDialogs.vue'
@@ -102,9 +103,10 @@ const card = 'bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:
           </section>
         </div>
         <SplitGutter direction="v" testid="se-gutter-r" @start="startDrag('rw', $event, -1, 'x')" @reset="reset('rw')" />
-        <!-- 오른쪽 -->
+        <!-- 오른쪽: 쓸 수 있는 세션은 편집 패널(여러 줄이면 묶음 칸), 읽기 전용은 P1 상세 -->
         <section :class="card" class="min-h-0 overflow-hidden">
           <MultiSelection v-if="edit.editable && edit.selection.uids.length > 1" />
+          <StepPanel v-else-if="edit.editable" />
           <StepDetail v-else />
         </section>
       </div>

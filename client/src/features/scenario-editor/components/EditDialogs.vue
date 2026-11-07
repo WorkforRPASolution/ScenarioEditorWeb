@@ -1,8 +1,9 @@
 <script setup>
-// 편집 확인 창과 알림 줄(목업 dlgHtml·toast). 이 task 는 삭제 막힘 목록(조작판 14 delblock)과 설비 상태 붙여넣기 알림.
-// 적용 안 한 변경 확인(guard)은 Task 6 이 단다.
+// 편집 확인 창과 알림 줄(목업 dlgHtml·toast): 삭제 막힘 목록(조작판 14 delblock), 설비 상태 붙여넣기 알림,
+// 적용 안 한 변경 확인(조작판 16 guard·22 saveguard — [계속 고치기]·[버리고 이동]·[적용하고 이동]).
 import { computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useEditStore } from '../stores/editStore'
+import { changedFields } from '../editor/panel'
 import { t } from '../messages'
 import '../pills.css'
 
@@ -18,6 +19,16 @@ const delTitle = computed(() => (dialog.value?.kind === 'delblock'
   ? t('SEW_EDIT_DELBLOCK_TITLE', { nos: dialog.value.targets.map(noOf).sort((a, b) => a - b).map((no) => t('SEW_CMD_TARGET_STEP', { no })).join('·') }) : ''))
 
 const close = () => { edit.dialog = null }
+
+// 적용 안 한 변경 확인: to = 가려는 스텝 uid | '__save'(저장 창) | null(그 밖의 일)
+const toSave = computed(() => dialog.value?.kind === 'guard' && dialog.value.to === '__save')
+const guardTitle = computed(() => (dialog.value?.kind === 'guard' ? t('SEW_EDIT_GUARD_TITLE', { no: noOf(edit.panel.uid) }) : ''))
+const guardBody = computed(() => {
+  if (dialog.value?.kind !== 'guard') return ''
+  const n = changedFields(edit.panel.base, edit.panel.draft).length
+  return t(toSave.value ? 'SEW_EDIT_GUARD_BODY_SAVE' : dialog.value.to ? 'SEW_EDIT_GUARD_BODY_MOVE' : 'SEW_EDIT_GUARD_BODY_OTHER', { n })
+})
+const guardBlocked = computed(() => dialog.value?.kind === 'guard' && Object.values(edit.panelErrors()).some((e) => e.level === 'error'))
 // 목록의 스텝으로 가서 갈 곳을 고치게 한다(목업 goref).
 function goRef(uid) { close(); edit.requestSelect(uid) }
 function pasteAnyway() {
@@ -33,7 +44,11 @@ watch(() => edit.toast, (v) => {
 })
 function undoFromToast() { edit.undoCommand() }
 
-function onKey(e) { if (e.key === 'Escape' && (dialog.value?.kind === 'delblock' || dialog.value?.kind === 'pasteWarn')) close() }
+function onKey(e) {
+  if (e.key !== 'Escape') return
+  if (dialog.value?.kind === 'guard') edit.guardKeep()
+  else if (dialog.value?.kind === 'delblock' || dialog.value?.kind === 'pasteWarn') close()
+}
 onMounted(() => document.addEventListener('keydown', onKey))
 onBeforeUnmount(() => { document.removeEventListener('keydown', onKey); clearTimeout(timer) })
 
@@ -72,10 +87,21 @@ const btnP = 'h-8 px-3 rounded-lg text-sm bg-primary-500 hover:bg-primary-600 te
         </div>
       </div>
     </div>
+    <div v-else-if="dialog?.kind === 'guard'" :class="dim" @click.self="edit.guardKeep()">
+      <div :class="box" role="alertdialog" aria-modal="true" data-testid="se-guard">
+        <h3 class="px-[18px] pt-3.5 text-[15px] font-semibold text-gray-900 dark:text-white">{{ guardTitle }}</h3>
+        <p class="mx-[18px] mt-1.5 text-[13px] text-gray-500 dark:text-gray-400">{{ guardBody }}</p>
+        <div class="flex justify-end gap-1.5 px-[18px] py-3.5 flex-wrap">
+          <button type="button" :class="btnS" data-testid="se-guard-keep" @click="edit.guardKeep()">{{ t('SEW_EDIT_GUARD_KEEP') }}</button>
+          <button type="button" :class="btnS" data-testid="se-guard-drop" @click="edit.guardDrop()">{{ t(toSave ? 'SEW_EDIT_GUARD_DROP_SAVE' : 'SEW_EDIT_GUARD_DROP') }}</button>
+          <button type="button" :class="btnP" data-testid="se-guard-apply" :title="guardBlocked ? t('SEW_EDIT_GUARD_BLOCKED') : undefined" @click="edit.guardApply()">{{ t(toSave ? 'SEW_EDIT_GUARD_APPLY_SAVE' : 'SEW_EDIT_GUARD_APPLY') }}</button>
+        </div>
+      </div>
+    </div>
     <div v-if="edit.toast" role="status" data-testid="se-toast"
       class="fixed left-1/2 bottom-11 -translate-x-1/2 z-[60] max-w-[680px] flex items-center gap-3 px-3.5 py-2 rounded-lg shadow-xl text-[13px] bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900">
       <span>{{ edit.toast.text }}</span>
-      <button v-if="edit.toast.undoable" type="button" class="underline font-medium text-primary-300 dark:text-primary-700" @click="undoFromToast">{{ t('SEW_EDIT_UNDO') }}</button>
+      <button v-if="edit.toast.undoable && !dialog" type="button" class="underline font-medium text-primary-300 dark:text-primary-700" @click="undoFromToast">{{ t('SEW_EDIT_UNDO') }}</button>
     </div>
   </Teleport>
 </template>

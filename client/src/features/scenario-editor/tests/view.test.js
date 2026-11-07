@@ -13,7 +13,7 @@ import { useEditorStore } from '../stores/editorStore'
 import { MESSAGES } from '../messages'
 
 const ok = (data) => Promise.resolve({ data: { data } })
-const stubs = { ScenarioBar: true, LoadDialog: true, StepTable: true, StepFlow: true, StepViewer: true, StepDetail: true, StepToolbar: true, EditDialogs: true, MultiSelection: true }
+const stubs = { ScenarioBar: true, LoadDialog: true, StepTable: true, StepFlow: true, StepViewer: true, StepDetail: true, StepPanel: true, StepToolbar: true, EditDialogs: true, MultiSelection: true }
 const mountView = () => shallowMount(ScenarioEditorView, { global: { stubs: { ...stubs, StatePanel: false, SplitGutter: false } } })
 const skeletonOf = (name, crtime = 5, isCurrent = false) => ({ process: 'P', model: 'M', name, version: { crtime, isCurrent }, steps: [], notes: [] })
 const defer = () => { let resolve; const promise = new Promise((res) => { resolve = res }); return { promise, resolve } }
@@ -93,6 +93,16 @@ describe('ScenarioEditorView', () => {
       const w = await openWith({ singleid: 'u', canWrite: true }, true)
       expect(w.findComponent({ name: 'StepToolbar' }).exists()).toBe(true)
       expect(w.findComponent({ name: 'EditDialogs' }).exists()).toBe(true)
+    })
+    it('쓸 수 있는 세션은 오른쪽에 편집 패널, 읽기 전용은 P1 상세', async () => {
+      const a = await openWith({ singleid: 'u', canWrite: true }, true)
+      expect(a.findComponent({ name: 'StepPanel' }).exists()).toBe(true)
+      expect(a.findComponent({ name: 'StepDetail' }).exists()).toBe(false)
+      a.unmount()
+      setActivePinia(createPinia())
+      const b = await openWith({ singleid: 'u', canWrite: true }, false)
+      expect(b.findComponent({ name: 'StepPanel' }).exists()).toBe(false)
+      expect(b.findComponent({ name: 'StepDetail' }).exists()).toBe(true)
     })
     it('쓰기 권한이 없거나 옛 판이면 도구 줄이 없다', async () => {
       const a = await openWith({ singleid: 'u', canWrite: false }, true)
