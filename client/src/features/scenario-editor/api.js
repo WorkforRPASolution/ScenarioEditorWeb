@@ -10,7 +10,9 @@ export const scenarioEditorApi = {
   dataCheck: () => api.get('/scenario-editor/data-check'),
   list: (process, model) => api.get('/scenario-editor/scenarios', { params: { process, model } }),
   versions: (p, m, n) => api.get(`/scenario-editor/scenarios/${enc(p)}/${enc(m)}/${enc(n)}/versions`),
-  open: (p, m, n, crtime = 'current') => api.get(`/scenario-editor/scenarios/${enc(p)}/${enc(m)}/${enc(n)}/versions/${crtime}`, { timeout: OPEN_TIMEOUT_MS })
+  open: (p, m, n, crtime = 'current') => api.get(`/scenario-editor/scenarios/${enc(p)}/${enc(m)}/${enc(n)}/versions/${crtime}`, { timeout: OPEN_TIMEOUT_MS }),
+  // 저장 전 검사(meta = editor/request buildMeta). 서버가 기준 판·다른 판을 열 수 있어(차가운 큰 시나리오) 열기와 같은 시간을 준다.
+  check: (meta) => api.post('/scenario-editor/check', meta, { timeout: OPEN_TIMEOUT_MS })
 }
 
 export function readDevUser() {
