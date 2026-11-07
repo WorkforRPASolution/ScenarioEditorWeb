@@ -174,6 +174,12 @@ describe('sameName·searchUsers·nameRule', () => {
     expect(await svc.searchUsers(admin, ' ab ')).toEqual([{ singleid: 'a', name: 'b' }])
     expect(calls.q).toBe('ab')
   })
+  it('searchUsers: 등급 1·2 가 아니면 403 GRADE_FORBIDDEN 이고 찾지 않는다(원개발자 찾기는 성과 입력 창 몫)', async () => {
+    const { svc, calls } = setup()
+    const e = await fail(svc.searchUsers({ singleid: 'x', authorityManager: 3 }, 'ab'))
+    expect([e.statusCode, e.code]).toEqual([403, 'GRADE_FORBIDDEN'])
+    expect(calls.q).toBeUndefined()
+  })
   it('nameRule: 컬렉션이 없으면 { exists:false, rules:[] }', async () => {
     expect(await setup().svc.nameRule(admin)).toEqual({ exists: false, rules: [] })
     expect(await setup({ rule: true }).svc.nameRule(admin)).toEqual({ exists: true, rules: [{ pattern: 'x' }] })

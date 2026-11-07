@@ -16,6 +16,12 @@ function createEarsRepository(getDb, mongo) {
     const r = await col('SC_PROPERTY').updateOne(keyFilter(key), { $set }, { maxTimeMS: MAX })
     return { matched: r.matchedCount }
   }
+  // 심의·성과 쓰기는 performance.* 필드만 — 다른 키가 오면 프로그램 오류로 던지고 아무것도 쓰지 않는다
+  const performanceOnly = (fields) => {
+    const bad = Object.keys(fields).filter((k) => !k.startsWith('performance.'))
+    if (bad.length) throw new Error(`performance. 로 시작하지 않는 필드: ${bad.join(', ')}`)
+    return { ...fields }
+  }
   return withMongoErrors({
     findUsers: (singleid) => col('ARS_USER_INFO').find({ singleid }, { projection: { password: 0 } }).maxTimeMS(MAX).toArray(),
     findAgents: () => col('AGENT_INFO').find({ arsagentJava: 1 }, { projection: { _id: 0, eqpId: 1 } }).maxTimeMS(MAX).toArray(),
@@ -46,12 +52,8 @@ function createEarsRepository(getDb, mongo) {
       return setFields(key, $set)
     },
     setEnabled: (key, { enabled, owners }) => setFields(key, { 'property.IsEnabled': enabled, 'property.Owners': owners }),
-    setReview: (key, fields) => setFields(key, { ...fields }),
-    setPerformanceFields: (key, fields) => {
-      const bad = Object.keys(fields).filter((k) => !k.startsWith('performance.'))
-      if (bad.length) throw new Error(`performance. 로 시작하지 않는 필드: ${bad.join(', ')}`)
-      return setFields(key, { ...fields })
-    },
+    setReview: (key, fields) => setFields(key, performanceOnly(fields)),
+    setPerformanceFields: (key, fields) => setFields(key, performanceOnly(fields)),
     countPropertyDocs: (key) => col('SC_PROPERTY').countDocuments(keyFilter(key), { maxTimeMS: MAX }),
     searchUsers: (q) => {
       const rx = { $regex: escapeRegex(q), $options: 'i' }

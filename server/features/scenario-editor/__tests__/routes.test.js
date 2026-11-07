@@ -370,7 +370,24 @@ describe('심의·성과·같은 이름·사용자 찾기·이름 규칙', () =>
       nameRule: async () => ({ exists: false, rules: [] })
     }
     expect((await (await fetch(`${base}/scenarios/P/same-name/N`)).json()).data).toEqual(['P', 'N'])
-    expect((await (await fetch(`${base}/users?q=ab`)).json()).data).toEqual([{ singleid: 'ab', name: 'x' }])
+    expect((await (await fetch(`${base}/users?q=ab`, { headers: { 'X-SE-User': 'sew_adm' } })).json()).data).toEqual([{ singleid: 'ab', name: 'x' }])
     expect((await (await fetch(`${base}/name-rule`)).json()).data).toEqual({ exists: false, rules: [] })
+  })
+  it('GET /users(원개발자 찾기)는 성과 입력 창 몫이라 등급 1·2 만 — 3 은 403 GRADE_FORBIDDEN 이고 찾지 않는다(설계 §8)', async () => {
+    const seen = []
+    fake.performance = { searchUsers: async (u, q) => { seen.push(q); return [] } }
+    const res = await fetch(`${base}/users?q=ab`)
+    expect([res.status, (await res.json()).code]).toEqual([403, 'GRADE_FORBIDDEN'])
+    expect(seen).toEqual([])
+    expect((await fetch(`${base}/users?q=ab`, { headers: { 'X-SE-User': 'sew_adm' } })).status).toBe(200)
+    expect(seen).toEqual(['ab'])
+  })
+  it('GET same-name 은 권한 밖 공정이면 403 PROCESS_FORBIDDEN(빈 목록이 아님), 권한 안이면 내 모델만', async () => {
+    const { createPerformanceService } = require('../service/performanceService')
+    const repo = { findSameNameModels: async () => ['M1', 'M9'] }
+    fake.performance = createPerformanceService({ repo, scopes: fake.scopes })
+    const res = await fetch(`${base}/scenarios/ETCH/same-name/N`)
+    expect([res.status, (await res.json()).code]).toEqual([403, 'PROCESS_FORBIDDEN'])
+    expect((await (await fetch(`${base}/scenarios/CVD/same-name/N`)).json()).data).toEqual(['M1'])
   })
 })

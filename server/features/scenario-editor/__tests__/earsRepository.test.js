@@ -61,6 +61,12 @@ describe('earsRepository 쓰기', () => {
     await repoOf(f).setReview(key, { 'performance.Grade': 2, 'performance.Supervisor': 'boss' })
     expect(f.calls[0].update).toEqual({ $set: { 'performance.Grade': 2, 'performance.Supervisor': 'boss' } })
   })
+  it('setReview: performance. 로 시작하지 않는 키가 하나라도 있으면 쓰지 않고 던진다(프로그램 오류)', async () => {
+    const f = fakeDb()
+    await expect(repoOf(f).setReview(key, { 'performance.Grade': 2, 'property.IsEnabled': false })).rejects.toThrow(/performance\./)
+    await expect(repoOf(f).setReview(key, { scCategory: 1 })).rejects.toThrow()
+    expect(f.calls).toHaveLength(0)
+  })
   it('setPerformanceFields: performance. 로 시작하지 않는 키는 던진다', async () => {
     const f = fakeDb()
     await expect(repoOf(f).setPerformanceFields(key, { Grade: 1 })).rejects.toThrow()

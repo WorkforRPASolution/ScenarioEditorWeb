@@ -119,7 +119,9 @@ function createPerformanceService({ repo, scopes, now = () => Date.now() }) {
     return (await repo.findSameNameModels(process, name)).filter((m) => allowed.has(m))
   }
 
+  // 원개발자 찾기 — 성과 입력 창 몫이라 심의·성과와 같은 등급(1·2)만(설계 §8 403)
   async function searchUsers(user, q) {
+    denied(user)
     const text = typeof q === 'string' ? q.trim() : ''
     if (text.length < USER_SEARCH_MIN) throw seError(400, 'BAD_REQUEST', `검색어는 ${USER_SEARCH_MIN}자 이상이어야 합니다`)
     return (await repo.searchUsers(text)).map((u) => ({ singleid: u.singleid, name: u.name }))

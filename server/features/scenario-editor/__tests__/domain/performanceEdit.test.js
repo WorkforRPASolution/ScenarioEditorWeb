@@ -77,17 +77,39 @@ describe('citizenDevelopers', () => {
     expect(r.map((d) => [d.KnoxId, d.Sdwt, d.Name])).toEqual([['b', '', 'B'], ['a', 'AA', 'A']])
     expect(Object.keys(r[0])).toEqual(['KnoxId', 'Sdwt', 'Name', 'Contribution'])
   })
-  it('기존 원소가 Int32 면 Int32(숫자), Int64 면 Long, 기존 없으면 Long', () => {
+  // 설계 §7: Contribution 의 BSON 형식은 기존 원소를 따르고, 원소가 하나도 없으면 Int64
+  const withC = new Map([...users, ['c', { name: 'C', process: '' }]])
+  const kinds = (r) => r.map((d) => (Long.isLong(d.Contribution) ? 'long' : typeof d.Contribution === 'number' ? 'int' : typeof d.Contribution))
+  it('같은 사람(KnoxId)은 자기 형을 지킨다 — Int32 면 숫자, Int64 면 Long', () => {
     const existing = [{ KnoxId: 'a', Contribution: 30 }, { KnoxId: 'b', Contribution: Long.fromNumber(40) }]
-    const r = citizenDevelopers([{ KnoxId: 'a', Contribution: 31 }, { KnoxId: 'b', Contribution: 41 }, { KnoxId: 'c', Contribution: 5 }], new Map([...users, ['c', { name: 'C', process: '' }]]), existing)
-    expect(typeof r[0].Contribution).toBe('number')
+    const r = citizenDevelopers([{ KnoxId: 'a', Contribution: 31 }, { KnoxId: 'b', Contribution: 41 }], users, existing)
+    expect(kinds(r)).toEqual(['int', 'long'])
     expect(r[0].Contribution).toBe(31)
-    expect(Long.isLong(r[1].Contribution)).toBe(true)
     expect(r[1].Contribution.toNumber()).toBe(41)
-    expect(Long.isLong(r[2].Contribution)).toBe(true)
   })
-  it('기존이 없을 때(undefined)도 Long', () => {
-    expect(Long.isLong(citizenDevelopers([{ KnoxId: 'a', Contribution: 1 }], users)[0].Contribution)).toBe(true)
+  it('새 사람은 기존 원소의 형 — 모두 Int32 면 Int32(배열에 형을 섞지 않는다)', () => {
+    const r = citizenDevelopers([{ KnoxId: 'a', Contribution: 31 }, { KnoxId: 'c', Contribution: 5 }], withC, [{ KnoxId: 'a', Contribution: 30 }])
+    expect(kinds(r)).toEqual(['int', 'int'])
+    expect(r[1].Contribution).toBe(5)
+  })
+  it('새 사람은 기존 원소의 형 — 모두 Int64 면 Long', () => {
+    const r = citizenDevelopers([{ KnoxId: 'c', Contribution: 5 }], withC, [{ KnoxId: 'a', Contribution: Long.fromNumber(30) }])
+    expect(kinds(r)).toEqual(['long'])
+    expect(r[0].Contribution.toNumber()).toBe(5)
+  })
+  it('기존 원소의 형이 섞였으면 새 사람은 첫 원소의 형', () => {
+    const intFirst = [{ KnoxId: 'a', Contribution: 30 }, { KnoxId: 'b', Contribution: Long.fromNumber(40) }]
+    expect(kinds(citizenDevelopers([{ KnoxId: 'a', Contribution: 31 }, { KnoxId: 'b', Contribution: 41 }, { KnoxId: 'c', Contribution: 5 }], withC, intFirst))).toEqual(['int', 'long', 'int'])
+    const longFirst = [{ KnoxId: 'b', Contribution: Long.fromNumber(40) }, { KnoxId: 'a', Contribution: 30 }]
+    expect(kinds(citizenDevelopers([{ KnoxId: 'c', Contribution: 5 }], withC, longFirst))).toEqual(['long'])
+  })
+  it('기존 원소에 숫자형 Contribution 이 없으면(null 등) 첫 숫자형 원소를, 그것도 없으면 Long', () => {
+    expect(kinds(citizenDevelopers([{ KnoxId: 'c', Contribution: 5 }], withC, [{ KnoxId: 'a', Contribution: null }, { KnoxId: 'b', Contribution: 7 }]))).toEqual(['int'])
+    expect(kinds(citizenDevelopers([{ KnoxId: 'c', Contribution: 5 }], withC, [{ KnoxId: 'a', Contribution: null }]))).toEqual(['long'])
+  })
+  it('기존 원소가 없으면(빈 목록·undefined) Long', () => {
+    expect(kinds(citizenDevelopers([{ KnoxId: 'a', Contribution: 1 }], users, []))).toEqual(['long'])
+    expect(kinds(citizenDevelopers([{ KnoxId: 'a', Contribution: 1 }], users))).toEqual(['long'])
   })
 })
 

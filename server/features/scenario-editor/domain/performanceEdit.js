@@ -66,20 +66,25 @@ function performanceFields(current, input, { singleid, now = new Date() }) {
   return { ...out, ...reviewFields(cur, { grade: src.Grade, comment: src.SupervisorComment }, singleid) }
 }
 
-// 기여자 목록 → 저장 원소. Sdwt 는 사용자 process 의 ':' 앞부분(DC-141). Contribution 은 기존 같은 KnoxId 원소의 BSON 형(Int32 면 숫자, Int64 면 Long)을
-// 지키고, 새 원소는 Long(Q-009). existing 은 Long 을 올리지 않고 읽은 값이어야 한다.
+// Contribution 의 BSON 형: Long 을 올리지 않고 읽은 값에서 Int64 는 Long, Int32 는 숫자. 그 밖(null·없음 등)은 형을 정하지 않는다.
+const contributionKind = (v) => (isLong(v) ? 'long' : typeof v === 'number' ? 'int' : null)
+
+// 기여자 목록 → 저장 원소. Sdwt 는 사용자 process 의 ':' 앞부분(DC-141). Contribution 의 BSON 형은 기존 원소를 따른다(설계 §7, Q-009):
+// 같은 KnoxId 원소가 있으면 그 형, 새 사람은 기존 원소의 형(섞였으면 형이 있는 첫 원소), 기존 원소가 없으면 Int64(Long).
+// existing 은 Long 을 올리지 않고 읽은 값이어야 한다.
 function citizenDevelopers(list, usersById, existing) {
-  const old = new Map((Array.isArray(existing) ? existing : []).map((d) => [d && d.KnoxId, d && d.Contribution]))
+  const before = Array.isArray(existing) ? existing : []
+  const old = new Map(before.map((d) => [d && d.KnoxId, contributionKind(d && d.Contribution)]))
+  const listKind = before.map((d) => contributionKind(d && d.Contribution)).find((k) => k !== null) || 'long'
   return list.map((d) => {
     const u = usersById.get(d.KnoxId) || {}
     const proc = typeof u.process === 'string' ? u.process : ''
-    const prev = old.get(d.KnoxId)
-    const asInt32 = old.has(d.KnoxId) && typeof prev === 'number'
+    const kind = old.get(d.KnoxId) || listKind
     return {
       KnoxId: d.KnoxId,
       Sdwt: proc.includes(':') ? proc.split(':')[0] : '',
       Name: typeof u.name === 'string' ? u.name : '',
-      Contribution: asInt32 ? d.Contribution : Long.fromNumber(d.Contribution)
+      Contribution: kind === 'int' ? d.Contribution : Long.fromNumber(d.Contribution)
     }
   })
 }

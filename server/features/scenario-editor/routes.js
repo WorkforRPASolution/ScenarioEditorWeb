@@ -26,7 +26,7 @@ router.delete('/scenarios/:process/:model/:name', c.requireWrite, asyncHandler(c
 router.put('/scenarios/:process/:model/:name/review', c.requireReviewer, asyncHandler(c.reviewScenario))
 router.put('/scenarios/:process/:model/:name/performance', c.requireReviewer, asyncHandler(c.savePerformance))
 router.get('/scenarios/:process/same-name/:name', asyncHandler(c.sameName))
-router.get('/users', asyncHandler(c.searchUsers))
+router.get('/users', c.requireReviewer, asyncHandler(c.searchUsers)) // 원개발자 찾기 — 성과 입력 창(등급 1·2) 몫(설계 §8 403)
 router.get('/name-rule', asyncHandler(c.nameRule))
 router.get('/scenarios', asyncHandler(c.list))
 router.get('/scenarios/:process/:model/:name/versions', asyncHandler(c.versions))
