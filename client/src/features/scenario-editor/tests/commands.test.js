@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { applyStep, insertStep, deleteSteps, isContiguous, moveSteps, copySteps, pasteSteps, setCell, movedRefs } from '../editor/commands'
+import { applyStep, insertStep, deleteSteps, isContiguous, moveSteps, copySteps, pasteSteps, setCell, movedRefs, detachClip } from '../editor/commands'
 
 const FAIL = { kind: 'end', value: 'FAIL' }
 const ORIGIN = { process: 'P', model: 'M', name: 'SRC', crtime: 5, fileId: 'f5' }
@@ -193,6 +193,25 @@ describe('copySteps·pasteSteps (12 §5.2 복사)', () => {
     const w = edited(Array.from({ length: 200 }, (_, i) => `s${i}`))
     const clip = copySteps(w, ['s0'], ORIGIN, false)
     expect(pasteSteps(w, clip, { where: 'end' }, { sameSource: true, makeUid })).toEqual({ refused: 'STEP_LIMIT' })
+  })
+})
+
+describe('detachClip — 세션을 나가는 묶음', () => {
+  it('묶음 밖 갈 곳 가운데 남길 uid(그 판의 서버 uid)가 아닌 것은 미해결(원래 번호, 모르면 값 없음) — 묶음 안 갈 곳·특수값은 그대로, 바뀌지 않은 스텝은 같은 객체', () => {
+    const w = edited(['s0', 's1', 'n1', 's2', 's3'], { s1: { onTrue: 'n1', onFalse: 's0' }, s2: { onTrue: 's1', onFalse: 'p7' }, s3: { onTrue: { kind: 'end', value: 'SUCCESS' } } })
+    const clip = copySteps(w, ['s1', 'n1', 's2', 's3'], ORIGIN, false)
+    const out = detachClip(clip, new Set(['s0', 's1', 's2', 's3']))
+    expect(out).not.toBe(clip)
+    const [a, n, b, c] = out.steps
+    expect(a.next).toEqual({ onTrue: { kind: 'step', uid: 'n1' }, onFalse: { kind: 'step', uid: 's0' } }) // n1 은 묶음 안
+    expect(b.next.onTrue).toEqual({ kind: 'step', uid: 's1' })
+    expect(b.next.onFalse).toStrictEqual({ kind: 'unresolved' }) // p7 은 복사할 때 없던 스텝
+    expect(a).toBe(clip.steps[0]); expect(n).toBe(clip.steps[1]); expect(c).toBe(clip.steps[3])
+    expect(out.uids).toEqual(clip.uids)
+    const w2 = edited(['s0', 's1', 'n1'], { s1: { onTrue: 'n1' } })
+    const clip2 = copySteps(w2, ['s1'], ORIGIN, false)
+    expect(detachClip(clip2, new Set(['s0', 's1'])).steps[0].next.onTrue).toStrictEqual({ kind: 'unresolved', value: 3 })
+    expect(detachClip(clip2, new Set(['s0', 's1', 'n1']))).toBe(clip2) // 바꿀 것이 없으면 같은 묶음
   })
 })
 

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, shallowRef, computed } from 'vue'
 import { beginSession, nextUid, stepNo } from '../editor/session'
-import { copySteps, pasteSteps, deleteSteps, moveSteps, setCell, movedRefKeys, applyStep, insertStep, STEP_MAX } from '../editor/commands'
+import { copySteps, pasteSteps, detachClip, deleteSteps, moveSteps, setCell, movedRefKeys, applyStep, insertStep, STEP_MAX } from '../editor/commands'
 import { sameStep, canonicalJson } from '../editor/diff'
 import { checkStepFields } from '../editor/fieldRules'
 import { firstError, CLICK_TYPES } from '../editor/panel'
@@ -67,10 +67,15 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     clearMoved()
   }
 
-  // 붙여넣기 묶음은 세션을 넘어 남긴다(다른 시나리오에 붙이기). 잘라내기는 같은 작업본 안 옮기기라(R-T2a) 세션이 바뀌면
-  // 복사 묶음이 된다 — 새 작업본의 같은 uid 스텝을 옮기거나 흐리게 보이지 않게.
+  // 붙여넣기 묶음은 세션을 넘어 남긴다(다른 시나리오에 붙이기). 묶음을 만든 세션을 처음 떠날 때(detached 가 아직 없을 때 — 지금 세션이
+  // 그 세션이다) 한 번만 바꾼다:
+  // - 잘라내기는 같은 작업본 안 옮기기라(R-T2a) 복사 묶음이 된다 — 새 작업본의 같은 uid 스텝을 옮기거나 흐리게 보이지 않게.
+  // - 묶음 밖 갈 곳 가운데 그 판의 서버 uid(저장 기준점 스텝 uid)가 아닌 것(브라우저가 만든 n…·p…, 세션마다 다시 센다)은 미해결로(detachClip).
   function carryClip() {
-    if (clip.value?.cut) clip.value = { ...clip.value, cut: false }
+    const c = clip.value
+    if (!c || c.detached) return
+    const keep = new Set((session.value?.saveBase?.steps ?? []).map((s) => s.uid))
+    clip.value = { ...detachClip(c, keep), cut: false, detached: true }
   }
 
   function begin(skeleton, me) {
@@ -299,13 +304,9 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     return true
   }
 
-  // 묶음이 든 올릴 그림을 이 세션의 올릴 그림에 넣는다(R-P3) — 붙인 스텝의 그림이 보이고, 저장 요청에 실린다.
+  // 묶음이 든 올릴 그림을 이 세션의 올릴 그림에 넣는다(R-P3, setUpload 와 같은 길) — 붙인 스텝의 그림이 보이고, 저장 요청에 실린다.
   function takeUploads(c) {
-    const add = [...(c.uploads ?? [])].filter(([id]) => !uploads.value.has(id))
-    if (!add.length) return
-    const m = new Map(uploads.value)
-    for (const [id, blob] of add) m.set(id, blob)
-    uploads.value = m
+    putUploads([...(c.uploads ?? [])].filter(([id]) => !uploads.value.has(id)))
   }
 
   // where: 'after' | 'before' | 'end'. 새 스텝이 되는 설비 상태 스텝이 든 묶음은 먼저 알린다(서버가 origin 없는 설비 상태 스텝을
@@ -383,11 +384,14 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   // ── 큰 화면 잡기(목업 CAP_FLOW·capStart·capNext·capDone·capCancel, 조작판 3~6) ──
   // 잡은 값은 패널 초안에만 들어간다. 작업본은 [적용](고른 스텝) 또는 [N번 앞에 넣기]·[맨 끝에 추가](새 스텝)로만 바뀐다.
   const imgCtx = () => ({ session: session.value, uploads: uploads.value, draftId: null })
-  function setUpload(tempId, blob) {
+  // 올릴 그림 넣기 — 넣을 것이 있으면 한 번에 새 Map 으로 바꾼다(화면이 따라 그린다)
+  function putUploads(entries) {
+    if (!entries.length) return
     const m = new Map(uploads.value)
-    m.set(tempId, blob)
+    for (const [tempId, blob] of entries) m.set(tempId, blob)
     uploads.value = m
   }
+  function setUpload(tempId, blob) { putUploads([[tempId, blob]]) }
   // 기준 화면 비트맵 — 같은 URL 이면 다시 받지 않는다. 실패하면 잊어 다음에 다시 받는다.
   function baseBitmap(url) {
     if (bitmapCache.url !== url) {

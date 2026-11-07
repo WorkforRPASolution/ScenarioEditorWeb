@@ -993,6 +993,65 @@ describe('editStore — 다른 시나리오 붙여넣기·빈 시나리오(Task 
       expect(shown.condition.image.trainImages[0].src).toBe('blob:t1')
     } finally { delete globalThis.URL.createObjectURL }
   })
+  // 브라우저가 만든 uid(n·p + 세션 번호)는 세션마다 다시 센다 — 다른 세션으로 나간 묶음이 그 uid 를 가리키면 엉뚱한 스텝(또는 자기 자신)을 가리키게 된다.
+  const addNone = (e, desc) => {
+    e.setSelection({ uids: [], anchor: null })
+    e.startNew('none')
+    e.updateDraft((d) => ({ ...d, descriptionToEmail: desc, action: { ...d.action, command: 'run.bat' } }))
+    e.addNew('end')
+    return e.session.working.steps[e.session.working.steps.length - 1]
+  }
+  it('fix1: 세션을 나간 묶음의 브라우저 uid 갈 곳(새 스텝 n…)은 미해결(원래 번호) — 같은 판을 다시 열어 같은 uid 의 다른 새 스텝이 생겨도 그쪽을 가리키지 않는다', async () => {
+    const { e } = start()
+    await open(A())
+    const n1 = addNone(e, '첫 세션의 새 스텝')
+    expect(n1.uid).toBe('n1')
+    e.editCell('s1', 'onTrue', { kind: 'step', uid: 'n1' }) // s1 성공 → n1(4번), 실패 → s0(서버 uid)
+    copy(e, ['s1'])
+    await open(B())
+    await open(A()) // 같은 판
+    const other = addNone(e, '다른 새 스텝')
+    expect(other.uid).toBe('n1') // 세션 번호가 다시 시작해 같은 uid
+    e.pasteClip('end')
+    const p = e.session.working.steps[4]
+    expect(p.uid).toMatch(/^p/)
+    expect(p.next.onTrue).toStrictEqual({ kind: 'unresolved', value: 4 })
+    expect(p.next.onFalse).toStrictEqual({ kind: 'step', uid: 's0' }) // 서버 uid 는 같은 판에서 그대로
+    expect(p.images.base).toEqual({ from: 'source', id: 's1-bi' })
+    expect(e.toast.text).toBe(t('SEW_CMD_PASTED_UNRESOLVED', { n: 1, open: 1 }))
+    expect(e.selection).toEqual({ uids: [p.uid], anchor: p.uid })
+  })
+  it('fix1: 붙여 넣은 스텝(p…)을 가리키던 갈 곳도 세션을 나가면 미해결 — 다음 세션의 복사본이 같은 p uid 를 받아 자기 자신(NEXT_SELF)을 가리키지 않는다', async () => {
+    const { e } = start()
+    await open(A())
+    copy(e, ['s0'])
+    e.pasteClip('end') // p1 = 4번
+    expect(e.session.working.steps[3].uid).toBe('p1')
+    e.editCell('s1', 'onTrue', { kind: 'step', uid: 'p1' })
+    copy(e, ['s1'])
+    await open(B())
+    await open(A())
+    e.pasteClip('end')
+    const p = e.session.working.steps[3]
+    expect(p.uid).toBe('p1')
+    expect(p.next.onTrue).toStrictEqual({ kind: 'unresolved', value: 4 })
+    expect(e.panelErrors().onTrue).toMatchObject({ code: 'NEXT_UNRESOLVED' })
+  })
+  it('fix1: 같은 세션 안에서는 브라우저 uid 갈 곳을 그대로 둔다, 원래 번호를 모르는 브라우저 uid 갈 곳은 값 없이 미해결', async () => {
+    const { e } = start()
+    await open(A())
+    addNone(e, '새 스텝')
+    e.editCell('s1', 'onTrue', { kind: 'step', uid: 'n1' })
+    copy(e, ['s1'])
+    e.pasteClip('end')
+    expect(e.session.working.steps[4].next.onTrue).toStrictEqual({ kind: 'step', uid: 'n1' })
+    // 묶음 밖 브라우저 uid 를 가리키는데 복사할 때 이미 없던 스텝(원래 번호 모름)
+    e.editCell('s1', 'onTrue', { kind: 'step', uid: 'n9' })
+    copy(e, ['s1'])
+    await open(A())
+    e.pasteClip('end')
+    expect(e.session.working.steps[3].next.onTrue).toStrictEqual({ kind: 'unresolved' })
+  })
   it('빈 시나리오(스텝 0)에도 붙인다 — 끝(=맨 앞)에 넣고 기준 화면을 함께 가져와, 그 기준 화면으로 이미지 새 스텝을 시작할 수 있다', async () => {
     const { e } = start()
     await open(A())

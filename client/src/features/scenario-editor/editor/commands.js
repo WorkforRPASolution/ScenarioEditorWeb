@@ -88,6 +88,33 @@ function pastePos(working, where, anchorUid) {
   return where === 'before' ? a : a + 1
 }
 
+// 묶음 밖 갈 곳 → 미해결. 원래 번호는 복사할 때 가리키던 스텝이 있었을 때만 안다 — 모르면 value 키 없이(서버가 받는 모양).
+function unresolvedOf(clip, uid, key) {
+  const no = clip.outsideNo[`${uid}:${key}`]
+  return no === undefined ? { kind: 'unresolved' } : { kind: 'unresolved', value: no }
+}
+
+// 묶음이 만들어진 세션을 떠날 때(다른 시나리오 열기·열기 실패). 브라우저가 만든 uid(n…·p…)는 세션마다 다시 세어 다음 세션에서
+// 엉뚱한 스텝(복사본 자신까지)을 가리킬 수 있으므로, 묶음 밖 갈 곳 가운데 keepUids(묶음 판의 서버 uid — 같은 판이면 다음 세션에서도
+// 같은 스텝)가 아닌 것을 미해결(원래 번호)로 바꾼다. 묶음 안 갈 곳은 붙일 때 새 uid 로 잇는다. 바꿀 것이 없으면 같은 묶음, 안 바뀐 스텝은 같은 객체.
+export function detachClip(clip, keepUids) {
+  const inside = new Set(clip.uids)
+  let changed = false
+  const steps = clip.steps.map((s) => {
+    let next = null
+    for (const key of KEYS) {
+      const t = s.next[key]
+      if (!isStepRef(t) || inside.has(t.uid) || keepUids.has(t.uid)) continue
+      next = next ?? { ...s.next }
+      next[key] = unresolvedOf(clip, s.uid, key)
+    }
+    if (!next) return s
+    changed = true
+    return { ...s, next }
+  })
+  return changed ? { ...clip, steps } : clip
+}
+
 const toOther = (ref, origin) => (ref && ref.from === 'source' ? { from: 'other', ...origin, id: ref.id } : ref)
 function mapImages(images, origin) {
   const train = {}
@@ -116,11 +143,7 @@ export function pasteSteps(working, clip, { where, anchorUid }, { sameSource, ma
     for (const key of KEYS) {
       const t = s.next[key]
       if (isStepRef(t) && map.has(t.uid)) next[key] = { kind: 'step', uid: map.get(t.uid) }
-      else if (isStepRef(t) && !sameSource) {
-        // 원래 번호는 복사할 때 가리키던 스텝이 있었을 때만 안다 — 모르면 value 키 없이(서버가 받는 모양)
-        const no = clip.outsideNo[`${s.uid}:${key}`]
-        next[key] = no === undefined ? { kind: 'unresolved' } : { kind: 'unresolved', value: no }
-      }
+      else if (isStepRef(t) && !sameSource) next[key] = unresolvedOf(clip, s.uid, key)
       if (next[key].kind === 'unresolved') unresolved++
     }
     return { ...s, uid: map.get(s.uid), origin: null, next, images: sameSource ? s.images : mapImages(s.images, clip.origin) }
