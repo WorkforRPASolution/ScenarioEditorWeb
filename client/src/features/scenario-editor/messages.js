@@ -106,7 +106,27 @@ export const MESSAGES = {
   SEW_UI_CONDITION_NONE_HINT: '조건 없이 바로 동작합니다.',
   SEW_UI_CONDITION_UNKNOWN_HINT: '조건 번호 {op} — 원래 값을 유지합니다.',
   SEW_UI_CONDITION_DETAIL_MISSING: '저장된 조건 값을 해석하지 못했습니다(경고 참고).',
-  SEW_UI_CLICK_OUTSIDE: '클릭 지점: 학습 이미지 밖 ({x}, {y})'
+  SEW_UI_CLICK_OUTSIDE: '클릭 지점: 학습 이미지 밖 ({x}, {y})',
+  SEW_CMD_APPLIED: '{no}번 스텝을 적용했습니다.',
+  SEW_CMD_INSERTED: '{no}번 자리에 스텝을 넣었습니다.',
+  SEW_CMD_DELETED: '{nos}번 스텝을 지웠습니다.',
+  SEW_CMD_MOVED_UP: '{what} 위로 옮겼습니다.',
+  SEW_CMD_MOVED_DOWN: '{what} 아래로 옮겼습니다.',
+  SEW_CMD_MOVED: '스텝 {n}개를 옮겼습니다.',
+  SEW_CMD_CUT: '스텝 {n}개를 잘라냈습니다. 붙여넣을 자리를 고르세요.',
+  SEW_CMD_COPIED: '스텝 {n}개를 복사했습니다.',
+  SEW_CMD_PASTED: '스텝 {n}개를 붙여넣었습니다.',
+  SEW_CMD_PASTED_UNRESOLVED: '스텝 {n}개를 붙여넣었습니다. 갈 곳을 골라야 하는 곳이 {open}개 있습니다.',
+  SEW_CMD_CELL: '{no}번 스텝의 값을 바꿨습니다.',
+  SEW_CMD_RENUMBERED: '다른 스텝의 번호 {n}곳이 새 번호를 따라갔습니다.',
+  SEW_CMD_UNDONE: '되돌렸습니다.',
+  SEW_CMD_REDONE: '다시 했습니다.',
+  SEW_CMD_REFUSED_STEP_LIMIT: '시나리오 스텝 제한(200개)을 넘습니다. 시나리오를 나누고 연계하는 방법으로 작성하세요.',
+  SEW_CMD_REFUSED_NOT_CONTIGUOUS: '연속한 스텝만 고를 수 있습니다.',
+  SEW_CMD_REFUSED_AT_EDGE: '더 옮길 수 없습니다.',
+  SEW_CMD_REFUSED_INSIDE_CUT: '잘라낸 범위 안에는 붙여넣을 수 없습니다. 다른 자리를 고르세요.',
+  SEW_CMD_BLOCKED_DELETE: '다른 스텝이 이 스텝을 가리키고 있어 지울 수 없습니다. 갈 곳을 먼저 바꾸세요.',
+  SEW_CMD_EQP_STATE_WARN: '설비 상태 스텝 {n}개가 들어 있습니다. 새로 만들 수 없는 조건이라 저장할 때 막힙니다.'
 }
 
 export const LABELS = {

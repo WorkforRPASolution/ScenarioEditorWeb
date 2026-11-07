@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import { ref, shallowRef } from 'vue'
 import { beginSession } from '../editor/session'
 
+const UNDO_MAX = 50
+
 const emptySelection = () => ({ uids: [], anchor: null })
 const emptyPanel = () => ({ uid: null, isNew: false, draft: null, base: null })
 
@@ -40,5 +42,42 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     session.value = null
   }
 
-  return { session, selection, panel, undo, redo, clip, uploads, capture, toast, dialog, begin, end }
+  const snapshot = () => ({ steps: session.value.working.steps, selection: selection.value })
+  function restore(snap) {
+    const w = session.value.working
+    session.value = { ...session.value, working: { ...w, steps: snap.steps } }
+    selection.value = snap.selection
+  }
+
+  // 명령 실행 — fn(working) 이 { working, selection? } 를 주면 반영하고, 거절·막힘이면 그대로 돌려준다.
+  function run(label, fn) {
+    const r = fn(session.value.working)
+    if (!r?.working) return r
+    undo.value = [...undo.value, snapshot()].slice(-UNDO_MAX)
+    redo.value = []
+    session.value = { ...session.value, working: r.working }
+    if (r.selection) selection.value = r.selection
+    toast.value = { text: label, undoable: true }
+    return r
+  }
+
+  function undoLast() {
+    if (!undo.value.length) return false
+    const snap = undo.value[undo.value.length - 1]
+    redo.value = [...redo.value, snapshot()]
+    undo.value = undo.value.slice(0, -1)
+    restore(snap)
+    return true
+  }
+
+  function redoLast() {
+    if (!redo.value.length) return false
+    const snap = redo.value[redo.value.length - 1]
+    undo.value = [...undo.value, snapshot()]
+    redo.value = redo.value.slice(0, -1)
+    restore(snap)
+    return true
+  }
+
+  return { session, selection, panel, undo, redo, clip, uploads, capture, toast, dialog, begin, end, run, undoLast, redoLast }
 })
