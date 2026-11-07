@@ -191,7 +191,7 @@ function createDeployService({ check, opener, web, repo, hash, scopes, interface
         if (e.code === 'UPSTREAM_FAILED') throw Object.assign(seError(502, 'UPSTREAM_FAILED', e.message, { upstreamText: upstreamTextOf(e) }), { upstream: e.upstream })
         throw e
       }
-      // 504 UPSTREAM_TIMEOUT(보낸 뒤 끊김·시간 초과·10초 초과 500)와 그 밖의 뜻밖 오류는 결과를 모른다 — 다시 보내지 않고 확인하게 한다.
+      // 504 UPSTREAM_TIMEOUT(보낸 뒤 끊김·시간 초과·HTTP 5xx — 10초 초과 500·akka 503 등)와 그 밖의 뜻밖 오류는 결과를 모른다 — 다시 보내지 않고 확인하게 한다.
       if (!e || e.code !== 'UPSTREAM_TIMEOUT') log.warn(`deploy ${id} ${requestId}: setscenario 뜻밖 오류 — ${(e && e.message) || e}`)
       await note(requestId, { result: 'unknown', error: upstreamErrorOf(e, 504) })
       throw Object.assign(seError(504, 'UPSTREAM_TIMEOUT', 'InterfaceServer 응답을 받지 못해 배포 결과를 모릅니다. 버전 목록을 확인한 뒤 다시 배포하세요', { requestId }), { upstream: e && e.upstream })
@@ -287,7 +287,8 @@ function createDeployService({ check, opener, web, repo, hash, scopes, interface
     return exclusive(requestId, async () => {
       const record = await ownRecord(user, requestId)
       if (record.result === 'ok' || record.result === 'partial') return { found: 'mine', crtime: record.crtime ?? null, result: record.result, partialFailed: partialOf(record.result) }
-      if (record.result !== 'unknown' && record.result !== 'pending') return { found: 'none', crtime: null } // failed: 저장되지 않았다
+      // 거절(failed)도 찾아본다 — 운영 속성 단계가 이미 바뀌었을 수 있다(설계 §6.3 [버전 목록 확인]). 없으면 기록은 그대로 둔다.
+      if (!['unknown', 'pending', 'failed'].includes(record.result)) return { found: 'none', crtime: null }
       const t = record.target
       const hashKey = `${t.process}-${t.model}`
       const crtime = await pickMine({ name: t.name, fieldsBefore: record.fieldsBefore, fieldsNow: await hash.hkeys(hashKey), valueOf: (f) => hash.hget(hashKey, f), sha: record.bodySha256 })

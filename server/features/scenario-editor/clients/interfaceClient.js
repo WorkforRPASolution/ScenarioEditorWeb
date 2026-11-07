@@ -1,7 +1,7 @@
 'use strict'
 // InterfaceServer 호출(공통 설계 §7.1). 공개 함수 목록이 곧 허용 목록이다 — 경로·function 을 입력으로 합성하지 않는다.
 // 사용자 문구에는 내부 정보를 싣지 않고, 서버가 준 원문은 로그와 오류의 upstream { status, text } 로만 남긴다.
-// 503 은 요청이 가지 않았다는 뜻이다. 504 는 결과를 모르는 실패다: 시간 초과·응답 전 끊김이고, 서버가 10초 askTimeout 뒤에도 저장을 끝까지 진행할 수 있어(분석 03 §1.4)
+// 503 은 요청이 가지 않았다는 뜻이다. 504 는 결과를 모르는 실패다: 시간 초과·응답 전 끊김·HTTP 5xx 이고, 서버가 10초 askTimeout 뒤에도 저장을 끝까지 진행할 수 있어(분석 03 §1.4)
 // 저장이 곧 배포이므로 부른 쪽이 다시 보내기 전에 판 이력·Redis 로 확인해야 한다.
 const { createLogger } = require('../../../shared/logger')
 const { serializeSetScenarioRequest } = require('../domain/csharpJson')
@@ -55,7 +55,9 @@ async function post(fn, body, timeoutMs, extra = {}) {
     if (e && e.cause && NOT_SENT_CODES.has(e.cause.code)) throw failure(fn, 503, 'UPSTREAM_DOWN', 'InterfaceServer 에 연결하지 못했습니다', status, `${e}${cause}`)
     throw failure(fn, 504, 'UPSTREAM_TIMEOUT', 'InterfaceServer 응답을 받지 못했습니다', status, `${e}${cause}`)
   }
-  if (status === 500) throw failure(fn, 504, 'UPSTREAM_TIMEOUT', 'InterfaceServer 응답이 늦습니다', status, text)
+  // 5xx 는 모두 결과 모름이다: 10초 askTimeout 500, akka-http request-timeout 503(작업자는 저장을 계속할 수 있다), 앞단 관문의 502·503·504.
+  // 4xx(413 등)와 200 + success 아님만 거절(502)이다.
+  if (status >= 500) throw failure(fn, 504, 'UPSTREAM_TIMEOUT', 'InterfaceServer 응답이 늦습니다', status, text)
   let parsed = null
   try {
     parsed = JSON.parse(text)

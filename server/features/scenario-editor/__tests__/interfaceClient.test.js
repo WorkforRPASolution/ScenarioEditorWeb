@@ -51,7 +51,13 @@ describe('응답 해석 (공통 설계 §7.2)', () => {
     ['JSON 이 아닌 200', respondWith('<html>'), 502, 'UPSTREAM_FAILED'],
     ['JSON null', respondWith('null'), 502, 'UPSTREAM_FAILED'],
     ['HTTP 413', respondWith('too big', 413), 502, 'UPSTREAM_FAILED'],
+    ['HTTP 400', respondWith('bad request', 400), 502, 'UPSTREAM_FAILED'],
     ['HTTP 500 (10초 askTimeout)', respondWith('There was an internal server error.', 500), 504, 'UPSTREAM_TIMEOUT'],
+    // akka-http request-timeout 은 503 으로 답하지만 작업자는 저장을 계속할 수 있다. 앞단 관문의 502·503·504 도 결과를 모른다.
+    ['HTTP 503 (akka-http 요청 시간 초과)', respondWith('The server was not able to produce a timely response to your request.', 503), 504, 'UPSTREAM_TIMEOUT'],
+    ['HTTP 502 (관문)', respondWith('Bad Gateway', 502), 504, 'UPSTREAM_TIMEOUT'],
+    ['HTTP 504 (관문 시간 초과)', respondWith('Gateway Timeout', 504), 504, 'UPSTREAM_TIMEOUT'],
+    ['HTTP 501', respondWith('Not Implemented', 501), 504, 'UPSTREAM_TIMEOUT'],
     ['연결 거부', async () => { throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED' } }) }, 503, 'UPSTREAM_DOWN']
   ])('%s', async (_, fake, statusCode, code) => {
     _setDeps({ fetch: fake })
@@ -63,6 +69,11 @@ describe('응답 해석 (공통 설계 §7.2)', () => {
     expect(e.message).not.toContain('10.0.0.1')
     expect(e.upstream).toMatchObject({ status: 200 })
     expect(e.upstream.text).toContain('10.0.0.1')
+  })
+  it('5xx 결과 모름도 받은 상태·원문을 upstream 으로 넘긴다', async () => {
+    _setDeps({ fetch: respondWith('timely response', 503) })
+    const e = await setScenario(scenario).catch((x) => x)
+    expect(e).toMatchObject({ statusCode: 504, code: 'UPSTREAM_TIMEOUT', upstream: { status: 503, text: 'timely response' } })
   })
   it('연결 실패 원인도 문구에 싣지 않고 upstream 으로 넘긴다', async () => {
     _setDeps({ fetch: async () => { throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED' } }) } })

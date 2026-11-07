@@ -542,6 +542,29 @@ describe('deployService.verify — 결과 모름 확인', () => {
     expect(s.calls.finish[0][1].owners).toEqual([...propertyDoc.Owners, other, LINE])
     expect(s.records.get(RID).finish.owners).toEqual([...propertyDoc.Owners, other, LINE])
   })
+  // 설계 §6.3: 거절도 운영 속성 단계가 이미 바뀌었을 수 있어 [버전 목록 확인]을 둔다 — 실패 기록도 내 판을 찾아본다.
+  const rejectedCase = async () => {
+    const s = setup({ streamError: Object.assign(seError(502, 'UPSTREAM_FAILED', 'x'), { upstream: { status: 200, text: '{"success":"false"}' } }) })
+    await fail(s.svc.deploy(user, s.meta(), new Map()))
+    expect(s.records.get(RID).result).toBe('failed')
+    s.calls.finish.length = 0
+    return s
+  }
+  it('거절(failed) 기록이라도 내 판(지문 같은 새 필드)이 있으면 mine·마무리 ok', async () => {
+    const s = await rejectedCase()
+    s.redis.set(`N.${NEW}`, s.calls.sent[0].Body)
+    expect(await s.svc.verify(user, RID)).toEqual({ found: 'mine', crtime: NEW, result: 'ok', partialFailed: [] })
+    expect(s.calls.finish).toHaveLength(1)
+    expect(s.calls.finish[0][1].owners).toEqual([...propertyDoc.Owners, LINE])
+    expect(s.records.get(RID)).toMatchObject({ result: 'ok', crtime: NEW, steps: ['setscenario', 'finish'] })
+  })
+  it('거절(failed) 기록에 내 판이 없으면 none, 기록은 failed 그대로, 쓰지 않는다', async () => {
+    const s = await rejectedCase()
+    const before = structuredClone(s.records.get(RID))
+    expect(await s.svc.verify(user, RID)).toEqual({ found: 'none', crtime: null })
+    expect(s.records.get(RID)).toEqual(before)
+    expect(s.calls.finish).toEqual([])
+  })
   it('내 줄이 이미 목록에 있으면 다시 넣지 않는다', async () => {
     const owners = [...propertyDoc.Owners, LINE, 'lee@2026-11-07 11:00:00']
     const s = await unknownCase()
