@@ -10,7 +10,9 @@ const api = vi.hoisted(() => ({ me: vi.fn(), scopes: vi.fn(), dataCheck: vi.fn()
 vi.mock('../api', () => ({ scenarioEditorApi: api, imageUrl: (p) => p }))
 import ScenarioEditorView from '../ScenarioEditorView.vue'
 import { useEditorStore } from '../stores/editorStore'
+import { useEditStore } from '../stores/editStore'
 import { MESSAGES } from '../messages'
+import { imageStep } from './panelFixture'
 
 const ok = (data) => Promise.resolve({ data: { data } })
 const stubs = { ScenarioBar: true, LoadDialog: true, StepTable: true, StepFlow: true, StepViewer: true, StepDetail: true, StepPanel: true, StepToolbar: true, EditDialogs: true, MultiSelection: true }
@@ -111,6 +113,69 @@ describe('ScenarioEditorView', () => {
       setActivePinia(createPinia())
       const b = await openWith({ singleid: 'u', canWrite: true }, false)
       expect(b.findComponent({ name: 'StepToolbar' }).exists()).toBe(false)
+    })
+  })
+
+  describe('다른 시나리오 열기 앞의 적용 안 한 변경 확인(guard)', () => {
+    // 쓸 수 있는 현재 판, 스텝 하나(패널이 열린다)
+    const writable = (name, crtime) => {
+      const st = imageStep(0, { next: { onTrue: { kind: 'end', value: 'SUCCESS' }, onFalse: { kind: 'end', value: 'FAIL' } } }) // 하나뿐인 스텝은 NEXT 를 못 쓴다
+      const edited = { source: { process: 'P', model: 'M', name, crtime, fileId: 'F' }, headCrtime: crtime, header: { description: '', timeoutLimit: '1' }, steps: [st], property: {} }
+      return { process: 'P', model: 'M', name, version: { crtime, isCurrent: true, fileId: 'F' }, headCrtime: crtime, notes: [],
+        steps: [{ ...st, no: 1, notes: [], baseImage: { state: 'present', url: '/b' } }], edited }
+    }
+    const dirty = () => useEditStore().updateDraft((d) => ({ ...d, condition: { ...d.condition, image: { ...d.condition.image, accept: 0.85 } } }))
+    const target = { process: 'P', model: 'M', name: 'B', crtime: 'current' }
+    const openA = async () => {
+      api.me.mockReturnValue(ok({ singleid: 'u', canWrite: true }))
+      route.query = { p: 'P', m: 'M', n: 'A' }
+      api.open.mockReturnValue(ok(writable('A', 5)))
+      const w = mountView(); await flushPromises()
+      return w
+    }
+    it('불러오기 창에서 다른 시나리오를 고르면 먼저 묻고, [버리고 이동] 이면 연다', async () => {
+      const w = await openA()
+      const e = useEditStore()
+      expect(e.panel.uid).toBe('s0')
+      dirty()
+      api.open.mockReturnValue(ok(writable('B', 7)))
+      w.findComponent({ name: 'LoadDialog' }).vm.$emit('open', target)
+      await flushPromises()
+      expect(e.dialog).toEqual({ kind: 'guard', action: 'open', to: null })
+      expect(api.open).toHaveBeenCalledTimes(1)
+      e.guardDrop(); await flushPromises()
+      expect(api.open).toHaveBeenLastCalledWith('P', 'M', 'B', 'current')
+      expect(useEditorStore().skeleton.name).toBe('B')
+    })
+    it('[적용하고 이동] 은 작업본에 넣은 뒤 연다', async () => {
+      const w = await openA()
+      const e = useEditStore()
+      dirty()
+      let appliedAtOpen = null
+      api.open.mockImplementation(() => { appliedAtOpen = e.session.working.steps[0].condition.image.accept; return ok(writable('B', 7)) })
+      w.findComponent({ name: 'LoadDialog' }).vm.$emit('open', target)
+      await flushPromises()
+      e.guardApply(); await flushPromises()
+      expect(appliedAtOpen).toBe(0.85)
+      expect(useEditorStore().skeleton.name).toBe('B')
+    })
+    it('돌아왔을 때 주소가 다른 시나리오를 가리켜도 먼저 묻는다 — [계속 고치기] 면 주소를 열린 시나리오로 되돌린다', async () => {
+      api.me.mockReturnValue(ok({ singleid: 'u', canWrite: true }))
+      route.query = { p: 'P', m: 'M', n: 'A', v: 'current' }
+      api.open.mockReturnValue(ok(writable('A', 5)))
+      const { leave, back } = mountKept(); await flushPromises()
+      dirty()
+      await leave()
+      route.query = { p: 'P', m: 'M', n: 'B', v: 'current' }
+      replace.mockClear()
+      await back()
+      const e = useEditStore()
+      expect(e.dialog).toEqual({ kind: 'guard', action: 'open', to: null })
+      expect(api.open).toHaveBeenCalledTimes(1)
+      e.guardKeep(); await flushPromises()
+      expect(replace).toHaveBeenCalledWith({ name: 'ScenarioEditor', query: { p: 'P', m: 'M', n: 'A', v: 'current' } })
+      expect(api.open).toHaveBeenCalledTimes(1)
+      expect(e.panel.draft.condition.image.accept).toBe(0.85)
     })
   })
 

@@ -285,17 +285,20 @@ function encodeCustomScript(cs) {
 
 const KEEP_AS_IS = new Set([7, 8, 13, 14, 15]) // 보존 전용(사내 콤보에 없거나 비활성)
 
+// base = 고치기 전 스텝의 Script(새 스텝이면 newRawStep 의 Script). 저장 값을 그대로 옮기는 갈래는 base 가 같은 종류일 때만 쓴다 —
+// 종류를 바꾼 스텝(예: 명령 실행 → 메일 보내기)에 옛 종류의 Value·NativeFunction 이 섞이지 않게(R-T6d).
 function encodeAction(action, base) {
   const t = action.type
+  const same = !!base && base.Type === t
   if (KEEP_AS_IS.has(t)) {
-    return { Type: t, Value: base?.Value ?? '', NativeFunction: t === 15 ? base?.NativeFunction ?? null : null }
+    return { Type: t, Value: same ? base.Value ?? '' : '', NativeFunction: t === 15 && same ? base.NativeFunction ?? null : null }
   }
   // 해석 실패·빈 값으로 구조화 값이 없거나 모르는 종류면 고칠 수 없다 — 같은 종류 base 를 보존하고 없으면 오류
   const FIELD = { 1: 'click', 2: 'click', 3: 'click', 4: 'wheel', 5: 'keyboard', 9: 'findWindow', 12: 'customScript' }
   const missing = (t in FIELD && !action[FIELD[t]]) || (t === 6 && typeof action.waitSec !== 'number') || (t === 11 && typeof action.command !== 'string') ||
     !(Number.isInteger(t) && t >= 0 && t <= 15)
   if (missing) {
-    if (base && base.Type === t) return base
+    if (same) return base
     throw new Error('ACTION_UNSTRUCTURED')
   }
   let value = ''
@@ -315,7 +318,7 @@ function encodeAction(action, base) {
       value = `${w.title}@${w.className}` + (w.x !== null && w.y !== null ? `@${w.x}@${w.y}` : '')
       break
     }
-    case 10: value = base?.Value ?? ''; break
+    case 10: value = same ? base.Value ?? '' : ''; break // 메일 보내기는 값을 쓰지 않는다 — 원래 메일 보내기면 저장값 그대로
     case 11: value = action.command; break
     case 12: value = encodeCustomScript(action.customScript); break
     default: break

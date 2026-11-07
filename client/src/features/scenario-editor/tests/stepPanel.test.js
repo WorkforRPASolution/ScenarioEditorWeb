@@ -3,7 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 vi.mock('../api', () => ({ scenarioEditorApi: {}, imageUrl: (p) => `http://x/api${p}` }))
 import StepPanel from '../components/StepPanel.vue'
-import { t, MESSAGES } from '../messages'
+import { t, MESSAGES, LABELS } from '../messages'
 import { panelFixture, imageStep, ocrStep, noneStep, eqpStep } from './panelFixture'
 
 const mountPanel = () => mount(StepPanel, { attachTo: document.body })
@@ -122,12 +122,33 @@ describe('StepPanel — 레일과 [적용]', () => {
     w.unmount()
   })
 
-  it('조건 종류는 바꾸지 못한다(종류 고르기 칸이 없다)', () => {
-    panelFixture([imageStep(0)])
-    const w = mountPanel()
-    expect(w.find('[data-testid="se-detail-kind"]').exists()).toBe(false)
-    expect(w.find('[data-kind-pick]').exists()).toBe(false)
-    w.unmount()
+  it('조건 종류는 바꾸지 못한다 — 종류는 글자로만 보이고, 패널의 어느 칸을 고쳐도 적용해도 condition.kind 는 그대로', async () => {
+    for (const [mk, kind] of [[imageStep, 'image'], [ocrStep, 'ocr'], [noneStep, 'none']]) {
+      setActivePinia(createPinia())
+      const { e } = panelFixture([mk(0), imageStep(1)])
+      const w = mountPanel()
+      expect(w.find('[data-testid="se-panel-kind"]').text()).toBe(LABELS.condition[kind])
+      expect(w.find('[data-testid="se-panel-kind"]').element.tagName).not.toMatch(/^(BUTTON|SELECT|INPUT)$/)
+      await w.find('[data-testid="se-panel-act-now"]').trigger('click') // 동작 목록도 펼친다
+      const root = w.find('.se-rail').element.parentElement
+      for (const el of [...root.querySelectorAll('input, select')]) {
+        if (el.type === 'checkbox') { el.checked = !el.checked; el.dispatchEvent(new Event('change')) }
+        else if (el.tagName === 'SELECT') { el.selectedIndex = el.options.length - 1; el.dispatchEvent(new Event('change')) }
+        else { el.value = '3'; el.dispatchEvent(new Event('input')); el.dispatchEvent(new Event('change')) }
+        await flushPromises()
+        expect(e.panel.draft.condition.kind, el.outerHTML.slice(0, 80)).toBe(kind)
+      }
+      for (const el of [...root.querySelectorAll('.se-rail button:not([data-target])')]) {
+        el.click(); await flushPromises()
+        expect(e.panel.draft.condition.kind, el.outerHTML.slice(0, 80)).toBe(kind)
+      }
+      e.updateDraft((d) => ({ ...d, descriptionToEmail: '바뀐 설명', retry: { limit: 1, intervalMs: 2000 }, action: { type: 0, typeName: 'None' } }))
+      if (kind === 'image') e.updateDraft((d) => ({ ...d, condition: { ...d.condition, image: { ...d.condition.image, accept: 0.8, multi: { count: '1', op: 0 } } } }))
+      if (kind === 'ocr') e.updateDraft((d) => ({ ...d, condition: { ...d.condition, searchArea: { x: 1, y: 2, w: 3, h: 4 }, ocr: { ...d.condition.ocr, op: 1, opName: 'TextEqual', text: 'A', multi: { count: '1', op: 0 } } } }))
+      expect(e.applyPanel()).toBe(true)
+      expect(e.session.working.steps[0].condition.kind).toBe(kind)
+      w.unmount()
+    }
   })
 
   it('전처리 스킵 체크는 초안에 들어간다', async () => {
@@ -148,7 +169,7 @@ describe('StepPanel — 레일과 [적용]', () => {
     expect(s.selectedUid).toBe('s1')
     await input(w, '[data-field="desc"]', 'x')
     await w.find('[data-testid="se-panel-prev"]').trigger('click')
-    expect(e.dialog).toEqual({ kind: 'guard', to: 's0' })
+    expect(e.dialog).toEqual({ kind: 'guard', action: 'move', to: 's0' })
     w.unmount()
   })
 })

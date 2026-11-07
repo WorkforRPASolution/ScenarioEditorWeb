@@ -286,6 +286,15 @@ describe('assembleScenario — 고친 스텝', () => {
   })
 })
 
+describe('assembleScenario — 동작 종류를 바꾼 스텝(R-T6d)', () => {
+  it('대기 스텝을 메일 보내기로 바꾸면 저장 값은 빈 값(옛 대기 값을 옮기지 않는다)', async () => {
+    const e = editedFromSkeleton(src)
+    e.steps[2].action = { type: 10, typeName: 'SendEmail' }
+    const r = await assembleScenario(e, src, { id: 'P-M-N', resolveImage })
+    expect(r.body.Step[2].Script).toEqual({ Type: 10, Value: '', NativeFunction: null })
+  })
+})
+
 describe('assembleScenario — 옛 본문에서 빠진 키를 가진 스텝을 고칠 때(C1)', () => {
   const ctx = () => ({ user: { authorityManager: 0 }, target: { model: 'M', name: 'N' }, targetNames: new Set(), followGraph: new Map(), limits: {} })
   it('IsShowDialog·RetryLimit·RetryInterval 이 없는 스텝의 설명만 고치면 막힘 없이 C# 기본값(true·2·2000)을 쓴다', async () => {

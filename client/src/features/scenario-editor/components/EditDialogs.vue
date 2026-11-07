@@ -20,14 +20,18 @@ const delTitle = computed(() => (dialog.value?.kind === 'delblock'
 
 const close = () => { edit.dialog = null }
 
-// 적용 안 한 변경 확인: to = 가려는 스텝 uid | '__save'(저장 창) | null(그 밖의 일)
-const toSave = computed(() => dialog.value?.kind === 'guard' && dialog.value.to === '__save')
-const guardTitle = computed(() => (dialog.value?.kind === 'guard' ? t('SEW_EDIT_GUARD_TITLE', { no: noOf(edit.panel.uid) }) : ''))
-const guardBody = computed(() => {
-  if (dialog.value?.kind !== 'guard') return ''
-  const n = changedFields(edit.panel.base, edit.panel.draft).length
-  return t(toSave.value ? 'SEW_EDIT_GUARD_BODY_SAVE' : dialog.value.to ? 'SEW_EDIT_GUARD_BODY_MOVE' : 'SEW_EDIT_GUARD_BODY_OTHER', { n })
-})
+// 적용 안 한 변경 확인(R-T6c): 버튼·문구는 미룬 일(dialog.action)에 따른다. apply 가 null 이면 [적용하고 …] 갈래가 없다(되돌리기·다시 하기).
+const GUARD_COPY = {
+  move: { body: 'SEW_EDIT_GUARD_BODY_MOVE', drop: 'SEW_EDIT_GUARD_DROP', apply: 'SEW_EDIT_GUARD_APPLY' },
+  open: { body: 'SEW_EDIT_GUARD_BODY_OPEN', drop: 'SEW_EDIT_GUARD_DROP', apply: 'SEW_EDIT_GUARD_APPLY' },
+  save: { body: 'SEW_EDIT_GUARD_BODY_SAVE', drop: 'SEW_EDIT_GUARD_DROP_SAVE', apply: 'SEW_EDIT_GUARD_APPLY_SAVE' },
+  command: { body: 'SEW_EDIT_GUARD_BODY_OTHER', drop: 'SEW_EDIT_GUARD_DROP_CONTINUE', apply: 'SEW_EDIT_GUARD_APPLY_CONTINUE' },
+  undo: { body: 'SEW_EDIT_GUARD_BODY_UNDO', drop: 'SEW_EDIT_GUARD_DROP_UNDO', apply: null },
+  redo: { body: 'SEW_EDIT_GUARD_BODY_REDO', drop: 'SEW_EDIT_GUARD_DROP_REDO', apply: null }
+}
+const guardCopy = computed(() => (dialog.value?.kind === 'guard' ? GUARD_COPY[dialog.value.action] ?? GUARD_COPY.move : null))
+const guardTitle = computed(() => (guardCopy.value ? t('SEW_EDIT_GUARD_TITLE', { no: noOf(edit.panel.uid) }) : ''))
+const guardBody = computed(() => (guardCopy.value ? t(guardCopy.value.body, { n: changedFields(edit.panel.base, edit.panel.draft).length }) : ''))
 const guardBlocked = computed(() => dialog.value?.kind === 'guard' && Object.values(edit.panelErrors()).some((e) => e.level === 'error'))
 // 목록의 스텝으로 가서 갈 곳을 고치게 한다(목업 goref).
 function goRef(uid) { close(); edit.requestSelect(uid) }
@@ -93,8 +97,8 @@ const btnP = 'h-8 px-3 rounded-lg text-sm bg-primary-500 hover:bg-primary-600 te
         <p class="mx-[18px] mt-1.5 text-[13px] text-gray-500 dark:text-gray-400">{{ guardBody }}</p>
         <div class="flex justify-end gap-1.5 px-[18px] py-3.5 flex-wrap">
           <button type="button" :class="btnS" data-testid="se-guard-keep" @click="edit.guardKeep()">{{ t('SEW_EDIT_GUARD_KEEP') }}</button>
-          <button type="button" :class="btnS" data-testid="se-guard-drop" @click="edit.guardDrop()">{{ t(toSave ? 'SEW_EDIT_GUARD_DROP_SAVE' : 'SEW_EDIT_GUARD_DROP') }}</button>
-          <button type="button" :class="btnP" data-testid="se-guard-apply" :title="guardBlocked ? t('SEW_EDIT_GUARD_BLOCKED') : undefined" @click="edit.guardApply()">{{ t(toSave ? 'SEW_EDIT_GUARD_APPLY_SAVE' : 'SEW_EDIT_GUARD_APPLY') }}</button>
+          <button type="button" :class="guardCopy.apply ? btnS : btnP" data-testid="se-guard-drop" @click="edit.guardDrop()">{{ t(guardCopy.drop) }}</button>
+          <button v-if="guardCopy.apply" type="button" :class="btnP" data-testid="se-guard-apply" :title="guardBlocked ? t('SEW_EDIT_GUARD_BLOCKED') : undefined" @click="edit.guardApply()">{{ t(guardCopy.apply) }}</button>
         </div>
       </div>
     </div>

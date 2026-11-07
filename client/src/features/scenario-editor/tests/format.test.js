@@ -35,3 +35,13 @@ describe('format', () => {
     expect([enabledLabel(true), enabledLabel(false), enabledLabel(null)]).toEqual(['켜짐', '꺼짐', '?'])
   })
 })
+
+import { stepExtraRows } from '../format'
+import { MESSAGES as M } from '../messages'
+describe('stepExtraRows', () => {
+  it('찾을 그림 키·Type 줄 이름은 messages.js 에서 온다(P1 상세와 같은 글자)', () => {
+    const rows = stepExtraRows({ condition: { image: { trainImages: [{ key: 0, type: true }] } }, descriptionToDialog: '', isShowDialog: true, raw: {} })
+    expect(rows[4]).toEqual([M.SEW_UI_EXTRA_TRAIN_KEYS, '0:true'])
+    expect(M.SEW_UI_EXTRA_TRAIN_KEYS).toBe('학습 이미지(키·Type)')
+  })
+})

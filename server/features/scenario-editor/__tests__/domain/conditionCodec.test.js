@@ -220,6 +220,17 @@ describe('동작 해석 보강·조립', () => {
     const ml = { Type: 10, Value: 'to@x', NativeFunction: null }
     expect(encodeAction(act(10, 'to@x'), ml).Value).toBe('to@x')
   })
+  it('동작 종류를 바꾸면 다른 종류였던 base 의 저장 값을 쓰지 않는다(R-T6d)', () => {
+    const cmd = { Type: 11, Value: 'restart.bat', NativeFunction: null }
+    // 메일 보내기: 바꾼 스텝은 빈 값, 원래 메일 보내기면 그 값
+    expect(encodeAction({ type: 10, typeName: 'SendEmail' }, cmd)).toEqual({ Type: 10, Value: '', NativeFunction: null })
+    expect(encodeAction({ type: 10 }, { Type: 10, Value: 'to@x', NativeFunction: null }).Value).toBe('to@x')
+    // 보존 전용: 다른 종류 base 의 Value·NativeFunction 을 옮기지 않는다(검사 ACTION_NOT_CREATABLE 이 먼저 막지만 조립도 섞지 않는다)
+    expect(encodeAction({ type: 14, raw: 'X' }, cmd)).toEqual({ Type: 14, Value: '', NativeFunction: null })
+    const nf = { Type: 15, Value: 'v', NativeFunction: { FunctionName: 'f' } }
+    expect(encodeAction({ type: 15 }, { ...nf, Type: 11 })).toEqual({ Type: 15, Value: '', NativeFunction: null })
+    expect(encodeAction({ type: 8 }, { Type: 13, Value: 'a@b@c@d', NativeFunction: null })).toEqual({ Type: 8, Value: '', NativeFunction: null })
+  })
   it('키보드 조립: codes 가 배열이면 그 순서, 없으면 keys 다음 unknownCodes(옛 요청)', () => {
     expect(encodeAction({ type: 5, keyboard: { text: 'x', keys: [{ code: 10 }], unknownCodes: [17], codes: [17, 10] } }, null).Value).toBe('x@@17@@10')
     expect(encodeAction({ type: 5, keyboard: { text: 'x', keys: [{ code: 10 }], unknownCodes: [17] } }, null).Value).toBe('x@@10@@17')

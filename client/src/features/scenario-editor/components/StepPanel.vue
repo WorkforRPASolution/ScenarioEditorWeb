@@ -9,6 +9,7 @@ import { refUrl } from '../editor/images'
 import { CAN_FAIL, CLICK_TYPES, PRESERVE_ONLY, PANEL_OWN_CODES, changedFields, diffLines, errorFields, firstError, sentence, trainMapDropped, keyboardTokensDropped } from '../editor/panel'
 import { typeNameOf } from '../editor/display'
 import { t, noteMessage } from '../messages'
+import { conditionLabel } from '../format'
 import FieldError from './panel/FieldError.vue'
 import LookStation from './panel/LookStation.vue'
 import FindStation from './panel/FindStation.vue'
@@ -97,6 +98,8 @@ const btnS = 'h-8 px-3 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray
         <div class="flex items-center gap-2">
           <span class="w-6 h-6 rounded-md text-white text-xs font-bold flex items-center justify-center shrink-0" :class="p.isNew ? 'bg-green-500 text-sm' : 'bg-primary-500'">{{ no }}</span>
           <b class="flex-1 min-w-0 truncate font-semibold text-[13px] text-gray-900 dark:text-white">{{ d.descriptionToEmail || t('SEW_PANEL_NO_DESC') }}</b>
+          <!-- 조건 종류는 보기만 한다(설계 §4.2 — 바꾸려면 새 스텝) -->
+          <span class="shrink-0 text-[11px] text-gray-500 dark:text-gray-400" data-testid="se-panel-kind">{{ conditionLabel(kind) }}</span>
           <div v-if="!p.isNew" class="flex gap-0.5 shrink-0">
             <button type="button" :class="navBtn" data-testid="se-panel-prev" :disabled="idx <= 0" :aria-label="t('SEW_PANEL_PREV')" @click="go(-1)">
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 8l4-4 4 4" /></svg>

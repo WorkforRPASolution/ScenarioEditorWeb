@@ -67,6 +67,6 @@ export function stepExtraRows(step) {
   const train = step?.condition?.image?.trainImages ?? []
   return [
     ['MaximumNumberToFind', shown(isp.MaximumNumberToFind)], ['Timeout', shown(isp.Timeout)], ['TimeoutEnabled', shown(isp.TimeoutEnabled)], ['MinMatchingValue', shown(ocr.MinMatchingValue)],
-    ['학습 이미지(키·Type)', train.map((x) => `${x.key}:${shown(x.type)}`).join(', ') || '—'], ['DescriptionToDialog', step?.descriptionToDialog || '—'], ['IsShowDialog', shown(step?.isShowDialog)]
+    [msg('SEW_UI_EXTRA_TRAIN_KEYS'), train.map((x) => `${x.key}:${shown(x.type)}`).join(', ') || '—'], ['DescriptionToDialog', step?.descriptionToDialog || '—'], ['IsShowDialog', shown(step?.isShowDialog)]
   ]
 }

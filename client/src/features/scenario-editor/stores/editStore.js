@@ -32,8 +32,8 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   // 패널이 초점을 옮길 칸({ field, n } — n 은 같은 칸을 다시 요청해도 감시가 울리게)
   const focusReq = shallowRef(null)
   let movedTimer = null
-  // 적용 안 한 변경 확인 창이 미뤄 둔 일(확인 창 dialog 는 화면 값만 — 함수는 여기에)
-  let pendingNext = null
+  // 적용 안 한 변경 확인 창이 미뤄 둔 일 { next, onKeep }(확인 창 dialog 는 화면 값만 — 함수는 여기에)
+  let pending = null
 
   // 고칠 수 있는 세션: 작업본이 있고 읽기 전용이 아니다(작업본이 없는 뼈대는 P1 처럼 보기만).
   const editable = computed(() => !!session.value?.working && session.value.readOnly === null)
@@ -49,7 +49,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     toast.value = null
     dialog.value = null
     focusReq.value = null
-    pendingNext = null
+    pending = null
     clearMoved()
   }
 
@@ -136,19 +136,24 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     if (p.draft && p.draft !== p.base) panel.value = { ...p, draft: p.base }
   }
 
-  // 적용 안 한 변경이 있으면 세 갈래 확인 창을 세우고 next 를 미룬다(없으면 바로 한다). 다른 줄·새 스텝·저장 창·다른 시나리오 열기 앞에서 부른다.
-  // to = 가려는 스텝 uid, 저장 창이면 '__save', 그 밖이면 null(확인 창 문구를 고른다).
-  function guard(next, to = null) {
+  // 적용 안 한 변경이 있으면 확인 창을 세우고 next 를 미룬다(없으면 바로 한다). 확인 창 버튼은 미룬 일(action)에 따른다(R-T6c):
+  // - 'move'(다른 줄·순서도·경고 순회·새 스텝)·'open'(다른 시나리오 열기)·'save'(저장 창): [계속 고치기]·[버리고 이동]·[적용하고 이동]
+  // - 'command'(표 칸·삭제·붙여넣기·옮기기): [계속 고치기]·[버리고 계속]·[적용하고 계속] — 적용한 뒤 그 명령을 한다
+  // - 'undo'·'redo': [계속 고치기]·[버리고 되돌리기]/[버리고 다시 하기] 만 — 적용하면 그 적용을 되돌리거나(되돌리기) 다시 할 것을 비우게(다시 하기) 된다
+  // to = 가려는 스텝 uid(이동일 때). onKeep = [계속 고치기]로 접을 때 할 일(예: 주소를 열린 시나리오로 되돌리기).
+  const NO_APPLY = new Set(['undo', 'redo'])
+  function guard(next, { action = 'move', to = null, onKeep = null } = {}) {
     if (!panelDirty()) { next(); return true }
-    pendingNext = next
-    dialog.value = { kind: 'guard', to }
+    pending = { next, onKeep }
+    dialog.value = { kind: 'guard', action, to }
     return false
   }
-  function closeGuard() { const next = pendingNext; pendingNext = null; if (dialog.value?.kind === 'guard') dialog.value = null; return next }
-  function guardKeep() { closeGuard() }
-  function guardDrop() { const next = closeGuard(); discardPanel(); next?.() }
+  function closeGuard() { const p = pending; pending = null; if (dialog.value?.kind === 'guard') dialog.value = null; return p ?? {} }
+  function guardKeep() { closeGuard().onKeep?.() }
+  function guardDrop() { const { next } = closeGuard(); discardPanel(); next?.() }
   function guardApply() {
-    const next = closeGuard()
+    if (dialog.value?.kind === 'guard' && NO_APPLY.has(dialog.value.action)) return false
+    const { next } = closeGuard()
     if (!applyPanel()) return false
     next?.()
     return true
@@ -158,7 +163,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   function requestSelect(uid) {
     const go = () => setSelection({ uids: [uid], anchor: uid })
     if (uid === panel.value.uid) { go(); return true }
-    return guard(go, uid)
+    return guard(go, { action: 'move', to: uid })
   }
 
   // 표 줄 누르기(목업 select): 그냥 = 한 줄, Shift = 기준 줄부터 범위, Ctrl/Cmd = 더하기·빼기. 번호 순으로 둔다.
@@ -233,18 +238,18 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   const refused = (code) => notify(t(`SEW_CMD_REFUSED_${code}`))
   const noOf = (uid) => stepNo(session.value.working, uid)
 
-  // 작업본을 바꾸거나 초점을 옮기는 명령은 패널에 적용 안 한 변경이 있으면 먼저 묻는다.
-  const guarded = (fn) => { if (!panelDirty()) return false; guard(fn); return true }
+  // 작업본을 바꾸는 명령은 패널에 적용 안 한 변경이 있으면 먼저 묻는다(action 은 확인 창 버튼을 고른다).
+  const guarded = (fn, action = 'command') => { if (!panelDirty()) return false; guard(fn, { action }); return true }
 
   function undoCommand() {
-    if (guarded(undoCommand)) return false
+    if (guarded(undoCommand, 'undo')) return false
     if (!undoLast()) return false
     clearMoved()
     notify(t('SEW_CMD_UNDONE'))
     return true
   }
   function redoCommand() {
-    if (guarded(redoCommand)) return false
+    if (guarded(redoCommand, 'redo')) return false
     if (!redoLast()) return false
     clearMoved()
     notify(t('SEW_CMD_REDONE'))
@@ -305,6 +310,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   function moveSelected(dir) {
     const uids = selection.value.uids
     if (!uids.length) return false
+    if (guarded(() => moveSelected(dir))) return false
     const nos = uids.map(noOf).sort((a, b) => a - b)
     const r = moveSteps(session.value.working, uids, dir)
     if (r.refused) { refused(r.refused); return false }

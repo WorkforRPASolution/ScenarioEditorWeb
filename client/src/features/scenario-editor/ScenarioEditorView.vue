@@ -38,10 +38,14 @@ const queryTarget = () => {
 const queryOf = (sk) => ({ p: sk.process, m: sk.model, n: sk.name, v: sk.version.isCurrent ? 'current' : String(sk.version.crtime) })
 const writeQuery = (sk) => router.replace({ name: 'ScenarioEditor', query: queryOf(sk) })
 
+// 다른 시나리오 열기 — 오른쪽 패널에 적용 안 한 변경이 있으면 먼저 묻는다(guard 'open'). onKeep = [계속 고치기]로 접을 때 할 일.
+// 저장 전 작업본 변경(적용한 값)을 떠나기 전에 묻는 것은 P2-D 다.
+const openGuarded = (target, onKeep = null) => edit.guard(() => store.openScenario(target), { action: 'open', onKeep })
+
 async function start() {
   const target = queryTarget() // await 뒤에는 다른 화면의 주소일 수 있어 먼저 읽는다
   await store.init()
-  if (!store.meError && target) store.openScenario(target)
+  if (!store.meError && target) openGuarded(target)
 }
 
 onMounted(() => { active = true; start() })
@@ -54,14 +58,15 @@ onActivated(() => {
   if (store.meError || store.opening) return // 열기가 끝나면 아래 감시자가 주소를 맞춘다
   if (!target) { if (sk) writeQuery(sk); return }
   const q = sk && queryOf(sk)
-  if (!q || q.p !== target.process || q.m !== target.model || q.n !== target.name || q.v !== target.crtime) store.openScenario(target)
+  // 주소가 다른 시나리오를 가리킨다. 패널에 적용 안 한 변경이 있으면 묻고, [계속 고치기]면 주소를 열린 시나리오로 되돌린다.
+  if (!q || q.p !== target.process || q.m !== target.model || q.n !== target.name || q.v !== target.crtime) openGuarded(target, () => { if (store.skeleton && active) writeQuery(store.skeleton) })
 })
 
 watch(() => store.skeleton, (sk) => {
   if (sk && active) writeQuery(sk)
 })
 
-const retry = () => store.openError && store.openScenario(store.openError.target)
+const retry = () => store.openError && openGuarded(store.openError.target)
 const card = 'bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:border-dark-border'
 </script>
 
@@ -111,7 +116,7 @@ const card = 'bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:
         </section>
       </div>
     </template>
-    <LoadDialog v-model="loadOpen" @open="(target) => { loadOpen = false; store.openScenario(target) }" />
+    <LoadDialog v-model="loadOpen" @open="(target) => { loadOpen = false; openGuarded(target) }" />
     <EditDialogs v-if="edit.editable" />
   </div>
 </template>
