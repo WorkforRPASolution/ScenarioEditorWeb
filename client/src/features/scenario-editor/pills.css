@@ -4,9 +4,27 @@
 .se-pill-end-fail { background: #fee2e2; color: #991b1b; }
 .se-pill-end-skip { background: #fef3c7; color: #92400e; }
 .se-pill-step { background: #dbeafe; color: #1e40af; cursor: pointer; }
-.se-pill-raw { background: #fde68a; color: #78350f; }
+.se-pill-raw, .se-pill-unresolved { background: #fde68a; color: #78350f; }
+button.se-pill { border: 0; cursor: pointer; }
+button.se-pill:hover { box-shadow: 0 0 0 2px #cbd5e1; }
+.se-pill-moved { animation: se-moved 1.8s ease-out; }
+@keyframes se-moved { 0%, 55% { box-shadow: 0 0 0 3px #f59e0b; } 100% { box-shadow: 0 0 0 0 transparent; } }
+/* 표 편집: 바뀐 줄 점·정확도 칸·잘라 둔 줄 */
+.se-mark { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+.se-mark-ch { background: #f59e0b; }
+.se-mark-nw { background: #22c55e; }
+.se-mark-pending { border: 2px solid #3b82f6; }
+.se-cellnum { width: 52px; height: 24px; border: 1px solid transparent; background: none; border-radius: 4px; text-align: right; padding: 0 4px; font-variant-numeric: tabular-nums; color: inherit; }
+.se-cellnum:hover { border-color: #cbd5e1; background: #fff; }
+.se-cellnum:focus { border-color: #3b82f6; background: #fff; outline: 0; }
+.se-cellnum-bad, .se-cellnum-bad:hover, .se-cellnum-bad:focus { border-color: #ef4444; }
+.se-cellcheck { width: 14px; height: 14px; vertical-align: middle; accent-color: #3b82f6; }
+.ag-row.se-row-cut { opacity: .45; }
 .dark .se-pill-next { background: #374151; color: #d1d5db; }
 .dark .se-pill-end-success { background: rgba(22, 101, 52, .35); color: #86efac; }
 .dark .se-pill-end-fail { background: rgba(153, 27, 27, .35); color: #fca5a5; }
 .dark .se-pill-end-skip { background: rgba(146, 64, 14, .35); color: #fcd34d; }
 .dark .se-pill-step { background: rgba(30, 64, 175, .35); color: #93c5fd; }
+.dark .se-cellnum:hover, .dark .se-cellnum:focus { background: #0f172a; }
+.dark .se-cellnum:hover { border-color: #475569; }
+.dark button.se-pill:hover { box-shadow: 0 0 0 2px #475569; }

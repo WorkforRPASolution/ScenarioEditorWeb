@@ -53,6 +53,10 @@ describe('StepViewer', () => {
     expect(area.attributes('style')).toContain('width: 846px')
     expect(w.text()).toContain('학습 이미지 위치는 저장되지 않아')
   })
+  it('편집으로 만든 스텝은 뼈대 URL 대신 src(참조에서 만든 URL)를 그대로 쓴다', () => {
+    open(step({ baseImage: { state: 'present', src: 'blob:abc' } }))
+    expect(mount(StepViewer).find('[data-testid="se-base-image"]').attributes('src')).toBe('blob:abc')
+  })
   it('OCR 은 보라 OCR 영역', async () => {
     open(step({ condition: { kind: 'ocr', searchArea: { x: 1, y: 2, w: 3, h: 4 } } }))
     const w = mount(StepViewer)

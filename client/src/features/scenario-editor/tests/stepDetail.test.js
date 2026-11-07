@@ -63,6 +63,19 @@ describe('StepDetail', () => {
     text = mount(StepDetail).text()
     for (const v of ['범위 안', '1 ~ 5', '@@@@1-0']) expect(text).toContain(v)
   })
+  it('조건 없음 + 마우스 클릭: NONE_WITH_MOUSE_CLICK 알림이 상세에 보인다(P1 정정)', () => {
+    open({ ...base, notes: [{ level: 'warning', code: 'NONE_WITH_MOUSE_CLICK', params: {} }], condition: { kind: 'none', skipPreprocessing: false },
+      action: { typeName: 'MouseLeftClick', raw: '5:5', click: { x: 5, y: 5, basis: 'screenOrigin' } } })
+    const text = mount(StepDetail).text()
+    expect(text).toContain(MESSAGES.SEW_NOTE_NONE_WITH_MOUSE_CLICK)
+    expect(text).toContain('실행 때 저장 좌표와 상관없이 화면 왼쪽 위(0,0)를 누릅니다')
+  })
+  it('편집으로 만든 스텝(뼈대 URL 없이 src 만)도 그림을 보인다', () => {
+    open({ ...base, baseImage: { state: 'present', src: 'blob:base' }, raw: undefined,
+      condition: { kind: 'image', skipPreprocessing: false, searchArea: { x: 1, y: 2, w: 3, h: 4 }, image: { accept: 0.9, multi: { count: '1', op: 0 }, trainImages: [{ key: 0, type: 0, url: null, src: 'blob:train' }] } } })
+    const srcs = mount(StepDetail).findAllComponents(CropView).map((c) => c.props('src'))
+    expect(srcs).toEqual(['blob:base', 'blob:base', 'blob:train'])
+  })
   it('흐름의 스텝 표시를 누르면 이동', async () => {
     const st = open({ ...base, notes: [], condition: { kind: 'none', skipPreprocessing: false }, action: { typeName: 'None', raw: '' } })
     await mount(StepDetail).find('[data-testid="se-detail-onFalse"]').trigger('click')

@@ -141,3 +141,99 @@ describe('editStore.run·undoLast·redoLast', () => {
     expect(e.redo).toEqual([])
   })
 })
+
+describe('editStore 선택 — 여러 줄 선택과 초점(editorStore.selectedUid)', () => {
+  const st = (uid, over = {}) => ({ uid, origin: 0, condition: { kind: 'none' }, action: { type: 0 }, retry: {}, next: { onTrue: { kind: 'next' }, onFalse: { kind: 'end', value: 'FAIL' } }, descriptionToEmail: uid, images: { train: {}, base: null }, ...over })
+  const mk = () => {
+    const w = { source: { process: 'P', model: 'M', name: 'N', crtime: 1, fileId: 'f' }, headCrtime: 1, header: {}, steps: [st('a'), st('b'), st('c'), st('d')], property: {} }
+    const s = useEditorStore()
+    const sk = { ...skeleton, steps: w.steps.map((x, i) => ({ ...x, no: i + 1, notes: [] })), edited: w }
+    s.skeleton = sk
+    const e = useEditStore()
+    e.begin(sk, { canWrite: true }) // openScenario 처럼 날 객체(toRaw)로
+    return { s, e, w }
+  }
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('editorStore 로 초점을 옮기면(순서도·상세·경고 순회) 여러 줄 선택이 그 한 줄로 접힌다', () => {
+    const { s, e } = mk()
+    e.setSelection({ uids: ['a', 'b'], anchor: 'a' })
+    expect(s.selectedUid).toBe('a')
+    s.select('c')
+    expect(e.selection).toEqual({ uids: ['c'], anchor: 'c' })
+    s.moveSelection(1)
+    expect(e.selection).toEqual({ uids: ['d'], anchor: 'd' })
+  })
+  it('열면 첫 스텝이 선택에 들어간다(앞 시나리오와 uid 가 같아도)', async () => {
+    api.open.mockReturnValue(ok(skeleton))
+    const s = useEditorStore()
+    s.me = { canWrite: true }
+    await s.openScenario({ process: 'P', model: 'M', name: 'N' })
+    await s.openScenario({ process: 'P', model: 'M', name: 'N' })
+    expect(useEditStore().selection).toEqual({ uids: ['s0'], anchor: 's0' })
+  })
+  it('clickRow: Shift 는 기준 줄부터 범위, Ctrl 은 더하기·빼기, 한 줄만 남으면 그 줄이 기준', () => {
+    const { s, e } = mk()
+    e.clickRow('b')
+    e.clickRow('d', { shift: true })
+    expect(e.selection).toEqual({ uids: ['b', 'c', 'd'], anchor: 'b' })
+    e.clickRow('a', { shift: true })
+    expect(e.selection).toEqual({ uids: ['a', 'b'], anchor: 'b' })
+    e.clickRow('b', { toggle: true })
+    expect(e.selection).toEqual({ uids: ['a'], anchor: 'a' })
+    expect(s.selectedUid).toBe('a')
+  })
+  it('requestSelect: 패널에 적용 안 한 변경이 있으면 확인 창(guard)을 세우고 선택은 그대로', () => {
+    const { s, e, w } = mk()
+    s.select('a')
+    e.panel = { uid: 'a', isNew: false, draft: { ...w.steps[0], descriptionToEmail: '고침' }, base: w.steps[0] }
+    expect(e.requestSelect('c')).toBe(false)
+    expect(e.dialog).toEqual({ kind: 'guard', to: 'c' })
+    expect(s.selectedUid).toBe('a')
+    e.dialog = null
+    expect(e.requestSelect('a')).toBe(true) // 같은 줄은 묻지 않는다
+    e.panel = { uid: 'a', isNew: false, draft: { ...w.steps[0] }, base: w.steps[0] }
+    expect(e.requestSelect('c')).toBe(true)
+    expect(s.selectedUid).toBe('c')
+    expect(e.selection).toEqual({ uids: ['c'], anchor: 'c' })
+  })
+  it('되돌리기는 선택과 초점을 함께 되돌린다', () => {
+    const { s, e } = mk()
+    e.setSelection({ uids: ['b'], anchor: 'b' })
+    e.deleteSelection()
+    expect(s.selectedUid).toBe('c')
+    e.undoCommand()
+    expect(s.selectedUid).toBe('b')
+    expect(e.selection).toEqual({ uids: ['b'], anchor: 'b' })
+  })
+  it('잘라내 붙이면 같은 스텝이 옮겨지고 묶음은 비워진다, 잘라낸 범위 안은 막는다', () => {
+    const { e, w } = mk()
+    e.setSelection({ uids: ['a', 'b'], anchor: 'a' })
+    e.copySelection(true)
+    expect(e.clip.cut).toBe(true)
+    e.pasteClip('after')
+    expect(e.toast.text).toBe('잘라낸 범위 안에는 붙여넣을 수 없습니다. 다른 자리를 고르세요.')
+    e.setSelection({ uids: ['d'], anchor: 'd' })
+    e.pasteClip('after')
+    expect(e.session.working.steps.map((x) => x.uid)).toEqual(['c', 'd', 'a', 'b'])
+    expect(e.session.working.steps[2]).toBe(w.steps[0])
+    expect(e.clip).toBe(null)
+    expect(e.selection).toEqual({ uids: ['a', 'b'], anchor: 'a' })
+  })
+  it('복사해 붙인 스텝은 새 uid, 붙일 때마다 다르다', () => {
+    const { e } = mk()
+    e.setSelection({ uids: ['a'], anchor: 'a' })
+    e.copySelection(false)
+    e.pasteClip('end'); e.pasteClip('end')
+    const ids = e.session.working.steps.map((x) => x.uid)
+    expect(ids).toHaveLength(6)
+    expect(new Set(ids).size).toBe(6)
+  })
+  it('떨어진 줄 복사는 막고 이유를 알린다', () => {
+    const { e } = mk()
+    e.setSelection({ uids: ['a', 'c'], anchor: 'a' })
+    e.copySelection(false)
+    expect(e.clip).toBe(null)
+    expect(e.toast.text).toBe('연속한 스텝만 고를 수 있습니다.')
+  })
+})

@@ -1,14 +1,14 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
-import { imageUrl } from '../api'
+import { imageSrc } from '../editor/display'
 import { t } from '../messages'
 import { safeStorage } from '../composables/useSafeStorage'
 
 defineOptions({ name: 'StepViewer' })
 const store = useEditorStore()
 const step = computed(() => store.selectedStep)
-const src = computed(() => (step.value?.baseImage.state === 'present' ? imageUrl(step.value.baseImage.url) : null))
+const src = computed(() => (step.value?.baseImage.state === 'present' ? imageSrc(step.value.baseImage) : null))
 // 버전의 기준 화면 데이터 자체를 해석하지 못했으면(시나리오 경고 PARSE_FAILED bi) "저장되어 있지 않음" 이 아니라 그 사실을 알린다.
 const biUnreadable = computed(() => (store.skeleton?.notes ?? []).some((n) => n.code === 'PARSE_FAILED' && n.params?.field === 'bi'))
 const natural = ref(null)

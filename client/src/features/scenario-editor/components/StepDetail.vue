@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
-import { imageUrl } from '../api'
+import { imageSrc } from '../editor/display'
 import { t, LABELS, noteMessage } from '../messages'
 import { targetLabel, targetKind, multiLabel, actionDetails, conditionLabel, actionLabel, intervalSec } from '../format'
 import CropView from './CropView.vue'
@@ -65,11 +65,11 @@ const lab = 'text-[11px] font-semibold text-gray-500 dark:text-gray-400 mb-2'
         </div>
         <template v-if="c.kind === 'image' && c.image">
           <div class="flex gap-2 items-start mb-2">
-            <div v-if="s.baseImage.state === 'present'"><div class="text-[11px] text-gray-500 mb-0.5">기준 화면</div><CropView :src="imageUrl(s.baseImage.url)" :width="100" /></div>
-            <div v-if="s.baseImage.state === 'present' && c.searchArea"><div class="text-[11px] text-gray-500 mb-0.5">검색 영역</div><CropView :src="imageUrl(s.baseImage.url)" :rect="c.searchArea" :width="100" /></div>
-            <div v-for="ti in c.image.trainImages.filter((x) => x.url)" :key="ti.key">
+            <div v-if="s.baseImage.state === 'present'"><div class="text-[11px] text-gray-500 mb-0.5">기준 화면</div><CropView :src="imageSrc(s.baseImage)" :width="100" /></div>
+            <div v-if="s.baseImage.state === 'present' && c.searchArea"><div class="text-[11px] text-gray-500 mb-0.5">검색 영역</div><CropView :src="imageSrc(s.baseImage)" :rect="c.searchArea" :width="100" /></div>
+            <div v-for="ti in c.image.trainImages.filter((x) => x.url || x.src)" :key="ti.key">
               <div class="text-[11px] text-gray-500 mb-0.5">학습 이미지{{ ti.key !== 0 ? ` (${ti.key})` : '' }}{{ markerFor(ti) ? ' + 클릭' : '' }}</div>
-              <CropView :src="imageUrl(ti.url)" :width="100" :marker="markerFor(ti)" @outside="clickOutside = $event" />
+              <CropView :src="imageSrc(ti)" :width="100" :marker="markerFor(ti)" @outside="clickOutside = $event" />
             </div>
           </div>
           <p v-if="clickOutside && s.action.click" class="text-[11px] text-amber-600 mb-1">{{ t('SEW_UI_CLICK_OUTSIDE', { x: s.action.click.x, y: s.action.click.y }) }}</p>
@@ -80,7 +80,7 @@ const lab = 'text-[11px] font-semibold text-gray-500 dark:text-gray-400 mb-2'
           </dl>
         </template>
         <template v-else-if="c.kind === 'ocr' && c.ocr">
-          <div v-if="s.baseImage.state === 'present' && c.searchArea" class="mb-2"><div class="text-[11px] text-gray-500 mb-0.5">OCR 영역</div><CropView :src="imageUrl(s.baseImage.url)" :rect="c.searchArea" :width="160" /></div>
+          <div v-if="s.baseImage.state === 'present' && c.searchArea" class="mb-2"><div class="text-[11px] text-gray-500 mb-0.5">OCR 영역</div><CropView :src="imageSrc(s.baseImage)" :rect="c.searchArea" :width="160" /></div>
           <dl class="grid grid-cols-[110px_1fr] gap-y-1 text-xs">
             <dt class="text-gray-500">OCR 영역</dt><dd>{{ areaText(c.searchArea) }}</dd>
             <dt class="text-gray-500">비교</dt><dd>{{ LABELS.ocrOp[c.ocr.opName] ?? c.ocr.op }} ({{ c.ocr.opName ?? c.ocr.op }})</dd>

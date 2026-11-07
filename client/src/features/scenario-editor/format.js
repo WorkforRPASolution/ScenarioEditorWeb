@@ -5,6 +5,7 @@ export function targetLabel(t) {
   if (t.kind === 'next') return 'NEXT'
   if (t.kind === 'end') return t.value
   if (t.kind === 'step') return `→${t.no}`
+  if (t.kind === 'unresolved') return t.value === undefined || t.value === null ? '미해결' : `미해결 ${t.value}`
   return `? ${t.value}`
 }
 

@@ -13,7 +13,7 @@ import { useEditorStore } from '../stores/editorStore'
 import { MESSAGES } from '../messages'
 
 const ok = (data) => Promise.resolve({ data: { data } })
-const stubs = { ScenarioBar: true, LoadDialog: true, StepTable: true, StepFlow: true, StepViewer: true, StepDetail: true }
+const stubs = { ScenarioBar: true, LoadDialog: true, StepTable: true, StepFlow: true, StepViewer: true, StepDetail: true, StepToolbar: true, EditDialogs: true, MultiSelection: true }
 const mountView = () => shallowMount(ScenarioEditorView, { global: { stubs: { ...stubs, StatePanel: false, SplitGutter: false } } })
 const skeletonOf = (name, crtime = 5, isCurrent = false) => ({ process: 'P', model: 'M', name, version: { crtime, isCurrent }, steps: [], notes: [] })
 const defer = () => { let resolve; const promise = new Promise((res) => { resolve = res }); return { promise, resolve } }
@@ -77,6 +77,31 @@ describe('ScenarioEditorView', () => {
   it('경계선 안내 문구는 문구 목록에서 온다', async () => {
     const w = mountView(); await flushPromises()
     expect(w.find('[data-testid="se-gutter-r"]').attributes('title')).toBe(MESSAGES.SEW_UI_GUTTER_HINT)
+  })
+
+  describe('편집 도구 줄', () => {
+    const editedOf = (sk) => ({ source: { process: sk.process, model: sk.model, name: sk.name, crtime: sk.version.crtime, fileId: 'F' }, headCrtime: sk.version.crtime, header: { description: '', timeoutLimit: '1' }, steps: [], property: {} })
+    const openWith = async (me, isCurrent) => {
+      api.me.mockReturnValue(ok(me))
+      route.query = { p: 'P', m: 'M', n: 'N' }
+      const sk = skeletonOf('N', 5, isCurrent)
+      api.open.mockReturnValue(ok({ ...sk, edited: editedOf(sk) }))
+      const w = mountView(); await flushPromises()
+      return w
+    }
+    it('쓸 수 있는 현재 판이면 도구 줄과 편집 창(삭제 막힘·알림)을 단다', async () => {
+      const w = await openWith({ singleid: 'u', canWrite: true }, true)
+      expect(w.findComponent({ name: 'StepToolbar' }).exists()).toBe(true)
+      expect(w.findComponent({ name: 'EditDialogs' }).exists()).toBe(true)
+    })
+    it('쓰기 권한이 없거나 옛 판이면 도구 줄이 없다', async () => {
+      const a = await openWith({ singleid: 'u', canWrite: false }, true)
+      expect(a.findComponent({ name: 'StepToolbar' }).exists()).toBe(false)
+      a.unmount()
+      setActivePinia(createPinia())
+      const b = await openWith({ singleid: 'u', canWrite: true }, false)
+      expect(b.findComponent({ name: 'StepToolbar' }).exists()).toBe(false)
+    })
   })
 
   describe('내 정보를 못 읽었을 때', () => {

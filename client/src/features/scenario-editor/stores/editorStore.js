@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia'
-import { ref, computed, toRaw } from 'vue'
+import { ref, computed, toRaw, watch } from 'vue'
 import { scenarioEditorApi as api } from '../api'
 import { errorCode, errorMessage } from '../messages'
 import { useEditStore } from './editStore'
+import { displaySteps } from '../editor/display'
 
 const fail = (e) => ({ code: errorCode(e), message: errorMessage(e) })
 
@@ -18,7 +19,13 @@ export const useEditorStore = defineStore('scenarioEditor', () => {
   const view = ref('table')
   const expanded = ref(false)
 
-  const steps = computed(() => skeleton.value?.steps ?? [])
+  const edit = useEditStore()
+  // 편집 중(작업본이 있음)이면 작업본을 뼈대 스텝 모양으로 — 표·순서도·큰 화면·상세가 고친 내용을 따라간다. 고친 것이 없으면 뼈대 배열 그대로.
+  const steps = computed(() => {
+    const session = edit.session
+    if (session?.working && skeleton.value) return displaySteps(session, skeleton.value, { uploads: edit.uploads, draftId: edit.draftId ?? null })
+    return skeleton.value?.steps ?? []
+  })
   const selectedStep = computed(() => steps.value.find((s) => s.uid === selectedUid.value) ?? null)
   const count = (level) => steps.value.reduce((a, s) => a + s.notes.filter((n) => n.level === level).length, 0)
     + (skeleton.value?.notes ?? []).filter((n) => n.level === level).length
@@ -59,18 +66,23 @@ export const useEditorStore = defineStore('scenarioEditor', () => {
       const next = (await api.open(process, model, name, crtime)).data.data
       if (id !== openSeq) return
       skeleton.value = next
-      useEditStore().begin(toRaw(next), me.value)
+      edit.begin(toRaw(next), me.value)
       selectedUid.value = next.steps[0]?.uid ?? null
+      edit.syncFocus(selectedUid.value) // 앞 시나리오와 첫 uid 가 같으면 아래 감시자가 울리지 않는다
     } catch (e) {
       if (id !== openSeq) return
       skeleton.value = null
-      useEditStore().end()
+      edit.end()
       selectedUid.value = null
       openError.value = { ...fail(e), target: { process, model, name, crtime } }
     } finally {
       if (id === openSeq) opening.value = null
     }
   }
+
+  // 초점(보는 스텝)이 다른 경로(순서도·상세·경고 순회·↑↓)로 바뀌면 여러 줄 선택을 그 한 줄로 접는다.
+  // 편집 저장소가 여러 줄을 고를 때는 기준 줄을 먼저 정하고 초점을 옮기므로 접히지 않는다.
+  watch(selectedUid, (uid) => edit.syncFocus(uid), { flush: 'sync' })
 
   const select = (uid) => { selectedUid.value = uid }
   const selectByNo = (no) => { const s = steps.value[no - 1]; if (s) selectedUid.value = s.uid }

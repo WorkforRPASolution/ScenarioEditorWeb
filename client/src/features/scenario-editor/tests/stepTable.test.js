@@ -133,3 +133,198 @@ describe('StepTable', () => {
     })
   })
 })
+
+// ── 편집(작업본이 있고 쓸 수 있는 세션) ──
+import { useEditStore } from '../stores/editStore'
+import TargetPicker from '../components/TargetPicker.vue'
+
+const edStep = (i, over = {}) => ({
+  uid: `s${i}`, origin: i,
+  condition: { kind: 'image', skipPreprocessing: false, searchArea: { x: 0, y: 0, w: 5, h: 5 }, image: { accept: 0.9, multi: { count: '1', op: 0 }, trainImages: [] } },
+  action: { type: 0, typeName: 'None', raw: '' }, retry: { limit: 1, intervalMs: 2000 },
+  next: { onTrue: { kind: 'next' }, onFalse: { kind: 'end', value: 'FAIL' } },
+  descriptionToEmail: `스텝${i}`, descriptionToDialog: '', isShowDialog: false,
+  images: { train: {}, base: { from: 'source', id: `s${i}-bi` } }, ...over
+})
+const skOf = (e, i) => ({ ...e, no: i + 1, notes: [], baseImage: { state: 'present', url: `/u/${e.uid}` },
+  next: { onTrue: e.next.onTrue.kind === 'step' ? { ...e.next.onTrue, no: Number(e.next.onTrue.uid.slice(1)) + 1 } : e.next.onTrue, onFalse: e.next.onFalse } })
+// s2 의 성공 쪽이 s0(1번)을 가리킨다
+function editFixture({ canWrite = true, isCurrent = true } = {}) {
+  const steps = [edStep(0), edStep(1), edStep(2, { next: { onTrue: { kind: 'step', uid: 's0' }, onFalse: { kind: 'end', value: 'FAIL' } } }), edStep(3)]
+  const edited = { source: { process: 'P', model: 'M', name: 'N', crtime: 1, fileId: 'F' }, headCrtime: 1, header: { description: '', timeoutLimit: '1' }, steps, property: {} }
+  const skeleton = { process: 'P', model: 'M', name: 'N', headCrtime: 1, version: { crtime: 1, isCurrent, fileId: 'F' }, steps: steps.map(skOf), notes: [], edited }
+  const s = useEditorStore(); s.skeleton = skeleton
+  const e = useEditStore(); e.begin(skeleton, { canWrite })
+  s.select('s0')
+  return { s, e, edited }
+}
+
+describe('StepTable — 편집', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+  const AgStub = { name: 'AgGridVue', props: ['rowData', 'rowSelection', 'defaultColDef', 'columnDefs', 'context'], template: '<div />' }
+  const mountTable = () => mount(StepTable, { global: { stubs: { AgGridVue: AgStub } }, attachTo: document.body })
+  const grid = (w) => w.findComponent({ name: 'AgGridVue' })
+  const click = (w, uid, mods = {}) => grid(w).vm.$emit('cell-clicked', { data: { uid }, event: { target: document.createElement('div'), ...mods } })
+  const col = (w, field) => grid(w).props('columnDefs').find((c) => c.field === field)
+  const cell = (w, field, uid) => {
+    const c = col(w, field)
+    const data = grid(w).props('rowData').find((r) => r.uid === uid)
+    return c.cellRenderer({ value: data[field], data, colDef: c, context: grid(w).props('context') })
+  }
+
+  it('클릭 = 한 줄, Shift = 범위(기준 줄은 그대로), Ctrl/Cmd = 더하기·빼기', async () => {
+    const { s, e } = editFixture()
+    const w = mountTable()
+    click(w, 's1')
+    expect(e.selection).toEqual({ uids: ['s1'], anchor: 's1' })
+    expect(s.selectedUid).toBe('s1')
+    click(w, 's3', { shiftKey: true })
+    expect(e.selection.uids).toEqual(['s1', 's2', 's3'])
+    expect(s.selectedUid).toBe('s1')
+    click(w, 's2', { ctrlKey: true })
+    expect(e.selection.uids).toEqual(['s1', 's3'])
+    click(w, 's0', { metaKey: true })
+    expect(e.selection.uids).toEqual(['s0', 's1', 's3'])
+    click(w, 's2')
+    expect(e.selection).toEqual({ uids: ['s2'], anchor: 's2' })
+    w.unmount()
+  })
+
+  it('여러 줄 선택이라 AG Grid 선택은 multiRow·클릭 선택 끔, 선택한 줄을 표에 맞춘다', async () => {
+    const { e } = editFixture()
+    const w = mountTable()
+    expect(grid(w).props('rowSelection')).toMatchObject({ mode: 'multiRow', checkboxes: false, headerCheckbox: false, enableClickSelection: false })
+    const nodes = ['s0', 's1', 's2', 's3'].map((id) => ({ id, sel: false, isSelected() { return this.sel }, setSelected(v) { this.sel = v } }))
+    const api = { forEachNode: (f) => nodes.forEach(f), getRowNode: (id) => nodes.find((n) => n.id === id), ensureNodeVisible: vi.fn() }
+    grid(w).vm.$emit('grid-ready', { api })
+    e.setSelection({ uids: ['s1', 's2'], anchor: 's1' })
+    await flushPromises()
+    expect(nodes.map((n) => n.sel)).toEqual([false, true, true, false])
+    w.unmount()
+  })
+
+  it('정확도 0.3 → 칸에 오류, 작업본 그대로 / 0.7 → 바로 들어가고 되돌리기로 되돌린다', () => {
+    const { e, edited } = editFixture()
+    const w = mountTable()
+    const el = cell(w, 'accept', 's1')
+    const input = el.tagName === 'INPUT' ? el : el.querySelector('input')
+    expect(input.value).toBe('0.90')
+    input.value = '0.3'
+    input.dispatchEvent(new Event('change'))
+    expect(input.classList.contains('se-cellnum-bad')).toBe(true)
+    expect(input.getAttribute('aria-invalid')).toBe('true')
+    expect(input.title).toBe('정확도는 0.5 이상만 받습니다.')
+    expect(e.session.working).toBe(edited)
+    input.value = '0.7'
+    input.dispatchEvent(new Event('change'))
+    expect(e.session.working.steps[1].condition.image.accept).toBe(0.7)
+    expect(e.session.working.steps[0]).toBe(edited.steps[0])
+    e.undoCommand()
+    expect(e.session.working.steps).toBe(edited.steps)
+    w.unmount()
+  })
+
+  it('칸 입력의 키는 칸 밖(AG Grid·표 단축키)으로 나가지 않는다 — AG Grid 가 Enter 로 칸을 다시 그리면 오류 표시가 사라진다', () => {
+    editFixture()
+    const w = mountTable()
+    const outer = document.createElement('div')
+    const seen = vi.fn()
+    outer.addEventListener('keydown', seen)
+    for (const field of ['accept', 'skip']) {
+      const el = cell(w, field, 's1')
+      outer.appendChild(el)
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    }
+    expect(seen).not.toHaveBeenCalled()
+    w.unmount()
+  })
+
+  it('전처리 스킵 체크는 바로 들어간다, 설비 상태는 칸이 없다', () => {
+    const { e } = editFixture()
+    const w = mountTable()
+    const el = cell(w, 'skip', 's2')
+    const box = el.tagName === 'INPUT' ? el : el.querySelector('input[type="checkbox"]')
+    box.checked = true
+    box.dispatchEvent(new Event('change'))
+    expect(e.session.working.steps[2].condition.skipPreprocessing).toBe(true)
+    w.unmount()
+  })
+
+  it('갈 곳을 누르면 고르기 창, 고르면 바로 들어간다', async () => {
+    const { s, e } = editFixture()
+    const w = mountTable()
+    const btn = cell(w, 'onFalse', 's1')
+    expect(btn.tagName).toBe('BUTTON')
+    expect(btn.dataset.pick).toBe('s1:onFalse')
+    grid(w).vm.$emit('cell-clicked', { data: { uid: 's1' }, event: { target: btn } })
+    await flushPromises()
+    expect(s.selectedUid).toBe('s1')
+    const picker = w.findComponent(TargetPicker)
+    expect(picker.exists()).toBe(true)
+    expect(picker.props('selfUid')).toBe('s1')
+    expect(picker.props('which')).toBe('onFalse')
+    picker.vm.$emit('pick', { kind: 'end', value: 'SKIP' })
+    await flushPromises()
+    expect(e.session.working.steps[1].next.onFalse).toEqual({ kind: 'end', value: 'SKIP' })
+    expect(w.findComponent(TargetPicker).exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('바뀐 줄 표시(고친 줄 ch·새 줄 nw)와 번호가 바뀐 갈 곳 강조', async () => {
+    const { e } = editFixture()
+    const w = mountTable()
+    e.editCell('s1', 'skip', true)
+    await flushPromises()
+    const rows = () => Object.fromEntries(grid(w).props('rowData').map((r) => [r.uid, r]))
+    expect(rows().s1.mark).toBe('ch')
+    expect(rows().s0.mark).toBe('')
+    e.setSelection({ uids: ['s0'], anchor: 's0' })
+    e.moveSelected(1) // s0 이 2번으로 → s2 의 성공 쪽 번호가 1 → 2
+    await flushPromises()
+    expect(rows().s2.onTrue).toBe('→2')
+    expect(rows().s2.onTrueMoved).toBe(true)
+    expect(rows().s1.onTrueMoved).toBe(false)
+    w.unmount()
+  })
+
+  it('값이 같아도 다른 칸 값(표시·강조·종류)으로 그리는 칸은 줄이 바뀌면 다시 그린다, 바뀌지 않은 줄은 같은 객체', async () => {
+    const { e } = editFixture()
+    const w = mountTable()
+    for (const f of ['no', 'accept', 'skip', 'onFalse', 'onTrue']) expect(col(w, f).equals?.(1, 1), f).toBe(false)
+    expect(col(w, 'desc').equals).toBeUndefined()
+    const before = grid(w).props('rowData')
+    e.editCell('s1', 'skip', true)
+    await flushPromises()
+    const after = grid(w).props('rowData')
+    expect(after[0]).toBe(before[0])
+    expect(after[1]).not.toBe(before[1])
+    w.unmount()
+  })
+
+  it('단축키(표에 초점이 있을 때): Delete·Ctrl+Z·Shift+Ctrl+Z, 칸 입력 중에는 듣지 않는다', async () => {
+    const { e } = editFixture()
+    const w = mountTable()
+    const table = w.find('[data-testid="se-step-table"]')
+    e.setSelection({ uids: ['s1'], anchor: 's1' })
+    await table.trigger('keydown', { key: 'Delete' })
+    expect(e.session.working.steps.map((x) => x.uid)).toEqual(['s0', 's2', 's3'])
+    await table.trigger('keydown', { key: 'z', ctrlKey: true })
+    expect(e.session.working.steps.map((x) => x.uid)).toEqual(['s0', 's1', 's2', 's3'])
+    await table.trigger('keydown', { key: 'Z', metaKey: true, shiftKey: true })
+    expect(e.session.working.steps.map((x) => x.uid)).toEqual(['s0', 's2', 's3'])
+    const input = document.createElement('input')
+    table.element.appendChild(input)
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }))
+    expect(e.session.working.steps.map((x) => x.uid)).toEqual(['s0', 's2', 's3'])
+    w.unmount()
+  })
+
+  it('읽기 전용이면 표 칸 편집이 없고 P1 과 같다', () => {
+    editFixture({ isCurrent: false })
+    const w = mountTable()
+    expect(grid(w).props('rowSelection')).toEqual({ mode: 'singleRow', checkboxes: false, enableClickSelection: 'enableSelection' })
+    expect(col(w, 'accept').cellRenderer).toBeUndefined()
+    expect(cell(w, 'onFalse', 's1').tagName).toBe('SPAN')
+    w.unmount()
+  })
+})

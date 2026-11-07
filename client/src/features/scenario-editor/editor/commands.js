@@ -136,16 +136,18 @@ export function setCell(working, uid, field, value) {
   return { working: withSteps(working, steps) }
 }
 
-// 번호가 바뀐 참조 수 — "다른 스텝의 번호 N곳이 새 번호를 따라갔습니다" 알림용(목업 refsNumbers 비교).
+// 번호가 바뀐 참조 — "다른 스텝의 번호 N곳이 새 번호를 따라갔습니다" 알림과 칸 강조용(목업 refsNumbers 비교).
 function refNumbers(w) {
   const pos = new Map(w.steps.map((s, i) => [s.uid, i + 1]))
   const m = new Map()
-  for (const s of w.steps) for (const key of KEYS) if (isStepRef(s.next[key])) m.set(`${s.uid}:${key}`, pos.get(s.next[key].uid))
+  for (const s of w.steps) for (const key of KEYS) if (isStepRef(s.next?.[key])) m.set(`${s.uid}:${key}`, pos.get(s.next[key].uid))
   return m
 }
-export function movedRefs(before, after) {
+// 앞뒤 모두에 있는 참조 가운데 가리키는 번호가 바뀐 것의 `${uid}:${onTrue|onFalse}` 집합.
+export function movedRefKeys(before, after) {
   const b = refNumbers(before)
-  let n = 0
-  for (const [k, v] of refNumbers(after)) if (b.has(k) && b.get(k) !== v) n++
-  return n
+  const out = new Set()
+  for (const [k, v] of refNumbers(after)) if (b.has(k) && b.get(k) !== v) out.add(k)
+  return out
 }
+export const movedRefs = (before, after) => movedRefKeys(before, after).size

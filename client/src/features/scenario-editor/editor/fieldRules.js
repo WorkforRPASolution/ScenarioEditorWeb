@@ -32,6 +32,13 @@ function customScriptOk(cs) {
   return Array.isArray(cs.email) ? cs.email.every((e) => e === 'success' || e === 'fail') : false
 }
 
+// 정확도 0.5~1. 숫자가 아니면 서버도 ACCEPT_TOO_HIGH(문구 "0.5~1 사이 숫자"). 표 칸 바로 고치기도 쓴다.
+export function acceptCode(acc) {
+  if (isNum(acc) && acc < 0.5) return 'ACCEPT_TOO_LOW'
+  if (!isNum(acc) || acc > 1) return 'ACCEPT_TOO_HIGH'
+  return null
+}
+
 export function checkStepFields(step, { working, isNew, base, user } = {}) {
   const e = {}
   const put = (field, code, params = {}, level = 'error') => { if (!e[field]) e[field] = { code, params, level } }
@@ -52,9 +59,8 @@ export function checkStepFields(step, { working, isNew, base, user } = {}) {
     const countOk = n !== null && n >= (c.kind === 'image' ? 1 : 0) && n <= 20
     if (!countOk || ![0, 1, 2].includes(multi.op)) put('multi', 'MULTI_RANGE')
     if (c.kind === 'image') {
-      const acc = c.image?.accept
-      if (isNum(acc) && acc < 0.5) put('accept', 'ACCEPT_TOO_LOW')
-      else if (!isNum(acc) || acc > 1) put('accept', 'ACCEPT_TOO_HIGH') // 숫자가 아니면 서버도 ACCEPT_TOO_HIGH
+      const accErr = acceptCode(c.image?.accept)
+      if (accErr) put('accept', accErr)
       if (!Object.values(step.images?.train || {}).some(hasImage)) put('train', 'TRAIN_IMAGE_MISSING')
       if (countOk && n > 1 && t !== 0) put('action', 'MULTI_WITH_ACTION')
     } else {

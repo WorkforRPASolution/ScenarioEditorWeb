@@ -1,0 +1,81 @@
+import { describe, it, expect } from 'vitest'
+import { mount } from '@vue/test-utils'
+import TargetPicker from '../components/TargetPicker.vue'
+
+const st = (uid, desc, over = {}) => ({ uid, condition: { kind: 'image' }, action: { type: 0 }, descriptionToEmail: desc, next: { onTrue: { kind: 'next' }, onFalse: { kind: 'end', value: 'FAIL' } }, ...over })
+const steps = [st('a', '알람 창 확인'), st('b', 'Reset 버튼 클릭', { action: { type: 11 } }), st('c', '상태 읽기', { condition: { kind: 'ocr' } })]
+const open = (props = {}) => mount(TargetPicker, { props: { steps, selfUid: 'b', which: 'onFalse', current: { kind: 'end', value: 'FAIL' }, x: 10, y: 10, ...props }, attachTo: document.body })
+const picks = (w) => (w.emitted('pick') || []).map((e) => e[0])
+
+describe('TargetPicker', () => {
+  it('머리말과 끝 값 네 개, 지금 값이 눌린 상태', () => {
+    const w = open()
+    expect(w.text()).toContain('실패하면 갈 곳')
+    expect(w.text()).toContain('2번 스텝에서')
+    const ends = w.findAll('[data-end]')
+    expect(ends.map((b) => b.attributes('data-end'))).toEqual(['NEXT', 'SUCCESS', 'FAIL', 'SKIP'])
+    expect(w.find('[data-end="FAIL"]').attributes('aria-pressed')).toBe('true')
+    expect(w.find('[data-end="NEXT"]').text()).toContain('지금은 3번')
+    w.unmount()
+  })
+  it('끝 값을 누르면 그 대상을 고른다', async () => {
+    const w = open()
+    await w.find('[data-end="SUCCESS"]').trigger('click')
+    await w.find('[data-end="NEXT"]').trigger('click')
+    expect(picks(w)).toEqual([{ kind: 'end', value: 'SUCCESS' }, { kind: 'next' }])
+    w.unmount()
+  })
+  it('마지막 스텝은 NEXT 를 고를 수 없다', () => {
+    const w = open({ selfUid: 'c' })
+    expect(w.find('[data-end="NEXT"]').attributes('disabled')).toBeDefined()
+    expect(w.find('[data-end="NEXT"]').text()).toContain('마지막 스텝은 쓸 수 없음')
+    w.unmount()
+  })
+  it('자기 자신은 목록에서 꺼져 있고 눌러도, 번호+Enter 로도 고를 수 없다', async () => {
+    const w = open()
+    const self = w.find('[data-to="b"]')
+    expect(self.attributes('disabled')).toBeDefined()
+    expect(self.text()).toContain('(이 스텝)')
+    await self.trigger('click')
+    const input = w.find('input')
+    await input.setValue('2')
+    await input.trigger('keydown', { key: 'Enter' })
+    expect(picks(w)).toEqual([])
+    w.unmount()
+  })
+  it('번호를 치고 Enter 면 그 스텝, 목록을 누르면 그 스텝', async () => {
+    const w = open()
+    const input = w.find('input')
+    await input.setValue('3')
+    await input.trigger('keydown', { key: 'Enter' })
+    await input.setValue('')
+    await w.find('[data-to="a"]').trigger('click')
+    expect(picks(w)).toEqual([{ kind: 'step', uid: 'c' }, { kind: 'step', uid: 'a' }])
+    w.unmount()
+  })
+  it('번호·설명으로 찾고, 없으면 범위를 알린다', async () => {
+    const w = open()
+    await w.find('input').setValue('Reset')
+    expect(w.findAll('[data-to]').map((b) => b.attributes('data-to'))).toEqual(['b'])
+    await w.find('input').setValue('1')
+    expect(w.findAll('[data-to]').map((b) => b.attributes('data-to'))).toEqual(['a'])
+    await w.find('input').setValue('없는말')
+    expect(w.findAll('[data-to]')).toHaveLength(0)
+    expect(w.text()).toContain('1~3 번 안에서 찾으세요.')
+    w.unmount()
+  })
+  it('실패할 수 있는 동작의 실패 쪽이면 NEXT 경고를 보인다(성공 쪽은 아님)', () => {
+    const a = open()
+    expect(a.find('[data-testid="se-picker-next-warn"]').exists()).toBe(true)
+    a.unmount()
+    const b = open({ which: 'onTrue' })
+    expect(b.find('[data-testid="se-picker-next-warn"]').exists()).toBe(false)
+    b.unmount()
+  })
+  it('Esc 로 닫는다', async () => {
+    const w = open()
+    await w.find('input').trigger('keydown', { key: 'Escape' })
+    expect(w.emitted('close')).toHaveLength(1)
+    w.unmount()
+  })
+})
