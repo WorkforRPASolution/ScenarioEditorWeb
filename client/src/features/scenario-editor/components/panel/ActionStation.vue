@@ -49,7 +49,7 @@ function pick(tp) {
 }
 const update = (a) => edit.updateDraft((d) => ({ ...d, action: a }))
 const hasClick = computed(() => Number.isInteger(action.value.click?.x) && Number.isInteger(action.value.click?.y))
-const canRepick = computed(() => kind.value === 'image' && isRect(props.draft.condition?.searchArea) && !edit.locating)
+const canRepick = computed(() => kind.value === 'image' && isRect(props.draft.condition?.searchArea) && edit.canCapture && !edit.locating)
 </script>
 
 <template>
@@ -74,7 +74,7 @@ const canRepick = computed(() => kind.value === 'image' && isRect(props.draft.co
       <KeptAction v-if="kept" :action="action" />
       <ClickAction v-else-if="CLICK_TYPES.includes(type)" :action="action" :errs="errs" :kind="kind" :outside="clickOutside" @update="update">
         <template #repick>
-          <button type="button" data-testid="se-repick" :disabled="!canRepick" :title="t('SEW_CAP_REPICK_TITLE')"
+          <button type="button" data-testid="se-repick" :disabled="!canRepick" :title="edit.canCapture ? t('SEW_CAP_REPICK_TITLE') : t('SEW_CAP_NO_BASE_IMAGE')"
             class="ml-auto shrink-0 h-7 px-2 rounded-md text-xs font-medium text-primary-700 dark:text-primary-300 hover:enabled:bg-primary-50 dark:hover:enabled:bg-primary-900/30 disabled:text-gray-400 disabled:opacity-60"
             @click="edit.repick()">{{ edit.locating ? t('SEW_CAP_LOCATING') : hasClick ? t('SEW_CAP_REPICK') : t('SEW_CAP_PICK') }}</button>
         </template>

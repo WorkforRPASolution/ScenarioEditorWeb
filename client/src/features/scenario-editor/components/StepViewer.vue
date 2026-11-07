@@ -96,6 +96,18 @@ function onResize() {
   if (!(w > 0 && h > 0)) return
   if (pendingFit || wasZero || !userMoved) fit()
 }
+// Esc: 잡기 취소(잡기가 쓴 칸만 되돌린다). 목업 keydown 순서대로 확인 창·다음 스텝 고르기·펼침 메뉴가 먼저 받고,
+// 입력 칸(글자 칸·고르기·내용 편집) 안의 Esc 는 그 칸 몫이라 듣지 않는다. 확인 창보다 먼저 판단하도록 capture 단계에서 듣는다.
+const POPUPS = '[data-testid="se-picker"], [data-testid="se-tool-menu"]'
+function onEsc(e) {
+  if (e.key !== 'Escape' || !edit.capture || edit.dialog) return
+  const el = e.target
+  if (el?.tagName && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable || el.closest?.('[contenteditable=""], [contenteditable="true"]'))) return
+  if (document.querySelector(POPUPS)) return
+  edit.cancelCapture()
+}
+onMounted(() => document.addEventListener('keydown', onEsc, true))
+onBeforeUnmount(() => document.removeEventListener('keydown', onEsc, true))
 onMounted(() => {
   const el = box.value
   if (!el) return

@@ -2,10 +2,10 @@
 // 큰 화면 위 잡기 층(목업 overlay·onScreenDown·toImg, 조작판 1·3~7). 기준 화면과 같은 크기의 SVG 를 그림 위에 겹친다 —
 // 좌표는 기준 화면 픽셀이고 확대·이동은 감싼 상자(StepViewer)의 transform 이 맡는다. 선 굵기·이름표 크기만 scale 로 나눠 화면에서 같게 보인다.
 // - 잡기 중(editStore.capture): 검색(OCR) 영역 끌기 → 찾을 그림 끌기(영역 안) → 누를 곳 찍기(그림 밖도 됨). 받은 값은 editStore.captureNext 로 —
-//   패널 초안만 바뀐다. Esc 는 잡기 전 값으로(확인 창이 떠 있으면 확인 창 몫).
+//   패널 초안만 바뀐다(Esc 취소는 큰 화면 StepViewer 가 듣는다 — 그림을 못 그려 이 층이 없을 때도 되게).
 // - 잡기 밖: 영역 몸통을 끌어 옮기고 손잡이 여덟 곳으로 크기를 바꾼다(패널 초안).
 // 끌기·찍기는 큰 화면 끌어 이동(StepViewer mousedown)으로 번지지 않게 막는다. 쓸 수 있는 세션의 패널 초안에만 그린다(읽기 전용은 P1 표시).
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useEditStore } from '../stores/editStore'
 import { isRect, normRect, moveRect, resizeRect, handlePoints } from '../editor/capture'
 import { t } from '../messages'
@@ -123,13 +123,7 @@ function onAreaDown(e, handle) {
   })
 }
 
-// Esc: 잡기 취소. 확인 창이 떠 있으면 그 창이 Esc 를 받는다(창보다 먼저 듣도록 capture 단계에서 확인한다).
-function onKey(e) {
-  if (e.key !== 'Escape' || !edit.capture || edit.dialog) return
-  edit.cancelCapture()
-}
-onMounted(() => document.addEventListener('keydown', onKey, true))
-onBeforeUnmount(() => { document.removeEventListener('keydown', onKey, true); stopDrag?.() })
+onBeforeUnmount(() => stopDrag?.())
 </script>
 
 <template>

@@ -376,11 +376,15 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     return bitmapCache.promise
   }
   function requestView(kind) { viewReq.value = { kind, n: (viewReq.value?.n ?? 0) + 1 } }
+  // 잡기는 큰 화면에 그린 기준 화면 위에서만 — 패널 초안의 기준 화면이 그림(참조)이어야 한다. 버튼도 이것으로 끈다.
+  const captureBaseUrl = () => { const d = panel.value.draft; return d ? refUrl(d.images?.base, imgCtx()) : null }
+  const canCapture = computed(() => editable.value && !!captureBaseUrl())
 
   // 잡기 시작: flow 의 첫 단계부터. why = 그림부터 다시 잡는 이유([다시 찍기]), train = 누를 곳의 기준 사각형(누를 곳만 찍을 때).
   function startCapture(flow, { why = null, train = null } = {}) {
     const p = panel.value
     if (!editable.value || !p.draft || !flow?.length) return false
+    if (!captureBaseUrl()) { notify(t('SEW_CAP_NO_BASE_IMAGE')); return false }
     capture.value = { flow: [...flow], stage: flow[0], why, before: p.draft, train }
     requestView('all')
     return true
@@ -441,13 +445,32 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     advance(c, { train: r })
     return true
   }
-  // Esc·[취소]: 잡기 전 초안으로
+  // Esc·[취소]: 잡기가 쓴 칸(검색 영역·찾을 그림·찾을 그림 목록·누를 곳)만 잡기 전 값으로. 잡는 사이 패널에서 고친 설명·정확도·갈 곳 등은 남긴다.
+  // 누를 곳은 동작 종류가 그대로일 때만 되돌린다(잡는 사이 동작을 바꿨으면 그 선택을 둔다). 결과가 잡기 전과 같으면 그 객체를 다시 쓴다.
+  // 영역·찾을 그림·찾을 그림 목록은 패널에서 고칠 수 없는 칸이라 참조가 다르면 잡기 전 참조로 되돌린다(값이 같으면 같은 객체가 남게).
+  function restoreCaptured(cur, before) {
+    let s = cur
+    if (s.condition?.searchArea !== before.condition?.searchArea) s = { ...s, condition: { ...s.condition, searchArea: before.condition?.searchArea ?? null } }
+    if (s.images?.train !== before.images?.train) s = { ...s, images: { ...s.images, train: before.images?.train ?? {} } }
+    const ti = before.condition?.image?.trainImages
+    if (s.condition?.image && before.condition?.image && s.condition.image.trainImages !== ti) {
+      s = { ...s, condition: { ...s.condition, image: { ...s.condition.image, trainImages: ti } } }
+    }
+    if (s.action?.type === before.action?.type && canonicalJson(s.action?.click) !== canonicalJson(before.action?.click)) {
+      const { click, ...rest } = s.action
+      s = { ...s, action: before.action && 'click' in before.action ? { ...rest, click: before.action.click } : rest }
+    }
+    return sameStep(s, before) ? before : s
+  }
   function cancelCapture() {
     const c = capture.value
     if (!c) return false
     capture.value = null
     const p = panel.value
-    if (p.draft && p.draft !== c.before) panel.value = { ...p, draft: c.before }
+    if (p.draft && p.draft !== c.before) {
+      const draft = restoreCaptured(p.draft, c.before)
+      if (draft !== p.draft) panel.value = { ...p, draft }
+    }
     return true
   }
   // [그림은 그대로 두기]: 지금까지 잡은 값만 두고 끝낸다(목업 cap:keep)
@@ -461,6 +484,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     if (!editable.value || !d || d.condition?.kind !== 'image' || locating.value) return false
     const area = d.condition.searchArea
     if (!isRect(area)) return false
+    if (!captureBaseUrl()) { notify(t('SEW_CAP_NO_BASE_IMAGE')); return false }
     const trainRef = firstTrainRef(d.images?.train)
     if (!trainRef) return startCapture(['train', 'click'])
     const ctx = imgCtx()
@@ -548,7 +572,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   }
 
   return {
-    session, selection, panel, undo, redo, clip, uploads, capture, locating, viewReq, toast, dialog, moved, focusReq, editable,
+    session, selection, panel, undo, redo, clip, uploads, capture, locating, viewReq, canCapture, toast, dialog, moved, focusReq, editable,
     begin, end, run, undoLast, redoLast,
     setSelection, syncFocus, requestSelect, clickRow, panelDirty, notify,
     openPanel, syncPanel, updateDraft, panelErrors, applyPanel, discardPanel, requestFocus,

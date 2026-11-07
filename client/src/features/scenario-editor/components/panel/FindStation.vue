@@ -57,7 +57,8 @@ const row = 'flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 
   <div v-if="kind === 'image'" class="se-st se-st-train" data-station="find">
     <div class="flex items-center gap-2 mb-1.5 min-h-[18px]">
       <span class="text-xs font-semibold text-gray-700 dark:text-gray-200 outline-none" tabindex="-1" data-field="train">{{ t('SEW_PANEL_FIND') }}</span>
-      <button type="button" class="ml-auto text-xs font-medium text-primary-700 dark:text-primary-300 hover:enabled:underline disabled:text-gray-400 disabled:opacity-60" data-testid="se-cap-find" :disabled="!hasArea" @click="grab">{{ hasTrain ? t('SEW_CAP_REGRAB') : t('SEW_CAP_GRAB') }}</button>
+      <button type="button" class="ml-auto text-xs font-medium text-primary-700 dark:text-primary-300 hover:enabled:underline disabled:text-gray-400 disabled:opacity-60" data-testid="se-cap-find"
+        :disabled="!hasArea || !edit.canCapture" :title="edit.canCapture ? undefined : t('SEW_CAP_NO_BASE_IMAGE')" @click="grab">{{ hasTrain ? t('SEW_CAP_REGRAB') : t('SEW_CAP_GRAB') }}</button>
     </div>
     <div class="flex gap-2 items-start flex-wrap" :class="ch('train') ? 'ring-2 ring-primary-300 rounded' : ''">
       <div v-for="p in trainPics" :key="p.key">

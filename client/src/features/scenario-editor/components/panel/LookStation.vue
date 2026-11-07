@@ -2,6 +2,7 @@
 // 레일 첫 구역 — 보는 곳(목업 lookStation, 조작판 1): 기준 화면·검색(OCR) 영역 그림과 좌표. 조건 없음·설비 상태는 없다.
 // [잡기]/[다시 잡기] = 큰 화면에서 영역부터 끌어 잡기(마우스 클릭이면 그림·누를 곳까지). 영역 그림을 누르면 큰 화면을 영역에 맞추고,
 // 기준 화면 그림을 누르면 전체를 보인다(목업 focusArea·viewAll). 새 스텝은 기준 화면 그림이 큰 화면에 이미 있어 따로 보이지 않는다.
+// 기준 화면 그림이 없으면(저장되지 않은 옛 스텝) 잡을 화면이 없으므로 [잡기]를 끄고 이유를 보인다(editStore.canCapture).
 import { computed } from 'vue'
 import { useEditStore } from '../../stores/editStore'
 import { captureFlow } from '../../editor/capture'
@@ -33,8 +34,10 @@ const pic = 'text-[11px] text-gray-500 dark:text-gray-400 mb-0.5 whitespace-nowr
   <div class="se-st" :class="ocr ? 'se-st-ocr' : 'se-st-area'" data-station="look">
     <div class="flex items-center gap-2 mb-1.5 min-h-[18px]">
       <span class="text-xs font-semibold text-gray-700 dark:text-gray-200 outline-none" tabindex="-1" data-field="area">{{ t('SEW_PANEL_LOOK') }}</span>
-      <button type="button" class="ml-auto text-xs font-medium text-primary-700 dark:text-primary-300 hover:underline" data-testid="se-cap-look" @click="grab">{{ area ? t('SEW_CAP_REGRAB') : t('SEW_CAP_GRAB') }}</button>
+      <button type="button" class="ml-auto text-xs font-medium text-primary-700 dark:text-primary-300 hover:enabled:underline disabled:text-gray-400 disabled:opacity-60" data-testid="se-cap-look"
+        :disabled="!edit.canCapture" :title="edit.canCapture ? undefined : t('SEW_CAP_NO_BASE_IMAGE')" @click="grab">{{ area ? t('SEW_CAP_REGRAB') : t('SEW_CAP_GRAB') }}</button>
     </div>
+    <p v-if="!edit.canCapture" class="mb-1.5 text-xs leading-snug text-gray-500 dark:text-gray-400" data-testid="se-cap-look-why">{{ t('SEW_CAP_NO_BASE_IMAGE') }}</p>
     <div class="flex gap-2 items-start">
       <button v-if="baseSrc && !ocr && !isNew" type="button" class="text-left" data-testid="se-look-base" :title="t('SEW_CAP_VIEW_ALL')" @click="edit.requestView('all')">
         <div :class="pic">{{ t('SEW_PANEL_BASE') }}</div><CropView :src="baseSrc" :width="92" />

@@ -238,6 +238,7 @@ export const MESSAGES = {
   SEW_CAP_TOO_SMALL: '조금 더 크게 끌어 잡으세요.',
   SEW_CAP_OUTSIDE: '기준 화면 안에서 찍으세요.',
   SEW_CAP_NO_BASE: '기준 화면 그림이 없어 찾을 그림을 자를 수 없습니다.',
+  SEW_CAP_NO_BASE_IMAGE: '기준 화면 그림이 없어 큰 화면에서 잡을 수 없습니다.',
   SEW_CAP_CROP_FAILED: '기준 화면을 불러오지 못해 찾을 그림을 자르지 못했습니다. 다시 끌어 잡아 보세요.',
   SEW_CAP_WHY_NONE: '기준 화면의 검색 영역에서 찾을 그림을 찾지 못했습니다. 그림을 잡은 화면과 기준 화면이 다를 수 있습니다.',
   SEW_CAP_WHY_MANY: '찾을 그림과 같은 곳이 검색 영역에 여러 곳 있어 어느 것이 기준인지 알 수 없습니다.',
