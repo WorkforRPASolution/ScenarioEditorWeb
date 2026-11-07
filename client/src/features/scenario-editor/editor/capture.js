@@ -1,0 +1,119 @@
+// 큰 화면 잡기·새 스텝의 순수 함수(목업 CAP_FLOW·capNext·normRect·handles·areaView·startNew). 좌표는 모두 기준 화면 픽셀이고
+// 화면 확대·이동과 상관없다. 새 스텝 초안은 서버 conditionCodec·csDefaults 가 origin 없는 스텝을 조립할 때 쓰는 값(newRawStep 을 푼 모양)이다.
+import { CLICK_TYPES } from './panel'
+
+// 새 스텝이 처음 거치는 잡기 흐름: 이미지 = 검색 영역 → 찾을 그림 → 누를 곳, OCR = 문자 영역
+export const CAP_FLOWS = Object.freeze({ image: Object.freeze(['area', 'train', 'click']), ocr: Object.freeze(['ocr']) })
+export const MIN_CAPTURE = 8 // 이보다 작게 끈 사각형은 받지 않는다(목업 onScreenDown)
+export const MIN_RESIZE = 20 // 모서리로 줄일 때 남는 최소 크기(목업 resize)
+export const LOCATE_MS = 3000 // [다시 찍기] 위치 찾기 시간 상한(설계 §4.2)
+const PLACEHOLDER_BI = 'AA==' // 서버 csDefaults PLACEHOLDER_BI — 조건 없음 스텝의 기준 화면 자리
+
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v))
+export const isRect = (r) => !!r && typeof r === 'object' && ['x', 'y', 'w', 'h'].every((k) => typeof r[k] === 'number' && Number.isFinite(r[k])) && r.w > 0 && r.h > 0
+export const isRef = (r) => !!r && typeof r === 'object' && 'from' in r
+
+// 패널 잡기 버튼이 시작할 흐름: 보는 곳 = 영역부터, 찾는 것 = 그림부터. 누를 곳은 동작이 마우스 클릭일 때만(목업 lookStation·findStation).
+export function captureFlow(draft, from) {
+  if (draft?.condition?.kind === 'ocr') return ['ocr']
+  const flow = from === 'find' ? ['train'] : ['area', 'train']
+  return CLICK_TYPES.includes(draft?.action?.type) ? [...flow, 'click'] : flow
+}
+
+// 다음 단계. 동작이 마우스 클릭이 아니면 누를 곳을 건너뛴다(목업 capNext). 끝이면 null.
+export function nextStage(flow, stage, actionType) {
+  let i = flow.indexOf(stage) + 1
+  while (i < flow.length && flow[i] === 'click' && !CLICK_TYPES.includes(actionType)) i++
+  return i < flow.length ? flow[i] : null
+}
+
+// 두 점이 이루는 사각형을 bound 안으로 자른 정수 사각형(목업 normRect). 끝점을 따로 반올림해 경계를 넘지 않는다.
+export function normRect(a, b, bound) {
+  const x1 = Math.round(clamp(Math.min(a.x, b.x), bound.x, bound.x + bound.w))
+  const x2 = Math.round(clamp(Math.max(a.x, b.x), bound.x, bound.x + bound.w))
+  const y1 = Math.round(clamp(Math.min(a.y, b.y), bound.y, bound.y + bound.h))
+  const y2 = Math.round(clamp(Math.max(a.y, b.y), bound.y, bound.y + bound.h))
+  return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 }
+}
+// 두 사각형이 겹치는 곳(찾을 그림은 검색 영역 안만)
+export const clipRect = (r, bound) => normRect({ x: r.x, y: r.y }, { x: r.x + r.w, y: r.y + r.h }, bound)
+
+// 영역 끌어 옮기기 — 그림 밖으로 나가지 않는다(목업 move)
+export function moveRect(orig, dx, dy, W, H) {
+  return { ...orig, x: Math.round(clamp(orig.x + dx, 0, W - orig.w)), y: Math.round(clamp(orig.y + dy, 0, H - orig.h)) }
+}
+// 모서리·변 손잡이로 크기 바꾸기 — 손잡이 쪽만 움직이고 MIN_RESIZE 아래로 줄지 않는다(목업 resize)
+export function resizeRect(orig, handle, q, W, H, min = MIN_RESIZE) {
+  let x1 = orig.x
+  let y1 = orig.y
+  let x2 = orig.x + orig.w
+  let y2 = orig.y + orig.h
+  if (handle.includes('w')) x1 = Math.min(q.x, x2 - min)
+  if (handle.includes('e')) x2 = Math.max(q.x, x1 + min)
+  if (handle.includes('n')) y1 = Math.min(q.y, y2 - min)
+  if (handle.includes('s')) y2 = Math.max(q.y, y1 + min)
+  return normRect({ x: x1, y: y1 }, { x: x2, y: y2 }, { x: 0, y: 0, w: W, h: H })
+}
+// 손잡이 여덟 곳 [이름, x, y, 커서](목업 handles)
+export function handlePoints(a) {
+  const mx = a.x + a.w / 2
+  const my = a.y + a.h / 2
+  const r = a.x + a.w
+  const b = a.y + a.h
+  return [['nw', a.x, a.y, 'nwse-resize'], ['n', mx, a.y, 'ns-resize'], ['ne', r, a.y, 'nesw-resize'], ['e', r, my, 'ew-resize'],
+    ['se', r, b, 'nwse-resize'], ['s', mx, b, 'ns-resize'], ['sw', a.x, b, 'nesw-resize'], ['w', a.x, my, 'ew-resize']]
+}
+
+// 영역을 큰 화면 가운데 꽉 차게(목업 areaView): 이름표가 보이게 좌우 12px·위아래 20px 를 남기고, 전체 맞춤보다 작게 줄이지 않는다.
+// box = 큰 화면 상자 크기, natural = 기준 화면 크기. 결과는 StepViewer 의 { scale, tx, ty }.
+export function areaView(a, box, natural, { max = 8 } = {}) {
+  const fit = Math.min(box.w / natural.w, box.h / natural.h) * 0.98
+  const s = clamp(Math.min((box.w - 24) / a.w, (box.h - 40) / a.h), fit, Math.max(fit, max))
+  const place = (boxLen, imgLen, c) => {
+    const len = imgLen * s
+    return len <= boxLen ? (boxLen - len) / 2 : clamp(boxLen / 2 - c * s, boxLen - len, 0)
+  }
+  return { scale: s, tx: place(box.w, natural.w, a.x + a.w / 2), ty: place(box.h, natural.h, a.y + a.h / 2) }
+}
+
+// 새 스텝 초안(EditedStep). 서버 newRawStep(kind) 을 parseCondition·parseAction 으로 푼 값과 같은 모양이고, 동작 기본값은
+// 이미지 = 왼쪽 클릭(찾을 그림 왼쪽 위 기준)·조건 없음 = 명령 실행·OCR = 없음(설계 §4.2, 목업 startNew).
+// OCR 숫자 칸은 비워 둔다(null) — 조립은 고른 비교 방법의 칸만 쓴다. base = 기준 화면 참조(조건 없음은 자리표시 literal).
+export function newStepDraft(kind, { uid, base }) {
+  const multi = () => ({ count: '1', op: 0, raw: '' })
+  let condition
+  let action
+  if (kind === 'image') {
+    condition = { kind, operationRaw: 1, skipPreprocessing: false, searchArea: null,
+      image: { accept: 0.9, maxFind: 1, timeoutEnabled: true, timeout: 1000, trainImages: [], multi: multi() } }
+    action = { type: 1, typeName: 'MouseLeftClick', raw: '', click: { x: null, y: null, basis: 'trainImage' } }
+  } else if (kind === 'ocr') {
+    condition = { kind, operationRaw: 2, skipPreprocessing: false, searchArea: null,
+      ocr: { op: 0, opName: 'None', type: 0, text: '', number: null, min: null, max: null, minMatching: 10, multi: multi(), raw: '' } }
+    action = { type: 0, typeName: 'None', raw: '' }
+  } else {
+    condition = { kind: 'none', operationRaw: 0, skipPreprocessing: false }
+    action = { type: 11, typeName: 'RunCommand', raw: '', command: '' }
+  }
+  return {
+    uid, origin: null, condition, action,
+    next: { onTrue: { kind: 'next' }, onFalse: { kind: 'end', value: 'FAIL' } },
+    retry: { limit: 2, intervalMs: 2000 },
+    descriptionToEmail: '', descriptionToDialog: '', isShowDialog: true,
+    images: { train: {}, base: kind === 'image' || kind === 'ocr' ? base : { literal: PLACEHOLDER_BI } }
+  }
+}
+
+// 새 스텝의 기준 화면: 고른 스텝의 기준 화면 참조, 없으면 기준 화면(참조)이 있는 첫 스텝의 것, 하나도 없으면 null.
+export function baseRefFor(working, anchorUid) {
+  const steps = working?.steps ?? []
+  const a = anchorUid == null ? null : steps.find((s) => s.uid === anchorUid)
+  if (a && isRef(a.images?.base)) return a.images.base
+  return steps.find((s) => isRef(s.images?.base))?.images.base ?? null
+}
+
+// 찾을 그림 참조(키 0 먼저, 없으면 가장 작은 키). 그림이 아닌 literal 은 없는 것으로 본다.
+export function firstTrainRef(train) {
+  const keys = Object.keys(train ?? {}).filter((k) => isRef(train[k])).sort((a, b) => Number(a) - Number(b))
+  return keys.length ? train[keys[0]] : null
+}

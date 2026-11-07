@@ -1,9 +1,11 @@
 <script setup>
 // 레일 둘째 구역 — 찾는 것(목업 findStation, 조작판 1·2·8): 이미지 = 찾을 그림·정확도·다중 검사, OCR = 비교 방법·값·다중 검사,
-// 설비 상태 = 보기만(새로 만들 수 없는 옛 조건). 조건 종류는 바꾸지 못한다(설계 §4.2). 찾을 그림 잡기는 Task 7.
+// 설비 상태 = 보기만(새로 만들 수 없는 옛 조건). 조건 종류는 바꾸지 못한다(설계 §4.2).
+// 찾을 그림 [잡기]/[다시 잡기] = 큰 화면의 검색 영역 안에서 그림부터 끌어 잡기(마우스 클릭이면 누를 곳까지, 목업 findStation).
 import { computed } from 'vue'
 import { useEditStore } from '../../stores/editStore'
 import { CLICK_TYPES, numIn, numOut } from '../../editor/panel'
+import { captureFlow, isRect, isRef } from '../../editor/capture'
 import { t, LABELS } from '../../messages'
 import CropView from '../CropView.vue'
 import FieldError from './FieldError.vue'
@@ -44,13 +46,19 @@ const ocrKind = computed(() => (ocr.value.op >= 1 && ocr.value.op <= 4 ? 'text' 
 const setOp = (v) => { const op = v === '' ? 0 : Number(v); setOcr({ op, opName: OCR_OPS[op] ?? null }) }
 const multiLabels = computed(() => [0, 1, 2].map((i) => t(`SEW_PANEL_MULTI_${kind.value === 'image' ? 'IMAGE' : 'OCR'}_${i}`)))
 const eqp = computed(() => c.value.eqpState)
+const hasArea = computed(() => isRect(c.value.searchArea))
+const hasTrain = computed(() => Object.values(props.draft.images?.train ?? {}).some(isRef))
+const grab = () => edit.startCapture(captureFlow(props.draft, 'find'))
 const pic = 'text-[11px] text-gray-500 dark:text-gray-400 mb-0.5 whitespace-nowrap'
 const row = 'flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 flex-wrap'
 </script>
 
 <template>
   <div v-if="kind === 'image'" class="se-st se-st-train" data-station="find">
-    <div class="text-xs font-semibold text-gray-700 dark:text-gray-200 mb-1.5 min-h-[18px] outline-none" tabindex="-1" data-field="train">{{ t('SEW_PANEL_FIND') }}</div>
+    <div class="flex items-center gap-2 mb-1.5 min-h-[18px]">
+      <span class="text-xs font-semibold text-gray-700 dark:text-gray-200 outline-none" tabindex="-1" data-field="train">{{ t('SEW_PANEL_FIND') }}</span>
+      <button type="button" class="ml-auto text-xs font-medium text-primary-700 dark:text-primary-300 hover:enabled:underline disabled:text-gray-400 disabled:opacity-60" data-testid="se-cap-find" :disabled="!hasArea" @click="grab">{{ hasTrain ? t('SEW_CAP_REGRAB') : t('SEW_CAP_GRAB') }}</button>
+    </div>
     <div class="flex gap-2 items-start flex-wrap" :class="ch('train') ? 'ring-2 ring-primary-300 rounded' : ''">
       <div v-for="p in trainPics" :key="p.key">
         <div :class="pic">{{ markerFor(p) ? t('SEW_PANEL_TRAIN_CLICK') : t('SEW_PANEL_TRAIN') }}{{ p.key !== '0' ? ` (${p.key})` : '' }}</div>

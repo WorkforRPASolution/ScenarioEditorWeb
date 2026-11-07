@@ -29,8 +29,13 @@ const GUARD_COPY = {
   undo: { body: 'SEW_EDIT_GUARD_BODY_UNDO', drop: 'SEW_EDIT_GUARD_DROP_UNDO', apply: null },
   redo: { body: 'SEW_EDIT_GUARD_BODY_REDO', drop: 'SEW_EDIT_GUARD_DROP_REDO', apply: null }
 }
-const guardCopy = computed(() => (dialog.value?.kind === 'guard' ? GUARD_COPY[dialog.value.action] ?? GUARD_COPY.move : null))
-const guardTitle = computed(() => (guardCopy.value ? t('SEW_EDIT_GUARD_TITLE', { no: noOf(edit.panel.uid) }) : ''))
+// 만들던 새 스텝(dialog.isNew)은 [적용하고 …] 갈래가 없다 — 표에 넣는 길은 패널의 [앞에 넣기]·[맨 끝에 추가]뿐이다.
+const guardCopy = computed(() => {
+  if (dialog.value?.kind !== 'guard') return null
+  const c = GUARD_COPY[dialog.value.action] ?? GUARD_COPY.move
+  return dialog.value.isNew ? { ...c, body: 'SEW_EDIT_GUARD_NEW_BODY', keep: 'SEW_EDIT_GUARD_NEW_KEEP', apply: null } : c
+})
+const guardTitle = computed(() => (!guardCopy.value ? '' : dialog.value.isNew ? t('SEW_EDIT_GUARD_NEW_TITLE') : t('SEW_EDIT_GUARD_TITLE', { no: noOf(edit.panel.uid) })))
 const guardBody = computed(() => (guardCopy.value ? t(guardCopy.value.body, { n: changedFields(edit.panel.base, edit.panel.draft).length }) : ''))
 const guardBlocked = computed(() => dialog.value?.kind === 'guard' && Object.values(edit.panelErrors()).some((e) => e.level === 'error'))
 // 목록의 스텝으로 가서 갈 곳을 고치게 한다(목업 goref).
@@ -96,7 +101,7 @@ const btnP = 'h-8 px-3 rounded-lg text-sm bg-primary-500 hover:bg-primary-600 te
         <h3 class="px-[18px] pt-3.5 text-[15px] font-semibold text-gray-900 dark:text-white">{{ guardTitle }}</h3>
         <p class="mx-[18px] mt-1.5 text-[13px] text-gray-500 dark:text-gray-400">{{ guardBody }}</p>
         <div class="flex justify-end gap-1.5 px-[18px] py-3.5 flex-wrap">
-          <button type="button" :class="btnS" data-testid="se-guard-keep" @click="edit.guardKeep()">{{ t('SEW_EDIT_GUARD_KEEP') }}</button>
+          <button type="button" :class="btnS" data-testid="se-guard-keep" @click="edit.guardKeep()">{{ t(guardCopy.keep ?? 'SEW_EDIT_GUARD_KEEP') }}</button>
           <button type="button" :class="guardCopy.apply ? btnS : btnP" data-testid="se-guard-drop" @click="edit.guardDrop()">{{ t(guardCopy.drop) }}</button>
           <button v-if="guardCopy.apply" type="button" :class="btnP" data-testid="se-guard-apply" :title="guardBlocked ? t('SEW_EDIT_GUARD_BLOCKED') : undefined" @click="edit.guardApply()">{{ t(guardCopy.apply) }}</button>
         </div>

@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 vi.mock('../api', () => ({ scenarioEditorApi: {}, imageUrl: (p) => `http://x/api${p}` }))
+// 패널의 [다시 찍기]·잡기 버튼이 그림을 받으러 가지 않게(브라우저 확인은 E2E)
+vi.mock('../editor/images', async (orig) => ({ ...(await orig()), loadBitmap: vi.fn(() => Promise.reject(new Error('no network in unit tests'))) }))
 import StepPanel from '../components/StepPanel.vue'
 import { t, MESSAGES, LABELS } from '../messages'
 import { panelFixture, imageStep, ocrStep, noneStep, eqpStep } from './panelFixture'

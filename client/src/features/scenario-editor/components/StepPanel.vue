@@ -2,6 +2,7 @@
 // 오른쪽 편집 패널(목업 renderPanel·footHtml, 조작판 1·2·8·9·17): 머리(번호·설명·위아래)·읽어 주는 문장·설명 칸·안내 줄,
 // 실행 순서 레일(보는 곳 → 찾는 것 → 찾으면 하는 일 → 갈 곳)·선택, 아래 적용 줄([되돌리기]·[적용]). 쓸 수 있는 세션에서만 보인다.
 // 값은 [적용]을 눌러야 작업본(표)에 들어간다. 다른 줄로 가는 길은 editStore.guard 가 먼저 묻는다.
+// 새 스텝(목업 조작판 7, footHtml isNew): 머리 "+"·아래 [취소]·[N번 앞에 넣기]·[맨 끝에 추가]. 칸 오류는 [넣기]를 한 번 누른 뒤에 보인다(목업 S.bad).
 import { ref, computed, watch, nextTick } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
 import { useEditStore } from '../stores/editStore'
@@ -31,8 +32,10 @@ const idx = computed(() => (p.value.isNew || !d.value ? -1 : steps.value.findInd
 const no = computed(() => (p.value.isNew ? '+' : idx.value + 1))
 const kind = computed(() => d.value?.condition?.kind)
 const type = computed(() => d.value?.action?.type)
-const errs = computed(() => (d.value ? edit.panelErrors() : {}))
-const changed = computed(() => changedFields(p.value.base, d.value))
+const allErrs = computed(() => (d.value ? edit.panelErrors() : {}))
+// 새 스텝은 [넣기]를 누르기 전에는 칸 오류를 보이지 않는다 — 빈 초안이 처음부터 빨갛지 않게
+const errs = computed(() => (p.value.isNew && !p.value.tried ? {} : allErrs.value))
+const changed = computed(() => (p.value.isNew ? [] : changedFields(p.value.base, d.value)))
 const bad = computed(() => errorFields(errs.value))
 const firstBad = computed(() => firstError(errs.value))
 const diffs = computed(() => (d.value && p.value.base ? diffLines(p.value.base, d.value, working.value) : []))
@@ -84,6 +87,9 @@ async function focusField(field) {
 }
 watch(() => edit.focusReq, (r) => { if (r) focusField(r.field) })
 const apply = () => edit.applyPanel()
+// 새 스텝: 넣을 자리(고른 스텝)의 지금 번호, [넣기]가 막힌 이유(칸마다 하나, 같은 문구는 한 번)
+const insertNo = computed(() => { const a = p.value.isNew ? p.value.insertBefore : null; const i = a ? steps.value.findIndex((s) => s.uid === a) : -1; return i >= 0 ? i + 1 : null })
+const newErrors = computed(() => [...new Set(Object.values(errs.value).filter((e) => e.level === 'error').map((e) => t(`RULE_${e.code}`, e.params)))])
 
 const head = 'shrink-0 px-3 pt-2.5 pb-2 border-b border-gray-200 dark:border-dark-border'
 const navBtn = 'w-6 h-6 rounded-md inline-flex items-center justify-center text-gray-500 hover:enabled:bg-gray-100 dark:hover:enabled:bg-gray-700 disabled:opacity-35'
@@ -97,7 +103,7 @@ const btnS = 'h-8 px-3 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray
       <div :class="head">
         <div class="flex items-center gap-2">
           <span class="w-6 h-6 rounded-md text-white text-xs font-bold flex items-center justify-center shrink-0" :class="p.isNew ? 'bg-green-500 text-sm' : 'bg-primary-500'">{{ no }}</span>
-          <b class="flex-1 min-w-0 truncate font-semibold text-[13px] text-gray-900 dark:text-white">{{ d.descriptionToEmail || t('SEW_PANEL_NO_DESC') }}</b>
+          <b class="flex-1 min-w-0 truncate font-semibold text-[13px] text-gray-900 dark:text-white">{{ p.isNew ? t('SEW_PANEL_NEW_TITLE') : d.descriptionToEmail || t('SEW_PANEL_NO_DESC') }}</b>
           <!-- 조건 종류는 보기만 한다(설계 §4.2 — 바꾸려면 새 스텝) -->
           <span class="shrink-0 text-[11px] text-gray-500 dark:text-gray-400" data-testid="se-panel-kind">{{ conditionLabel(kind) }}</span>
           <div v-if="!p.isNew" class="flex gap-0.5 shrink-0">
@@ -130,7 +136,7 @@ const btnS = 'h-8 px-3 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray
         </div>
 
         <div class="se-rail">
-          <LookStation v-if="kind === 'image' || kind === 'ocr'" :draft="d" :errs="errs" :changed="changed" :base-src="baseSrc" />
+          <LookStation v-if="kind === 'image' || kind === 'ocr'" :draft="d" :errs="errs" :changed="changed" :base-src="baseSrc" :is-new="p.isNew" />
           <FindStation :draft="d" :errs="errs" :changed="changed" :train-pics="trainPics" @outside="clickOutside = $event" />
           <ActionStation :draft="d" :errs="errs" :changed="changed" :click-outside="clickOutside && CLICK_TYPES.includes(type)" />
           <FlowStation :draft="d" :errs="errs" :changed="changed" :is-new="p.isNew" />
@@ -138,7 +144,18 @@ const btnS = 'h-8 px-3 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray
         <OptionStation :draft="d" :shown-step="shownStep" :changed="changed" />
       </div>
 
-      <div v-if="!p.isNew && changed.length" class="shrink-0 border-t border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 py-2" data-testid="se-panel-foot">
+      <div v-if="p.isNew" class="shrink-0 border-t border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 py-2" data-testid="se-new-foot">
+        <div v-if="newErrors.length" class="mb-1.5 max-h-[62px] overflow-auto text-xs leading-normal text-red-700 dark:text-red-300" data-testid="se-new-errors">
+          <div v-for="m in newErrors" :key="m">{{ m }}</div>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button type="button" :class="btnS" data-testid="se-new-cancel" @click="edit.cancelNew()">{{ t('SEW_PANEL_NEW_CANCEL') }}</button>
+          <span class="flex-1" />
+          <button v-if="insertNo" type="button" :class="btnS" data-testid="se-new-before" @click="edit.addNew('before')">{{ t('SEW_PANEL_NEW_BEFORE', { no: insertNo }) }}</button>
+          <button type="button" class="h-8 px-3 rounded-lg text-sm font-medium text-white bg-primary-500 hover:bg-primary-600" data-testid="se-new-end" @click="edit.addNew('end')">{{ t('SEW_PANEL_NEW_END') }}</button>
+        </div>
+      </div>
+      <div v-else-if="changed.length" class="shrink-0 border-t border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 py-2" data-testid="se-panel-foot">
         <div v-if="bad.length" class="mb-1.5 text-xs leading-normal text-red-700 dark:text-red-300">
           <button type="button" class="underline font-medium" data-testid="se-panel-firsterr" @click="edit.requestFocus(firstBad)">{{ t('SEW_PANEL_FIX_N', { n: bad.length }) }}</button>
           — {{ t(`RULE_${errs[firstBad].code}`, errs[firstBad].params) }}

@@ -20,3 +20,13 @@ export async function cropPng(bitmap, rect) {
   c.getContext('2d').drawImage(bitmap, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h)
   return new Promise((res, rej) => c.toBlob(b => (b ? res(b) : rej(new Error('toBlob failed'))), 'image/png'))
 }
+
+// 비트맵 전체의 픽셀(ImageData) — [다시 찍기] 위치 찾기(locate)에 넘긴다(브라우저 전용 얇은 감싸개 — E2E 에서 확인).
+export function imageDataOf(bitmap) {
+  const w = bitmap.width
+  const h = bitmap.height
+  const c = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : Object.assign(document.createElement('canvas'), { width: w, height: h })
+  const g = c.getContext('2d', { willReadFrequently: true })
+  g.drawImage(bitmap, 0, 0)
+  return g.getImageData(0, 0, w, h)
+}

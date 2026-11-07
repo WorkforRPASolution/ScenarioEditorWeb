@@ -92,7 +92,7 @@ describe('messages', () => {
     expect(noteMessage({ code: 'NOPE_CODE', params: {} })).toBe('[SEW_NOTE_NOPE_CODE]')
   })
   it('P2 편집 코드(편집기·편집 저장소·편집 부품)에는 화면 문구(한글 글자)를 직접 쓰지 않는다 — 문구는 messages.js 한 곳', () => {
-    const files = import.meta.glob(['../editor/*.js', '../stores/editStore.js', '../stepRows.js', '../components/{StepToolbar,TargetPicker,EditDialogs,MultiSelection,StepPanel}.vue', '../components/panel/**/*.vue'],
+    const files = import.meta.glob(['../editor/*.js', '../stores/editStore.js', '../stepRows.js', '../components/{StepToolbar,TargetPicker,EditDialogs,MultiSelection,StepPanel,CaptureLayer}.vue', '../components/panel/**/*.vue'],
       { query: '?raw', import: 'default', eager: true })
     expect(Object.keys(files).length).toBeGreaterThan(20)
     const bad = []

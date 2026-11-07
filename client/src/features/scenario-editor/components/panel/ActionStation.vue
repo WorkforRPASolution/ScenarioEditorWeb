@@ -2,9 +2,11 @@
 // 레일 셋째 구역 — 찾으면(맞으면) 하는 일(목업 actionStation·actionBody, 조작판 1·8·9·10·17).
 // 동작 종류 바꾸기(사내 콤보 11개) + 동작별 입력. 이미지가 아니면 마우스 클릭 셋은 고를 수 없고 이유를 보인다(옛 값은 그대로 두고 안내만).
 // 보존 전용 동작은 원래 값을 보이고 고치지 못한다(목록에도 없다 — 다른 동작을 고르면 바뀐다).
+// 이미지 스텝의 마우스 클릭은 누를 곳 [찍기]/[다시 찍기](목업 repick, 조작판 4~6): 기준 화면에서 찾을 그림을 찾아 한 곳이면 누를 곳만 찍는다.
 import { ref, computed, watch } from 'vue'
 import { useEditStore } from '../../stores/editStore'
 import { ACTION_ORDER, CLICK_TYPES, PRESERVE_ONLY, newAction, actionBlocked, actionName } from '../../editor/panel'
+import { isRect } from '../../editor/capture'
 import { typeNameOf } from '../../editor/display'
 import { t, LABELS } from '../../messages'
 import FieldError from './FieldError.vue'
@@ -46,6 +48,8 @@ function pick(tp) {
   open.value = false
 }
 const update = (a) => edit.updateDraft((d) => ({ ...d, action: a }))
+const hasClick = computed(() => Number.isInteger(action.value.click?.x) && Number.isInteger(action.value.click?.y))
+const canRepick = computed(() => kind.value === 'image' && isRect(props.draft.condition?.searchArea) && !edit.locating)
 </script>
 
 <template>
@@ -68,7 +72,13 @@ const update = (a) => edit.updateDraft((d) => ({ ...d, action: a }))
     <FieldError :errs="errs" field="action" />
     <div class="mt-2" data-testid="se-panel-act-body">
       <KeptAction v-if="kept" :action="action" />
-      <ClickAction v-else-if="CLICK_TYPES.includes(type)" :action="action" :errs="errs" :kind="kind" :outside="clickOutside" @update="update" />
+      <ClickAction v-else-if="CLICK_TYPES.includes(type)" :action="action" :errs="errs" :kind="kind" :outside="clickOutside" @update="update">
+        <template #repick>
+          <button type="button" data-testid="se-repick" :disabled="!canRepick" :title="t('SEW_CAP_REPICK_TITLE')"
+            class="ml-auto shrink-0 h-7 px-2 rounded-md text-xs font-medium text-primary-700 dark:text-primary-300 hover:enabled:bg-primary-50 dark:hover:enabled:bg-primary-900/30 disabled:text-gray-400 disabled:opacity-60"
+            @click="edit.repick()">{{ edit.locating ? t('SEW_CAP_LOCATING') : hasClick ? t('SEW_CAP_REPICK') : t('SEW_CAP_PICK') }}</button>
+        </template>
+      </ClickAction>
       <component :is="BODY[type]" v-else-if="BODY[type]" :action="action" :errs="errs" @update="update" />
       <p v-else-if="type === 10" class="text-xs leading-snug text-gray-500 dark:text-gray-400">{{ t('SEW_PANEL_SEND_EMAIL_HELP') }}</p>
       <p v-else-if="type === 0 && kind === 'none'" class="text-xs text-amber-700 dark:text-amber-300">{{ t('SEW_PANEL_NONE_ACTION_NONE') }}</p>

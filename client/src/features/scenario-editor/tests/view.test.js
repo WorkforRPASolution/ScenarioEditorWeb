@@ -106,6 +106,13 @@ describe('ScenarioEditorView', () => {
       expect(b.findComponent({ name: 'StepPanel' }).exists()).toBe(false)
       expect(b.findComponent({ name: 'StepDetail' }).exists()).toBe(true)
     })
+    it('도구 줄의 새 스텝 ▾ 에서 종류를 고르면 패널에 새 스텝 초안이 열린다', async () => {
+      const w = await openWith({ singleid: 'u', canWrite: true }, true)
+      w.findComponent({ name: 'StepToolbar' }).vm.$emit('new', 'none')
+      const e = useEditStore()
+      expect(e.panel.isNew).toBe(true)
+      expect(e.panel.draft.condition.kind).toBe('none')
+    })
     it('쓰기 권한이 없거나 옛 판이면 도구 줄이 없다', async () => {
       const a = await openWith({ singleid: 'u', canWrite: false }, true)
       expect(a.findComponent({ name: 'StepToolbar' }).exists()).toBe(false)

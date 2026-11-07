@@ -97,8 +97,8 @@ const card = 'bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:
                 <button data-testid="se-tab-table" class="px-3 py-1 rounded-md" :class="store.view === 'table' ? 'bg-white dark:bg-dark-card text-primary-700 dark:text-primary-300 font-semibold shadow-sm' : 'text-gray-500'" @click="store.view = 'table'">표</button>
                 <button data-testid="se-tab-flow" class="px-3 py-1 rounded-md" :class="store.view === 'flow' ? 'bg-white dark:bg-dark-card text-primary-700 dark:text-primary-300 font-semibold shadow-sm' : 'text-gray-500'" @click="store.view = 'flow'">순서도</button>
               </div>
-              <!-- 편집 도구 줄: 작업본이 있고 쓸 수 있는 세션만(읽기 전용이면 없음). 새 스텝 만들기는 Task 7 이 잇는다. -->
-              <StepToolbar v-if="edit.editable" />
+              <!-- 편집 도구 줄: 작업본이 있고 쓸 수 있는 세션만(읽기 전용이면 없음). 새 스텝 ▾ 은 패널에 새 스텝 초안을 연다. -->
+              <StepToolbar v-if="edit.editable" @new="edit.startNew" />
               <button data-testid="se-expand" class="shrink-0 text-xs px-2 h-7 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300" @click="store.expanded = !store.expanded">{{ store.expanded ? '⤡ 줄이기' : '⤢ 넓게' }}</button>
             </div>
             <div class="flex-1 min-h-0">

@@ -1,0 +1,17 @@
+/* 큰 화면 잡기 색과 단계 띠(목업 --area·--ocr·--train·--click, .cap li): 밝은 화면·다크 모드 */
+.se-cap { --cap-area: #2563eb; --cap-ocr: #7c3aed; --cap-train: #0d9488; --cap-click: #dc2626; }
+.dark .se-cap { --cap-area: #60a5fa; --cap-ocr: #a78bfa; --cap-train: #2dd4bf; --cap-click: #f87171; }
+.se-cap-steps { list-style: none; margin: 0; padding: 0; display: flex; align-items: center; min-width: 0; }
+.se-cap-steps li { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #9ca3af; white-space: nowrap; }
+.se-cap-steps li + li::before { content: ''; width: 18px; height: 1px; background: #d1d5db; margin: 0 6px; }
+.se-cap-steps li i { font-style: normal; width: 20px; height: 20px; border-radius: 50%; background: #e5e7eb; color: #6b7280; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex: none; }
+.se-cap-steps li.now { color: #111827; font-weight: 600; }
+.se-cap-steps li.now i { background: var(--c, #2563eb); color: #fff; }
+.se-cap-steps li.done { color: #6b7280; }
+.se-cap-steps li.done i { background: #dcfce7; color: #15803d; }
+.dark .se-cap-steps li + li::before { background: #475569; }
+.dark .se-cap-steps li i { background: #334155; color: #94a3b8; }
+.dark .se-cap-steps li.now { color: #f1f5f9; }
+.dark .se-cap-steps li.now i { color: #0f172a; }
+.dark .se-cap-steps li.done { color: #94a3b8; }
+.dark .se-cap-steps li.done i { background: rgba(22, 163, 74, .25); color: #86efac; }
