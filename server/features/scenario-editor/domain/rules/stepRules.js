@@ -4,7 +4,7 @@ const { CAN_FAIL_ACTIONS } = require('../enums')
 const { encodeAction } = require('../conditionCodec')
 const { editedFromSkeleton } = require('../editedScenario')
 const { resolveOrigins } = require('../changeDetect')
-const { issue, needsBase, isRef } = require('./scenarioRules')
+const { issue, needsBase, hasImage } = require('./scenarioRules')
 
 const isInt = (v) => typeof v === 'number' && Number.isInteger(v)
 const isFiniteNum = (v) => typeof v === 'number' && Number.isFinite(v)
@@ -24,7 +24,7 @@ function conditionIssues(s, out) {
   const c = s.condition
   const u = s.uid
   const act = s.action && s.action.type
-  if (needsBase(c) && !isRef(s.images && s.images.base)) out.push(issue('BASE_IMAGE_MISSING', u))
+  if (needsBase(c) && !hasImage(s.images && s.images.base)) out.push(issue('BASE_IMAGE_MISSING', u))
   if (c.kind === 'ocr' && [1, 2, 3].includes(act)) out.push(issue('OCR_MOUSE_CLICK', u))
   if (c.kind === 'none' && [1, 2, 3].includes(act)) out.push(issue('NONE_MOUSE_CLICK', u))
   if (c.kind === 'eqpState' && (c.skipPreprocessing === true || c.eqpState === null)) out.push(issue('EQPSTATE_SKIP', u))
@@ -41,7 +41,7 @@ function conditionIssues(s, out) {
     const acc = c.image && c.image.accept
     if (isFiniteNum(acc) && acc < 0.5) out.push(issue('ACCEPT_TOO_LOW', u))
     else if (!isFiniteNum(acc) || acc > 1) out.push(issue('ACCEPT_TOO_HIGH', u))
-    if (!Object.values((s.images && s.images.train) || {}).some(isRef)) out.push(issue('TRAIN_IMAGE_MISSING', u))
+    if (!Object.values((s.images && s.images.train) || {}).some(hasImage)) out.push(issue('TRAIN_IMAGE_MISSING', u))
     if (countOk && Number(multi.count) > 1 && act !== 0) out.push(issue('MULTI_WITH_ACTION', u))
   } else {
     const o = c.ocr || {}

@@ -74,6 +74,14 @@ describe('checkService.check', () => {
     expect(r.conflict).toBeNull()
     expect(r.targetExists.diff).toContainEqual({ key: 'IsEnabled', from: false, to: true })
   })
+  it('targetExists.diff 는 정규화한 값 비교 — 같은 후속 시나리오({Name, Text})는 차이로 내지 않는다', async () => {
+    const follow = { Name: 'F', Text: 't' }
+    const { svc, meta } = setup({ keyDocs: async (p, m, n) => [{ scname: n, property: { ...propertyDoc, IsEnabled: false, NextScenarioIfSuccess: follow, NextScenarioIfFail: { Name: 'F', Text: null } } }] })
+    const m = meta({ target: { process: 'P', model: 'M', name: 'OTHER' } })
+    m.scenario.property = { ...m.scenario.property, NextScenarioIfSuccess: { ...follow }, NextScenarioIfFail: { Name: 'F', Text: '' } }
+    const r = await svc.check(user, m)
+    expect(r.targetExists.diff).toEqual([{ key: 'IsEnabled', from: false, to: true }])
+  })
   it('새 이름 대상이 없으면 exists false·targetExists null', async () => {
     const { svc, meta } = setup({ keyDocs: async () => [] })
     const r = await svc.check(user, meta({ target: { process: 'P', model: 'M', name: 'NEWONE' } }))

@@ -90,6 +90,8 @@ const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/
 // 글자 그대로 쓴다(판정 R5 — 열기가 literal 로 둔 값을 배포가 막으면 손대지 않은 스텝 때문에 배포할 수 없다).
 const CS_SPACE = /[\t\n\r ]/g
 const isCsBase64 = (v) => typeof v === 'string' && (BASE64.test(v) || BASE64.test(v.replace(CS_SPACE, '')))
+// 공백(C# 이 건너뛰는 글자)을 뺀 길이 — isCsBase64 인 값의 실제 base64 글자 수
+const csBase64Length = (v) => v.replace(CS_SPACE, '').length
 
 function writeValue(type, v, path, ignoreNull) {
   if (v === null) return 'null'
@@ -191,4 +193,4 @@ async function* setScenarioRequestChunks({ process, model, name, biChunks, bodyS
   yield '"}'
 }
 
-module.exports = { SCHEMAS, csJsonDouble, csJsonEscape, csJsonString, backupInfoChunks, setScenarioRequestChunks, serializeScenario, serializeBackupInfo, serializeProperty, serializeSetScenarioRequest }
+module.exports = { SCHEMAS, isCsBase64, csBase64Length, csJsonDouble, csJsonEscape, csJsonString, backupInfoChunks, setScenarioRequestChunks, serializeScenario, serializeBackupInfo, serializeProperty, serializeSetScenarioRequest }

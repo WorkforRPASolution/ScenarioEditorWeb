@@ -1,6 +1,10 @@
 'use strict'
 // 저장 직전 충돌 판단(설계 §6.3·§6.6). 같은 시나리오를 덮어쓸 때만 본다.
-const { lastOwner } = require('./propertyModel')
+const { lastOwner, propertyFromBson } = require('./propertyModel')
+const { withCsDefaults } = require('./csDefaults')
+
+const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
+const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k)
 
 function detectConflict({ sameScenario, docExists, headCrtime, currentCrtime, propertyRev, currentPropertyRev, owners }) {
   if (!sameScenario) return null
@@ -17,12 +21,40 @@ function detectConflict({ sameScenario, docExists, headCrtime, currentCrtime, pr
 
 const PROPERTY_DIFF_KEYS = ['IsEnabled', 'NextScenarioIfSuccess', 'NextScenarioIfFail', 'Type', 'StartDelay']
 
+const FOLLOW_KEYS = new Set(['NextScenarioIfSuccess', 'NextScenarioIfFail'])
+
+// 후속 시나리오는 {Name, Text} 두 칸만 본다(직렬화도 두 칸만 쓴다). 설명 null 은 조립이 "" 로 보내므로(§6.8) "" 로 맞춘다.
+function comparable(key, v) {
+  if (!FOLLOW_KEYS.has(key) || !isObject(v)) return v
+  return { Name: v.Name === undefined ? '' : v.Name, Text: v.Text === undefined || v.Text === null ? '' : v.Text }
+}
+
+// 지금 문서 값 — 열기와 같은 해석(propertyFromBson). 칸마다 따로 풀어 다른 칸이 깨져도 이 칸은 본다.
+// 풀 수 없는 칸은 저장값 그대로, property 가 문서가 아니면 null(모름).
+function currentValue(current, key) {
+  if (!isObject(current)) return null
+  const r = propertyFromBson(has(current, key) ? { [key]: current[key] } : {})
+  return r.ok ? r.value[key] : (current[key] ?? null)
+}
+
+const same = (a, b) => {
+  if (Array.isArray(a) || Array.isArray(b)) return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => same(x, b[i]))
+  if (isObject(a) && isObject(b)) {
+    const ka = Object.keys(a)
+    return ka.length === Object.keys(b).length && ka.every((k) => has(b, k) && same(a[k], b[k]))
+  }
+  return Object.is(a, b)
+}
+
+// 이미 있는 대상을 덮을 때 바뀌는 운영 속성(§6.6). 보낼 값은 조립과 같은 채움(withCsDefaults — 빠진 키는 C# 기본값)으로,
+// 지금 값은 열기와 같은 해석으로 맞춘 뒤 값으로 비교한다. from·to 도 맞춘 값이고 undefined 가 없다(JSON 에서 사라지지 않게).
 function propertyDiff(current, working) {
+  const w = withCsDefaults('ScenarioProperty', isObject(working) ? working : {})
   const out = []
   for (const key of PROPERTY_DIFF_KEYS) {
-    const from = current?.[key]
-    const to = working?.[key]
-    if (from !== to) out.push({ key, from, to })
+    const from = comparable(key, currentValue(current, key)) ?? null
+    const to = comparable(key, w[key]) ?? null
+    if (!same(from, to)) out.push({ key, from, to })
   }
   return out
 }

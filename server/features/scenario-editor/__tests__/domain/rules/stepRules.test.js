@@ -71,6 +71,12 @@ const BLOCK = [
   ['AREA_INVALID', imgStep({}, {}), (s) => { s.condition.searchArea.w = 0 }],
   ['AREA_INVALID', ocrStep({}, {}), (s) => { s.condition.searchArea.h = 0.5 }],
   ['BASE_IMAGE_MISSING', imgStep({ images: { train: { 0: ref }, base: null } })],
+  // literal 은 사내 C# 이 그림으로 읽는 base64(공백 뺀 길이 > 4)일 때만 있는 것 — 자리표시(공백 붙은 AA==)·base64 가 아닌 글·null 은 없음
+  ['BASE_IMAGE_MISSING', imgStep({ images: { train: { 0: ref }, base: { literal: ' AA==\r\n' } } })],
+  ['BASE_IMAGE_MISSING', imgStep({ images: { train: { 0: ref }, base: { literal: 'hello world!' } } })],
+  ['BASE_IMAGE_MISSING', ocrStep({ images: { train: {}, base: { literal: null } } })],
+  ['TRAIN_IMAGE_MISSING', imgStep({ images: { train: { 0: { literal: 'AA==\n' } }, base: ref } })],
+  ['TRAIN_IMAGE_MISSING', imgStep({ images: { train: { 0: { literal: 'not base64!!' } }, base: ref } })],
   ['RETRY_RANGE', { retry: { limit: 21, intervalMs: 2000 } }],
   ['RETRY_RANGE', { retry: { limit: -1, intervalMs: 2000 } }],
   ['RETRY_RANGE', { retry: { limit: 1, intervalMs: 1999 } }],
@@ -116,7 +122,10 @@ describe('스텝 값 통과', () => {
     ['창 찾기(좌표)', act(9, { findWindow: { title: 't', className: 'c', x: 1, y: 2 }, raw: 't@c@1@2' })],
     ['명령', act(11, { command: 'dir', raw: 'dir' })],
     ['스크립트', act(12, { customScript: { name: 'a', args: ['b'], timeout: { value: 3, unit: 'minutes' }, email: ['fail'], legacy: false }, raw: 'a;b;@@timeout:3 minutes,email:fail' })],
-    ['메일 전송(10)', act(10)]
+    ['메일 전송(10)', act(10)],
+    // 판정 R5 로 literal 로 둔 정규가 아닌 base64(줄바꿈 등) — 사내 C# Convert.FromBase64String 은 공백을 건너뛰고 그림으로 읽는다
+    ['이미지 — 공백 든 base64 literal 기준 화면·찾을 그림', imgStep({ images: { train: { 0: { literal: 'iVBORw0K\nGgoAAAANSUhEUg==' } }, base: { literal: 'iVBORw0KGgo\r\nAAAANSUhEUg==' } } })],
+    ['OCR — 공백 든 base64 literal 기준 화면', ocrStep({ images: { train: {}, base: { literal: 'iVBORw0K GgoAAAANSUhEUg==' } } })]
   ]
   for (const [name, over] of PASS) it(name, () => { expect(blocks(over)).toEqual([]) })
 
@@ -127,6 +136,19 @@ describe('스텝 값 통과', () => {
   it('FALSE_NEXT_WITH_ACTION 은 스텝 값 검사에서도 경고로만 나온다', () => {
     const r = withStep({ ...act(11, { command: 'x', raw: 'x' }), next: { onTrue: { kind: 'next' }, onFalse: { kind: 'next' } } })
     expect(codesOf(r.warns)).toContain('FALSE_NEXT_WITH_ACTION')
+  })
+})
+
+describe('정규가 아닌 base64 기준 화면(판정 R5)을 가진 손대지 않은 판', () => {
+  it('이미지 스텝의 BI 가 줄바꿈 든 base64 literal 이어도 BASE_IMAGE_MISSING(늘 막음)이 아니다 — 배포할 수 있다', () => {
+    const src = skeletonWith([rawStep({ kind: 'image', next: [SUCCESS, FAIL] })], { literals: new Map([[0, 'iVBORw0KGgo\nAAAANSUhEUg==']]) })
+    const e = fresh(src)
+    expect(e.steps[0].images.base).toEqual({ literal: 'iVBORw0KGgo\nAAAANSUhEUg==' })
+    expect(codesOf(checkScenario(e, src, ctx()).blocks)).not.toContain('BASE_IMAGE_MISSING')
+  })
+  it('BI 가 공백 붙은 자리표시(AA==)면 여전히 막는다', () => {
+    const src = skeletonWith([rawStep({ kind: 'image', next: [SUCCESS, FAIL] })], { literals: new Map([[0, 'AA==\n']]) })
+    expect(codesOf(checkScenario(fresh(src), src, ctx()).blocks)).toContain('BASE_IMAGE_MISSING')
   })
 })
 

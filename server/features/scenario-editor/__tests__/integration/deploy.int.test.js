@@ -321,8 +321,8 @@ describe('정규가 아닌 base64 는 저장값 그대로 (판정 R5)', () => {
   it('찾을 그림·기준 화면에 줄바꿈이 든 판을 열어 다른 스텝만 고쳐 배포하면 그 글자가 새 본문·BI 에 그대로 있다', async () => {
     const NC = { ...CVD, name: NAME('NC') }
     // 시드 적재처럼 InterfaceServer setscenario 로 한 번 쓴다. 생성기 글자(스텝 0 이미지·1 OCR·2 조건 없음·3 설비 상태)에서 ID 를 바꾸고
-    // 스텝 0 의 찾을 그림과 스텝 2 의 기준 화면 자리에 줄바꿈(JSON \n)이 든 base64 를 넣는다. 스텝 2 는 기준 화면이 필요 없는 조건이다 —
-    // 이미지·OCR 스텝의 기준 화면이 정규가 아니면 literal 이라 BASE_IMAGE_MISSING(늘 막음)에 걸린다.
+    // 스텝 0 의 찾을 그림과 스텝 2 의 기준 화면 자리에 줄바꿈(JSON \n)이 든 base64 를 넣는다. 스텝 2 는 기준 화면이 필요 없는 조건이다
+    // (이미지 스텝의 기준 화면은 아래 시험이 본다).
     const swapId = (s, prefix = '') => s.replace(`"ID":"${prefix}${idOf(SOURCE)}"`, `"ID":"${prefix}${idOf(NC)}"`)
     let body = swapId(readFileSync(join(GEN, 'body.v1.json'), 'utf8'))
     let bi = swapId(readFileSync(join(GEN, 'bi.v1.json'), 'utf8'), 'BI.')
@@ -356,6 +356,26 @@ describe('정규가 아닌 base64 는 저장값 그대로 (판정 R5)', () => {
     const newBi = await biOf(NC, data.crtime)
     expect(newBi).toContain(`"${snapOdd}"`)
     expect(newBi).toBe(bi)
+  })
+
+  it('이미지 스텝의 기준 화면이 줄바꿈 든 base64 여도(literal) BASE_IMAGE_MISSING 으로 막지 않고 배포한다 — BI 는 글자 그대로', async () => {
+    const NC0 = { ...CVD, name: NAME('NC0') }
+    const swapId = (s, prefix = '') => s.replace(`"ID":"${prefix}${idOf(SOURCE)}"`, `"ID":"${prefix}${idOf(NC0)}"`)
+    const body = swapId(readFileSync(join(GEN, 'body.v1.json'), 'utf8'))
+    let bi = swapId(readFileSync(join(GEN, 'bi.v1.json'), 'utf8'), 'BI.')
+    const property = swapId(readFileSync(join(GEN, 'property.v1.json'), 'utf8'))
+    const snap = JSON.parse(bi).TargetSnapshotList[0] // 스텝 0 = 이미지 조건
+    const snapOdd = `${snap.slice(0, 76)}\\n${snap.slice(76)}`
+    bi = bi.replace(`"${snap}"`, `"${snapOdd}"`)
+    await require('../../clients/interfaceClient').setScenario({ ...NC0, body, bi, property })
+
+    const sk = await open(NC0)
+    expect(sk.edited.steps[0].condition.kind).toBe('image')
+    expect(sk.edited.steps[0].images.base).toEqual({ literal: JSON.parse(`"${snapOdd}"`) })
+    const other = sk.edited.steps.findIndex((s, i) => i > 0 && s.condition.kind === 'none')
+    sk.edited.steps[other].descriptionToEmail = 'R5 기준 화면 — 다른 스텝만 고침'
+    const data = expectOk(await deploy(metaOf(sk, NC0)))
+    expect(await biOf(NC0, data.crtime)).toBe(bi)
   })
 })
 

@@ -1,6 +1,7 @@
 'use strict'
 // 시나리오 단위 검사: 스텝 수·참조(다음 스텝)·머리·대상·크기·후속·운영 속성. 값은 Issue { code, uid?, params? } 뿐이다.
 const { graphNotes } = require('../notes')
+const { isCsBase64, csBase64Length } = require('../csharpJson')
 
 const STEP_MAX = 200
 const NAME_MAX = 50
@@ -13,6 +14,9 @@ const issue = (code, uid, params) => {
 }
 const needsBase = (c) => c && (c.kind === 'image' || c.kind === 'ocr')
 const isRef = (b) => !!b && typeof b === 'object' && 'from' in b
+// 그림이 있는가(기준 화면·찾을 그림): 참조, 또는 사내 C# 이 그림으로 읽는 base64 literal — 판정 R5 로 정규가 아닌 저장값(줄바꿈 등)은
+// literal 로 남지만 Convert.FromBase64String 은 공백을 건너뛰고 읽는다. 공백을 뺀 길이가 4 이하(자리표시 AA==)·base64 가 아닌 글·null 은 없음.
+const hasImage = (b) => isRef(b) || (!!b && typeof b === 'object' && isCsBase64(b.literal) && csBase64Length(b.literal) > 4)
 
 function stepCount(edited, source) {
   const out = []
@@ -148,4 +152,4 @@ function scenarioRules(edited, source, ctx) {
   ]
 }
 
-module.exports = { scenarioRules, needsBase, isRef, issue }
+module.exports = { scenarioRules, needsBase, isRef, hasImage, issue }
