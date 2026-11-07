@@ -1,7 +1,7 @@
 'use strict'
 // 성과 정보 쓰기 값(SC_PROPERTY.performance). 필드 이름·순서는 사내 C# PerformanceItem 그대로(EqpPerfornmanceLoss 오타·WaferLoss, 01 §5.10).
 const { Long } = require('mongoose').mongo
-const { NOT_ENTERED } = require('./enums')
+const { NOT_ENTERED, TRIGGER_NAMES, GRADE_NAMES, PERFORM_TYPE_NAMES, ACCIDENT_TYPE_NAMES } = require('./enums')
 const { kstDate } = require('./owners')
 
 // 사내 new PerformanceItem() — 새 대상 저장에서 성과를 복사하지 않을 때 쓴다(13 §2.6). TriggerInfo 는 대입이 없어 null,
@@ -84,4 +84,26 @@ function citizenDevelopers(list, usersById, existing) {
   })
 }
 
-module.exports = { emptyPerformance, reviewFields, performanceFields, citizenDevelopers }
+// 저장 전 칸마다 형·범위(모양 오류 → 호출 쪽이 400). enum 은 카탈로그 범위의 정수, 효과 값은 Int32 정수(음수·상한 비즈니스 규칙은 checkPerformance 가 422),
+// 글은 문자열, TriggerInfo 는 문자열 또는 null(01 §5.10). 없는 키는 보지 않는다.
+const ENUM_SIZE = { Grade: GRADE_NAMES.length, Trigger: TRIGGER_NAMES.length, PerformType: PERFORM_TYPE_NAMES.length, AccidentType: ACCIDENT_TYPE_NAMES.length }
+const INT32_KEYS = ['ManWorkLoss', 'EqpStopLoss', 'WaferLoss', 'InvestCostLoss']
+const TEXT_KEYS = ['Group', 'SupervisorComment', 'ScenarioDescription', 'AdditionalEffect', 'AccidentInfo']
+
+function enumShapeError(key, v) {
+  if (Number.isInteger(v) && v >= 0 && v < ENUM_SIZE[key]) return null
+  return { path: key, reason: `0 이상 ${ENUM_SIZE[key] - 1} 이하의 정수여야 합니다` }
+}
+
+function fieldShapeError(input) {
+  const f = input || {}
+  for (const k of Object.keys(ENUM_SIZE)) if (k in f) { const e = enumShapeError(k, f[k]); if (e) return e }
+  for (const k of INT32_KEYS) {
+    if (k in f && !(Number.isInteger(f[k]) && f[k] >= -2147483648 && f[k] <= 2147483647)) return { path: k, reason: '32비트 정수여야 합니다' }
+  }
+  for (const k of TEXT_KEYS) if (k in f && typeof f[k] !== 'string') return { path: k, reason: '문자열이어야 합니다' }
+  if ('TriggerInfo' in f && f.TriggerInfo !== null && typeof f.TriggerInfo !== 'string') return { path: 'TriggerInfo', reason: '문자열 또는 null 이어야 합니다' }
+  return null
+}
+
+module.exports = { fieldShapeError, enumShapeError, emptyPerformance, reviewFields, performanceFields, citizenDevelopers }

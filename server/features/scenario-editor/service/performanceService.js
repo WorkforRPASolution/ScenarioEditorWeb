@@ -1,10 +1,9 @@
 'use strict'
 // 심의·성과 저장(설계 §7), 같은 이름 모델 찾기, 사용자 찾기, 이름 규칙. 쓰는 것은 performance.* 필드뿐이다(바뀐 것만 $set).
 const { reviewDenial } = require('../domain/writePolicy')
-const { reviewFields, performanceFields, citizenDevelopers } = require('../domain/performanceEdit')
+const { reviewFields, performanceFields, citizenDevelopers, fieldShapeError, enumShapeError } = require('../domain/performanceEdit')
 const { performanceFromBson } = require('../domain/performanceModel')
 const { checkPerformance } = require('../domain/rules/performanceRules')
-const { GRADE_NAMES } = require('../domain/enums')
 const { seError } = require('../errors')
 
 // 성과 창이 보내는 필드(BSON 키). Supervisor·UpdateDate·EqpPerfornmanceLoss 는 서버가 정하거나 건드리지 않고, CitizenDeveloper 는 따로 받는다.
@@ -38,7 +37,8 @@ function createPerformanceService({ repo, scopes, now = () => Date.now() }) {
 
   async function review(user, key, { grade, comment } = {}) {
     denied(user)
-    if (grade !== undefined && !(Number.isInteger(grade) && grade >= 0 && grade < GRADE_NAMES.length)) throw bad('grade', '등급 번호가 아닙니다')
+    const ge = grade === undefined ? null : enumShapeError('Grade', grade)
+    if (ge) throw bad('grade', ge.reason)
     if (comment !== undefined && typeof comment !== 'string') throw bad('comment', '문자열이어야 합니다')
     const doc = await propertyDoc(user, key)
     const fields = reviewFields(performanceOf(doc), { grade, comment }, user.singleid)
@@ -70,6 +70,8 @@ function createPerformanceService({ repo, scopes, now = () => Date.now() }) {
     if (!Array.isArray(alsoModels) || alsoModels.some((m) => typeof m !== 'string')) throw bad('alsoModels', '문자열 배열이어야 합니다')
     const unknown = Object.keys(fields).filter((k) => !INPUT_KEYS.has(k) && !IGNORED_KEYS.has(k))
     if (unknown.length) throw bad(`fields.${unknown[0]}`, '저장할 수 없는 성과 필드입니다')
+    const shape = fieldShapeError(fields)
+    if (shape) throw bad(`fields.${shape.path}`, shape.reason)
     const doc = await propertyDoc(user, key)
     const dev = await developerContext(devList)
     const current = performanceOf(doc)

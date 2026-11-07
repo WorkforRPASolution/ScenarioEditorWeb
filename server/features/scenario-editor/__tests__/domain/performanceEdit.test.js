@@ -3,7 +3,7 @@ import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
 const mongoose = require('mongoose')
 const { Long } = mongoose.mongo
-const { emptyPerformance, reviewFields, performanceFields, citizenDevelopers } = require('../../domain/performanceEdit')
+const { emptyPerformance, reviewFields, performanceFields, citizenDevelopers, fieldShapeError, enumShapeError } = require('../../domain/performanceEdit')
 const { performanceFromBson } = require('../../domain/performanceModel')
 
 describe('emptyPerformance', () => {
@@ -88,5 +88,27 @@ describe('citizenDevelopers', () => {
   })
   it('기존이 없을 때(undefined)도 Long', () => {
     expect(Long.isLong(citizenDevelopers([{ KnoxId: 'a', Contribution: 1 }], users)[0].Contribution)).toBe(true)
+  })
+})
+
+describe('fieldShapeError — 칸마다 형·범위(저장 전 400 검사)', () => {
+  it('좋은 값·빈 입력은 null', () => {
+    expect(fieldShapeError({})).toBeNull()
+    expect(fieldShapeError({ Grade: 6, Trigger: 6, PerformType: 2, AccidentType: 6, ManWorkLoss: 2147483647, TriggerInfo: null, Group: 'G', SupervisorComment: '', ScenarioDescription: 'x', AdditionalEffect: 'x', AccidentInfo: 'x' })).toBeNull()
+    expect(fieldShapeError({ TriggerInfo: 'abc' })).toBeNull()
+  })
+  it.each([
+    [{ Grade: 'x' }, 'Grade'], [{ Grade: 99 }, 'Grade'], [{ Grade: -1 }, 'Grade'], [{ Grade: 1.5 }, 'Grade'],
+    [{ Trigger: 'abc' }, 'Trigger'], [{ Trigger: 7 }, 'Trigger'], [{ PerformType: {} }, 'PerformType'], [{ PerformType: 3 }, 'PerformType'],
+    [{ AccidentType: 'z' }, 'AccidentType'], [{ AccidentType: 7 }, 'AccidentType'], [{ TriggerInfo: 5 }, 'TriggerInfo'],
+    [{ ManWorkLoss: '3' }, 'ManWorkLoss'], [{ EqpStopLoss: 1.5 }, 'EqpStopLoss'], [{ WaferLoss: 2147483648 }, 'WaferLoss'], [{ InvestCostLoss: null }, 'InvestCostLoss'],
+    [{ Group: 5 }, 'Group'], [{ ScenarioDescription: [] }, 'ScenarioDescription'], [{ AdditionalEffect: 1 }, 'AdditionalEffect'], [{ AccidentInfo: {} }, 'AccidentInfo'], [{ SupervisorComment: 3 }, 'SupervisorComment']
+  ])('%j → path %s', (input, path) => {
+    expect(fieldShapeError(input)).toMatchObject({ path })
+    expect(fieldShapeError(input).reason).toEqual(expect.any(String))
+  })
+  it('enumShapeError(grade)는 등급 하나만 같은 규칙', () => {
+    expect(enumShapeError('Grade', 3)).toBeNull()
+    expect(enumShapeError('Grade', 7)).not.toBeNull()
   })
 })

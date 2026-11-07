@@ -137,6 +137,29 @@ describe('savePerformance', () => {
   })
 })
 
+describe('savePerformance — 칸 형·범위(400, 어떤 모델에도 쓰지 않는다)', () => {
+  it.each([
+    [{ Grade: 'x' }, 'fields.Grade'], [{ Grade: 99 }, 'fields.Grade'], [{ Trigger: 'abc' }, 'fields.Trigger'], [{ PerformType: {} }, 'fields.PerformType'],
+    [{ AccidentType: 'z' }, 'fields.AccidentType'], [{ TriggerInfo: 5 }, 'fields.TriggerInfo'], [{ ManWorkLoss: '3' }, 'fields.ManWorkLoss'],
+    [{ Group: 5 }, 'fields.Group'], [{ SupervisorComment: 3 }, 'fields.SupervisorComment'], [{ AccidentInfo: [] }, 'fields.AccidentInfo']
+  ])('%j → 400 BAD_REQUEST path %s', async (fields, path) => {
+    const mk = () => [{ scname: 'N', property: {}, performance: { ...GOOD } }]
+    const { svc, calls } = setup({ docs: { 'P|M1|N': mk(), 'P|M2|N': mk() } })
+    const e = await fail(svc.savePerformance(admin, key, { fields, alsoModels: ['M2'] }))
+    expect([e.statusCode, e.code, e.details.path]).toEqual([400, 'BAD_REQUEST', path])
+    expect(calls.perf).toEqual([])
+  })
+  it('review 의 등급도 같은 검사(path grade)', async () => {
+    const e = await fail(setup().svc.review(admin, key, { grade: 99 }))
+    expect([e.statusCode, e.details.path]).toEqual([400, 'grade'])
+  })
+  it('올바른 값은 그대로 저장된다', async () => {
+    const { svc, calls } = setup()
+    await svc.savePerformance(admin, key, { fields: { Trigger: 4, TriggerInfo: null, AccidentInfo: '' }, alsoModels: [] })
+    expect(calls.perf[0][1]).toMatchObject({ 'performance.Trigger': 4 })
+  })
+})
+
 describe('sameName·searchUsers·nameRule', () => {
   it('sameName: 같은 이름 모델 중 내 권한 안만', async () => {
     expect(await setup().svc.sameName(admin, 'P', 'N')).toEqual(['M1', 'M2'])
