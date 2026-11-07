@@ -1,0 +1,42 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { refUrl, newTempId } from '../editor/images'
+
+const session = { source: { process: 'P 1', model: 'M/2', name: 'N', crtime: 1700000000000, fileId: 'F9' } }
+
+describe('refUrl', () => {
+  let n
+  beforeEach(() => {
+    n = 0
+    globalThis.URL.createObjectURL = vi.fn(() => `blob:t${++n}`)
+  })
+  afterEach(() => { delete globalThis.URL.createObjectURL })
+
+  it('source 는 뼈대 이미지 경로(구간 인코딩)', () => {
+    const u = refUrl({ from: 'source', id: 'img1' }, { session })
+    expect(u).toContain('/scenario-editor/scenarios/P%201/M%2F2/N/versions/1700000000000/files/F9/images/img1')
+  })
+  it('other 는 그 판의 경로', () => {
+    const u = refUrl({ from: 'other', process: 'Q', model: 'R', name: 'S', crtime: 5, fileId: 'G', id: 'i2' }, { session })
+    expect(u).toContain('/scenario-editor/scenarios/Q/R/S/versions/5/files/G/images/i2')
+  })
+  it('upload: Blob 있으면 object URL 하나를 재사용, 없으면 초안 그림, 둘 다 없으면 null', () => {
+    const blob = new Blob(['x'])
+    const uploads = new Map([['t1', blob]])
+    const a = refUrl({ from: 'upload', tempId: 't1' }, { session, uploads, draftId: 'd1' })
+    const b = refUrl({ from: 'upload', tempId: 't1' }, { session, uploads, draftId: 'd1' })
+    expect(a).toBe('blob:t1'); expect(b).toBe(a); expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
+    expect(refUrl({ from: 'upload', tempId: 't9' }, { session, uploads, draftId: 'd 1' })).toContain('/scenario-editor/drafts/d%201/images/t9')
+    expect(refUrl({ from: 'upload', tempId: 't9' }, { session, uploads })).toBeNull()
+  })
+  it('literal·null 은 null', () => {
+    expect(refUrl({ literal: 'x' }, { session })).toBeNull()
+    expect(refUrl(null, { session })).toBeNull()
+  })
+})
+
+describe('newTempId', () => {
+  it('규칙에 맞고 매번 다르다', () => {
+    const a = newTempId(), b = newTempId()
+    expect(a).toMatch(/^[A-Za-z0-9_-]{1,64}$/); expect(a).not.toBe(b); expect(a[0]).toBe('t')
+  })
+})
