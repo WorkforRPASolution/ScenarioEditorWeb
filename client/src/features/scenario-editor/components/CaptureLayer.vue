@@ -3,7 +3,7 @@
 // 좌표는 기준 화면 픽셀이고 확대·이동은 감싼 상자(StepViewer)의 transform 이 맡는다. 선 굵기·이름표 크기만 scale 로 나눠 화면에서 같게 보인다.
 // - 잡기 중(editStore.capture): 검색(OCR) 영역 끌기 → 찾을 그림 끌기(영역 안) → 누를 곳 찍기(그림 밖도 됨). 받은 값은 editStore.captureNext 로 —
 //   패널 초안만 바뀐다(Esc 취소는 큰 화면 StepViewer 가 듣는다 — 그림을 못 그려 이 층이 없을 때도 되게).
-// - 잡기 밖: 영역 몸통을 끌어 옮기고 손잡이 여덟 곳으로 크기를 바꾼다(패널 초안).
+// - 잡기 밖: 영역 몸통을 끌어 옮기고 손잡이 여덟 곳으로 크기를 바꾼다(패널 초안). 끄는 동안은 editStore.areaDragging(찾을 그림 위치 찾기를 미룬다).
 // 끌기·찍기는 큰 화면 끌어 이동(StepViewer mousedown)으로 번지지 않게 막는다. 쓸 수 있는 세션의 패널 초안에만 그린다(읽기 전용은 P1 표시).
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useEditStore } from '../stores/editStore'
@@ -71,12 +71,13 @@ function toImg(e) {
   return { x: ((e.clientX - r.left) * W.value) / (r.width || 1), y: ((e.clientY - r.top) * H.value) / (r.height || 1) }
 }
 let stopDrag = null
-function track(start, onMove, onUp) {
+// onEnd = 놓았거나 층이 사라져 끌기가 끝날 때(어느 쪽이든 한 번)
+function track(start, onMove, onUp, onEnd) {
   stopDrag?.()
   let last = start
   const move = (e) => { last = toImg(e); onMove(last) }
   const up = () => { done(); onUp?.(last) }
-  const done = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); stopDrag = null }
+  const done = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); stopDrag = null; onEnd?.() }
   stopDrag = done
   window.addEventListener('mousemove', move)
   window.addEventListener('mouseup', up)
@@ -112,7 +113,8 @@ function onAreaDown(e, handle) {
     const cur = props.draft.condition?.searchArea
     if (cur && cur.x === r.x && cur.y === r.y && cur.w === r.w && cur.h === r.h) return
     edit.updateDraft((d) => ({ ...d, condition: { ...d.condition, searchArea: r } }))
-  })
+  }, null, () => edit.setAreaDrag(false))
+  edit.setAreaDrag(true) // track 이 앞 끌기를 끝낸(끈) 뒤에 켠다
 }
 
 onBeforeUnmount(() => stopDrag?.())

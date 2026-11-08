@@ -50,6 +50,8 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   const spots = shallowRef(new Map())
   const spotGen = ref(0)
   const spotJobs = new Set()
+  // 큰 화면에서 검색 영역을 끄는 중(CaptureLayer). 끄는 동안은 위치를 찾지 않고 큰 화면 표시를 숨긴다(useTrainSpot) — 놓으면 한 번 찾는다.
+  const areaDragging = ref(false)
   // 적용 안 한 변경 확인 창이 미뤄 둔 일 { next, onKeep }(확인 창 dialog 는 화면 값만 — 함수는 여기에)
   let pending = null
 
@@ -71,6 +73,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     spots.value = new Map()
     spotGen.value++
     spotJobs.clear()
+    areaDragging.value = false
     toast.value = null
     dialog.value = null
     focusReq.value = null
@@ -462,6 +465,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
       spots.value = m
     })
   }
+  function setAreaDrag(on) { areaDragging.value = !!on }
   function requestView(kind) { viewReq.value = { kind, n: (viewReq.value?.n ?? 0) + 1 } }
   // 잡기는 큰 화면에 그린 기준 화면 위에서만 — 패널 초안의 기준 화면이 그림(참조)이어야 한다. 버튼도 이것으로 끈다.
   const captureBaseUrl = () => { const d = panel.value.draft; return d ? refUrl(d.images?.base, imgCtx()) : null }
@@ -652,12 +656,12 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   }
 
   return {
-    session, selection, panel, undo, redo, clip, uploads, capture, locating, viewReq, canCapture, toast, dialog, moved, focusReq, editable, spots, spotGen,
+    session, selection, panel, undo, redo, clip, uploads, capture, locating, viewReq, canCapture, toast, dialog, moved, focusReq, editable, spots, spotGen, areaDragging,
     begin, end, run, undoLast, redoLast,
     setSelection, syncFocus, requestSelect, clickRow, panelDirty, notify,
     openPanel, syncPanel, updateDraft, panelErrors, applyPanel, discardPanel, requestFocus,
     guard, guardKeep, guardDrop, guardApply,
     undoCommand, redoCommand, copySelection, pasteClip, deleteSelection, moveSelected, editCell,
-    setUpload, requestView, startCapture, captureNext, cancelCapture, finishCapture, repick, findSpot, startNew, addNew, cancelNew
+    setUpload, requestView, startCapture, captureNext, cancelCapture, finishCapture, repick, findSpot, setAreaDrag, startNew, addNew, cancelNew
   }
 })

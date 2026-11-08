@@ -13,6 +13,11 @@ const props = defineProps({
 })
 const emit = defineEmits(['outside'])
 const HATCH = 'repeating-linear-gradient(135deg, rgba(100, 116, 139, 0.28) 0 2px, transparent 2px 7px)'
+// 상자 테두리(class border = 1px, border-box). 안쪽 그림·+ 는 테두리 안(padding box)에서 잘리므로, 넓힐 때 바깥 크기 = 보일 영역 + 테두리 두 줄,
+// 바깥이 300×150 안에 들게 보일 영역은 298×148 안으로 줄인다.
+const BORDER = 1
+const EX_LIMIT = { maxW: 300 - 2 * BORDER, maxH: 150 - 2 * BORDER }
+const ceilPx = (v) => Math.ceil(v - 1e-6)
 const natural = ref(null)
 const failed = ref(false)
 const r = computed(() => props.rect ?? (natural.value ? { x: 0, y: 0, w: natural.value.w, h: natural.value.h } : null))
@@ -24,11 +29,12 @@ const outside = computed(() => (props.marker && r.value ? !markerInside.value : 
 watch(outside, (v) => { if (v !== null) emit('outside', v) }, { immediate: true })
 watch(() => props.src, () => { natural.value = null; failed.value = false })
 // 넓혀 그릴 때(누를 곳이 밖)의 보일 영역 { x1, y1, W, H, k } — 표시 영역 왼쪽 위 기준
-const ex = computed(() => (outside.value && !failMsg.value ? thumbView({ w: r.value.w, h: r.value.h }, props.marker) : null))
+const ex = computed(() => (outside.value && !failMsg.value ? thumbView({ w: r.value.w, h: r.value.h }, props.marker, EX_LIMIT) : null))
 const fill = computed(() => (ex.value && props.around ? props.around : null))
 const boxStyle = computed(() => {
   const v = ex.value
-  if (v) return { width: `${Math.round(v.W * v.k)}px`, height: `${Math.round(v.H * v.k)}px`, backgroundImage: fill.value ? undefined : HATCH }
+  // 빗금은 기준 화면으로 채울 때도 그 밑에 둔다 — 기준 화면 밖까지 넓힌 곳은 저장된 화면이 없다
+  if (v) return { width: `${ceilPx(v.W * v.k) + 2 * BORDER}px`, height: `${ceilPx(v.H * v.k) + 2 * BORDER}px`, backgroundImage: HATCH }
   return { width: `${props.width}px`, height: failMsg.value ? 'auto' : r.value ? `${Math.max(8, r.value.h * k.value)}px` : '40px', minHeight: failMsg.value ? '40px' : undefined }
 })
 const imgStyle = computed(() => {
@@ -63,7 +69,7 @@ defineExpose({ onLoad })
 
 <template>
   <div class="relative overflow-hidden rounded border border-gray-300 dark:border-dark-border bg-gray-200 dark:bg-dark-bg" :class="{ 'border-dashed': ex }"
-    :style="boxStyle" :data-expand="ex ? (fill ? 'base' : 'empty') : undefined" :title="ex && !fill ? t('SEW_UI_SPOT_EMPTY_TITLE') : undefined">
+    :style="boxStyle" :data-expand="ex ? (fill ? 'base' : 'empty') : undefined" :title="ex ? t('SEW_UI_SPOT_EMPTY_TITLE') : undefined">
     <img v-if="fill" :src="fill.src" alt="" class="absolute max-w-none" :style="aroundStyle" data-testid="se-crop-around" />
     <img :src="src" alt="" class="absolute max-w-none" :style="imgStyle" @load="onLoad" @error="failed = true" />
     <div v-if="ex" class="absolute border-2 border-teal-600 dark:border-teal-400 pointer-events-none" :style="trainStyle" data-testid="se-crop-train" />

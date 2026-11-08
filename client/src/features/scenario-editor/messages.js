@@ -108,7 +108,7 @@ export const MESSAGES = {
   SEW_UI_CONDITION_DETAIL_MISSING: '저장된 조건 값을 해석하지 못했습니다(경고 참고).',
   SEW_UI_CLICK_OUTSIDE: '클릭 지점: 학습 이미지 밖 ({x}, {y})',
   // 찾을 그림 밖 누를 곳 썸네일(목업 trainThumb): 넓힌 곳 = 저장된 화면 없음(빗금) 또는 기준 화면에서 찾은 자리의 주변
-  SEW_UI_SPOT_EMPTY_TITLE: '그림 밖은 저장된 화면이 없어 빗금으로 비워 둡니다',
+  SEW_UI_SPOT_EMPTY_TITLE: '빗금 = 저장된 화면이 없는 곳',
   SEW_UI_SPOT_one: '주변 화면: 기준 화면에서 찾은 자리',
   SEW_UI_SPOT_many: '주변 화면: 기준 화면에서 여러 곳 찾음',
   SEW_UI_SPOT_none: '주변 화면: 기준 화면에서 찾지 못함',

@@ -132,6 +132,21 @@ describe('CaptureLayer — 끌어 잡기(기준 화면 픽셀)', () => {
     expect(e.session.working).toBe(edited)
     expect(e.panelDirty()).toBe(true)
   })
+  it('영역을 끄는 동안 editStore.areaDragging 을 켜고, 놓거나 층이 사라지면 끈다(찾을 그림 위치 찾기를 미룬다)', async () => {
+    const { e } = panelFixture([imageStep(0), imageStep(1)])
+    const w = mountHost(1)
+    place(w, { scale: 1 })
+    await w.find('[data-h="body"]').trigger('mousedown', { button: 0, clientX: 50, clientY: 60 })
+    expect(e.areaDragging).toBe(true)
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 60, clientY: 60 }))
+    expect(e.areaDragging).toBe(true)
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 60, clientY: 60 }))
+    expect(e.areaDragging).toBe(false)
+    await w.find('[data-h="se"]').trigger('mousedown', { button: 0, clientX: 320, clientY: 220 })
+    expect(e.areaDragging).toBe(true)
+    w.unmount()
+    expect(e.areaDragging).toBe(false)
+  })
   it('잡기 중에는 손잡이가 없고 층 전체가 누름을 받는다', () => {
     const { e } = panelFixture([imageStep(0), imageStep(1)])
     e.startCapture(['area', 'train', 'click'])
@@ -475,6 +490,30 @@ describe('StepViewer — 기준 화면에서 찾은 그림·누를 곳을 늘 �
     expect(w.findAll('[data-h]').length).toBe(9) // 영역 손잡이는 그대로
     w.unmount()
   })
+  it('영역을 끄는 동안 큰 화면 표시를 숨기고 찾지 않다가, 놓으면 그 영역으로 한 번 찾아 다시 그린다', async () => {
+    const { e } = panelFixture([imageStep(0), imageStep(1)]) // 영역 10,20 300×200
+    const w = await mountViewer()
+    expect(fx.locate).toHaveBeenCalledTimes(1)
+    place(w, { scale: 1 })
+    await w.find('[data-h="body"]').trigger('mousedown', { button: 0, clientX: 50, clientY: 60 })
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 60, clientY: 60 }))
+    await settle() // 끄다가 기다림보다 오래 멈춘다
+    expect(e.panel.draft.condition.searchArea).toEqual({ x: 20, y: 20, w: 300, h: 200 })
+    expect(w.find(SPOT).exists()).toBe(false)
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 60 })) // 처음 자리(찾은 결과가 있는 키)로 돌아와도
+    await settle()
+    expect(w.find(SPOT).exists()).toBe(false)
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 55, clientY: 60 }))
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 55, clientY: 60 }))
+    await nextTick()
+    expect(fx.locate).toHaveBeenCalledTimes(1) // 끄는 동안은 찾지 않았다
+    await settle()
+    expect(fx.locate).toHaveBeenCalledTimes(2)
+    expect(fx.locate.mock.calls[1][2]).toEqual({ x: 15, y: 20, w: 300, h: 200 })
+    expect(w.find(SPOT).exists()).toBe(true)
+    expect(rectOf(w)).toEqual(['40', '50', '20', '10'])
+    w.unmount()
+  })
   it('누를 곳을 그림 밖으로 고치면 다시 찾지 않고 + 만 옮긴다(작업본은 그대로)', async () => {
     const { e, edited } = panelFixture([imageStep(0), imageStep(1)])
     const w = await mountViewer()
@@ -497,13 +536,18 @@ describe('StepViewer — 기준 화면에서 찾은 그림·누를 곳을 늘 �
     expect(w.find(SPOT).exists()).toBe(true)
     w.unmount()
   })
-  it('여러 곳·못 찾음·시간 초과·불러오기 실패면 그리지 않는다', async () => {
+  it('여러 곳·못 찾음·시간 초과·불러오기 실패면 그리지 않는다(찾기는 실제로 돌았다)', async () => {
     for (const found of ['many', 'none', 'timeout', 'error']) {
       setActivePinia(createPinia())
+      fx.loadBitmap.mockClear()
+      fx.locate.mockClear()
       if (found === 'error') fx.loadBitmap.mockRejectedValue(new Error('image 404'))
       else fx.locate.mockReturnValue({ found })
-      panelFixture([imageStep(0), imageStep(1)])
+      const { e } = panelFixture([imageStep(0), imageStep(1)])
       const w = await mountViewer()
+      expect(fx.loadBitmap, found).toHaveBeenCalledWith(BASE(0))
+      expect(fx.locate, found).toHaveBeenCalledTimes(found === 'error' ? 0 : 1)
+      expect([...e.spots.values()], found).toEqual([{ found }])
       expect(w.find(SPOT).exists(), found).toBe(false)
       w.unmount()
     }
@@ -528,8 +572,11 @@ describe('StepViewer — 기준 화면에서 찾은 그림·누를 곳을 늘 �
     }
     setActivePinia(createPinia())
     fx.locate.mockReturnValue({ found: 'many' })
-    panelFixture([imageStep(0), imageStep(1)], { canWrite: false, skOver: { s0: tis(0) } })
+    fx.loadBitmap.mockClear()
+    const { e } = panelFixture([imageStep(0), imageStep(1)], { canWrite: false, skOver: { s0: tis(0) } })
     const w = await mountViewer()
+    expect(fx.loadBitmap).toHaveBeenCalledWith('http://x/api/u/s0-train-0') // 읽기 전용 스텝도 실제로 찾았다
+    expect([...e.spots.values()]).toEqual([{ found: 'many' }])
     expect(w.find(SPOT).exists()).toBe(false)
     expect(w.text()).toContain(t('SEW_UI_TRAIN_NOT_STORED'))
     w.unmount()

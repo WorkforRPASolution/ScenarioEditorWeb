@@ -321,16 +321,21 @@ describe('CropView', () => {
   // 찾을 그림 밖 누를 곳(A·B): 그 지점까지 넓혀 그린다(목업 trainThumb). 찾을 그림 255×96(시드 RESET).
   const px = (el, prop) => parseFloat(el.element.style[prop])
   const AROUND = { src: 'http://x/base.png', x: 711, y: 660, bw: 1920, bh: 1200 }
+  // 상자 테두리 1px(class border, border-box) — 안쪽 그림은 테두리 안(padding box)에서 잘린다. 바깥이 300×150 안에 들도록 안쪽은 298×148 안으로.
+  const B = 1
+  const VIEW = { maxW: 300 - 2 * B, maxH: 150 - 2 * B }
+  const inner = (w) => ({ w: px(w, 'width') - 2 * B, h: px(w, 'height') - 2 * B })
   it('누를 곳이 그림 밖이면 그 지점까지 넓혀 찾을 그림은 제자리에 테두리, 넓힌 곳은 빗금(저장된 화면 없음), 누를 곳 + 를 그린다', async () => {
     const w = mk({ marker: { x: 300, y: 12 } })
     await load(w, 255, 96)
-    const v = thumbView({ w: 255, h: 96 }, { x: 300, y: 12 })
+    const v = thumbView({ w: 255, h: 96 }, { x: 300, y: 12 }, VIEW)
     expect(w.attributes('data-expand')).toBe('empty')
     expect(w.attributes('title')).toBe(t('SEW_UI_SPOT_EMPTY_TITLE'))
     expect(w.element.style.backgroundImage).toContain('repeating-linear-gradient')
-    expect(w.classes()).toContain('border-dashed')
-    expect(px(w, 'width')).toBe(Math.round(v.W * v.k))
-    expect(px(w, 'height')).toBe(Math.round(v.H * v.k))
+    expect(w.classes()).toEqual(expect.arrayContaining(['border', 'border-dashed']))
+    // 바깥 크기 = 안쪽(보일 영역, 올림) + 테두리 두 줄 — 안쪽이 보일 영역보다 작아 + 끝이 잘리지 않게
+    expect(px(w, 'width')).toBe(Math.ceil(v.W * v.k) + 2 * B)
+    expect(px(w, 'height')).toBe(Math.ceil(v.H * v.k) + 2 * B)
     const box = w.find('[data-testid="se-crop-train"]')
     expect(box.classes()).toEqual(expect.arrayContaining(['border-teal-600', 'dark:border-teal-400']))
     expect(px(box, 'left')).toBeCloseTo(-v.x1 * v.k, 6)
@@ -353,10 +358,12 @@ describe('CropView', () => {
       await load(w, 255, 96)
       const m = w.find('[data-testid="se-click-marker"]')
       expect(m.exists(), JSON.stringify(marker)).toBe(true)
+      // + 는 테두리 안쪽(잘리는 상자) 기준으로 놓인다 — 네 변 모두 반 길이 8px 이 들어간다
+      const box = inner(w)
       expect(px(m, 'left'), JSON.stringify(marker)).toBeGreaterThanOrEqual(8 - 1e-3)
-      expect(px(m, 'left') + 8).toBeLessThanOrEqual(px(w, 'width') + 0.5) // 상자 너비는 반올림
-      expect(px(m, 'top')).toBeGreaterThanOrEqual(8 - 1e-3)
-      expect(px(m, 'top') + 8).toBeLessThanOrEqual(px(w, 'height') + 0.5)
+      expect(px(m, 'left') + 8, JSON.stringify(marker)).toBeLessThanOrEqual(box.w + 1e-6)
+      expect(px(m, 'top'), JSON.stringify(marker)).toBeGreaterThanOrEqual(8 - 1e-3)
+      expect(px(m, 'top') + 8, JSON.stringify(marker)).toBeLessThanOrEqual(box.h + 1e-6)
       expect(px(w, 'width')).toBeLessThanOrEqual(300)
       expect(px(w, 'height')).toBeLessThanOrEqual(150)
     }
@@ -364,10 +371,11 @@ describe('CropView', () => {
   it('기준 화면에서 찾은 자리(around)가 있으면 넓힌 부분을 그 기준 화면으로 채운다(찾을 그림 테두리는 그대로)', async () => {
     const w = mk({ marker: { x: -3, y: 7 }, around: AROUND })
     await load(w, 255, 96)
-    const v = thumbView({ w: 255, h: 96 }, { x: -3, y: 7 })
+    const v = thumbView({ w: 255, h: 96 }, { x: -3, y: 7 }, VIEW)
     expect(w.attributes('data-expand')).toBe('base')
-    expect(w.attributes('title')).toBeUndefined()
-    expect(w.element.style.backgroundImage).toBe('')
+    // 기준 화면 밖까지 넓힌 곳은 채울 그림이 없다 — 빗금·안내를 기준 화면 그림 밑에 그대로 둔다
+    expect(w.attributes('title')).toBe(t('SEW_UI_SPOT_EMPTY_TITLE'))
+    expect(w.element.style.backgroundImage).toContain('repeating-linear-gradient')
     const bg = w.find('[data-testid="se-crop-around"]')
     expect(bg.attributes('src')).toBe('http://x/base.png')
     expect(px(bg, 'left')).toBeCloseTo((-711 - v.x1) * v.k, 6)

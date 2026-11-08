@@ -115,6 +115,53 @@ describe('useTrainSpot — 초점 스텝의 찾을 그림 위치 보기', () => 
     expect(get().result.value).toMatchObject({ found: 'one' })
     w.unmount()
   })
+  it('영역을 끄는 동안은 멈춰 있어도 찾지 않고, 놓으면 마지막 영역으로 한 번 찾는다', async () => {
+    const { e } = panelFixture([imageStep(0)])
+    const area = (x) => e.updateDraft((d) => ({ ...d, condition: { ...d.condition, searchArea: { x, y: 20, w: 300, h: 200 } } }))
+    const { w } = host(() => ({ draft: e.panel.draft }))
+    await settle()
+    expect(fx.locate).toHaveBeenCalledTimes(1)
+    e.setAreaDrag(true)
+    for (const x of [11, 12, 13]) {
+      area(x)
+      await settle() // 기다림(150ms)보다 오래 멈춰도
+    }
+    expect(fx.locate).toHaveBeenCalledTimes(1)
+    e.setAreaDrag(false)
+    await settle()
+    expect(fx.locate).toHaveBeenCalledTimes(2)
+    expect(fx.locate.mock.calls[1][2]).toEqual({ x: 13, y: 20, w: 300, h: 200 })
+    w.unmount()
+  })
+  it('새 영역을 찾기 전(끄는 중·찾는 중)에는 썸네일 주변은 앞 결과 그대로, 큰 화면 표시는 숨기고 — 새 결과가 오면 바꾼다', async () => {
+    fx.locate.mockImplementation((b, tr, a) => ({ found: 'one', x: a.x === 12 ? 41 : 40, y: 50 }))
+    const { e } = panelFixture([imageStep(0)])
+    const area = (x) => e.updateDraft((d) => ({ ...d, condition: { ...d.condition, searchArea: { x, y: 20, w: 300, h: 200 } } }))
+    const { w, get } = host(() => ({ draft: e.panel.draft }))
+    await settle()
+    const first = get().around.value
+    expect(first).toMatchObject({ x: 40, y: 50 })
+    e.setAreaDrag(true)
+    area(11)
+    await nextTick()
+    expect(get().around.value).toEqual(first) // 썸네일은 그대로
+    expect(get().note.value).toBe('SEW_UI_SPOT_one')
+    expect(get().marks.value).toBe(null)
+    area(10) // 끄는 중 처음 자리로 돌아와도 큰 화면은 놓을 때까지 숨긴다
+    await nextTick()
+    expect(get().marks.value).toBe(null)
+    e.setAreaDrag(false)
+    await nextTick()
+    expect(get().marks.value).toMatchObject({ train: { x: 40, y: 50 } })
+    area(12) // 끌지 않고 바뀐 새 영역(찾는 중)
+    await nextTick()
+    expect(get().marks.value).toBe(null)
+    expect(get().around.value).toEqual(first)
+    await settle()
+    expect(get().around.value).toMatchObject({ x: 41, y: 50 })
+    expect(get().marks.value).toMatchObject({ train: { x: 41, y: 50 } })
+    w.unmount()
+  })
   it('표시 스텝(읽기 전용)도 찾고, 찾을 수 없는 스텝은 찾지 않고 "저장되어 있지 않음"', async () => {
     const st = { uid: 's0', baseImage: { state: 'present', url: '/b' }, condition: { kind: 'image', searchArea: { x: 1, y: 2, w: 30, h: 40 }, image: { trainImages: [{ key: 0, url: '/t-train-0' }] } },
       action: { type: 1, click: { x: 50, y: 5, basis: 'trainImage' } } }
