@@ -116,3 +116,32 @@ describe('새 스텝 초안(서버 assemble 이 origin 없는 스텝에 쓰는 �
     expect(baseRefFor({ steps: [w.steps[0]] }, 'a')).toBe(null)
   })
 })
+
+import { tagBox, clickTagBox, trainTagBox } from '../editor/capture'
+describe('이름표(목업 tagSvg) — 누를 곳을 가리지 않게', () => {
+  const T = { x: 100, y: 100, w: 200, h: 80 }
+  const covers = (b, p) => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h
+  it('tagBox: 글자 수로 너비(한글은 넓게), 높이 18·글자 12 를 배율로 나누고, 위로 나가지 않는다', () => {
+    expect(tagBox(10, 40, '찾은 그림', 1)).toEqual({ x: 10, y: 22, w: (1 * 7.1 + 4 * 12.5 + 12), h: 18, tx: 16, ty: 35, fs: 12, rx: 3, text: '찾은 그림' })
+    expect(tagBox(10, 5, 'A', 2)).toMatchObject({ y: 0, h: 36, fs: 24 })
+  })
+  it('누를 곳 이름표: 그림 안이면 그림 위쪽, 밖이면 누를 곳 오른쪽 아래 — 어느 쪽이든 누를 곳을 가리지 않는다', () => {
+    const inside = clickTagBox(T, { x: 124, y: 112 }, '누를 곳', 1)
+    expect(inside).toMatchObject({ x: 100, y: 100 - 4 - 18 })
+    const out = clickTagBox(T, { x: 400, y: 90 }, '누를 곳', 1)
+    expect(out).toMatchObject({ x: 412, y: 90 + 9 - 18 })
+    // 그림이 화면 맨 위에 붙어 위쪽 이름표가 그림 안으로 내려오면 누를 곳 옆으로
+    const top = { x: 100, y: 0, w: 200, h: 80 }
+    const near = clickTagBox(top, { x: 110, y: 6 }, '누를 곳', 1)
+    expect(covers(near, { x: 110, y: 6 })).toBe(false)
+    for (const c of [{ x: 124, y: 112 }, { x: 400, y: 90 }, { x: 90, y: 200 }]) expect(covers(clickTagBox(T, c, '누를 곳', 1), c), JSON.stringify(c)).toBe(false)
+  })
+  it('찾은 그림 이름표: 그림 아래, 그 자리가 누를 곳을 가리면 그림 위', () => {
+    expect(trainTagBox(T, { x: 124, y: 112 }, '찾은 그림', 1)).toMatchObject({ x: 100, y: 100 + 80 + 20 - 18 })
+    const below = { x: 110, y: 190 }
+    const b = trainTagBox(T, below, '찾은 그림', 1)
+    expect(b).toMatchObject({ x: 100, y: 100 - 4 - 18 })
+    expect(covers(b, below)).toBe(false)
+    expect(trainTagBox(T, null, '찾은 그림', 1)).toMatchObject({ y: 182 })
+  })
+})

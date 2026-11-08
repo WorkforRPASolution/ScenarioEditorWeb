@@ -326,3 +326,67 @@ describe('StepPanel — 다른 시나리오에서 붙인 스텝(Task 8)', () => 
     w.unmount()
   })
 })
+
+import CropView from '../components/CropView.vue'
+import { spotKey } from '../editor/trainView'
+import { SPOT_DELAY_MS } from '../composables/useTrainSpot'
+describe('StepPanel — 찾을 그림 밖 누를 곳(A·B, 2026-11-08)', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+  const url = (id) => `http://x/api/scenario-editor/scenarios/P/M/N/versions/1/files/F/images/${id}`
+  const settle = async () => { await new Promise((r) => setTimeout(r, SPOT_DELAY_MS + 10)); await flushPromises() }
+  const at = (x, y) => ({ type: 1, typeName: 'MouseLeftClick', raw: `${x}:${y}`, click: { x, y, basis: 'trainImage' } })
+  const KEY = spotKey({ baseUrl: url('s0-bi'), trainUrl: url('s0-train-0'), area: { x: 10, y: 20, w: 300, h: 200 } })
+  async function open(step) {
+    const f = panelFixture([step, imageStep(1)])
+    const w = mountPanel()
+    const crop = w.find('[data-station="find"]').findComponent(CropView)
+    crop.vm.onLoad({ target: { naturalWidth: 255, naturalHeight: 96 } })
+    await flushPromises()
+    return { ...f, w, crop }
+  }
+  const note = (w) => w.find('[data-testid="se-train-outside"]')
+
+  it('그림 밖이면 썸네일을 넓혀 + 를 그리고 아래에 "누를 곳: 찾을 그림 밖 (X, Y)" — 위치 찾기 결과마다 주변 화면 이유', async () => {
+    const { e, w, crop } = await open(imageStep(0, { action: at(300, 12) }))
+    expect(crop.attributes('data-expand')).toBe('empty')
+    expect(crop.find('[data-testid="se-click-marker"]').exists()).toBe(true)
+    expect(note(w).text()).toBe(t('SEW_PANEL_TRAIN_OUTSIDE', { x: 300, y: 12 })) // 찾는 중
+    expect(w.find('[data-station="action"]').text()).toContain(t('SEW_PANEL_CLICK_HELP_OUT'))
+    await settle() // 단위 시험은 그림을 받지 못한다 → 불러오기 실패
+    expect(note(w).text()).toContain(t('SEW_UI_SPOT_error'))
+    expect(crop.attributes('data-expand')).toBe('empty')
+    e.spots = new Map([[KEY, { found: 'many' }]])
+    await flushPromises()
+    expect(note(w).text()).toContain(t('SEW_UI_SPOT_many'))
+    expect(crop.props('around')).toBe(null)
+    e.spots = new Map([[KEY, { found: 'one', x: 711, y: 660, w: 255, h: 96, bw: 1920, bh: 1200 }]])
+    await flushPromises()
+    expect(note(w).text()).toContain(t('SEW_UI_SPOT_one'))
+    expect(crop.props('around')).toEqual({ src: url('s0-bi'), x: 711, y: 660, bw: 1920, bh: 1200 })
+    expect(crop.attributes('data-expand')).toBe('base')
+    w.unmount()
+  })
+  it('그림 안이면 지금과 같다 — 넓히지 않고 아래 문구도 없다(찾은 결과가 있어도)', async () => {
+    const { e, w, crop } = await open(imageStep(0))
+    e.spots = new Map([[KEY, { found: 'one', x: 711, y: 660, w: 255, h: 96, bw: 1920, bh: 1200 }]])
+    await flushPromises()
+    expect(crop.attributes('data-expand')).toBeUndefined()
+    expect(crop.attributes('style')).toContain('width: 110px')
+    expect(note(w).exists()).toBe(false)
+    w.unmount()
+  })
+  it('누를 곳 X 를 그림 너비보다 크게 고치면 그 자리에서 넓어지고, 작업본은 [적용] 전까지 그대로', async () => {
+    const { w, crop, edited, e } = await open(imageStep(0))
+    await input(w, '[data-field="click"]', '400')
+    expect(crop.attributes('data-expand')).toBe('empty')
+    expect(note(w).text()).toContain(t('SEW_PANEL_TRAIN_OUTSIDE', { x: 400, y: 12 }))
+    expect(e.session.working).toBe(edited)
+    w.unmount()
+  })
+  it('검색 영역이 없어 위치를 찾을 수 없는 스텝은 "주변 화면: 저장되어 있지 않음"', async () => {
+    const st = imageStep(0, { action: at(-30, 5) })
+    const { w } = await open({ ...st, condition: { ...st.condition, searchArea: null } })
+    expect(note(w).text()).toContain(t('SEW_UI_SPOT_NOT_STORED'))
+    w.unmount()
+  })
+})

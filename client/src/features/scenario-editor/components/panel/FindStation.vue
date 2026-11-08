@@ -2,8 +2,11 @@
 // 레일 둘째 구역 — 찾는 것(목업 findStation, 조작판 1·2·8): 이미지 = 찾을 그림·정확도·다중 검사, OCR = 비교 방법·값·다중 검사,
 // 설비 상태 = 보기만(새로 만들 수 없는 옛 조건). 조건 종류는 바꾸지 못한다(설계 §4.2).
 // 찾을 그림 [잡기]/[다시 잡기] = 큰 화면의 검색 영역 안에서 그림부터 끌어 잡기(마우스 클릭이면 누를 곳까지, 목업 findStation).
-import { computed } from 'vue'
+// 찾을 그림 + 누를 곳: 누를 곳이 그림 밖이면 썸네일을 그 지점까지 넓히고(목업 trainThumb), 기준 화면에서 찾을 그림을 한 곳 찾으면
+// 넓힌 곳을 기준 화면으로 채운다(useTrainSpot). 아래에 "그림 밖 (X, Y)" 와 주변 화면 이유.
+import { ref, computed, watch } from 'vue'
 import { useEditStore } from '../../stores/editStore'
+import { useTrainSpot } from '../../composables/useTrainSpot'
 import { CLICK_TYPES, numIn, numOut } from '../../editor/panel'
 import { captureFlow, isRect, isRef } from '../../editor/capture'
 import { t, LABELS } from '../../messages'
@@ -41,6 +44,11 @@ const setAcceptRange = (v) => setImage({ accept: Math.round(Number(v) * 100) / 1
 
 const hasClick = computed(() => CLICK_TYPES.includes(props.draft.action?.type) && Number.isInteger(props.draft.action?.click?.x) && Number.isInteger(props.draft.action?.click?.y))
 const markerFor = (p) => (hasClick.value && p.key === '0' ? props.draft.action.click : null)
+const spot = useTrainSpot(() => ({ draft: props.draft }))
+const outside = ref(false)
+watch(() => props.draft.uid, () => { outside.value = false })
+const onOutside = (v) => { outside.value = v; emit('outside', v) }
+const spotNote = computed(() => (spot.note.value ? t(spot.note.value) : ''))
 
 const ocrKind = computed(() => (ocr.value.op >= 1 && ocr.value.op <= 4 ? 'text' : ocr.value.op === 7 || ocr.value.op === 8 ? 'range' : ocr.value.op >= 5 && ocr.value.op <= 10 ? 'number' : null))
 const setOp = (v) => { const op = v === '' ? 0 : Number(v); setOcr({ op, opName: OCR_OPS[op] ?? null }) }
@@ -63,7 +71,11 @@ const row = 'flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 
     <div class="flex gap-2 items-start flex-wrap" :class="ch('train') ? 'ring-2 ring-primary-300 rounded' : ''">
       <div v-for="p in trainPics" :key="p.key">
         <div :class="pic">{{ markerFor(p) ? t('SEW_PANEL_TRAIN_CLICK') : t('SEW_PANEL_TRAIN') }}{{ p.key !== '0' ? ` (${p.key})` : '' }}</div>
-        <CropView :src="p.src" :width="110" :marker="markerFor(p)" :fail-text="p.other ? t('SEW_EDIT_IMAGE_SOURCE_GONE') : null" @outside="emit('outside', $event)" />
+        <CropView :src="p.src" :width="110" :marker="markerFor(p)" :data-train-key="p.key" :around="markerFor(p) ? spot.around.value : null" :fail-text="p.other ? t('SEW_EDIT_IMAGE_SOURCE_GONE') : null" @outside="onOutside" />
+        <p v-if="markerFor(p) && outside" class="mt-0.5 max-w-[300px] text-[11px] leading-snug text-gray-500 dark:text-gray-400" data-testid="se-train-outside">
+          <span class="block">{{ t('SEW_PANEL_TRAIN_OUTSIDE', { x: draft.action.click.x, y: draft.action.click.y }) }}</span>
+          <span v-if="spotNote" class="block" data-testid="se-train-spot">{{ spotNote }}</span>
+        </p>
       </div>
       <div v-if="!trainPics.length">
         <div :class="pic">{{ t('SEW_PANEL_TRAIN') }}</div>

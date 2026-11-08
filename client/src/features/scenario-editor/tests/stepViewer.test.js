@@ -7,6 +7,7 @@ import CropView from '../components/CropView.vue'
 import { useEditorStore } from '../stores/editorStore'
 import { panelFixture, imageStep } from './panelFixture'
 import { t } from '../messages'
+import { thumbView } from '../editor/trainView'
 
 const step = (over = {}) => ({ uid: 's0', no: 1, notes: [], action: {}, next: {}, retry: {},
   condition: { kind: 'image', searchArea: { x: 576, y: 336, w: 846, h: 480 } }, baseImage: { state: 'present', url: '/scenario-editor/x/images/s0-bi' }, ...over })
@@ -270,14 +271,14 @@ describe('CropView', () => {
     await load(w, 400, 200)
     expect(w.element.getAttribute('style')).toContain('height: 50px')
   })
-  it('표시 안의 클릭 지점은 십자로 그리고 밖이면 outside 를 알린다', async () => {
+  it('표시 안의 클릭 지점은 십자로 그리고 밖이면 outside 를 알린다(밖이어도 넓혀 십자를 그린다 — 2026-11-08 사용자 보고)', async () => {
     const inside = mk({ rect: { x: 0, y: 0, w: 200, h: 100 }, marker: { x: 100, y: 50 } })
     await load(inside)
     expect(inside.find('[data-testid="se-click-marker"]').attributes('style')).toContain('left: 50px')
     expect(inside.emitted('outside')[0]).toEqual([false])
     const outside = mk({ rect: { x: 0, y: 0, w: 200, h: 100 }, marker: { x: 300, y: 50 } })
     await load(outside)
-    expect(outside.find('[data-testid="se-click-marker"]').exists()).toBe(false)
+    expect(outside.find('[data-testid="se-click-marker"]').exists()).toBe(true)
     expect(outside.emitted('outside')[0]).toEqual([true])
   })
   it('불러오지 못하면 없음 표시', async () => {
@@ -315,5 +316,89 @@ describe('CropView', () => {
     expect(w.emitted('outside')).toBeUndefined()
     await load(w, 400, 200)
     expect(w.emitted('outside')).toEqual([[false]])
+  })
+
+  // 찾을 그림 밖 누를 곳(A·B): 그 지점까지 넓혀 그린다(목업 trainThumb). 찾을 그림 255×96(시드 RESET).
+  const px = (el, prop) => parseFloat(el.element.style[prop])
+  const AROUND = { src: 'http://x/base.png', x: 711, y: 660, bw: 1920, bh: 1200 }
+  it('누를 곳이 그림 밖이면 그 지점까지 넓혀 찾을 그림은 제자리에 테두리, 넓힌 곳은 빗금(저장된 화면 없음), 누를 곳 + 를 그린다', async () => {
+    const w = mk({ marker: { x: 300, y: 12 } })
+    await load(w, 255, 96)
+    const v = thumbView({ w: 255, h: 96 }, { x: 300, y: 12 })
+    expect(w.attributes('data-expand')).toBe('empty')
+    expect(w.attributes('title')).toBe(t('SEW_UI_SPOT_EMPTY_TITLE'))
+    expect(w.element.style.backgroundImage).toContain('repeating-linear-gradient')
+    expect(w.classes()).toContain('border-dashed')
+    expect(px(w, 'width')).toBe(Math.round(v.W * v.k))
+    expect(px(w, 'height')).toBe(Math.round(v.H * v.k))
+    const box = w.find('[data-testid="se-crop-train"]')
+    expect(box.classes()).toEqual(expect.arrayContaining(['border-teal-600', 'dark:border-teal-400']))
+    expect(px(box, 'left')).toBeCloseTo(-v.x1 * v.k, 6)
+    expect(px(box, 'top')).toBeCloseTo(-v.y1 * v.k, 6)
+    expect(px(box, 'width')).toBeCloseTo(255 * v.k, 6)
+    expect(px(box, 'height')).toBeCloseTo(96 * v.k, 6)
+    const img = w.find('img')
+    expect(px(img, 'left')).toBeCloseTo(-v.x1 * v.k, 6)
+    expect(px(img, 'top')).toBeCloseTo(-v.y1 * v.k, 6)
+    expect(px(img, 'width')).toBeCloseTo(255 * v.k, 6)
+    const m = w.find('[data-testid="se-click-marker"]')
+    expect(px(m, 'left')).toBeCloseTo((300 - v.x1) * v.k, 6)
+    expect(px(m, 'top')).toBeCloseTo((12 - v.y1) * v.k, 6)
+    expect(w.find('[data-testid="se-crop-around"]').exists()).toBe(false)
+    expect(w.emitted('outside')).toEqual([[true]])
+  })
+  it('네 방향 밖·아주 먼 점 모두 + 전체(반 길이 8px)를 보일 영역 안에 그린다', async () => {
+    for (const marker of [{ x: 300, y: 12 }, { x: -3, y: 7 }, { x: 100, y: -40 }, { x: 100, y: 400 }, { x: 5000, y: 3000 }]) {
+      const w = mk({ marker })
+      await load(w, 255, 96)
+      const m = w.find('[data-testid="se-click-marker"]')
+      expect(m.exists(), JSON.stringify(marker)).toBe(true)
+      expect(px(m, 'left'), JSON.stringify(marker)).toBeGreaterThanOrEqual(8 - 1e-3)
+      expect(px(m, 'left') + 8).toBeLessThanOrEqual(px(w, 'width') + 0.5) // 상자 너비는 반올림
+      expect(px(m, 'top')).toBeGreaterThanOrEqual(8 - 1e-3)
+      expect(px(m, 'top') + 8).toBeLessThanOrEqual(px(w, 'height') + 0.5)
+      expect(px(w, 'width')).toBeLessThanOrEqual(300)
+      expect(px(w, 'height')).toBeLessThanOrEqual(150)
+    }
+  })
+  it('기준 화면에서 찾은 자리(around)가 있으면 넓힌 부분을 그 기준 화면으로 채운다(찾을 그림 테두리는 그대로)', async () => {
+    const w = mk({ marker: { x: -3, y: 7 }, around: AROUND })
+    await load(w, 255, 96)
+    const v = thumbView({ w: 255, h: 96 }, { x: -3, y: 7 })
+    expect(w.attributes('data-expand')).toBe('base')
+    expect(w.attributes('title')).toBeUndefined()
+    expect(w.element.style.backgroundImage).toBe('')
+    const bg = w.find('[data-testid="se-crop-around"]')
+    expect(bg.attributes('src')).toBe('http://x/base.png')
+    expect(px(bg, 'left')).toBeCloseTo((-711 - v.x1) * v.k, 6)
+    expect(px(bg, 'top')).toBeCloseTo((-660 - v.y1) * v.k, 6)
+    expect(px(bg, 'width')).toBeCloseTo(1920 * v.k, 6)
+    const imgs = w.findAll('img')
+    expect(imgs.map((x) => x.attributes('data-testid') ?? 'train')).toEqual(['se-crop-around', 'train']) // 찾을 그림이 위
+    expect(w.find('[data-testid="se-crop-train"]').exists()).toBe(true)
+    expect(w.find('[data-testid="se-click-marker"]').exists()).toBe(true)
+  })
+  it('누를 곳이 그림 안이면 around 가 있어도 지금과 같다(넓히지 않고 채우지 않음)', async () => {
+    const w = mk({ rect: { x: 0, y: 0, w: 200, h: 100 }, marker: { x: 100, y: 50 }, around: AROUND })
+    await load(w)
+    expect(w.attributes('data-expand')).toBeUndefined()
+    expect(w.attributes('style')).toContain('width: 100px')
+    expect(w.attributes('style')).toContain('height: 50px')
+    expect(w.classes()).not.toContain('border-dashed')
+    expect(w.find('[data-testid="se-crop-around"]').exists()).toBe(false)
+    expect(w.find('[data-testid="se-crop-train"]').exists()).toBe(false)
+    expect(w.find('[data-testid="se-click-marker"]').attributes('style')).toContain('left: 50px')
+  })
+  it('누를 곳이 밖이 됐다가 다시 안이 되면 원래 크기로 돌아온다(그림은 다시 불러오지 않는다)', async () => {
+    const w = mk({ marker: { x: 24, y: 12 } })
+    await load(w, 255, 96)
+    const img = w.find('img').element
+    expect(w.attributes('style')).toContain('width: 100px')
+    await w.setProps({ marker: { x: 300, y: 12 } })
+    expect(w.attributes('data-expand')).toBe('empty')
+    await w.setProps({ marker: { x: 24, y: 12 } })
+    expect(w.attributes('data-expand')).toBeUndefined()
+    expect(w.attributes('style')).toContain('width: 100px')
+    expect(w.find('img').element).toBe(img)
   })
 })

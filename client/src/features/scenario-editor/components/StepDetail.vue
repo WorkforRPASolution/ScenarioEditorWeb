@@ -2,6 +2,7 @@
 import { ref, computed, watch } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
 import { imageSrc } from '../editor/display'
+import { useTrainSpot } from '../composables/useTrainSpot'
 import { t, LABELS, noteMessage } from '../messages'
 import { targetLabel, targetKind, multiLabel, actionDetails, conditionLabel, actionLabel, intervalSec, stepExtraRows } from '../format'
 import CropView from './CropView.vue'
@@ -21,6 +22,8 @@ const acceptText = (v) => (v !== undefined && v !== null && v !== '' && Number.i
 const ocrValue = (o) => (o.op >= 1 && o.op <= 4 ? show(o.text) : o.op === 7 || o.op === 8 ? `${show(o.min)} ~ ${show(o.max)}` : show(o.number))
 // 클릭 마커는 0번 학습 이미지에만 얹는다(그 이미지 기준 좌표)
 const markerFor = (ti) => (ti.key === 0 && s.value?.action.click?.basis === 'trainImage' ? s.value.action.click : null)
+// 클릭 지점이 학습 이미지 밖이면 썸네일을 넓히고, 기준 화면에서 학습 이미지를 한 곳 찾으면 넓힌 곳을 기준 화면으로 채운다(보기 기능 — 읽기 전용에서도)
+const spot = useTrainSpot(() => (s.value ? { step: s.value } : null))
 const retryText = computed(() => {
   const r = s.value?.retry ?? {}
   return `${show(r.limit)}회 · ${Number.isFinite(r.intervalMs) ? `${intervalSec(r.intervalMs)}초` : '—'}`
@@ -55,15 +58,17 @@ const lab = 'text-[11px] font-semibold text-gray-500 dark:text-gray-400 mb-2'
           <span v-if="c.kind === 'unknown'" class="px-2 py-0.5 rounded-md bg-amber-500 text-white font-semibold">{{ conditionLabel('unknown') }}</span>
         </div>
         <template v-if="c.kind === 'image' && c.image">
-          <div class="flex gap-2 items-start mb-2">
+          <div class="flex flex-wrap gap-2 items-start mb-2" data-testid="se-detail-pics">
             <div v-if="s.baseImage.state === 'present'"><div class="text-[11px] text-gray-500 mb-0.5">기준 화면</div><CropView :src="imageSrc(s.baseImage)" :width="100" /></div>
             <div v-if="s.baseImage.state === 'present' && c.searchArea"><div class="text-[11px] text-gray-500 mb-0.5">검색 영역</div><CropView :src="imageSrc(s.baseImage)" :rect="c.searchArea" :width="100" /></div>
             <div v-for="ti in c.image.trainImages.filter((x) => x.url || x.src)" :key="ti.key">
               <div class="text-[11px] text-gray-500 mb-0.5">학습 이미지{{ ti.key !== 0 ? ` (${ti.key})` : '' }}{{ markerFor(ti) ? ' + 클릭' : '' }}</div>
-              <CropView :src="imageSrc(ti)" :width="100" :marker="markerFor(ti)" @outside="clickOutside = $event" />
+              <CropView :src="imageSrc(ti)" :width="100" :marker="markerFor(ti)" :data-train-key="ti.key" :around="markerFor(ti) ? spot.around.value : null" @outside="clickOutside = $event" />
             </div>
           </div>
-          <p v-if="clickOutside && s.action.click" class="text-[11px] text-amber-600 mb-1">{{ t('SEW_UI_CLICK_OUTSIDE', { x: s.action.click.x, y: s.action.click.y }) }}</p>
+          <p v-if="clickOutside && s.action.click" class="text-[11px] text-amber-600 mb-1">{{ t('SEW_UI_CLICK_OUTSIDE', { x: s.action.click.x, y: s.action.click.y }) }}
+            <span v-if="spot.note.value" class="block text-gray-500 dark:text-gray-400" data-testid="se-detail-spot">{{ t(spot.note.value) }}</span>
+          </p>
           <dl class="grid grid-cols-[110px_1fr] gap-y-1 text-xs">
             <dt class="text-gray-500">검색 영역</dt><dd>{{ areaText(c.searchArea) }}</dd>
             <dt class="text-gray-500">정확도</dt><dd>{{ acceptText(c.image.accept) }}</dd>

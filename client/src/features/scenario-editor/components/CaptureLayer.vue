@@ -7,7 +7,7 @@
 // 끌기·찍기는 큰 화면 끌어 이동(StepViewer mousedown)으로 번지지 않게 막는다. 쓸 수 있는 세션의 패널 초안에만 그린다(읽기 전용은 P1 표시).
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useEditStore } from '../stores/editStore'
-import { isRect, normRect, moveRect, resizeRect, handlePoints } from '../editor/capture'
+import { isRect, normRect, moveRect, resizeRect, handlePoints, tagBox, clickTagBox } from '../editor/capture'
 import { t } from '../messages'
 import './capture.css'
 
@@ -46,14 +46,8 @@ const maskPath = computed(() => {
 })
 const maskFill = computed(() => `rgba(15, 23, 42, ${cap.value && stage.value !== 'click' ? 0.5 : 0.24})`)
 
-// 이름표(목업 tagSvg): 글자 수로 너비를 어림한다(한글은 넓게)
-function tag(x, y, text) {
-  const kk = k.value
-  const wide = [...text].filter((ch) => { const c = ch.charCodeAt(0); return c >= 0xac00 && c <= 0xd7a3 }).length
-  const h = 18 * kk
-  const top = Math.max(0, y - h)
-  return { x, y: top, w: ((text.length - wide) * 7.1 + wide * 12.5 + 12) * kk, h, tx: x + 6 * kk, ty: top + 13 * kk, fs: 12 * kk, rx: 3 * kk, text }
-}
+// 이름표(목업 tagSvg, editor/capture tagBox)
+const tag = (x, y, text) => tagBox(x, y, text, k.value)
 const areaTag = computed(() => {
   const a = shownArea.value
   return a ? tag(a.x, a.y, t(ocr.value ? 'SEW_CAP_TAG_OCR' : 'SEW_CAP_TAG_AREA', { w: a.w, h: a.h })) : null
@@ -65,10 +59,8 @@ const trainTag = computed(() => {
 const clickTag = computed(() => {
   const c = clickNow.value
   const b = cap.value?.train
-  if (!c || !b) return null
-  const inside = c.x >= b.x && c.y >= b.y && c.x <= b.x + b.w && c.y <= b.y + b.h
-  // 이름표가 찍을 자리를 가리지 않게: 그림 안이면 그림 위쪽에 둔다
-  return inside ? tag(b.x, b.y - 4 * k.value, t('SEW_CAP_TAG_CLICK_NOW')) : tag(c.x + 12 * k.value, c.y + 9 * k.value, t('SEW_CAP_TAG_CLICK_NOW'))
+  // 이름표가 찍을 자리를 가리지 않게: 그림 안이면 그림 위쪽, 밖이면 누를 곳 옆
+  return c && b ? clickTagBox(b, c, t('SEW_CAP_TAG_CLICK_NOW'), k.value) : null
 })
 
 watch(stage, () => { live.value = null })

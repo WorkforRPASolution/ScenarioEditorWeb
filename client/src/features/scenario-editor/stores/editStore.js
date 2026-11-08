@@ -8,6 +8,7 @@ import { firstError, CLICK_TYPES } from '../editor/panel'
 import { refUrl, loadBitmap, newTempId, uploadIdsOf } from '../editor/images'
 import { cropPng, imageDataOf } from '../editor/crop'
 import { locate } from '../editor/locate'
+import { spotKey } from '../editor/trainView'
 import { CAP_FLOWS, MIN_CAPTURE, LOCATE_MS, isRect, clipRect, nextStage, newStepDraft, baseRefFor, firstTrainRef } from '../editor/capture'
 import { t } from '../messages'
 import { useEditorStore } from './editorStore'
@@ -44,6 +45,11 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   const focusReq = shallowRef(null)
   let movedTimer = null
   let bitmapCache = { url: null, promise: null } // 마지막으로 불러온 기준 화면 비트맵(잡기 중 여러 번 자를 때 다시 받지 않게)
+  // 찾을 그림 위치 보기(찾을 그림 밖 누를 곳 B): 키(기준 화면·찾을 그림·검색 영역) → locateTrain 결과. 바꿀 때마다 새 Map.
+  // spotGen 은 세션이 바뀔 때(reset) 올라가 그 전에 시작한 찾기의 결과를 버린다. spotJobs = 찾는 중인 키.
+  const spots = shallowRef(new Map())
+  const spotGen = ref(0)
+  const spotJobs = new Set()
   // 적용 안 한 변경 확인 창이 미뤄 둔 일 { next, onKeep }(확인 창 dialog 는 화면 값만 — 함수는 여기에)
   let pending = null
 
@@ -62,6 +68,9 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     locating.value = false
     viewReq.value = null
     bitmapCache = { url: null, promise: null }
+    spots.value = new Map()
+    spotGen.value++
+    spotJobs.clear()
     toast.value = null
     dialog.value = null
     focusReq.value = null
@@ -424,6 +433,35 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     }
     return bitmapCache.promise
   }
+  // 기준 화면의 검색 영역에서 찾을 그림 위치 찾기([다시 찍기]·위치 보기가 함께 쓴다). 한 곳이면 찾을 그림·기준 화면 크기를 붙인다.
+  // 불러오기·픽셀 읽기 실패는 { found: 'error' }. locate 는 메인 스레드에서 돌고 LOCATE_MS 에서 멈춘다.
+  async function locateTrain(baseUrl, trainUrl, area) {
+    try {
+      if (!baseUrl || !trainUrl) throw new Error('no image')
+      const [base, train] = await Promise.all([baseBitmap(baseUrl), loadBitmap(trainUrl)])
+      const r = locate(imageDataOf(base), imageDataOf(train), area, { timeLimitMs: LOCATE_MS })
+      return r.found === 'one' ? { ...r, w: train.width, h: train.height, bw: base.width, bh: base.height } : r
+    } catch {
+      return { found: 'error' }
+    }
+  }
+  // 초점 스텝의 찾을 그림 위치 보기(editor/trainView spotInputOf* 의 입력). 같은 키는 다시 찾지 않는다(찾는 중이거나 찾았으면).
+  // 실패(error)만 다음 요청 때 다시 찾는다. 결과는 그 키에만 두므로 늦게 끝난 옛 결과가 다른 스텝에 붙지 않는다. 작업본·초안은 바꾸지 않는다.
+  function findSpot(input) {
+    const key = spotKey(input)
+    if (!key || spotJobs.has(key)) return
+    const have = spots.value.get(key)
+    if (have && have.found !== 'error') return
+    const gen = spotGen.value
+    spotJobs.add(key)
+    locateTrain(input.baseUrl, input.trainUrl, input.area).then((r) => {
+      if (gen !== spotGen.value) return // 세션이 바뀌었다
+      spotJobs.delete(key)
+      const m = new Map(spots.value)
+      m.set(key, r)
+      spots.value = m
+    })
+  }
   function requestView(kind) { viewReq.value = { kind, n: (viewReq.value?.n ?? 0) + 1 } }
   // 잡기는 큰 화면에 그린 기준 화면 위에서만 — 패널 초안의 기준 화면이 그림(참조)이어야 한다. 버튼도 이것으로 끈다.
   const captureBaseUrl = () => { const d = panel.value.draft; return d ? refUrl(d.images?.base, imgCtx()) : null }
@@ -537,17 +575,10 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     const trainRef = firstTrainRef(d.images?.train)
     if (!trainRef) return startCapture(['train', 'click'])
     const ctx = imgCtx()
-    const baseUrl = refUrl(d.images?.base, ctx)
-    const trainUrl = refUrl(trainRef, ctx)
     locating.value = true
     let r
     try {
-      if (!baseUrl || !trainUrl) throw new Error('no image')
-      const [base, train] = await Promise.all([baseBitmap(baseUrl), loadBitmap(trainUrl)])
-      r = locate(imageDataOf(base), imageDataOf(train), area, { timeLimitMs: LOCATE_MS })
-      if (r.found === 'one') r = { ...r, w: train.width, h: train.height }
-    } catch {
-      r = { found: 'error' }
+      r = await locateTrain(refUrl(d.images?.base, ctx), refUrl(trainRef, ctx), area)
     } finally {
       locating.value = false
     }
@@ -621,12 +652,12 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   }
 
   return {
-    session, selection, panel, undo, redo, clip, uploads, capture, locating, viewReq, canCapture, toast, dialog, moved, focusReq, editable,
+    session, selection, panel, undo, redo, clip, uploads, capture, locating, viewReq, canCapture, toast, dialog, moved, focusReq, editable, spots, spotGen,
     begin, end, run, undoLast, redoLast,
     setSelection, syncFocus, requestSelect, clickRow, panelDirty, notify,
     openPanel, syncPanel, updateDraft, panelErrors, applyPanel, discardPanel, requestFocus,
     guard, guardKeep, guardDrop, guardApply,
     undoCommand, redoCommand, copySelection, pasteClip, deleteSelection, moveSelected, editCell,
-    setUpload, requestView, startCapture, captureNext, cancelCapture, finishCapture, repick, startNew, addNew, cancelNew
+    setUpload, requestView, startCapture, captureNext, cancelCapture, finishCapture, repick, findSpot, startNew, addNew, cancelNew
   }
 })

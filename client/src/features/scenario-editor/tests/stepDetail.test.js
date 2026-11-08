@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 vi.mock('../api', () => ({ imageUrl: (p) => p }))
+// 찾을 그림 위치 보기가 그림을 받으러 가지 않게(브라우저 확인은 E2E)
+vi.mock('../editor/images', async (orig) => ({ ...(await orig()), loadBitmap: vi.fn(() => Promise.reject(new Error('no network in unit tests'))) }))
 import { actionDetails } from '../format'
 import StepDetail from '../components/StepDetail.vue'
 import CropView from '../components/CropView.vue'
@@ -132,5 +134,59 @@ describe('StepDetail', () => {
   it('스텝이 없으면 빈 안내', () => {
     const st = useEditorStore(); st.skeleton = { steps: [], notes: [] }
     expect(mount(StepDetail).text()).toContain('스텝을 고르면')
+  })
+})
+
+import { useEditStore } from '../stores/editStore'
+import { spotKey } from '../editor/trainView'
+import { flushPromises } from '@vue/test-utils'
+describe('StepDetail — 학습 이미지 밖 클릭 지점(A·B, 2026-11-08)', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+  const area = { x: 560, y: 320, w: 880, h: 520 }
+  const imgStep = (click) => ({ uid: 's0', no: 1, descriptionToEmail: '클릭', notes: [], retry: { limit: 1, intervalMs: 1000 }, next: { onTrue: { kind: 'next' }, onFalse: { kind: 'end', value: 'FAIL' } },
+    baseImage: { state: 'present', url: '/b' }, raw: {},
+    condition: { kind: 'image', skipPreprocessing: false, searchArea: area, image: { accept: 0.9, multi: { count: '1', op: 0 }, trainImages: [{ key: 0, type: true, url: '/t' }] } },
+    action: { type: 1, typeName: 'MouseLeftClick', raw: `${click.x}:${click.y}`, click: { ...click, basis: 'trainImage' } } })
+  const KEY = spotKey({ baseUrl: '/b', trainUrl: '/t', area })
+  async function open(click) {
+    const st = useEditorStore(); st.skeleton = { steps: [imgStep(click)], notes: [] }; st.selectedUid = 's0'
+    const w = mount(StepDetail)
+    const crop = w.findAllComponents(CropView).find((c) => c.props('marker'))
+    crop.vm.onLoad({ target: { naturalWidth: 255, naturalHeight: 96 } })
+    await flushPromises()
+    return { w, crop }
+  }
+
+  it('클릭이 학습 이미지 안이면 P1 그대로(너비 100, 넓히지 않음, 문구 없음)', async () => {
+    const { w, crop } = await open({ x: 24, y: 12 })
+    useEditStore().spots = new Map([[KEY, { found: 'one', x: 711, y: 660, w: 255, h: 96, bw: 1920, bh: 1200 }]])
+    await flushPromises()
+    expect(crop.attributes('data-expand')).toBeUndefined()
+    expect(crop.attributes('style')).toContain('width: 100px')
+    expect(parseFloat(crop.find('[data-testid="se-click-marker"]').element.style.left)).toBeCloseTo(24 * 100 / 255, 4)
+    expect(w.text()).not.toContain('학습 이미지 밖')
+    expect(w.text()).not.toContain('주변 화면')
+    w.unmount()
+  })
+  it('밖이면 넓혀 + 를 그리고, "클릭 지점: 학습 이미지 밖" 아래에 주변 화면 이유 — 한 곳이면 기준 화면으로 채운다', async () => {
+    const { w, crop } = await open({ x: -3, y: 7 })
+    expect(crop.attributes('data-expand')).toBe('empty')
+    expect(crop.find('[data-testid="se-click-marker"]').exists()).toBe(true)
+    expect(w.text()).toContain('클릭 지점: 학습 이미지 밖 (-3, 7)')
+    const e = useEditStore()
+    e.spots = new Map([[KEY, { found: 'timeout' }]])
+    await flushPromises()
+    expect(w.find('[data-testid="se-detail-spot"]').text()).toBe(MESSAGES.SEW_UI_SPOT_timeout)
+    e.spots = new Map([[KEY, { found: 'one', x: 711, y: 660, w: 255, h: 96, bw: 1920, bh: 1200 }]])
+    await flushPromises()
+    expect(w.find('[data-testid="se-detail-spot"]').text()).toBe(MESSAGES.SEW_UI_SPOT_one)
+    expect(crop.props('around')).toEqual({ src: '/b', x: 711, y: 660, bw: 1920, bh: 1200 })
+    expect(crop.attributes('data-expand')).toBe('base')
+    w.unmount()
+  })
+  it('그림 줄은 넓힌 썸네일이 들어가도 넘치지 않게 줄을 바꾼다', async () => {
+    const { w } = await open({ x: 900, y: 7 })
+    expect(w.find('[data-testid="se-detail-pics"]').classes()).toContain('flex-wrap')
+    w.unmount()
   })
 })

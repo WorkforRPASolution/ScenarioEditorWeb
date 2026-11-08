@@ -215,3 +215,78 @@ test('② WRITE 가 없으면(sew_cvd) 도구 줄·편집 패널·갈 곳 고르
   await expect(page.getByTestId('se-delblock')).toHaveCount(0)
   await expect(rows(page)).toHaveCount(5)
 })
+
+// 찾을 그림 밖 누를 곳(2026-11-08 사용자 보고, A + B). ALL_ACTIONS 1번(누를 곳 24,12 — 안)·3번(오른쪽 클릭 -3,7 — 밖), 찾을 그림 = Reset 단추.
+// 기준 화면에서 찾을 그림을 한 곳 찾으면(위치 찾기) 썸네일의 넓힌 곳을 실제 기준 화면으로 채우고 큰 화면에 찾은 그림·누를 곳을 늘 그린다.
+async function loadedImg(loc) {
+  return loc.evaluate((img) => img.complete && img.naturalWidth > 0)
+}
+test('③ 찾을 그림 밖 누를 곳: 썸네일을 넓혀 + 를 그리고 주변을 기준 화면으로 채우며 큰 화면에 누를 곳을 늘 그린다(편집·읽기 전용)', async ({ page }) => {
+  await asUser(page, 'sew_master')
+  await page.goto('/scenario-editor?p=SEWCVD&m=SEWMODELA&n=ALL_ACTIONS&v=current')
+  await expect(page.getByTestId('se-bar-id')).toContainText('ALL_ACTIONS') // 18줄 — 표는 보이는 줄만 그린다
+  await selectRow(page, 's0')
+  const panel = page.getByTestId('se-detail')
+  await expect(panel).toHaveAttribute('data-panel', 'edit')
+  const thumb = panel.locator('[data-station="find"] [data-train-key="0"]')
+  const spotTrain = page.getByTestId('se-spot-train')
+  const spotClick = page.getByTestId('se-spot-click')
+
+  // 그림 안(24,12): 썸네일은 그대로(너비 110, 넓히지 않음), 큰 화면에는 찾은 그림·누를 곳
+  await expect(thumb.getByTestId('se-click-marker')).toBeVisible()
+  await expect(thumb).not.toHaveAttribute('data-expand')
+  expect(Math.round((await thumb.boundingBox()).width)).toBe(110)
+  for (const [k, v] of [['x', RESET[0]], ['y', RESET[1]], ['width', RESET[2]], ['height', RESET[3]]]) await expect(spotTrain).toHaveAttribute(k, String(v))
+  await expect(spotClick).toHaveAttribute('data-x', String(RESET[0] + 24))
+  await expect(spotClick).toHaveAttribute('data-y', String(RESET[1] + 12))
+  await expect(page.getByTestId('se-spot')).toContainText('누를 곳')
+  await expect(panel.getByTestId('se-train-outside')).toHaveCount(0)
+
+  // 패널 X 를 그림 너비(255)보다 크게: 썸네일이 그 지점까지 넓어지고 넓힌 곳은 기준 화면, + 가 보인다. 큰 화면 + 도 따라간다.
+  const clickX = panel.locator('[data-field="click"]')
+  await clickX.fill('300')
+  await clickX.press('Tab')
+  await expect(thumb).toHaveAttribute('data-expand', 'base')
+  const around = thumb.getByTestId('se-crop-around')
+  await expect.poll(() => loadedImg(around)).toBe(true)
+  expect(await around.evaluate((img) => [img.naturalWidth, img.naturalHeight])).toEqual([IMG.w, IMG.h])
+  const box = await thumb.boundingBox()
+  expect(box.width).toBeGreaterThan(110)
+  expect(box.width).toBeLessThanOrEqual(300)
+  expect(box.height).toBeLessThanOrEqual(150)
+  const m = await thumb.getByTestId('se-click-marker').boundingBox()
+  const mx = m.x + m.width / 2
+  const my = m.y + m.height / 2
+  expect(mx).toBeGreaterThan(box.x + box.width * 0.7) // 오른쪽으로 넓힌 곳에
+  expect(mx).toBeLessThan(box.x + box.width)
+  expect(my).toBeGreaterThan(box.y)
+  expect(my).toBeLessThan(box.y + box.height)
+  await expect(thumb.getByTestId('se-crop-train')).toBeVisible()
+  await expect(panel.getByTestId('se-train-outside')).toContainText('누를 곳: 찾을 그림 밖 (300, 12)')
+  await expect(panel.getByTestId('se-train-outside')).toContainText('주변 화면: 기준 화면에서 찾은 자리')
+  await expect(spotClick).toHaveAttribute('data-x', String(RESET[0] + 300))
+  await expect(spotTrain).toHaveAttribute('x', String(RESET[0])) // 누를 곳만 바꿨으니 찾은 자리는 그대로
+
+  // 다시 그림 안으로: 넓히지 않는다
+  await clickX.fill('24')
+  await clickX.press('Tab')
+  await expect(thumb).not.toHaveAttribute('data-expand')
+  expect(Math.round((await thumb.boundingBox()).width)).toBe(110)
+
+  // 읽기 전용(WRITE 없음 sew_cvd, P1 상세): 3번(-3,7)은 저장값 그대로 밖 — 넓혀 기준 화면으로 채우고 큰 화면에 그린다
+  await asUser(page, 'sew_cvd')
+  await page.goto('/scenario-editor?p=SEWCVD&m=SEWMODELA&n=ALL_ACTIONS&v=current')
+  await expect(page.getByTestId('se-bar-id')).toContainText('ALL_ACTIONS') // 18줄 — 표는 보이는 줄만 그린다
+  await selectRow(page, 's2')
+  const detail = page.getByTestId('se-detail')
+  await expect(detail).not.toHaveAttribute('data-panel', 'edit')
+  const ro = detail.locator('[data-train-key="0"]')
+  await expect(ro).toHaveAttribute('data-expand', 'base')
+  await expect(ro.getByTestId('se-click-marker')).toBeVisible()
+  await expect.poll(() => loadedImg(ro.getByTestId('se-crop-around'))).toBe(true)
+  await expect(detail).toContainText('클릭 지점: 학습 이미지 밖 (-3, 7)')
+  await expect(detail.getByTestId('se-detail-spot')).toHaveText('주변 화면: 기준 화면에서 찾은 자리')
+  await expect(spotClick).toHaveAttribute('data-x', String(RESET[0] - 3))
+  await expect(spotClick).toHaveAttribute('data-y', String(RESET[1] + 7))
+  await expect(page.getByTestId('se-spot')).toContainText('클릭 지점')
+})

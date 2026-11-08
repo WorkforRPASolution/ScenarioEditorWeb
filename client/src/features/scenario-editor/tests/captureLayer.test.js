@@ -431,3 +431,107 @@ describe('EditDialogs — 만들던 새 스텝', () => {
     w.unmount()
   })
 })
+
+import { SPOT_DELAY_MS } from '../composables/useTrainSpot'
+describe('StepViewer — 기준 화면에서 찾은 그림·누를 곳을 늘 그린다(찾을 그림 밖 누를 곳 B)', () => {
+  let observers
+  class FakeResizeObserver {
+    constructor(cb) { this.cb = cb; this.disconnect = vi.fn(); observers.push(this) }
+    observe() {}
+    unobserve() {}
+  }
+  beforeEach(() => {
+    observers = []
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver)
+    fx.loadBitmap.mockImplementation(async (u) => (u.includes('-train-') ? { width: 20, height: 10 } : { width: 1000, height: 500 }))
+    fx.locate.mockReturnValue({ found: 'one', x: 40, y: 50 })
+  })
+  afterEach(() => { vi.unstubAllGlobals() })
+  const settle = async () => { await new Promise((r) => setTimeout(r, SPOT_DELAY_MS + 10)); await flushPromises() }
+  const mountViewer = async () => {
+    const w = mount(StepViewer, { attachTo: document.body })
+    const el = w.find('.select-none').element
+    Object.defineProperty(el, 'clientWidth', { get: () => 800, configurable: true })
+    Object.defineProperty(el, 'clientHeight', { get: () => 400, configurable: true })
+    observers.forEach((o) => o.cb([]))
+    w.vm.onLoad({ target: { naturalWidth: 1000, naturalHeight: 500 } }); await nextTick()
+    await settle()
+    return w
+  }
+  const SPOT = '[data-testid="se-spot"]'
+  const rectOf = (w) => ['x', 'y', 'width', 'height'].map((a) => w.find('[data-testid="se-spot-train"]').attributes(a))
+
+  it('쓸 수 있는 세션: 찾은 그림 테두리와 누를 곳 + (찾은 자리 + 누를 곳), 이름표 "찾은 그림"·"누를 곳" — 누름은 막지 않는다', async () => {
+    panelFixture([imageStep(0), imageStep(1)]) // 누를 곳 24,12
+    const w = await mountViewer()
+    const spot = w.find(SPOT)
+    expect(spot.exists()).toBe(true)
+    expect(spot.attributes('pointer-events')).toBe('none')
+    expect(rectOf(w)).toEqual(['40', '50', '20', '10'])
+    const c = w.find('[data-testid="se-spot-click"]')
+    expect([c.attributes('data-x'), c.attributes('data-y')]).toEqual(['64', '62'])
+    expect(spot.text()).toContain(t('SEW_CAP_TAG_FOUND'))
+    expect(spot.text()).toContain(t('SEW_CAP_TAG_CLICK'))
+    expect(w.findAll('[data-h]').length).toBe(9) // 영역 손잡이는 그대로
+    w.unmount()
+  })
+  it('누를 곳을 그림 밖으로 고치면 다시 찾지 않고 + 만 옮긴다(작업본은 그대로)', async () => {
+    const { e, edited } = panelFixture([imageStep(0), imageStep(1)])
+    const w = await mountViewer()
+    e.updateDraft((d) => ({ ...d, action: { ...d.action, click: { x: 300, y: -5, basis: 'trainImage' } } }))
+    await settle()
+    const c = w.find('[data-testid="se-spot-click"]')
+    expect([c.attributes('data-x'), c.attributes('data-y')]).toEqual(['340', '45'])
+    expect(fx.locate).toHaveBeenCalledTimes(1)
+    expect(e.session.working).toBe(edited)
+    w.unmount()
+  })
+  it('잡기 중에는 그리지 않고(지금 동작 그대로), 잡기를 끝내면 다시 그린다', async () => {
+    const { e } = panelFixture([imageStep(0), imageStep(1)])
+    const w = await mountViewer()
+    e.startCapture(['area', 'train', 'click'])
+    await nextTick()
+    expect(w.find(SPOT).exists()).toBe(false)
+    e.cancelCapture()
+    await nextTick()
+    expect(w.find(SPOT).exists()).toBe(true)
+    w.unmount()
+  })
+  it('여러 곳·못 찾음·시간 초과·불러오기 실패면 그리지 않는다', async () => {
+    for (const found of ['many', 'none', 'timeout', 'error']) {
+      setActivePinia(createPinia())
+      if (found === 'error') fx.loadBitmap.mockRejectedValue(new Error('image 404'))
+      else fx.locate.mockReturnValue({ found })
+      panelFixture([imageStep(0), imageStep(1)])
+      const w = await mountViewer()
+      expect(w.find(SPOT).exists(), found).toBe(false)
+      w.unmount()
+    }
+  })
+  it('읽기 전용(WRITE 없음·옛 판)도 그린다 — 이름표 "학습 이미지"·"클릭 지점", 머리 안내는 찾은 자리', async () => {
+    const tis = (i) => ({ condition: { ...imageStep(i).condition, image: { ...imageStep(i).condition.image, trainImages: [{ key: 0, type: true, url: `/u/s${i}-train-0` }] } } })
+    for (const opts of [{ canWrite: false }, { isCurrent: false }]) {
+      setActivePinia(createPinia())
+      fx.locate.mockReturnValue({ found: 'one', x: 40, y: 50 })
+      panelFixture([imageStep(0), imageStep(1)], { ...opts, skOver: { s0: tis(0) } })
+      const w = await mountViewer()
+      expect(w.find(LAYER).exists()).toBe(false)
+      expect(fx.loadBitmap).toHaveBeenCalledWith('http://x/api/u/s0')
+      expect(fx.loadBitmap).toHaveBeenCalledWith('http://x/api/u/s0-train-0')
+      const spot = w.find(SPOT)
+      expect(spot.exists(), JSON.stringify(opts)).toBe(true)
+      expect(spot.text()).toContain(t('SEW_UI_TAG_TRAIN'))
+      expect(spot.text()).toContain(t('SEW_UI_TAG_CLICK'))
+      expect(w.text()).toContain(t('SEW_UI_TRAIN_FOUND'))
+      expect(w.text()).not.toContain(t('SEW_UI_TRAIN_NOT_STORED'))
+      w.unmount()
+    }
+    setActivePinia(createPinia())
+    fx.locate.mockReturnValue({ found: 'many' })
+    panelFixture([imageStep(0), imageStep(1)], { canWrite: false, skOver: { s0: tis(0) } })
+    const w = await mountViewer()
+    expect(w.find(SPOT).exists()).toBe(false)
+    expect(w.text()).toContain(t('SEW_UI_TRAIN_NOT_STORED'))
+    w.unmount()
+  })
+})

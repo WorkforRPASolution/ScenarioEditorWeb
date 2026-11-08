@@ -64,6 +64,28 @@ export function handlePoints(a) {
     ['se', r, b, 'nwse-resize'], ['s', mx, b, 'ns-resize'], ['sw', a.x, b, 'nesw-resize'], ['w', a.x, my, 'ew-resize']]
 }
 
+// 큰 화면 이름표 상자(목업 tagSvg): 글자 수로 너비를 어림한다(한글은 넓게). y = 이름표 아래 끝, 기준 화면 위로 나가지 않게 0 에서 멈춘다.
+// k = 1 / 화면 배율 — 확대·이동과 상관없이 화면에서 같은 크기로 보인다.
+export function tagBox(x, y, text, k) {
+  const wide = [...text].filter((ch) => { const c = ch.charCodeAt(0); return c >= 0xac00 && c <= 0xd7a3 }).length
+  const h = 18 * k
+  const top = Math.max(0, y - h)
+  return { x, y: top, w: ((text.length - wide) * 7.1 + wide * 12.5 + 12) * k, h, tx: x + 6 * k, ty: top + 13 * k, fs: 12 * k, rx: 3 * k, text }
+}
+const CROSS = 9 // 누를 곳 + 의 반 길이(화면 px)
+const covers = (b, p, m) => p.x >= b.x - m && p.x <= b.x + b.w + m && p.y >= b.y - m && p.y <= b.y + b.h + m
+// 누를 곳 이름표: 누를 곳을 가리지 않게 — 찾은 그림 안이면 그림 위쪽, 밖이면(또는 위쪽 이름표가 누를 곳에 닿으면) 누를 곳 오른쪽 아래(목업 overlay)
+export function clickTagBox(train, click, text, k) {
+  const inside = click.x >= train.x && click.y >= train.y && click.x <= train.x + train.w && click.y <= train.y + train.h
+  const above = inside ? tagBox(train.x, train.y - 4 * k, text, k) : null
+  return above && !covers(above, click, CROSS * k) ? above : tagBox(click.x + 12 * k, click.y + CROSS * k, text, k)
+}
+// 찾은 그림 이름표: 그림 아래(목업), 그 자리가 누를 곳에 닿으면 그림 위
+export function trainTagBox(train, click, text, k) {
+  const below = tagBox(train.x, train.y + train.h + 20 * k, text, k)
+  return click && covers(below, click, CROSS * k) ? tagBox(train.x, train.y - 4 * k, text, k) : below
+}
+
 // 영역을 큰 화면 가운데 꽉 차게(목업 areaView): 이름표가 보이게 좌우 12px·위아래 20px 를 남기고, 전체 맞춤보다 작게 줄이지 않는다.
 // box = 큰 화면 상자 크기, natural = 기준 화면 크기. 결과는 StepViewer 의 { scale, tx, ty }.
 export function areaView(a, box, natural, { max = 8 } = {}) {

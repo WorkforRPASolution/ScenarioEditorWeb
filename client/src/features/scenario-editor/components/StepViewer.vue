@@ -2,6 +2,7 @@
 // 큰 화면: 고른 스텝의 기준 화면과 검색(OCR) 영역, 휠 확대·끌어 이동(P1).
 // 쓸 수 있는 세션은 패널 초안(고른 스텝의 초안 또는 아직 표에 없는 새 스텝)을 그리고, 그 위의 잡기 층(CaptureLayer)이
 // 영역 끌기·손잡이·끌어 잡기·누를 곳 찍기를 맡는다. 잡기 중에는 머리에 단계 띠와 [취소], 아래에 안내 줄(목업 renderViewer).
+// 잡기 밖에서는 기준 화면에서 찾은 찾을 그림 자리와 누를 곳을 늘 그린다(SpotLayer — 한 곳 찾았을 때만, 읽기 전용에서도).
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
 import { useEditStore } from '../stores/editStore'
@@ -10,7 +11,9 @@ import { refUrl } from '../editor/images'
 import { areaView, isRect, isRef } from '../editor/capture'
 import { t } from '../messages'
 import { safeStorage } from '../composables/useSafeStorage'
+import { useTrainSpot } from '../composables/useTrainSpot'
 import CaptureLayer from './CaptureLayer.vue'
+import SpotLayer from './SpotLayer.vue'
 import './capture.css'
 
 defineOptions({ name: 'StepViewer' })
@@ -46,6 +49,10 @@ const noSteps = computed(() => edit.editable && !store.steps.length)
 const editLayer = computed(() => !!draft.value && (kind.value === 'image' || kind.value === 'ocr'))
 const cap = computed(() => (draft.value ? edit.capture : null))
 const capNow = computed(() => (cap.value ? cap.value.flow.indexOf(cap.value.stage) : -1))
+// 찾은 그림·누를 곳: 고치는 중이면 패널 초안(패널 썸네일과 같은 값), 아니면 보는 스텝. 잡는 동안은 잡기 층이 그린다.
+const spot = useTrainSpot(() => (draft.value ? { draft: draft.value } : step.value ? { step: step.value } : null))
+const spotMarks = computed(() => (cap.value ? null : spot.marks.value))
+const spotLabels = computed(() => (draft.value ? { train: t('SEW_CAP_TAG_FOUND'), click: t('SEW_CAP_TAG_CLICK') } : { train: t('SEW_UI_TAG_TRAIN'), click: t('SEW_UI_TAG_CLICK') }))
 // [그림은 그대로 두기]: 고른 스텝의 영역을 다시 잡고 그림 단계에 왔을 때만(목업 cap:keep)
 const canKeep = computed(() => cap.value?.stage === 'train' && cap.value.flow[0] !== 'train' && !isNew.value
   && Object.values(draft.value?.images?.train ?? {}).some(isRef))
@@ -190,7 +197,7 @@ defineExpose({ onLoad, fit })
         <span v-if="isNew" class="font-semibold text-gray-800 dark:text-gray-100">{{ t('SEW_CAP_NEW_TITLE') }}</span>
         <span v-else-if="step" class="font-semibold text-gray-800 dark:text-gray-100">스텝 {{ step.no }} 기준 화면</span>
         <span v-if="adjustHint" class="text-gray-500 truncate">{{ t('SEW_CAP_ADJUST_HINT') }}</span>
-        <span v-else-if="!draft && step && step.condition.kind === 'image'" class="text-gray-500 truncate">{{ t('SEW_UI_TRAIN_NOT_STORED') }}</span>
+        <span v-else-if="!draft && step && step.condition.kind === 'image'" class="text-gray-500 truncate">{{ spotMarks ? t('SEW_UI_TRAIN_FOUND') : t('SEW_UI_TRAIN_NOT_STORED') }}</span>
         <span v-else-if="!draft && step && step.condition.kind === 'ocr'" class="text-gray-500">{{ t('SEW_UI_OCR_AREA_HINT') }}</span>
       </template>
       <div class="ml-auto flex gap-1 shrink-0">
@@ -214,6 +221,7 @@ defineExpose({ onLoad, fit })
         <CaptureLayer v-if="natural && editLayer" :draft="draft" :natural="natural" :scale="view.scale" />
         <div v-else-if="natural && areaStyle && !draft" class="absolute" :class="step.condition.kind === 'ocr' ? 'border-solid border-violet-600 bg-violet-500/10' : 'border-dashed border-primary-500 bg-primary-500/5'"
           :style="areaStyle" data-testid="se-search-area" />
+        <SpotLayer v-if="natural && spotMarks" :natural="natural" :scale="view.scale" :train="spotMarks.train" :click="spotMarks.click" :labels="spotLabels" />
       </div>
     </div>
   </div>

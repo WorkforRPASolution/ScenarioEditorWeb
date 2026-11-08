@@ -1258,3 +1258,107 @@ describe('editStore — 최종 검토 반영(P2-C)', () => {
     expect(e.toast.text).toBe(t('SEW_CMD_PASTE_SAME_PLACE'))
   })
 })
+
+import { spotKey } from '../editor/trainView'
+import { LOCATE_MS } from '../editor/capture'
+describe('editStore — 찾을 그림 위치 보기(findSpot, 찾을 그림 밖 누를 곳 B)', () => {
+  const BITMAP = { width: 1000, height: 500 }
+  const TRAIN = { width: 20, height: 10 }
+  const url = (id) => `http://x/api/scenario-editor/scenarios/P/M/N/versions/1/files/F/images/${id}`
+  const inputOf = (i, over = {}) => ({ baseUrl: url(`s${i}-bi`), trainUrl: url(`s${i}-train-0`), area: { x: 10, y: 20, w: 300, h: 200 }, click: { x: 24, y: 12 }, ...over })
+  const flush = () => new Promise((r) => setTimeout(r, 0))
+  const defer = () => { let resolve; let reject; const promise = new Promise((res, rej) => { resolve = res; reject = rej }); return { promise, resolve, reject } }
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    Object.values(fx).forEach((f) => f.mockReset())
+    fx.loadBitmap.mockImplementation(async (u) => (u.includes('-train-') ? TRAIN : BITMAP))
+    fx.imageDataOf.mockImplementation((b) => ({ width: b.width, height: b.height, data: new Uint8ClampedArray(0) }))
+    fx.locate.mockReturnValue({ found: 'one', x: 40, y: 50 })
+  })
+
+  it('[다시 찍기]와 같은 길로 찾아(비트맵·locate·LOCATE_MS) 키에 결과를 두고, 같은 키는 다시 찾지 않는다 — 작업본·초안·되돌리기는 그대로', async () => {
+    const { e, edited } = panelFixture([imageStep(0), imageStep(1)])
+    const input = inputOf(0)
+    e.findSpot(input)
+    e.findSpot(input) // 찾는 중
+    await flush()
+    e.findSpot(input) // 찾은 뒤
+    await flush()
+    expect(fx.locate).toHaveBeenCalledTimes(1)
+    expect(fx.loadBitmap).toHaveBeenCalledWith(url('s0-bi'))
+    expect(fx.loadBitmap).toHaveBeenCalledWith(url('s0-train-0'))
+    expect(fx.locate).toHaveBeenCalledWith(expect.objectContaining({ width: 1000 }), expect.objectContaining({ width: 20 }), { x: 10, y: 20, w: 300, h: 200 }, { timeLimitMs: LOCATE_MS })
+    expect(e.spots.get(spotKey(input))).toEqual({ found: 'one', x: 40, y: 50, w: 20, h: 10, bw: 1000, bh: 500 })
+    expect(e.session.working).toBe(edited)
+    expect(e.panel.draft).toBe(edited.steps[0])
+    expect(e.undo).toEqual([])
+    expect(e.locating).toBe(false) // [다시 찍기] 표시는 건드리지 않는다
+  })
+  it('누를 곳만 다른 입력은 같은 키라 다시 찾지 않는다', async () => {
+    const { e } = panelFixture([imageStep(0)])
+    e.findSpot(inputOf(0))
+    await flush()
+    e.findSpot(inputOf(0, { click: { x: 400, y: -9 } }))
+    await flush()
+    expect(fx.locate).toHaveBeenCalledTimes(1)
+  })
+  it('늦게 끝난 옛 결과는 그 키에만 붙는다(다른 스텝으로 빨리 옮겨도 섞이지 않는다)', async () => {
+    const { e } = panelFixture([imageStep(0), imageStep(1)])
+    const slow = defer()
+    fx.loadBitmap.mockImplementation(async (u) => (u.includes('s0-train') ? slow.promise : u.includes('-train-') ? TRAIN : BITMAP))
+    fx.locate.mockImplementation((b, tr, area) => (area.x === 10 ? { found: 'one', x: 40, y: 50 } : { found: 'many' }))
+    const a = inputOf(0)
+    const b = inputOf(1, { area: { x: 11, y: 20, w: 300, h: 200 } })
+    e.findSpot(a)
+    e.findSpot(b)
+    await flush()
+    expect(e.spots.get(spotKey(b))).toEqual({ found: 'many' })
+    expect(e.spots.has(spotKey(a))).toBe(false)
+    slow.resolve(TRAIN)
+    await flush()
+    expect(e.spots.get(spotKey(a))).toMatchObject({ found: 'one', x: 40, y: 50 })
+    expect(e.spots.get(spotKey(b))).toEqual({ found: 'many' })
+  })
+  it('세션이 바뀌면 캐시를 비우고, 바뀌기 전에 시작한 찾기의 결과는 버린다', async () => {
+    const { e, s, skeleton } = panelFixture([imageStep(0)])
+    e.findSpot(inputOf(0))
+    await flush()
+    expect(e.spots.size).toBe(1)
+    const gen = e.spotGen
+    const slow = defer()
+    fx.loadBitmap.mockImplementation(async (u) => (u.includes('-train-') ? slow.promise : BITMAP))
+    e.findSpot(inputOf(0, { area: { x: 1, y: 1, w: 50, h: 50 } }))
+    e.begin(skeleton, s.me)
+    expect(e.spots.size).toBe(0)
+    expect(e.spotGen).toBe(gen + 1)
+    slow.resolve(TRAIN)
+    await flush()
+    expect(e.spots.size).toBe(0)
+    e.end()
+    expect(e.spotGen).toBe(gen + 2)
+  })
+  it('불러오기 실패는 error 로 두고(화면은 A 로), 같은 키를 다시 요청하면 다시 찾는다', async () => {
+    const { e } = panelFixture([imageStep(0)])
+    fx.loadBitmap.mockRejectedValueOnce(new Error('image 404'))
+    const input = inputOf(0)
+    e.findSpot(input)
+    await flush()
+    expect(e.spots.get(spotKey(input))).toEqual({ found: 'error' })
+    expect(fx.locate).not.toHaveBeenCalled()
+    e.findSpot(input)
+    await flush()
+    expect(e.spots.get(spotKey(input))).toMatchObject({ found: 'one' })
+    fx.locate.mockImplementation(() => { throw new Error('canvas') })
+    const other = inputOf(0, { area: { x: 1, y: 1, w: 50, h: 50 } })
+    e.findSpot(other)
+    await flush()
+    expect(e.spots.get(spotKey(other))).toEqual({ found: 'error' })
+  })
+  it('입력이 없으면 아무것도 하지 않는다', async () => {
+    const { e } = panelFixture([imageStep(0)])
+    e.findSpot(null)
+    await flush()
+    expect(fx.loadBitmap).not.toHaveBeenCalled()
+    expect(e.spots.size).toBe(0)
+  })
+})
