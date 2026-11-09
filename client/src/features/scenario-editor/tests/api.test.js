@@ -31,11 +31,12 @@ describe('scenarioEditorApi', () => {
     expect(post).toHaveBeenLastCalledWith('/scenario-editor/deploy', fd, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: DEPLOY_TIMEOUT_MS })
     expect(DEPLOY_TIMEOUT_MS).toBeGreaterThan(120000 + OPEN_TIMEOUT_MS)
   })
-  it('결과 모름 확인·마무리 다시 쓰기는 requestId 경로, 이름 규칙은 GET', async () => {
+  // 본문은 빈 JSON 객체 — null 을 주면 공용 axios(JSON 머리글)가 "null" 을 보내고 서버 express.json(strict)이 400 으로 막는다(P2-D E2E ⑤ 에서 찾음)
+  it('결과 모름 확인·마무리 다시 쓰기는 requestId 경로에 빈 JSON 객체 본문, 이름 규칙은 GET', async () => {
     await api.verifyDeploy('a b')
-    expect(post).toHaveBeenLastCalledWith('/scenario-editor/deploy/a%20b/verify', null, { timeout: OPEN_TIMEOUT_MS })
+    expect(post).toHaveBeenLastCalledWith('/scenario-editor/deploy/a%20b/verify', {}, { timeout: OPEN_TIMEOUT_MS })
     await api.finishDeploy('r1')
-    expect(post).toHaveBeenLastCalledWith('/scenario-editor/deploy/r1/finish', null, { timeout: OPEN_TIMEOUT_MS })
+    expect(post).toHaveBeenLastCalledWith('/scenario-editor/deploy/r1/finish', {}, { timeout: OPEN_TIMEOUT_MS })
     await api.nameRule()
     expect(get).toHaveBeenLastCalledWith('/scenario-editor/name-rule')
   })

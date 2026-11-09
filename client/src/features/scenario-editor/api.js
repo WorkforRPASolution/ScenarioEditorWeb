@@ -23,9 +23,10 @@ export const scenarioEditorApi = {
   // 초안·배포: 멀티파트(meta + 쓰는 그림 img:<tempId>, editor/request buildFormData)
   saveDraft: (formData) => api.post('/scenario-editor/drafts', formData, { headers: MULTIPART, timeout: OPEN_TIMEOUT_MS }),
   deploy: (formData) => api.post('/scenario-editor/deploy', formData, { headers: MULTIPART, timeout: DEPLOY_TIMEOUT_MS }),
-  // 결과 모름 확인은 큰 판의 저장 값을 읽어 지문을 비교한다 — 열기와 같은 시간을 준다
-  verifyDeploy: (requestId) => api.post(`/scenario-editor/deploy/${enc(requestId)}/verify`, null, { timeout: OPEN_TIMEOUT_MS }),
-  finishDeploy: (requestId) => api.post(`/scenario-editor/deploy/${enc(requestId)}/finish`, null, { timeout: OPEN_TIMEOUT_MS }),
+  // 결과 모름 확인은 큰 판의 저장 값을 읽어 지문을 비교한다 — 열기와 같은 시간을 준다.
+  // 본문은 빈 JSON 객체: null 이면 공용 axios(JSON 머리글)가 "null" 을 보내고 서버 express.json(strict)이 400 으로 막는다.
+  verifyDeploy: (requestId) => api.post(`/scenario-editor/deploy/${enc(requestId)}/verify`, {}, { timeout: OPEN_TIMEOUT_MS }),
+  finishDeploy: (requestId) => api.post(`/scenario-editor/deploy/${enc(requestId)}/finish`, {}, { timeout: OPEN_TIMEOUT_MS }),
   nameRule: () => api.get('/scenario-editor/name-rule'),
   // 내 초안 목록(공정·모델) → [{ draftId, name, target, base, headCrtime, savedAt, revision }] — 불러오기 창의 내 초안, 새 시나리오 창이 같은 새 ID 의 초안을 찾는다
   listDrafts: (process, model) => api.get('/scenario-editor/drafts', { params: { process, model } }),
