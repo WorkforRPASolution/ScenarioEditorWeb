@@ -60,6 +60,15 @@ describe('웹 전용 DB 만 연결 (SE_WEBMANAGER_DB=0)', () => {
     expect(conn.openUri).toHaveBeenCalledWith('mongodb://h:27017/SE_WEB', { appName: 'ScenarioEditorWeb', maxPoolSize: 5, autoIndex: false })
   })
 
+  it('웹 전용 DB 이름이 운영 EARS DB 이름과 같으면(대소문자 무시) 열지 않고 던져 서버가 뜨지 않게 한다', async () => {
+    const conn = { openUri: vi.fn(async () => {}), on: vi.fn() }
+    const env = { SE_WEBMANAGER_DB: '0', MONGODB_URI: 'mongodb://u:p@prod:27017/EARS?authSource=admin', SE_WEB_DB_URI: 'mongodb://u:p@prod:27017/ears' }
+    await expect(connectWebDbOnly(conn, env)).rejects.toThrow('SE_WEB_DB_URI')
+    // MONGODB_URI 가 없으면 연결 코드의 기본값(EARS)과 비교한다
+    await expect(connectWebDbOnly(conn, { SE_WEBMANAGER_DB: '0', SE_WEB_DB_URI: 'mongodb://localhost:27017/EARS' })).rejects.toThrow('운영 EARS')
+    expect(conn.openUri).not.toHaveBeenCalled()
+  })
+
   it('주소가 없거나 SE_WEBMANAGER_DB 가 0 이 아니면 열지 않는다', async () => {
     const conn = { openUri: vi.fn(async () => {}), on: vi.fn() }
     expect(await connectWebDbOnly(conn, { SE_WEBMANAGER_DB: '0' })).toBe(false)

@@ -5,7 +5,7 @@ const { createLogger } = require('./shared/logger');
 const app = require('./app');
 const { connectDB, closeConnections, earsConnection, webManagerConnection } = require('./shared/db/connection');
 const { connectRedis, closeRedis } = require('./shared/db/redisConnection');
-const { resolveListenAddress } = require('./listen');
+const { resolveListenAddress, startupWarnings } = require('./listen');
 const { webManagerDbEnabled, connectEarsOnly, connectWebDbOnly } = require('./webManagerDb');
 
 const serverLog = createLogger('server');
@@ -22,6 +22,7 @@ const startServer = async () => {
 
     const server = app.listen(PORT, HOST, () => {
       serverLog.info(`Server running on http://${HOST}:${PORT}`);
+      for (const w of startupWarnings(process.env)) serverLog.warn(w);
     });
 
     let isShuttingDown = false
