@@ -1,6 +1,7 @@
 // 저장 E2E(p2-save) 도우미 — 서버 API 로 시험 시나리오 준비·확인, 고장 주입 중계 모드, SEW_W_ 정리.
 // 시험 시나리오는 SEW_W_<시각>_<화면>_<표시> 이름으로 만들고 시드 시나리오(basic)는 읽기만 한다.
-// 정리는 배포 통합 시험과 같은 tools/infra/sew-w-cleanup.js 를 쓴다(웹 전용 DB 가 SE_WEB_DEV 가 아니면 아무것도 지우지 않는다).
+// 정리는 배포 통합 시험과 같은 tools/infra/sew-w-cleanup.js 를 쓴다(server/.env 의 EARS·웹 DB·Redis·InterfaceServer 가 루프백이 아니거나
+// 웹 전용 DB 가 SE_WEB_DEV 가 아니면 아무것도 지우지 않는다 — 사내 프로필 .env 로 돌려 사내 SEW_W_ 를 지우지 않게).
 import { request as pwRequest, expect, test } from '@playwright/test'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
@@ -8,7 +9,7 @@ import { randomUUID } from 'node:crypto'
 import { ROOT, API_URL, FAULT_CONTROL_URL, serverEnv } from '../env.js'
 
 const requireTools = createRequire(join(ROOT, 'tools/package.json'))
-const { cleanupSewW, TEST_USERS } = requireTools('./infra/sew-w-cleanup.js')
+const { cleanupSewW, assertLocalTargets, TEST_USERS } = requireTools('./infra/sew-w-cleanup.js')
 
 export const CVD = { process: 'SEWCVD', model: 'SEWMODELA' }
 export const SOURCE = { ...CVD, name: 'ALL_CONDITIONS' } // 1 이미지 · 2 OCR · 3 대기 · 4 설비 상태, 손대지 않고 배포해도 막힘이 없다
@@ -64,6 +65,7 @@ export async function db() {
   if (clients) return clients
   const env = serverEnv()
   if (!env.WEBMANAGER_DB_URI) throw new Error('server/.env 의 WEBMANAGER_DB_URI 가 비었다 — SE_WEB_DEV 여야 한다(CLAUDE.md 통합 시험)')
+  assertLocalTargets(env) // 연결하기 전에 — 루프백이 아니면 던진다
   const { MongoClient, GridFSBucket } = requireTools('mongodb')
   const Redis = requireTools('ioredis')
   const ears = new MongoClient(env.MONGODB_URI || 'mongodb://localhost:27017/EARS')
@@ -77,7 +79,7 @@ export async function db() {
 
 export async function cleanup() {
   const c = await db()
-  return cleanupSewW({ db: c.db, webDb: c.webDb, redis: c.redis, GridFSBucket: c.GridFSBucket })
+  return cleanupSewW({ env: serverEnv(), db: c.db, webDb: c.webDb, redis: c.redis, GridFSBucket: c.GridFSBucket })
 }
 
 // 정리 뒤 남은 SEW_W_ 데이터(0 이어야 한다)

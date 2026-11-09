@@ -12,7 +12,7 @@ const require = createRequire(import.meta.url)
 const HERE = fileURLToPath(new URL('.', import.meta.url))
 const ROOT = join(HERE, '../../../../..')
 const { startFaultProxy } = require(join(ROOT, 'tools/infra/fault-proxy.js'))
-const { cleanupSewW } = require(join(ROOT, 'tools/infra/sew-w-cleanup.js'))
+const { cleanupSewW, assertLocalTargets } = require(join(ROOT, 'tools/infra/sew-w-cleanup.js'))
 const { EJSON } = require('bson')
 const { parseField, pickCurrent } = require('../../domain/versionPick')
 const { emptyPerformance } = require('../../domain/performanceEdit')
@@ -36,9 +36,14 @@ let webDb
 let redis
 let mongo
 let deps
+let localEnv // 연결 주소(server/.env) — 고장 주입이 EARS_INTERFACE_URL 을 잠시 바꾸기 전의 값
+const ENV_KEYS = ['MONGODB_URI', 'WEBMANAGER_DB_URI', 'SE_WEB_DB_URI', 'REDIS_URL', 'EARS_INTERFACE_URL']
 
 beforeAll(async () => {
   require('dotenv').config({ path: join(ROOT, 'server/.env') })
+  // 사내 프로필 .env 로 돌리지 않는다 — 연결해 무엇이든 쓰기 전에 EARS·웹 DB·Redis·InterfaceServer 가 루프백인지 본다(정리도 다시 본다)
+  localEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]))
+  assertLocalTargets(localEnv)
   process.env.SE_DEV_USER_OVERRIDE = '1'
   process.env.IMAGE_CACHE_DIR = join(ROOT, 'server/.cache/int-images')
   const conn = require('../../../../shared/db/connection')
@@ -61,7 +66,7 @@ beforeAll(async () => {
 // 실패해도 지운다: SEW_W_ 시나리오의 SC_PROPERTY·GridFS·Redis 필드, 시험 사용자의 초안·초안 그림·배포 기록(저장 E2E 와 같은 정리 — tools/infra/sew-w-cleanup.js)
 async function cleanup() {
   if (!db) return
-  await cleanupSewW({ db, webDb, redis, GridFSBucket: mongo.GridFSBucket })
+  await cleanupSewW({ env: localEnv, db, webDb, redis, GridFSBucket: mongo.GridFSBucket })
 }
 
 afterAll(async () => {
