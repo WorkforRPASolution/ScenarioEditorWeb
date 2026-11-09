@@ -39,6 +39,19 @@ describe('withMongoErrors', () => {
   })
 })
 
+describe('withMongoErrors — 어느 DB 인지 문구에 맞게', () => {
+  it('기본은 EARS DB: 연결 계열 503 은 "EARS DB 에 닿지 못했습니다", 시간 초과 504 는 "EARS DB 응답이 늦습니다"', async () => {
+    expect(await withMongoErrors({ find: fail('MongoNetworkError') }).find().catch((e) => e)).toMatchObject({ statusCode: 503, message: 'EARS DB 에 닿지 못했습니다' })
+    expect(await withMongoErrors({ find: fail('MongoServerError', { code: 50 }) }).find().catch((e) => e)).toMatchObject({ statusCode: 504, message: 'EARS DB 응답이 늦습니다' })
+  })
+  it('웹 전용 DB 이름을 주면 그 이름으로 낸다(code 는 같다)', async () => {
+    const down = await withMongoErrors({ find: fail('MongoServerSelectionError') }, '웹 전용 DB').find().catch((e) => e)
+    expect(down).toMatchObject({ statusCode: 503, code: 'UPSTREAM_DOWN', message: '웹 전용 DB 에 닿지 못했습니다' })
+    const slow = await withMongoErrors({ find: fail('MongoOperationTimeoutError') }, '웹 전용 DB').find().catch((e) => e)
+    expect(slow).toMatchObject({ statusCode: 504, code: 'UPSTREAM_TIMEOUT', message: '웹 전용 DB 응답이 늦습니다' })
+  })
+})
+
 describe('mapGridfsError (본문 읽기 도중 오류)', () => {
   const err = (name, extra = {}) => Object.assign(new Error('내부 주소 10.0.0.1:27017'), { name, ...extra })
   it.each([

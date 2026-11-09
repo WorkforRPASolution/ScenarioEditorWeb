@@ -15,6 +15,7 @@ const { EJSON } = require('bson')
 const { parseField, pickCurrent } = require('../../domain/versionPick')
 const { emptyPerformance } = require('../../domain/performanceEdit')
 const { kstDate } = require('../../domain/owners')
+const { seError } = require('../../errors')
 
 const USERS = ['sew_master', 'sew_cvd', 'sew_multi', 'sew_mastercvd', 'sew_spaces', 'sew_longgrade', 'sew_none']
 const STAMP = Date.now().toString(36).toUpperCase()
@@ -467,6 +468,15 @@ describe('고장 주입 (설계 §6.3·§13.2)', () => {
     expect(before.property.Owners).toEqual(owners)
     expect(before.scCategory).toBeUndefined()
     expect(await deployRecord(meta.requestId)).toMatchObject({ result: 'partial', steps: ['setscenario'] })
+
+    // 다시 쓰기가 DB 에 닿지 못하면 200 partial 로 숨기지 않고 503, 기록은 partial 그대로(다시 부를 수 있다)
+    repo.finishDeploy = async () => { repo.finishDeploy = original; throw seError(503, 'UPSTREAM_DOWN', 'EARS DB 에 닿지 못했습니다') }
+    let f0
+    try { f0 = await finish(meta.requestId) } finally { repo.finishDeploy = original }
+    expect(f0.status, show(f0)).toBe(503)
+    expect(f0.body.code).toBe('UPSTREAM_DOWN')
+    expect(await deployRecord(meta.requestId)).toMatchObject({ result: 'partial', steps: ['setscenario'] })
+    expect((await propertyDoc(t)).scCategory).toBeUndefined()
 
     const f1 = await finish(meta.requestId)
     expect(f1.status, show(f1)).toBe(200)

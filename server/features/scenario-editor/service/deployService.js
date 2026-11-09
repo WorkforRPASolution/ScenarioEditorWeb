@@ -210,7 +210,7 @@ function createDeployService({ check, opener, web, repo, hash, scopes, interface
       log.warn(`deploy ${id} ${requestId}: 내 판을 찾지 못했습니다 — ${e.message}`)
     }
     // 보내는 데 120초까지 걸릴 수 있다 — 그 사이 남이 남긴 Owners 줄(켜기·끄기 등)을 지키도록 지금 목록에 내 줄을 더해 쓴다(확인·다시 쓰기와 같은 함수)
-    const written = await rewriteFinish(record)
+    const written = await tryFinish(record)
     const finished = written !== null
     const result = finished ? 'ok' : 'partial'
     const partialFailed = finished ? [] : ['finish']
@@ -267,21 +267,27 @@ function createDeployService({ check, opener, web, repo, hash, scopes, interface
     try { return await fn() } finally { running.delete(lock) }
   }
 
+  const whereOf = (record) => `deploy ${record.target.process}-${record.target.model}-${record.target.name} ${record.requestId}`
+
   // 마무리 값을 대상 문서의 지금 Owners 에 내 배포 줄을 더해 다시 만들어 쓴다(배포 직후·확인·다시 쓰기 모두). 줄은 deploy 때와 같은 값(사용자·시작 시각)이다.
-  // ownersWithLine 이 같은 줄을 두 번 넣지 않으므로 그 사이 남의 줄이 생겨도 지우지 않는다. 쓴 finish 를 돌려주고, 문서가 없거나 0건·쓰기 실패면 null.
+  // ownersWithLine 이 같은 줄을 두 번 넣지 않으므로 그 사이 남의 줄이 생겨도 지우지 않는다. 쓴 finish 를 돌려주고, 문서가 없거나 0건이면 null. 읽기·쓰기 오류는 던진다.
   async function rewriteFinish(record) {
     const t = record.target
-    const where = `deploy ${t.process}-${t.model}-${t.name} ${record.requestId}`
+    const doc = await propertyDocOf(t)
+    if (!doc) { log.warn(`${whereOf(record)}: 마무리 0건(운영 속성 문서 없음)`); return null }
+    const finish = { ...record.finish, owners: ownersWithLine(ownersOf(doc), deployLine(record.user, new Date(record.startedAt))) }
+    const r = await repo.finishDeploy({ process: t.process, model: t.model, name: t.name }, finish)
+    if (r && r.matched > 0) return finish
+    log.warn(`${whereOf(record)}: 마무리 0건(운영 속성 문서 없음)`)
+    return null
+  }
+
+  // 배포 직후·확인: 설비에는 이미 갔다 — 마무리 실패는 오류가 아니라 partial 로 알린다(쓰기 실패도 null)
+  async function tryFinish(record) {
     try {
-      const doc = await propertyDocOf(t)
-      if (!doc) { log.warn(`${where}: 마무리 0건(운영 속성 문서 없음)`); return null }
-      const finish = { ...record.finish, owners: ownersWithLine(ownersOf(doc), deployLine(record.user, new Date(record.startedAt))) }
-      const r = await repo.finishDeploy({ process: t.process, model: t.model, name: t.name }, finish)
-      if (r && r.matched > 0) return finish
-      log.warn(`${where}: 마무리 0건(운영 속성 문서 없음)`)
-      return null
+      return await rewriteFinish(record)
     } catch (e) {
-      log.warn(`${where}: 마무리 실패 — ${e.message}`)
+      log.warn(`${whereOf(record)}: 마무리 실패 — ${e.message}`)
       return null
     }
   }
@@ -290,13 +296,15 @@ function createDeployService({ check, opener, web, repo, hash, scopes, interface
     return exclusive(requestId, async () => {
       const record = await ownRecord(user, requestId)
       if (record.result === 'ok' || record.result === 'partial') return { found: 'mine', crtime: record.crtime ?? null, result: record.result, partialFailed: partialOf(record.result) }
-      // 거절(failed)도 찾아본다 — 운영 속성 단계가 이미 바뀌었을 수 있다(설계 §6.3 [버전 목록 확인]). 없으면 기록은 그대로 둔다.
-      if (!['unknown', 'pending', 'failed'].includes(record.result)) return { found: 'none', crtime: null }
+      // 거절(failed·UPSTREAM_FAILED)도 찾아본다 — 운영 속성 단계가 이미 바뀌었을 수 있다(설계 §6.3 [버전 목록 확인]). 없으면 기록은 그대로 둔다.
+      // 그 밖의 failed(연결 안 됨·보내기 전·보내는 도중 로컬 실패)는 InterfaceServer 가 저장하지 않았다 — 찾지 않는다.
+      const rejected = record.result === 'failed' && record.error && record.error.code === 'UPSTREAM_FAILED'
+      if (!rejected && !['unknown', 'pending'].includes(record.result)) return { found: 'none', crtime: null }
       const t = record.target
       const hashKey = `${t.process}-${t.model}`
       const crtime = await pickMine({ name: t.name, fieldsBefore: record.fieldsBefore, fieldsNow: await hash.hkeys(hashKey), valueOf: (f) => hash.hget(hashKey, f), sha: record.bodySha256 })
       if (crtime === null) return { found: 'none', crtime: null }
-      const finish = await rewriteFinish(record)
+      const finish = await tryFinish(record)
       const result = finish ? 'ok' : 'partial'
       await note(requestId, { result, crtime, ...(finish ? { finish } : {}), steps: finish ? ['setscenario', 'finish'] : ['setscenario'], finishedAt: now() })
       log.info(`deploy ${requestId} verify result=${result} crtime=${crtime}`)
@@ -308,6 +316,8 @@ function createDeployService({ check, opener, web, repo, hash, scopes, interface
     return exclusive(requestId, async () => {
       const record = await ownRecord(user, requestId)
       if (record.result !== 'partial') return { result: record.result, crtime: record.crtime ?? null, partialFailed: partialOf(record.result) }
+      // DB 에 닿지 못한 실패(503·504) 등은 200 partial 로 숨기지 않고 그 오류로 알린다. 기록은 partial 그대로라 다시 부를 수 있다.
+      // partial 응답은 DB 가 답했는데 쓸 문서가 없을 때(0건)뿐이다.
       const done = await rewriteFinish(record)
       if (!done) return { result: 'partial', crtime: record.crtime ?? null, partialFailed: ['finish'] }
       await note(requestId, { result: 'ok', finish: done, steps: ['setscenario', 'finish'], finishedAt: now() })

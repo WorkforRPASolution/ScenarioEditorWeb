@@ -46,7 +46,7 @@ const until = async (cond) => { for (let i = 0; i < 200 && !cond(); i++) await n
 
 // 기준 판 = helpers 의 P-M-N (crtime CUR, 스텝 2개, 기준 화면 s0-bi·s1-bi). 검사는 실제 checkService(prepare·checkScenario), 조립·흘려 쓰기는 실제 P2-A 함수.
 function setup(o = {}) {
-  const calls = { rawRead: [], stream: [], sent: [], insert: [], update: [], finish: [], delDraft: [], delImages: [], resolve: [], source: [], getDeploy: [] }
+  const calls = { rawRead: [], stream: [], sent: [], insert: [], update: [], finish: [], delDraft: [], delImages: [], resolve: [], source: [], getDeploy: [], hkeys: [] }
   const src = okSource()
   const docs = new Map(Object.entries(o.docs || { 'P|M|N': { scname: 'N', property: propertyDoc, performance: PERF } }))
   const redis = new Map(o.fields || [[`N.${CUR}`, 'old body'], ['OTHER.1', 'x']])
@@ -60,11 +60,12 @@ function setup(o = {}) {
     finishDeploy: async (key, finish) => {
       calls.finish.push([key, finish])
       if (mode === 'throw') throw seError(504, 'UPSTREAM_TIMEOUT', 'EARS DB 응답이 늦습니다')
+      if (mode === 'down') throw seError(503, 'UPSTREAM_DOWN', 'EARS DB 에 닿지 못했습니다')
       return { matched: mode === 'zero' ? 0 : 1 }
     }
   }
   const hash = {
-    hkeys: async (key) => (key === 'P-M' ? [...redis.keys()] : []),
+    hkeys: async (key) => { calls.hkeys.push(key); return key === 'P-M' ? [...redis.keys()] : [] },
     hget: async (key, field) => (key === 'P-M' && redis.has(field) ? redis.get(field) : null)
   }
   const scopes = {
@@ -640,6 +641,24 @@ describe('deployService.verify — 결과 모름 확인', () => {
     expect(s.records.get(RID)).toEqual(before)
     expect(s.calls.finish).toEqual([])
   })
+  // 찾는 것은 거절(UPSTREAM_FAILED)뿐이다. 보내지 못한 실패(503)·보내는 도중 로컬 실패는 InterfaceServer 가 저장하지 않았다.
+  it.each([
+    ['503 UPSTREAM_DOWN(연결 안 됨)', { streamError: Object.assign(seError(503, 'UPSTREAM_DOWN', 'x'), { upstream: { status: 0, text: 'ECONNREFUSED' } }) }],
+    ['CONTENT_LENGTH_MISMATCH(로컬)', { streamError: Object.assign(new Error('길이 다름'), { code: 'CONTENT_LENGTH_MISMATCH' }) }],
+    // 보내는 도중 그림 읽기가 Mongo 시간 초과로 실패 — 기록 code 는 UPSTREAM_TIMEOUT 이지만 로컬 실패다
+    ['보내는 도중 그림 읽기 실패', { failImage: { id: 's1-bi', nth: 2, error: seError(504, 'UPSTREAM_TIMEOUT', 'EARS DB 응답이 늦습니다') } }]
+  ])('거절이 아닌 failed 기록(%s)은 Redis 를 찾지 않고 none, 기록은 그대로', async (_, o) => {
+    const s = setup(o)
+    await fail(s.svc.deploy(user, s.meta(), new Map()))
+    expect(s.records.get(RID).result).toBe('failed')
+    if (s.calls.sent.length) s.redis.set(`N.${NEW}`, s.calls.sent[0].Body) // 같은 지문의 새 필드가 있어도 찾지 않는다
+    const before = structuredClone(s.records.get(RID))
+    s.calls.hkeys.length = 0
+    expect(await s.svc.verify(user, RID)).toEqual({ found: 'none', crtime: null })
+    expect(s.calls.hkeys).toEqual([])
+    expect(s.records.get(RID)).toEqual(before)
+    expect(s.calls.finish).toEqual([])
+  })
   it('내 줄이 이미 목록에 있으면 다시 넣지 않는다', async () => {
     const owners = [...propertyDoc.Owners, LINE, 'lee@2026-11-07 11:00:00']
     const s = await unknownCase()
@@ -651,8 +670,20 @@ describe('deployService.verify — 결과 모름 확인', () => {
 })
 
 describe('deployService.finish — 마무리 다시 쓰기', () => {
-  it('다시 쓰기도 실패하면 partial 그대로(기록 안 바뀜)', async () => {
-    const s = setup({ finish: 'throw' })
+  // DB 에 닿지 못한 실패는 200 partial 로 숨기지 않는다 — 오류로 알리고 기록은 partial 그대로 둬 다시 쓸 수 있게 한다
+  it.each([['throw', 504, 'UPSTREAM_TIMEOUT'], ['down', 503, 'UPSTREAM_DOWN']])('다시 쓰기가 DB 에 닿지 못하면(%s) 그 오류(%i %s), 기록은 partial 그대로, 다시 부를 수 있다', async (mode, statusCode, code) => {
+    const s = setup({ finish: mode })
+    expect((await s.svc.deploy(user, s.meta(), new Map())).result).toBe('partial') // 배포 직후 마무리 실패는 그대로 partial
+    s.calls.finish.length = 0
+    const before = structuredClone(s.records.get(RID))
+    expect(await fail(s.svc.finish(user, RID))).toMatchObject({ statusCode, code })
+    expect(s.calls.finish).toHaveLength(1)
+    expect(s.records.get(RID)).toEqual(before)
+    s.repoOk()
+    expect(await s.svc.finish(user, RID)).toEqual({ result: 'ok', crtime: NEW, partialFailed: [] })
+  })
+  it('다시 쓰기가 0건(운영 속성 문서 없음)이면 오류가 아니라 partial 그대로', async () => {
+    const s = setup({ finish: 'zero' })
     await s.svc.deploy(user, s.meta(), new Map())
     s.calls.finish.length = 0
     expect(await s.svc.finish(user, RID)).toEqual({ result: 'partial', crtime: NEW, partialFailed: ['finish'] })

@@ -20,21 +20,22 @@ const MONGO_DOWN = new Set([
 const MONGO_DOWN_CODES = new Set([91, 11600, 189, 10107, 13435])
 const MAX_TIME_EXPIRED = 50
 
-function mapMongoError(e) {
+// db 는 문구에 넣을 DB 이름 — 운영 EARS(기본)와 웹 전용 DB(초안·배포 기록)가 같은 드라이버 오류를 낸다. 읽기·쓰기 모두라 "닿지 못했습니다".
+function mapMongoError(e, db = 'EARS DB') {
   if (e && e.code && typeof e.code === 'string') return e
-  if (e && (MONGO_DOWN.has(e.name) || MONGO_DOWN_CODES.has(e.code))) return seError(503, 'UPSTREAM_DOWN', 'EARS DB 를 읽지 못했습니다')
-  if (e && (e.code === MAX_TIME_EXPIRED || e.name === 'MongoOperationTimeoutError')) return seError(504, 'UPSTREAM_TIMEOUT', 'EARS DB 응답이 늦습니다')
+  if (e && (MONGO_DOWN.has(e.name) || MONGO_DOWN_CODES.has(e.code))) return seError(503, 'UPSTREAM_DOWN', `${db} 에 닿지 못했습니다`)
+  if (e && (e.code === MAX_TIME_EXPIRED || e.name === 'MongoOperationTimeoutError')) return seError(504, 'UPSTREAM_TIMEOUT', `${db} 응답이 늦습니다`)
   return e
 }
 
-function withMongoErrors(repo) {
+function withMongoErrors(repo, db) {
   const out = {}
   for (const [k, fn] of Object.entries(repo)) {
     out[k] = async (...args) => {
       try {
         return await fn(...args)
       } catch (e) {
-        throw mapMongoError(e)
+        throw mapMongoError(e, db)
       }
     }
   }

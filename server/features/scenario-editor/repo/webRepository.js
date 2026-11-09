@@ -94,7 +94,7 @@ function createWebRepository(getWebDb, mongo) {
     async getDeploy(requestId) {
       return (await deploys().findOne({ requestId }, { maxTimeMS: MAX, promoteLongs: false })) || null
     }
-  })
+  }, '웹 전용 DB')
   // 흘려 읽는 스트림이라 withMongoErrors(async 로 감쌈)를 거치지 않는다. 읽는 쪽이 오류를 처리한다.
   return { ...queries, openDraftImage: (gridId) => bucket().openDownloadStream(gridId) }
 }

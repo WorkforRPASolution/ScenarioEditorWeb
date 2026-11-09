@@ -85,4 +85,12 @@ describe('webRepository', () => {
     await repo.getDeploy('r1')
     expect(col('SCENARIO_EDITOR_DEPLOYS').findOne.mock.calls[0][1]).toMatchObject({ promoteLongs: false })
   })
+
+  it('웹 전용 DB 의 시간 초과·연결 끊김은 "웹 전용 DB" 문구(EARS DB 가 아님)', async () => {
+    const { col, repo } = fake()
+    col('SCENARIO_EDITOR_DEPLOYS').findOne.mockRejectedValueOnce(Object.assign(new Error('x'), { name: 'MongoServerError', code: 50 }))
+    expect(await repo.getDeploy('r1').catch((e) => e)).toMatchObject({ statusCode: 504, code: 'UPSTREAM_TIMEOUT', message: '웹 전용 DB 응답이 늦습니다' })
+    col('SCENARIO_EDITOR_DEPLOYS').updateOne.mockRejectedValueOnce(Object.assign(new Error('x'), { name: 'MongoNetworkError' }))
+    expect(await repo.updateDeploy('r1', {}).catch((e) => e)).toMatchObject({ statusCode: 503, code: 'UPSTREAM_DOWN', message: '웹 전용 DB 에 닿지 못했습니다' })
+  })
 })
