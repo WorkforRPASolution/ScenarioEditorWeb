@@ -29,7 +29,7 @@ function setup(o = {}) {
       apply(k, f); return { matched: 1 }
     },
     findUsers: async (id) => { calls.users.push(id); return (o.users || { dev1: [{ singleid: 'dev1', name: 'D1', process: 'AA:BB' }] })[id] || [] },
-    searchUsers: async (q) => { calls.q = q; return [{ singleid: 'a', name: 'b', process: 'x' }] },
+    searchUsers: async (q) => { calls.q = q; return [{ singleid: 'a', name: 'b', process: 'x' }, { singleid: 'c', name: 'b' }] },
     findSameNameModels: async () => ['M1', 'M2', 'M9'],
     hasNameRule: async () => o.rule === true,
     findNameRule: async () => [{ pattern: 'x' }]
@@ -135,6 +135,13 @@ describe('savePerformance', () => {
   it('원래 모델 문서가 0건이면 404', async () => {
     expect((await fail(setup({ docs: {} }).svc.savePerformance(admin, key, { fields: {}, alsoModels: [] }))).statusCode).toBe(404)
   })
+  it('옛 문서에 없는 성과 키는 읽을 때처럼 빈 값으로 보고 검사한다 — 없는 키를 쓰지 않는다', async () => {
+    // 효과 하나·사고 유형·트리거 정보가 없는 옛 문서(시드 BAD_PERFORMANCE 처럼). 화면은 0·빈 값으로 읽어 고치지 않은 칸을 보내지 않는다.
+    const { WaferLoss: _w, AccidentType: _a, AccidentInfo: _i, ...legacy } = GOOD
+    const { svc, calls } = setup({ docs: { 'P|M1|N': [{ scname: 'N', property: {}, performance: { ...legacy, InvestCostLoss: null } }] } })
+    await svc.savePerformance(admin, key, { fields: { Grade: 1 }, alsoModels: [] })
+    expect(calls.perf).toEqual([['M1', { 'performance.Grade': 1, 'performance.Supervisor': 'adm' }]])
+  })
 })
 
 describe('savePerformance — 칸 형·범위(400, 어떤 모델에도 쓰지 않는다)', () => {
@@ -167,12 +174,29 @@ describe('sameName·searchUsers·nameRule', () => {
   it('sameName: 권한 밖 공정이면 403', async () => {
     expect((await fail(setup().svc.sameName(admin, 'Q', 'N'))).code).toBe('PROCESS_FORBIDDEN')
   })
-  it('searchUsers: 2자 미만 400, 아니면 {singleid, name}', async () => {
+  it('searchUsers: 2자 미만 400, 아니면 {singleid, name, process} — 공정으로 동명이인을 가린다', async () => {
     const { svc, calls } = setup()
     expect((await fail(svc.searchUsers(admin, ' a '))).statusCode).toBe(400)
     expect((await fail(svc.searchUsers(admin, undefined))).statusCode).toBe(400)
-    expect(await svc.searchUsers(admin, ' ab ')).toEqual([{ singleid: 'a', name: 'b' }])
+    expect(await svc.searchUsers(admin, ' ab ')).toEqual([{ singleid: 'a', name: 'b', process: 'x' }, { singleid: 'c', name: 'b', process: '' }])
     expect(calls.q).toBe('ab')
+  })
+  it('registeredUsers: 아이디 목록 중 등록된 사람만 {singleid, name, process}(입력 순서, 같은 아이디는 한 번) — 저장 때 DEV_UNKNOWN 과 같은 조회', async () => {
+    const { svc, calls } = setup({ users: { dev1: [{ singleid: 'dev1', name: 'D1', process: 'AA:BB', password: 'x' }], dev2: [{ singleid: 'dev2', name: 'D2' }] } })
+    expect(await svc.registeredUsers(admin, ' dev2, ghost ,dev1,dev2,, ')).toEqual([
+      { singleid: 'dev2', name: 'D2', process: '' }, { singleid: 'dev1', name: 'D1', process: 'AA:BB' }
+    ])
+    expect(calls.users).toEqual(['dev2', 'ghost', 'dev1'])
+    expect(await svc.registeredUsers(admin, '')).toEqual([])
+  })
+  it('registeredUsers: 등급 1·2 가 아니면 403 이고 찾지 않는다, 문자열이 아니거나 50명을 넘으면 400', async () => {
+    const { svc, calls } = setup()
+    const e = await fail(svc.registeredUsers({ singleid: 'x', authorityManager: 3 }, 'dev1'))
+    expect([e.statusCode, e.code]).toEqual([403, 'GRADE_FORBIDDEN'])
+    expect((await fail(svc.registeredUsers(admin, ['dev1']))).statusCode).toBe(400)
+    const many = Array.from({ length: 51 }, (_, i) => `u${i}`).join(',')
+    expect((await fail(svc.registeredUsers(admin, many))).statusCode).toBe(400)
+    expect(calls.users).toEqual([])
   })
   it('searchUsers: 등급 1·2 가 아니면 403 GRADE_FORBIDDEN 이고 찾지 않는다(원개발자 찾기는 성과 입력 창 몫)', async () => {
     const { svc, calls } = setup()

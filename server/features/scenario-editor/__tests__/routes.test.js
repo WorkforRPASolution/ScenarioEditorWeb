@@ -382,6 +382,19 @@ describe('심의·성과·같은 이름·사용자 찾기·이름 규칙', () =>
     expect((await fetch(`${base}/users?q=ab`, { headers: { 'X-SE-User': 'sew_adm' } })).status).toBe(200)
     expect(seen).toEqual(['ab'])
   })
+  it('GET /users?ids= 는 등록 여부 확인(registeredUsers) — 등급 1·2 만, q 찾기는 부르지 않는다', async () => {
+    const seen = []
+    fake.performance = {
+      searchUsers: async (u, q) => { seen.push(['q', q]); return [] },
+      registeredUsers: async (u, ids) => { seen.push(['ids', u.singleid, ids]); return [{ singleid: 'a', name: 'A', process: 'P' }] }
+    }
+    const res = await fetch(`${base}/users?ids=a,b`)
+    expect([res.status, (await res.json()).code]).toEqual([403, 'GRADE_FORBIDDEN'])
+    expect(seen).toEqual([])
+    const ok = await fetch(`${base}/users?ids=a,b&q=zz`, { headers: { 'X-SE-User': 'sew_adm' } })
+    expect((await ok.json()).data).toEqual([{ singleid: 'a', name: 'A', process: 'P' }])
+    expect(seen).toEqual([['ids', 'sew_adm', 'a,b']])
+  })
   it('GET same-name 은 권한 밖 공정이면 403 PROCESS_FORBIDDEN(빈 목록이 아님), 권한 안이면 내 모델만', async () => {
     const { createPerformanceService } = require('../service/performanceService')
     const repo = { findSameNameModels: async () => ['M1', 'M9'] }

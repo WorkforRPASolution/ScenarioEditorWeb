@@ -92,6 +92,30 @@ describe('원개발자', () => {
   })
 })
 
+// 완료 판정 경우표 — 브라우저 판정(client …/scenario-editor/tests/performanceRules.test.js)이 같은 값을 쓴다. 바꾸면 둘 다 바꾼다.
+// [이름, 기본 값에 덮을 칸(null = 성과 없음), 완료]
+const COMPLETE_BASE = { Grade: 2, Trigger: 1, ManWorkLoss: 10, EqpStopLoss: 0, WaferLoss: 0, InvestCostLoss: 0, AccidentType: 0 }
+const COMPLETE_CASES = [
+  ['값이 다 참', {}, true],
+  ['NotUsed 는 트리거·효과가 없어도 완료', { Grade: 6, Trigger: 0, ManWorkLoss: 0 }, true],
+  ['등급 N/A', { Grade: 0 }, false],
+  ['등급 N/A 면 효과가 있어도 미완료', { Grade: 0, ManWorkLoss: 100 }, false],
+  ['트리거 NA', { Trigger: 0 }, false],
+  ['효과·사고 유형 없음', { ManWorkLoss: 0 }, false],
+  ['사고 유형만', { ManWorkLoss: 0, AccidentType: 3 }, true],
+  ['설비 정지 Loss 만', { ManWorkLoss: 0, EqpStopLoss: 1 }, true],
+  ['Wafer 만', { ManWorkLoss: 0, WaferLoss: 1 }, true],
+  ['투자비만', { ManWorkLoss: 0, InvestCostLoss: 1 }, true],
+  ['숫자가 아닌 효과는 없음으로 셈', { ManWorkLoss: 'x' }, false],
+  ['성과 없음', null, false]
+]
+
+describe('isPerformanceComplete — 경우표(브라우저와 같은 값)', () => {
+  it.each(COMPLETE_CASES)('%s', (_name, over, expected) => {
+    expect(isPerformanceComplete(over === null ? null : { ...COMPLETE_BASE, ...over })).toBe(expected)
+  })
+})
+
 describe('isPerformanceComplete', () => {
   it('완료 판정은 하나', () => {
     expect(isPerformanceComplete({ ...perf, Grade: 6, Trigger: 0 })).toBe(true)

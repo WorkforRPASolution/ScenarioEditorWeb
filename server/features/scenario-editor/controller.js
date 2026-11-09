@@ -183,8 +183,10 @@ async function savePerformance(req, res) {
 async function sameName(req, res) {
   ok(res, await getDeps().performance.sameName(req.seUser, req.params.process, req.params.name))
 }
+// ?ids=a,b 는 등록 여부 확인(성과 입력 창이 열 때), 아니면 ?q= 이름·아이디 찾기
 async function searchUsers(req, res) {
-  ok(res, await getDeps().performance.searchUsers(req.seUser, req.query.q))
+  const p = getDeps().performance
+  ok(res, req.query.ids !== undefined ? await p.registeredUsers(req.seUser, req.query.ids) : await p.searchUsers(req.seUser, req.query.q))
 }
 async function nameRule(req, res) {
   ok(res, await getDeps().performance.nameRule(req.seUser))

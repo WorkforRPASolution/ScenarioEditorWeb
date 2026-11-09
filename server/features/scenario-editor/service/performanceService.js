@@ -1,7 +1,7 @@
 'use strict'
 // 심의·성과 저장(설계 §7), 같은 이름 모델 찾기, 사용자 찾기, 이름 규칙. 쓰는 것은 performance.* 필드뿐이다(바뀐 것만 $set).
 const { reviewDenial } = require('../domain/writePolicy')
-const { reviewFields, performanceFields, citizenDevelopers, fieldShapeError, enumShapeError } = require('../domain/performanceEdit')
+const { reviewFields, performanceFields, citizenDevelopers, fieldShapeError, enumShapeError, emptyPerformance } = require('../domain/performanceEdit')
 const { performanceFromBson } = require('../domain/performanceModel')
 const { checkPerformance } = require('../domain/rules/performanceRules')
 const { seError } = require('../errors')
@@ -12,9 +12,18 @@ const INPUT_KEYS = new Set(['Group', 'Trigger', 'TriggerInfo', 'Grade', 'Supervi
 // 화면이 성과 전체를 보내도 받되 쓰지 않는다(performanceFields 가 뺀다)
 const IGNORED_KEYS = new Set(['Supervisor', 'UpdateDate', 'EqpPerfornmanceLoss'])
 const USER_SEARCH_MIN = 2
+const USER_IDS_MAX = 50 // 등록 여부 확인 한 번에 묻는 아이디 수(원개발자 목록 한 개 몫)
 
 const bad = (path, reason) => seError(400, 'BAD_REQUEST', '요청 본문이 틀립니다', { path, reason })
 const isObject = (v) => v && typeof v === 'object' && !Array.isArray(v)
+const userRow = (u) => ({ singleid: u.singleid, name: u.name, process: typeof u.process === 'string' ? u.process : '' })
+// 검사는 저장 뒤 다시 읽을 값으로 한다 — 옛 문서에 없는(또는 null 인) 키는 읽을 때(performanceFromBson)처럼 빈 값이다.
+// 화면은 그 칸을 0·빈 값으로 읽어 고치지 않으면 보내지 않으므로, 없는 키를 막으면 그 칸을 고칠 길이 없다. 없는 키는 쓰지 않는다.
+const asRead = (current) => {
+  const out = emptyPerformance()
+  for (const [k, v] of Object.entries(current)) if (v !== undefined && v !== null) out[k] = v
+  return out
+}
 
 function createPerformanceService({ repo, scopes, now = () => Date.now() }) {
   // 권한 → 운영 속성 문서 하나. 0건 404, 2건 이상 422(열기·판 관리와 같은 판정).
@@ -77,7 +86,7 @@ function createPerformanceService({ repo, scopes, now = () => Date.now() }) {
     const current = performanceOf(doc)
 
     const check = checkPerformance(
-      { ...current, ...fields, CitizenDeveloper: dev ? dev.list : undefined },
+      { ...asRead(current), ...fields, CitizenDeveloper: dev ? dev.list : undefined },
       { previous: current, registeredIds: new Set(dev ? dev.usersById.keys() : []) }
     )
     if (check.length) throw seError(422, 'VALIDATION_FAILED', '성과 입력을 확인하세요', { blocks: check })
@@ -124,7 +133,22 @@ function createPerformanceService({ repo, scopes, now = () => Date.now() }) {
     denied(user)
     const text = typeof q === 'string' ? q.trim() : ''
     if (text.length < USER_SEARCH_MIN) throw seError(400, 'BAD_REQUEST', `검색어는 ${USER_SEARCH_MIN}자 이상이어야 합니다`)
-    return (await repo.searchUsers(text)).map((u) => ({ singleid: u.singleid, name: u.name }))
+    return (await repo.searchUsers(text)).map(userRow)
+  }
+
+  // 원개발자 등록 여부(성과 입력 창을 열 때 저장된 원개발자를 묻는다 — DEV_UNKNOWN 을 저장 전에 보인다).
+  // ids = 쉼표로 이은 아이디. 저장 때 DEV_UNKNOWN 판정(developerContext)과 같은 조회로, 등록된 사람만 입력 순서대로 돌려준다.
+  async function registeredUsers(user, ids) {
+    denied(user)
+    if (typeof ids !== 'string') throw bad('ids', '쉼표로 이은 아이디 문자열이어야 합니다')
+    const list = [...new Set(ids.split(',').map((s) => s.trim()).filter(Boolean))]
+    if (list.length > USER_IDS_MAX) throw bad('ids', `한 번에 ${USER_IDS_MAX}명까지 물을 수 있습니다`)
+    const out = []
+    for (const id of list) {
+      const found = await repo.findUsers(id)
+      if (found.length) out.push(userRow(found[0]))
+    }
+    return out
   }
 
   async function nameRule() {
@@ -132,7 +156,7 @@ function createPerformanceService({ repo, scopes, now = () => Date.now() }) {
     return { exists, rules: exists ? await repo.findNameRule() : [] }
   }
 
-  return { review, savePerformance, sameName, searchUsers, nameRule }
+  return { review, savePerformance, sameName, searchUsers, registeredUsers, nameRule }
 }
 
 module.exports = { createPerformanceService }
