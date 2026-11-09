@@ -25,6 +25,8 @@ export const scenarioEditorApi = {
   verifyDeploy: (requestId) => api.post(`/scenario-editor/deploy/${enc(requestId)}/verify`, null, { timeout: OPEN_TIMEOUT_MS }),
   finishDeploy: (requestId) => api.post(`/scenario-editor/deploy/${enc(requestId)}/finish`, null, { timeout: OPEN_TIMEOUT_MS }),
   nameRule: () => api.get('/scenario-editor/name-rule'),
+  // 내 초안 목록(공정·모델) → [{ draftId, name, target, base, savedAt, revision }] — 새 시나리오 창이 같은 새 ID 의 초안을 찾는다
+  listDrafts: (process, model) => api.get('/scenario-editor/drafts', { params: { process, model } }),
   // 심의 저장(운영 속성 창, 관리 등급 1·2): 본문 { grade, comment } → { performance }(서버가 다시 읽은 값)
   saveReview: (p, m, n, body) => api.put(`/scenario-editor/scenarios/${enc(p)}/${enc(m)}/${enc(n)}/review`, body),
   // 성과 저장(성과 입력 창, 관리 등급 1·2): 본문 { fields, citizenDevelopers?, alsoModels } → { performance, applied }

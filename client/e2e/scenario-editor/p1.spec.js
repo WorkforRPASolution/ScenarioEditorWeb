@@ -12,7 +12,9 @@ test('① 공정 권한 안만 보이고, ALL_ACTIONS 가 표·순서도·상세
   await expect(page.getByTestId('se-load-process').locator('option')).toHaveText(['SEWCVD', 'SEWETCH'])
   await page.getByTestId('se-load-dialog').locator('[aria-label="닫기"]').click()
   await openFromDialog(page, 'SEWCVD', 'SEWMODELA', 'ALL_ACTIONS')
-  for (const hidden of ['저장', '새 시나리오', '시험 실행']) await expect(page.getByRole('button', { name: hidden, exact: true })).toHaveCount(0)
+  // WRITE 사용자(sew_multi)의 바 버튼은 불러오기 · 새 시나리오 · 저장(P2-D). 시험 실행은 아직 없다(P3)
+  await expect(page.getByTestId('se-new')).toBeVisible()
+  await expect(page.getByRole('button', { name: '시험 실행', exact: true })).toHaveCount(0)
 
   await page.getByTestId('se-expand').click()
   const exp = expected('basic', 'ALL_ACTIONS')

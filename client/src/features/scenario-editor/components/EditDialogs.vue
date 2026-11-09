@@ -24,6 +24,7 @@ const close = () => { edit.dialog = null }
 const GUARD_COPY = {
   move: { body: 'SEW_EDIT_GUARD_BODY_MOVE', drop: 'SEW_EDIT_GUARD_DROP', apply: 'SEW_EDIT_GUARD_APPLY' },
   open: { body: 'SEW_EDIT_GUARD_BODY_OPEN', drop: 'SEW_EDIT_GUARD_DROP', apply: 'SEW_EDIT_GUARD_APPLY' },
+  new: { body: 'SEW_EDIT_GUARD_BODY_NEW', drop: 'SEW_EDIT_GUARD_DROP_CONTINUE', apply: 'SEW_EDIT_GUARD_APPLY_CONTINUE' },
   save: { body: 'SEW_EDIT_GUARD_BODY_SAVE', drop: 'SEW_EDIT_GUARD_DROP_SAVE', apply: 'SEW_EDIT_GUARD_APPLY_SAVE' },
   command: { body: 'SEW_EDIT_GUARD_BODY_OTHER', drop: 'SEW_EDIT_GUARD_DROP_CONTINUE', apply: 'SEW_EDIT_GUARD_APPLY_CONTINUE' },
   undo: { body: 'SEW_EDIT_GUARD_BODY_UNDO', drop: 'SEW_EDIT_GUARD_DROP_UNDO', apply: null },
@@ -47,10 +48,11 @@ function pasteAnyway() {
 }
 
 let timer = null
+// 처음부터 있는 알림도 내린다 — 열린 시나리오가 없던 화면에서 새 시나리오를 만들면 이 창 묶음이 알림과 함께 붙는다
 watch(() => edit.toast, (v) => {
   clearTimeout(timer)
   if (v) timer = setTimeout(() => { if (edit.toast === v) edit.toast = null }, TOAST_MS)
-})
+}, { immediate: true })
 function undoFromToast() { edit.undoCommand() }
 
 function onKey(e) {

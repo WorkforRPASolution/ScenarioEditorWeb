@@ -17,6 +17,7 @@ import StepPanel from './components/StepPanel.vue'
 import StepToolbar from './components/StepToolbar.vue'
 import MultiSelection from './components/MultiSelection.vue'
 import EditDialogs from './components/EditDialogs.vue'
+import NewScenarioDialog from './components/NewScenarioDialog.vue'
 
 defineOptions({ name: 'ScenarioEditorView' })
 const store = useEditorStore()
@@ -25,6 +26,7 @@ const route = useRoute()
 const router = useRouter()
 const { sizes, startDrag, reset } = useLayoutSizes()
 const loadOpen = ref(false)
+const newOpen = ref(false)
 
 // 셸은 모든 화면을 <keep-alive> 로 감싼다 — 화면은 세션에 한 번만 만들어지고, 다른 화면에 가 있는 동안에도 감시자가 살아 있다.
 // 그래서 (1) 주소 쿼리는 이 화면이 보일 때만 쓰고, (2) 돌아올 때(onActivated) 주소와 열린 시나리오를 다시 맞춘다.
@@ -36,11 +38,21 @@ const queryTarget = () => {
   return q.p && q.m && q.n ? { process: String(q.p), model: String(q.m), name: String(q.n), crtime: String(q.v || 'current') } : null
 }
 const queryOf = (sk) => ({ p: sk.process, m: sk.model, n: sk.name, v: sk.version.isCurrent ? 'current' : String(sk.version.crtime) })
-const writeQuery = (sk) => router.replace({ name: 'ScenarioEditor', query: queryOf(sk) })
+// 새 시나리오(서버에 아직 없음)는 주소에 쓰지 않는다 — 새로고침이 없는 시나리오를 열려 하지 않게 쿼리를 비운다
+const writeQuery = (sk) => router.replace({ name: 'ScenarioEditor', query: sk.isNew ? {} : queryOf(sk) })
 
 // 다른 시나리오 열기 — 오른쪽 패널에 적용 안 한 변경이 있으면 먼저 묻는다(guard 'open'). onKeep = [계속 고치기]로 접을 때 할 일.
 // 패널 확인 뒤에 저장 전 작업본 변경(적용한 값)도 한 번 더 묻는다([적용하고 이동]으로 넣은 값도 열기가 버리므로).
 const openGuarded = (target, onKeep = null) => edit.guard(() => edit.askLeave(() => store.openScenario(target), { onKeep }), { action: 'open', onKeep })
+
+// [새 시나리오](P2-D Task 6): 패널에 적용 안 한 변경이 있으면 먼저 묻고(guard 'new') 창을 연다. 저장 전 변경(적용한 값)은
+// 창이 [만들기]·[그 시나리오 열기] 때 돌아가기·버리고·초안 저장하고 중에서 묻는다(목업 조작판 "저장 전 변경이 있을 때").
+const openNew = () => edit.guard(() => { newOpen.value = true }, { action: 'new' })
+// 새 시나리오 창의 [초안 이어서 열기]: 초안은 불러오기 창의 내 초안에서 연다(P2-D Task 7) — 그 창을 연다
+function openDraft() {
+  newOpen.value = false
+  loadOpen.value = true
+}
 
 // 저장 전 변경이 있으면 브라우저 떠나기·새로고침 앞에서 확인(설계 §4.2). 문구는 브라우저가 정한다.
 function onBeforeUnload(e) {
@@ -66,7 +78,7 @@ onActivated(() => {
   const target = queryTarget()
   if (store.meError || store.opening) return // 열기가 끝나면 아래 감시자가 주소를 맞춘다
   if (!target) { if (sk) writeQuery(sk); return }
-  const q = sk && queryOf(sk)
+  const q = sk && !sk.isNew && queryOf(sk)
   // 주소가 다른 시나리오를 가리킨다. 패널에 적용 안 한 변경이 있으면 묻고, [계속 고치기]면 주소를 열린 시나리오로 되돌린다.
   if (!q || q.p !== target.process || q.m !== target.model || q.n !== target.name || q.v !== target.crtime) openGuarded(target, () => { if (store.skeleton && active) writeQuery(store.skeleton) })
 })
@@ -84,7 +96,7 @@ const card = 'bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:
     <StatePanel v-if="store.meError?.code === 'USER_NOT_REGISTERED'" kind="unregistered" :message="store.meError.message" />
     <StatePanel v-else-if="store.meError" kind="error" :message="store.meError.message" @retry="start" />
     <template v-else>
-      <ScenarioBar class="mb-3 shrink-0" @load="loadOpen = true" />
+      <ScenarioBar class="mb-3 shrink-0" @load="loadOpen = true" @new="openNew" />
       <div class="flex-1 min-h-0 grid" :style="{ gridTemplateColumns: `36px 12px minmax(0,1fr) 12px ${sizes.rw}px` }">
         <!-- 왼쪽: 스냅샷(P3) — P1 은 접힌 막대 -->
         <aside :class="card" class="flex items-center justify-center" data-testid="se-snapshot-rail">
@@ -96,7 +108,7 @@ const card = 'bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:
           <section v-show="!store.expanded" :class="card" class="flex-1 min-h-0 overflow-hidden">
             <StatePanel v-if="store.opening" kind="opening" :started-at="store.opening.startedAt" />
             <StatePanel v-else-if="store.openError" kind="error" :message="store.openError.message" @retry="retry" />
-            <StatePanel v-else-if="!store.skeleton" kind="empty" @load="loadOpen = true" />
+            <StatePanel v-else-if="!store.skeleton" kind="empty" :can-create="!!store.me?.canWrite" @load="loadOpen = true" @new="openNew" />
             <StepViewer v-else />
           </section>
           <SplitGutter v-show="!store.expanded" direction="h" testid="se-gutter-s" @start="startDrag('sh', $event, -1, 'y')" @reset="reset('sh')" />
@@ -126,6 +138,7 @@ const card = 'bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:
       </div>
     </template>
     <LoadDialog v-model="loadOpen" @open="(target) => { loadOpen = false; openGuarded(target) }" />
+    <NewScenarioDialog v-model="newOpen" @open-draft="openDraft" />
     <EditDialogs v-if="edit.editable" />
   </div>
 </template>

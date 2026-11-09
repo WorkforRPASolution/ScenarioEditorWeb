@@ -11,6 +11,7 @@ import { cropPng, imageDataOf } from '../editor/crop'
 import { locate } from '../editor/locate'
 import { spotKey } from '../editor/trainView'
 import { CAP_FLOWS, MIN_CAPTURE, LOCATE_MS, isRect, clipRect, nextStage, newStepDraft, baseRefFor, firstTrainRef } from '../editor/capture'
+import { newScenarioOf } from '../editor/newScenario'
 import { t } from '../messages'
 import { useEditorStore } from './editorStore'
 
@@ -20,7 +21,11 @@ const MOVED_MS = 1900 // 번호가 바뀐 갈 곳 칸 강조 시간(목업 S.mov
 const emptySelection = () => ({ uids: [], anchor: null })
 const emptyPanel = () => ({ uid: null, isNew: false, draft: null, base: null })
 const SOURCE_KEYS = ['process', 'model', 'name', 'crtime', 'fileId']
-const sameSourceOf = (a, b) => !!a && !!b && SOURCE_KEYS.every((k) => a[k] === b[k])
+// 묶음의 판: 기준 판(source), 출처가 없는 새 시나리오는 세션 정체성(newId — beginNew 마다 새로). 같은 새 시나리오 안의
+// 복사·붙여넣기는 같은 판이다(P2-C 넘김). 새 시나리오 판은 그림 참조에 펼치지 않는다 — 새 시나리오 작업본에는 from: 'source' 그림이 없다.
+const clipOrigin = (s) => s?.source ?? (s?.newId ? { newId: s.newId } : null)
+const sameSourceOf = (a, b) => !!a && !!b && (a.newId || b.newId ? a.newId === b.newId : SOURCE_KEYS.every((k) => a[k] === b[k]))
+let newSeq = 0
 
 export const useEditStore = defineStore('scenarioEditorEdit', () => {
   // 세션·작업본·되돌리기 스냅샷은 shallowRef + 불변 갱신 — Pinia 가 EditedScenario 를 깊게 감싸지 않게.
@@ -105,6 +110,21 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     reset()
     carryClip()
     session.value = null
+  }
+
+  // 새 시나리오(P2-D Task 6, 설계 §6.8): 서버에 없는 시나리오를 작업본으로 시작한다 — 출처·headCrtime·propertyRev 없음, 스텝 0,
+  // 운영 속성 = 사내 클래스 기본값(editor/newScenario). 열린 뼈대도 새 대상으로 바꾼다(저장 창이 출처 없는 세션의 기본 대상을 뼈대에서 읽는다).
+  // 저장 기준점 = 만든 때의 작업본 — "저장 전 N곳" 은 만든 뒤 바꾼 것(스텝·바 칸·운영 속성)을 센다(막 만들면 0, 목업 "만든 뒤").
+  function beginNew(params) {
+    const editor = useEditorStore()
+    if (!editor.me?.canWrite || !params?.process || !params?.model || !params?.name) return false
+    const { working, skeleton } = newScenarioOf(params)
+    reset()
+    carryClip()
+    editor.showNew(skeleton)
+    session.value = { source: null, headCrtime: null, propertyRev: null, readOnly: null, working, saveBase: working, seq: 0, newId: `new${++newSeq}` }
+    syncFocus(null)
+    return true
   }
 
   // 배포 성공 뒤 기준을 새 판으로(P2-D, DC-025): 새 판을 다시 연 뼈대로 세션(source·headCrtime·propertyRev·saveBase·작업본)을 다시 시작하고
@@ -211,6 +231,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
 
   // 적용 안 한 변경이 있으면 확인 창을 세우고 next 를 미룬다(없으면 바로 한다). 확인 창 버튼은 미룬 일(action)에 따른다(R-T6c):
   // - 'move'(다른 줄·순서도·경고 순회·새 스텝)·'open'(다른 시나리오 열기)·'save'(저장 창): [계속 고치기]·[버리고 이동]·[적용하고 이동]
+  // - 'new'(새 시나리오 창): [계속 고치기]·[버리고 계속]·[적용하고 계속]
   // - 'command'(표 칸·삭제·붙여넣기·옮기기): [계속 고치기]·[버리고 계속]·[적용하고 계속] — 적용한 뒤 그 명령을 한다
   // - 'undo'·'redo': [계속 고치기]·[버리고 되돌리기]/[버리고 다시 하기] 만 — 적용하면 그 적용을 되돌리거나(되돌리기) 다시 할 것을 비우게(다시 하기) 된다
   // to = 가려는 스텝 uid(이동일 때). onKeep = [계속 고치기]로 접을 때 할 일(예: 주소를 열린 시나리오로 되돌리기).
@@ -379,7 +400,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   function copySelection(cut) {
     const uids = selection.value.uids
     if (!editable.value || !uids.length) return false
-    const r = copySteps(session.value.working, uids, session.value.source, cut)
+    const r = copySteps(session.value.working, uids, clipOrigin(session.value), cut)
     if (r.refused) { refused(r.refused); return false }
     // R-P3: 묶음이 쓰는 올릴 그림의 Blob 을 함께 든다 — 다른 시나리오를 열면 이 세션의 올릴 그림은 비워진다
     const own = uploads.value
@@ -395,13 +416,13 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
 
   // where: 'after' | 'before' | 'end'. 새 스텝이 되는 설비 상태 스텝이 든 묶음은 먼저 알린다(서버가 origin 없는 설비 상태 스텝을
   // CONDITION_NOT_CREATABLE 로 막는다) — confirmed 면 그대로 붙인다. 같은 작업본 안에서 잘라 옮기면 원래 스텝(origin 유지)이라 알리지 않는다.
-  // 다른 판(sameSource 거짓 — 다른 시나리오·다른 판·출처 없는 새 시나리오)에 붙이면 묶음 밖 갈 곳은 미해결, 기준 판 그림은 묶음 판의 참조가
+  // 다른 판(sameSource 거짓 — 다른 시나리오·다른 판·다른 새 시나리오)에 붙이면 묶음 밖 갈 곳은 미해결, 기준 판 그림은 묶음 판의 참조가
   // 된다(commands.pasteSteps). 붙인 뒤 첫 미해결 스텝을 고르고, 없으면 붙인 스텝들(초점은 첫 스텝, 목업 doPaste).
   function pasteClip(where, { confirmed = false } = {}) {
     const c = clip.value
     if (!editable.value || !c) return false
     if (guarded(() => pasteClip(where, { confirmed }))) return false
-    const sameSource = sameSourceOf(c.origin, session.value.source)
+    const sameSource = sameSourceOf(c.origin, clipOrigin(session.value))
     const moving = c.cut && sameSource
     if (c.eqpStateCount > 0 && !moving && !confirmed) { dialog.value = { kind: 'pasteWarn', where, n: c.eqpStateCount }; return false }
     const working = session.value.working
@@ -715,7 +736,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
 
   return {
     session, selection, panel, undo, redo, clip, uploads, capture, locating, viewReq, canCapture, toast, dialog, moved, focusReq, editable, spots, spotGen, areaDragging,
-    begin, end, rebase, markDraft, run, undoLast, redoLast,
+    begin, beginNew, end, rebase, markDraft, run, undoLast, redoLast,
     setSelection, syncFocus, requestSelect, clickRow, panelDirty, notify,
     openPanel, syncPanel, updateDraft, panelErrors, applyPanel, discardPanel, requestFocus,
     guard, guardKeep, guardDrop, guardApply, setHeader, applyProperty, unsavedCount, askLeave, leaveKeep, leaveDrop,

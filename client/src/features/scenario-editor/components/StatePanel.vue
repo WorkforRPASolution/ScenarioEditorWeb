@@ -2,8 +2,9 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { t } from '../messages'
 
-const props = defineProps({ kind: { type: String, required: true }, message: { type: String, default: '' }, startedAt: { type: Number, default: 0 } })
-defineEmits(['retry', 'load'])
+// canCreate = 쓰기 권한이 있어 빈 화면에서 [새 시나리오]도 보인다(P2-D Task 6)
+const props = defineProps({ kind: { type: String, required: true }, message: { type: String, default: '' }, startedAt: { type: Number, default: 0 }, canCreate: { type: Boolean, default: false } })
+defineEmits(['retry', 'load', 'new'])
 const now = ref(Date.now())
 let timer = null
 onMounted(() => { if (props.kind === 'opening') timer = setInterval(() => { now.value = Date.now() }, 500) })
@@ -13,7 +14,14 @@ const elapsed = computed(() => Math.max(0, Math.floor((now.value - props.started
 
 <template>
   <div class="h-full flex items-center justify-center p-6 text-center">
-    <div v-if="kind === 'empty'" data-testid="se-empty" class="text-gray-400 dark:text-gray-500">
+    <div v-if="kind === 'empty' && canCreate" data-testid="se-empty" class="text-gray-500 dark:text-gray-400">
+      <p class="text-lg mb-3">{{ t('SEW_UI_EMPTY_NEW') }}</p>
+      <div class="flex justify-center gap-2">
+        <button class="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 font-medium rounded-lg transition text-sm" @click="$emit('load')">{{ t('SEW_UI_LOAD') }}</button>
+        <button class="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-lg transition text-sm" data-testid="se-empty-new" @click="$emit('new')">{{ t('SEW_NEW_OPEN') }}</button>
+      </div>
+    </div>
+    <div v-else-if="kind === 'empty'" data-testid="se-empty" class="text-gray-400 dark:text-gray-500">
       <p class="text-lg mb-3">{{ t('SEW_UI_EMPTY') }}</p>
       <button class="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-lg transition text-sm" @click="$emit('load')">{{ t('SEW_UI_LOAD') }}</button>
     </div>

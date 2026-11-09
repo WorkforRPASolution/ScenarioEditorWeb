@@ -40,18 +40,17 @@ export const changedPropertyKeys = (a, b) => {
   return [...new Set([...Object.keys(x), ...Object.keys(y)])].filter((k) => k !== 'Owners' && canonicalJson(x[k]) !== canonicalJson(y[k])).sort() // Owners 는 배포가 정한다
 }
 
+// 바 칸·운영 속성은 저장 기준점과 비교한다. 새 시나리오(출처 없음)의 기준점은 만든 때의 작업본이라 만든 뒤 바꾼 것만 센다(P2-D Task 6).
 export function unsavedChanges(working, saveBase) {
   const out = []
   if (!working || !saveBase) return out
-  if (saveBase.source) {
-    for (const [key, field] of [['description', 'description'], ['timeoutLimit', 'timeoutLimit']]) {
-      const before = saveBase.header?.[field]
-      const after = working.header?.[field]
-      if (String(before ?? '') !== String(after ?? '')) out.push({ kind: 'field', key, before, after })
-    }
-    const keys = changedPropertyKeys(working.property, saveBase.property)
-    if (keys.length) out.push({ kind: 'field', key: 'property', keys })
+  for (const [key, field] of [['description', 'description'], ['timeoutLimit', 'timeoutLimit']]) {
+    const before = saveBase.header?.[field]
+    const after = working.header?.[field]
+    if (String(before ?? '') !== String(after ?? '')) out.push({ kind: 'field', key, before, after })
   }
+  const keys = changedPropertyKeys(working.property, saveBase.property)
+  if (keys.length) out.push({ kind: 'field', key: 'property', keys })
   const baseIndex = new Map(saveBase.steps.map((s, i) => [s.uid, i]))
   const baseStep = new Map(saveBase.steps.map((s) => [s.uid, s]))
   const nowUids = new Set(working.steps.map((s) => s.uid))

@@ -12,7 +12,8 @@ import DataCheckDialog from './DataCheckDialog.vue'
 import SaveDialog from './SaveDialog.vue'
 
 defineOptions({ name: 'ScenarioBar' })
-defineEmits(['load'])
+// load = [불러오기], new = [새 시나리오](창은 화면이 연다 — 패널 확인을 먼저 거친다)
+defineEmits(['load', 'new'])
 const store = useEditorStore()
 const edit = useEditStore()
 const flow = useSaveFlow()
@@ -66,7 +67,10 @@ onBeforeUnmount(() => clearTimeout(flashTimer))
 const header = computed(() => edit.session?.working?.header ?? sk.value?.header ?? {})
 const barErrors = computed(() => (edit.editable ? barFieldErrors(header.value) : {}))
 const unsaved = computed(() => edit.unsavedCount)
-const changedField = (field) => edit.editable && String(header.value[field] ?? '') !== String(edit.session.saveBase?.header?.[field] ?? '') && !!edit.session.saveBase?.source
+// 저장 기준점과 다른 바 칸(새 시나리오는 만든 때의 값과 비교 — 저장 전 N곳과 같은 기준)
+const changedField = (field) => edit.editable && String(header.value[field] ?? '') !== String(edit.session.saveBase?.header?.[field] ?? '')
+// [새 시나리오]: 쓰기 권한이 있으면 열린 시나리오가 없어도 보인다(바 순서 불러오기 · 새 시나리오 · 저장, 스텝 편집 목업 v1)
+const canCreate = computed(() => !!store.me?.canWrite)
 // [저장](P2-D Task 2): 쓸 수 있는 세션에만. 패널에 적용 안 한 변경이 있으면 저장 창 전에 확인 창(목업 조작판 22).
 function onSave() {
   if (edit.capture) { edit.notify(t('SEW_SAVE_REFUSED_CAPTURE')); return }
@@ -98,6 +102,7 @@ const btn = 'h-8 px-3 rounded-lg text-sm'
 <template>
   <div class="bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:border-dark-border px-3 py-2 flex items-center gap-3 flex-wrap" data-testid="se-bar">
     <button :class="btn" class="bg-primary-500 hover:bg-primary-600 text-white font-medium" data-testid="se-load" @click="$emit('load')">{{ t('SEW_UI_LOAD') }}</button>
+    <button v-if="canCreate" :class="btn" class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-100 font-medium" data-testid="se-new" @click="$emit('new')">{{ t('SEW_NEW_OPEN') }}</button>
     <button v-if="edit.editable" :class="[btn, unsaved ? 'bg-primary-500 hover:bg-primary-600 text-white' : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-100']" class="font-medium" data-testid="se-save" @click="onSave">{{ t('SEW_SAVE_OPEN') }}{{ unsaved ? ` (${unsaved})` : '' }}</button>
     <template v-if="sk">
       <div class="min-w-0">
@@ -124,7 +129,8 @@ const btn = 'h-8 px-3 rounded-lg text-sm'
       </div>
       <div class="flex items-center gap-1.5 flex-wrap text-xs">
         <span v-if="unsaved && edit.editable" :class="badge" class="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" :title="t('SEW_BAR_UNSAVED_TITLE')" data-testid="se-bar-unsaved">{{ t('SEW_BAR_UNSAVED', { n: unsaved }) }}</span>
-        <span :class="badge" class="bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-400" data-testid="se-bar-version">
+        <span v-if="sk.isNew" :class="badge" class="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" :title="t('SEW_BAR_NEVER_SAVED_TITLE')" data-testid="se-bar-version">{{ t('SEW_BAR_NEVER_SAVED') }}</span>
+        <span v-else :class="badge" class="bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-400" data-testid="se-bar-version">
           {{ sk.version.isCurrent ? t('SEW_UI_CURRENT_VERSION') : t('SEW_UI_OLD_VERSION') }} · {{ formatCrtime(sk.version.crtime) }}</span>
         <template v-if="barProperty">
           <span :class="[badge, barProperty.IsEnabled ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400']">

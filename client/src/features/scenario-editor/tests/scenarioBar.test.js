@@ -257,4 +257,43 @@ describe('ScenarioBar', () => {
       expect(e.session.working.header.description).toBe('메일 제목')
     })
   })
+  describe('[새 시나리오](P2-D Task 6)', () => {
+    const find = (w, id) => w.find(`[data-testid="${id}"]`)
+    it('쓰기 권한이 있으면 열린 시나리오가 없어도 보이고, 바 버튼 순서는 불러오기 · 새 시나리오 · 저장 — 누르면 new', async () => {
+      const f = panelFixture([noneStep(0)])
+      f.s.skeleton = { ...f.s.skeleton, id: 'P-M-N', header: { description: '', timeoutLimit: '1', targetWindow: null }, property: null, performance: null }
+      const w = mount(ScenarioBar, { global: { stubs: { ModalShell: ModalStub } } })
+      const ids = w.findAll('button').map((b) => b.attributes('data-testid')).filter((id) => ['se-load', 'se-new', 'se-save'].includes(id))
+      expect(ids).toEqual(['se-load', 'se-new', 'se-save'])
+      expect(find(w, 'se-new').text()).toBe(t('SEW_NEW_OPEN'))
+      await find(w, 'se-new').trigger('click')
+      expect(w.emitted('new')).toHaveLength(1)
+      w.unmount()
+      setActivePinia(createPinia())
+      useEditorStore().me = { singleid: 'u', canWrite: true }
+      expect(find(mountBar(), 'se-new').exists()).toBe(true)
+    })
+    it('쓰기 권한이 없으면 없다', () => {
+      useEditorStore().me = { singleid: 'u', canWrite: false }
+      expect(find(mountBar(), 'se-new').exists()).toBe(false)
+    })
+    it('새 시나리오 세션은 "아직 저장한 적 없음"(버전 태그 대신)·켜짐·유형을 보이고, 만든 뒤 바꾼 메일 제목은 저장 전 1곳·바뀜 표시', async () => {
+      const s = useEditorStore()
+      s.me = { singleid: 'u', canWrite: true, authorityManager: 3 }
+      const e = useEditStore()
+      e.beginNew({ process: 'P', model: 'M2', name: 'NEW_ONE', type: 3, description: '새 메일', timeoutLimit: '240' })
+      const w = mountBar()
+      expect(find(w, 'se-bar-id').text()).toBe('P-M2-NEW_ONE')
+      expect(find(w, 'se-bar-version').text()).toBe(t('SEW_BAR_NEVER_SAVED'))
+      expect(find(w, 'se-bar-version').attributes('title')).toBe(t('SEW_BAR_NEVER_SAVED_TITLE'))
+      expect(w.text()).toContain('켜짐')
+      expect(w.text()).not.toContain(t('SEW_UI_CURRENT_VERSION'))
+      expect(find(w, 'se-bar-unsaved').exists()).toBe(false)
+      expect(find(w, 'se-bar-description').classes()).not.toContain('border-amber-400')
+      e.setHeader('description', '고친 메일')
+      await w.vm.$nextTick()
+      expect(find(w, 'se-bar-unsaved').text()).toContain('저장 전 1곳')
+      expect(find(w, 'se-bar-description').classes()).toContain('border-amber-400')
+    })
+  })
 })

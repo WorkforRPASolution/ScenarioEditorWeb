@@ -89,6 +89,17 @@ export const useEditorStore = defineStore('scenarioEditor', () => {
     }
   }
 
+  // 새 시나리오(P2-D Task 6): 서버에 없는 뼈대를 연 것으로 둔다(편집 저장소 beginNew 가 세션과 함께 부른다).
+  // 진행 중인 열기는 버린다 — 늦게 끝나도 새 시나리오를 덮지 않게(마지막 동작이 이긴다, openScenario 와 같은 규칙).
+  function showNew(sk) {
+    openSeq++
+    opening.value = null
+    openError.value = null
+    expanded.value = false
+    skeleton.value = sk
+    selectedUid.value = null
+  }
+
   // 성과(심의 저장·성과 저장 뒤 서버가 다시 읽은 값). 뼈대 객체는 그대로 두고 그 칸만 바꾼다 — 뼈대를 갈면 순서도·주소 감시가 다시 돈다.
   function setPerformance(performance) {
     if (skeleton.value) skeleton.value.performance = performance ?? null
@@ -126,6 +137,6 @@ export const useEditorStore = defineStore('scenarioEditor', () => {
   return {
     me, meError, scopes, dataCheck, skeleton, opening, openError, selectedUid, view, expanded,
     steps, scenarioNotes, selectedStep, warningCount, infoCount, dataCheckCount,
-    init, refreshCaches, openScenario, setPerformance, select, selectByNo, moveSelection, nextNoted
+    init, refreshCaches, openScenario, showNew, setPerformance, select, selectByNo, moveSelection, nextNoted
   }
 })

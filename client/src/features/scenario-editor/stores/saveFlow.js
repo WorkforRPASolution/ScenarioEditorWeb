@@ -328,6 +328,17 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
     }
   }
 
+  // 저장 창 밖에서 지금 작업본을 제 대상(열린 시나리오 — 새 시나리오는 만든 공정·모델·이름)의 초안으로 저장한다
+  // (새 시나리오 창의 [초안 저장하고 만들기]·[초안 저장하고 열기]). 저장 창이 열려 있거나 쓸 수 없는 세션이면 하지 않는다. 실패하면 던진다.
+  async function draftCurrent() {
+    const s = session()
+    if (stage.value || !s?.working || s.readOnly) throw new Error('draft unavailable')
+    const { meta, uploadsUsed } = buildMeta(s, { target: { process: process(), ...defaultTarget() } })
+    const data = (await api.saveDraft(buildFormData(meta, edit.uploads, uploadsUsed))).data.data
+    edit.markDraft(data)
+    return data
+  }
+
   // [버전 목록 확인](결과 모름·거절 뒤): mine 이면 성공(또는 마무리 실패), none 이면 [다시 배포]. 404 = 기록 없음(보내지 않았다).
   async function verify() {
     if (!requestId.value || busy.value) return
@@ -383,6 +394,6 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
   return {
     stage, target, check, checkedFor, checking, checkError, confirm, requestId, sentTarget, restored, result, error, notice, busy, focusReq, nameRule,
     fieldErrors, checkFresh, visibleBlocks, recreateNoCache, sameScenario, targetKind, changes, eqpCount, enabled, deployBlock, closable, canDraft,
-    open, close, setTarget, setOverwrite, setForce, requestFocus, runCheck, toConfirm, back, deploy, saveDraft, verify, redeploy, finish, jump
+    open, close, setTarget, setOverwrite, setForce, requestFocus, runCheck, toConfirm, back, deploy, saveDraft, draftCurrent, verify, redeploy, finish, jump
   }
 })

@@ -58,3 +58,12 @@ describe('unsavedChanges', () => {
     expect(unsavedChanges({ ...b, property: { A: 1, Owners: ['z'] } }, b)).toEqual([])
   })
 })
+
+describe('unsavedChanges — 새 시나리오(출처 없는 기준점, P2-D Task 6)', () => {
+  it('기준점 = 만든 때의 작업본: 그대로면 0, 만든 뒤 바꾼 바 칸·운영 속성은 field 행', () => {
+    const b = scn([], { source: null, headCrtime: null, property: { IsEnabled: true, Owners: [] } })
+    expect(unsavedChanges(b, b)).toEqual([])
+    const w = { ...b, header: { ...b.header, description: '다른 제목' }, property: { IsEnabled: false, Owners: [] } }
+    expect(unsavedChanges(w, b)).toEqual([{ kind: 'field', key: 'description', before: '제목', after: '다른 제목' }, { kind: 'field', key: 'property', keys: ['IsEnabled'] }])
+  })
+})

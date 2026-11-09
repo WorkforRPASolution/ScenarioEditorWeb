@@ -9,6 +9,9 @@ import EditDialogs from '../components/EditDialogs.vue'
 import { useSaveFlow } from '../stores/saveFlow'
 import { t, MESSAGES } from '../messages'
 import { panelFixture, imageStep, noneStep } from './panelFixture'
+import { useEditorStore } from '../stores/editorStore'
+import { useEditStore } from '../stores/editStore'
+import { defaultProperty } from '../editor/newScenario'
 
 const ok = (data) => Promise.resolve({ data: { success: true, data } })
 const fail = (status, code, details) => Promise.reject({ response: { status, data: { code, details } }, request: {} })
@@ -280,6 +283,29 @@ describe('저장 창(SaveDialog)', () => {
     await find(bar, 'se-save-name').setValue('BAD-NAME')
     expect(find(bar, 'se-save-dialog').text()).toContain(MESSAGES.RULE_NAME_CHARS)
     expect(find(bar, 'se-save-deploy').attributes('disabled')).toBeDefined()
+    bar.unmount()
+  })
+  it('새 시나리오 창으로 만든 세션(beginNew)에서 저장 창을 열면 "새 시나리오 첫 저장"(조작판 28) — 대상은 만든 공정·모델·이름, 출처·운영 속성 지문 없음', async () => {
+    const s = useEditorStore()
+    s.me = { singleid: 'u', canWrite: true, authorityManager: 3 }
+    s.scopes = { processes: [{ process: 'P', models: [{ model: 'M', eqpCount: 3 }, { model: 'M2', eqpCount: 5 }] }] }
+    useEditStore().beginNew({ process: 'P', model: 'M2', name: 'NEW_ONE', type: 1, description: '새 메일', timeoutLimit: '240' })
+    api.check.mockImplementation(() => ok(clean({ target: { exists: false, eqpCount: 5 } })))
+    api.nameRule.mockReturnValue(ok({ exists: false, rules: [] }))
+    api.list.mockReturnValue(ok([]))
+    const bar = mount(ScenarioBar, { attachTo: document.body })
+    await openSave(bar)
+    const dlg = find(bar, 'se-save-dialog')
+    expect(dlg.find('.se-sv-sub').text()).toContain('P-M2-NEW_ONE')
+    expect(dlg.find('.se-sv-tag').text()).toBe(t('SEW_SAVE_TAG_FIRST'))
+    expect(find(bar, 'se-save-model').element.value).toBe('M2')
+    expect(find(bar, 'se-save-name').element.value).toBe('NEW_ONE')
+    expect(dlg.text()).toContain(t('SEW_SAVE_TARGET_NEW'))
+    const meta = api.check.mock.calls[0][0]
+    expect(meta.target).toEqual({ process: 'P', model: 'M2', name: 'NEW_ONE' })
+    expect(meta.propertyRev).toBe(null)
+    expect(meta.force).toBe(false)
+    expect(meta.scenario).toEqual({ source: null, headCrtime: null, header: { description: '새 메일', timeoutLimit: '240' }, steps: [], property: defaultProperty({ id: 'P-M2-NEW_ONE', type: 1 }) })
     bar.unmount()
   })
 })

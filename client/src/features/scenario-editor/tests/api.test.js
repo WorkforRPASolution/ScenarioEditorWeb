@@ -38,6 +38,10 @@ describe('scenarioEditorApi', () => {
     await api.nameRule()
     expect(get).toHaveBeenLastCalledWith('/scenario-editor/name-rule')
   })
+  it('내 초안 목록은 공정·모델 쿼리', async () => {
+    await api.listDrafts('P', 'M')
+    expect(get).toHaveBeenLastCalledWith('/scenario-editor/drafts', { params: { process: 'P', model: 'M' } })
+  })
   it('심의 저장은 PUT …/review 본문 { grade, comment }, 경로 값은 인코딩', async () => {
     await api.saveReview('P 1', 'M', 'N/2', { grade: 1, comment: '의견입니다' })
     expect(put).toHaveBeenCalledWith('/scenario-editor/scenarios/P%201/M/N%2F2/review', { grade: 1, comment: '의견입니다' })

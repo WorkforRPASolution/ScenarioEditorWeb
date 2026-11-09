@@ -42,10 +42,10 @@ const errors = computed(() => (editing.value ? checkPropertyFields(draft.value, 
 const diffs = computed(() => (editing.value ? propertyDiffs(orig.value, draft.value) : []))
 const nErrors = computed(() => Object.keys(errors.value).length)
 const canApply = computed(() => editing.value && !nErrors.value && diffs.value.length > 0)
-// [적용]하고 아직 배포하지 않은 운영 속성 키(새 시나리오는 모두 저장 전이라 세지 않는다 — 저장 전 변경과 같은 기준)
+// [적용]하고 아직 배포하지 않은 운영 속성 키 — 저장 전 변경과 같은 기준(새 시나리오는 만든 때의 기본값과 비교)
 const pendingKeys = computed(() => {
   const s = edit.session
-  return s?.source && s.working && s.saveBase ? changedPropertyKeys(s.working.property, s.saveBase.property) : []
+  return s?.working && s.saveBase ? changedPropertyKeys(s.working.property, s.saveBase.property) : []
 })
 const pendingTitle = computed(() => t('SEW_PROP_PENDING_TITLE', { list: pendingKeys.value.map((k) => P.keys[k] ?? LABELS.propertyKey[k] ?? k).join(', ') }))
 const errorList = computed(() => Object.keys(errors.value).map((k) => P.errorFields[k] ?? k).join(', '))

@@ -16,7 +16,7 @@ import { imageStep } from './panelFixture'
 
 enableAutoUnmount(afterEach) // 화면이 beforeunload 감시자를 달므로 시험마다 내린다
 const ok = (data) => Promise.resolve({ data: { data } })
-const stubs = { ScenarioBar: true, LoadDialog: true, StepTable: true, StepFlow: true, StepViewer: true, StepDetail: true, StepPanel: true, StepToolbar: true, EditDialogs: true, MultiSelection: true }
+const stubs = { ScenarioBar: true, LoadDialog: true, NewScenarioDialog: true, StepTable: true, StepFlow: true, StepViewer: true, StepDetail: true, StepPanel: true, StepToolbar: true, EditDialogs: true, MultiSelection: true }
 const mountView = () => shallowMount(ScenarioEditorView, { global: { stubs: { ...stubs, StatePanel: false, SplitGutter: false } } })
 const skeletonOf = (name, crtime = 5, isCurrent = false) => ({ process: 'P', model: 'M', name, version: { crtime, isCurrent }, steps: [], notes: [] })
 const defer = () => { let resolve; const promise = new Promise((res) => { resolve = res }); return { promise, resolve } }
@@ -375,6 +375,63 @@ describe('ScenarioEditorView', () => {
       route.query = { p: 'P', m: 'M', n: 'B', v: 'current' }
       await back()
       expect(api.open).toHaveBeenCalledTimes(1)
+    })
+  })
+  describe('새 시나리오(P2-D Task 6)', () => {
+    const NEW = { process: 'P', model: 'M', name: 'NEW_ONE', type: 1, description: '메일', timeoutLimit: '240' }
+    const newDialog = (w) => w.findComponent({ name: 'NewScenarioDialog' })
+    it('열린 시나리오가 없을 때 쓰기 권한이 있으면 "…새 시나리오를 만드세요." 와 [새 시나리오] — 누르면 새 시나리오 창', async () => {
+      api.me.mockReturnValue(ok({ singleid: 'u', canWrite: true }))
+      const w = mountView(); await flushPromises()
+      expect(w.find('[data-testid="se-empty"]').text()).toContain(MESSAGES.SEW_UI_EMPTY_NEW)
+      expect(newDialog(w).props('modelValue')).toBe(false)
+      await w.find('[data-testid="se-empty-new"]').trigger('click')
+      expect(newDialog(w).props('modelValue')).toBe(true)
+    })
+    it('쓰기 권한이 없으면 지금 문구 그대로이고 [새 시나리오] 가 없다', async () => {
+      const w = mountView(); await flushPromises()
+      expect(w.find('[data-testid="se-empty"]').text()).toContain(MESSAGES.SEW_UI_EMPTY)
+      expect(w.find('[data-testid="se-empty-new"]').exists()).toBe(false)
+    })
+    it('바의 [새 시나리오]: 패널에 적용 안 한 변경이 있으면 먼저 묻고(guard new), [버리고 계속] 뒤 창이 열린다', async () => {
+      api.me.mockReturnValue(ok({ singleid: 'u', canWrite: true }))
+      route.query = { p: 'P', m: 'M', n: 'A' }
+      const st = imageStep(0, { next: { onTrue: { kind: 'end', value: 'SUCCESS' }, onFalse: { kind: 'end', value: 'FAIL' } } })
+      const edited = { source: { process: 'P', model: 'M', name: 'A', crtime: 5, fileId: 'F' }, headCrtime: 5, header: { description: '', timeoutLimit: '1' }, steps: [st], property: {} }
+      api.open.mockReturnValue(ok({ process: 'P', model: 'M', name: 'A', version: { crtime: 5, isCurrent: true, fileId: 'F' }, headCrtime: 5, notes: [], steps: [{ ...st, no: 1, notes: [], baseImage: { state: 'present', url: '/b' } }], edited }))
+      const w = mountView(); await flushPromises()
+      const e = useEditStore()
+      e.updateDraft((d) => ({ ...d, descriptionToEmail: '고치는 중' }))
+      w.findComponent({ name: 'ScenarioBar' }).vm.$emit('new')
+      await nextTick()
+      expect(e.dialog).toMatchObject({ kind: 'guard', action: 'new' })
+      expect(newDialog(w).props('modelValue')).toBe(false)
+      e.guardDrop()
+      await nextTick()
+      expect(newDialog(w).props('modelValue')).toBe(true)
+    })
+    it('새 시나리오를 만들면 주소 쿼리를 비운다(서버에 없는 시나리오를 다시 열지 않게), 돌아와도 쓰지 않는다', async () => {
+      api.me.mockReturnValue(ok({ singleid: 'u', canWrite: true }))
+      route.query = { p: 'P', m: 'M', n: 'N' }
+      api.open.mockReturnValue(ok({ process: 'P', model: 'M', name: 'N', version: { crtime: 5, isCurrent: true }, steps: [], notes: [] }))
+      const { leave, back } = mountKept(); await flushPromises()
+      replace.mockClear()
+      useEditStore().beginNew(NEW)
+      await nextTick()
+      expect(replace).toHaveBeenLastCalledWith({ name: 'ScenarioEditor', query: {} })
+      route.query = {}
+      await leave()
+      replace.mockClear()
+      await back()
+      expect(replace).toHaveBeenLastCalledWith({ name: 'ScenarioEditor', query: {} })
+      expect(api.open).toHaveBeenCalledTimes(1)
+    })
+    it('새 시나리오 창의 [초안 이어서 열기]는 불러오기 창을 연다(초안 열기는 불러오기 창 몫)', async () => {
+      api.me.mockReturnValue(ok({ singleid: 'u', canWrite: true }))
+      const w = mountView(); await flushPromises()
+      newDialog(w).vm.$emit('open-draft', { draftId: 'd1', process: 'P', model: 'M', name: 'X' })
+      await nextTick()
+      expect(w.findComponent({ name: 'LoadDialog' }).props('modelValue')).toBe(true)
     })
   })
 })

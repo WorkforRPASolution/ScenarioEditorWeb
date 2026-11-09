@@ -407,7 +407,7 @@ describe('saveFlow', () => {
     expect(meta.force).toBe(false)
     expect(meta.scenario.source).toBe(null)
     expect(flow.targetKind).toBe('new')
-    expect(flow.changes.filter((c) => c.kind === 'field')).toEqual([]) // 출처가 없으면 바 칸·운영 속성 줄을 빼고 스텝은 모두 새 스텝
+    expect(flow.changes.filter((c) => c.kind === 'field')).toEqual([]) // 기준점(만든 때의 작업본)과 같으면 바 칸·운영 속성 줄이 없다(P2-D Task 6)
     expect(flow.canDraft).toBe(true)
     expect(flow.deployBlock).toBe(null)
   })

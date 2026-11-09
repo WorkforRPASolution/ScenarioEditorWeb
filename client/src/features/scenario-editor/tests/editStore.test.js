@@ -1420,3 +1420,86 @@ describe('editStore — 배포 뒤 새 판으로(rebase)·초안 시각(markDraf
     expect(e.undo).toHaveLength(1)
   })
 })
+
+import { defaultProperty } from '../editor/newScenario'
+describe('editStore — 새 시나리오(beginNew), P2-D Task 6', () => {
+  beforeEach(() => { setActivePinia(createPinia()); Object.values(api).forEach((f) => f.mockReset()) })
+  const params = { process: 'P', model: 'M2', name: 'NEW_ONE', type: 1, description: '새 메일', timeoutLimit: '240' }
+  const start = () => { const s = useEditorStore(); s.me = { singleid: 'u', canWrite: true, authorityManager: 3 }; return { s, e: useEditStore() } }
+  // 브라우저가 만든 스텝 둘(n1 ← n2 의 실패 갈 곳)을 작업본에 넣는다
+  const withSteps = (e) => {
+    const n1 = noneStep(1, { uid: 'n1', origin: null })
+    const n2 = noneStep(2, { uid: 'n2', origin: null, next: { onTrue: { kind: 'end', value: 'SUCCESS' }, onFalse: { kind: 'step', uid: 'n1' } } })
+    e.session = { ...e.session, working: { ...e.session.working, steps: [n1, n2] } }
+  }
+  const copy = (e, uids, cut = false) => { e.setSelection({ uids, anchor: uids[0] }); return e.copySelection(cut) }
+
+  it('출처 없는 세션(source·headCrtime·propertyRev null, 스텝 0, 운영 속성 기본값)과 새 대상을 담은 열린 뼈대', () => {
+    const { s, e } = panelFixture([imageStep(0)]) // 앞에 연 시나리오(쓰기 권한 있음)
+    e.editCell('s0', 'accept', 0.8)
+    expect(e.beginNew(params)).toBe(true)
+    expect(e.session).toMatchObject({ source: null, headCrtime: null, propertyRev: null, readOnly: null, seq: 0 })
+    expect(e.session.working).toEqual({ source: null, headCrtime: null, header: { description: '새 메일', timeoutLimit: '240' }, steps: [], property: defaultProperty({ id: 'P-M2-NEW_ONE', type: 1 }) })
+    expect(e.session.saveBase).toBe(e.session.working)
+    expect(s.skeleton).toMatchObject({ process: 'P', model: 'M2', name: 'NEW_ONE', id: 'P-M2-NEW_ONE', isNew: true })
+    expect(s.selectedUid).toBe(null)
+    expect(e.panel.uid).toBe(null)
+    expect(e.editable).toBe(true)
+    expect(e.undo).toEqual([])
+  })
+  it('쓰기 권한이 없으면 만들지 않는다', () => {
+    const { s, e } = start()
+    s.me = { singleid: 'u', canWrite: false }
+    expect(e.beginNew(params)).toBe(false)
+    expect(e.session).toBe(null)
+    expect(s.skeleton).toBe(null)
+  })
+  it('진행 중인 열기는 버린다 — 늦게 끝나도 새 시나리오를 덮지 않는다', async () => {
+    const { s, e } = start()
+    let resolve
+    api.open.mockReturnValue(new Promise((r) => { resolve = r }))
+    const opening = s.openScenario({ process: 'P', model: 'M', name: 'N' })
+    expect(s.opening).not.toBe(null)
+    e.beginNew(params)
+    expect(s.opening).toBe(null)
+    resolve(ok(skeleton))
+    await opening
+    expect(s.skeleton.name).toBe('NEW_ONE')
+    expect(e.session.source).toBe(null)
+  })
+  it('같은 새 시나리오 안의 복사·붙여넣기는 같은 판 — 묶음 밖 갈 곳이 그대로 남고, 잘라내기는 옮기기', () => {
+    const { e } = start()
+    e.beginNew(params)
+    withSteps(e)
+    copy(e, ['n2'])
+    expect(e.pasteClip('end')).toBe(true)
+    const pasted = e.session.working.steps[2]
+    expect(pasted.uid).toMatch(/^p/)
+    expect(pasted.next.onFalse).toEqual({ kind: 'step', uid: 'n1' })
+    copy(e, ['n2'], true)
+    e.setSelection({ uids: ['n1'], anchor: 'n1' })
+    expect(e.pasteClip('before')).toBe(true)
+    expect(e.session.working.steps.map((x) => x.uid)).toEqual(['n2', 'n1', pasted.uid])
+  })
+  it('다른 새 시나리오로 가면 다른 판 — 묶음 밖 갈 곳은 미해결, 잘라내기는 복사가 된다', () => {
+    const { e } = start()
+    e.beginNew(params)
+    withSteps(e)
+    copy(e, ['n2'], true)
+    e.beginNew({ ...params, name: 'NEW_TWO' })
+    expect(e.clip.cut).toBe(false)
+    expect(e.pasteClip('end')).toBe(true)
+    expect(e.session.working.steps[0].next.onFalse).toStrictEqual({ kind: 'unresolved', value: 1 })
+  })
+  it('저장 전 N곳: 막 만들면 0, 만든 뒤 바꾼 바 칸·운영 속성·스텝을 센다(기준 = 만든 때의 작업본)', () => {
+    const { e } = start()
+    e.beginNew(params)
+    expect(e.unsavedCount).toBe(0)
+    e.setHeader('description', '고친 메일')
+    e.applyProperty({ ...e.session.working.property, IsEnabled: false })
+    withSteps(e)
+    expect(e.unsavedCount).toBe(4)
+    expect(unsavedChanges(e.session.working, e.session.saveBase).map((c) => c.key ?? c.kind)).toEqual(['description', 'property', 'added', 'added'])
+  })
+})
+import { unsavedChanges } from '../editor/diff'
