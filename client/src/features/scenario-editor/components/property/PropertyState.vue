@@ -4,6 +4,7 @@ import { computed, inject } from 'vue'
 import { useEditStore } from '../../stores/editStore'
 import { t, LABELS, fieldMessage } from '../../messages'
 import { typeName, priorityName, isStandardPriority } from '../../editor/propertyView'
+import { SCENARIO_TYPE_CHOICES, scenarioTypeOptions } from '../../format'
 
 defineOptions({ name: 'PropertyState' })
 const ctx = inject('sePropertyCtx')
@@ -13,7 +14,7 @@ const FAP = 13 // 동작 FAP — 있으면 유형이 PM 자동화(7)여야 저�
 
 const p = computed(() => ctx.p)
 const on = computed(() => p.value.IsEnabled === true)
-const typeKnown = computed(() => P.types.some(([v]) => v === p.value.Type))
+const typeKnown = computed(() => SCENARIO_TYPE_CHOICES.includes(p.value.Type))
 // 유형 알림: 미지정(서버 경고 TYPE_UNSET)·FAP 동작과 안 맞음(서버 막힘 FAP_TYPE_MISMATCH). [적용]은 막지 않는다 — 저장 창 검사가 본다.
 const typeNote = computed(() => {
   if (p.value.Type === 0) return t('RULE_TYPE_UNSET')
@@ -37,8 +38,8 @@ const typeNote = computed(() => {
       <span class="se-pp-lbl">{{ P.type }}</span>
       <template v-if="ctx.editing">
         <select class="se-pp-inp" data-pfield="Type" :aria-label="P.type" :value="p.Type" @change="ctx.set('Type', Number($event.target.value))">
-          <option v-if="!typeKnown" :value="p.Type">{{ p.Type === 0 ? t('SEW_PROP_PICK') : t('SEW_PROP_STORED', { value: p.Type }) }}</option>
-          <option v-for="[v, l] in P.types" :key="v" :value="v">{{ l }}</option>
+          <option v-if="!typeKnown" :value="p.Type">{{ p.Type === 0 ? t('SEW_PROP_PICK') : typeName(p.Type) }}</option>
+          <option v-for="[v, l] in scenarioTypeOptions" :key="v" :value="v">{{ l }}</option>
         </select>
         <div v-if="ctx.changed('Type')" class="se-pp-was">{{ t('SEW_PROP_WAS', { value: typeName(ctx.orig.Type) }) }}</div>
       </template>

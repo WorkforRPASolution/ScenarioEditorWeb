@@ -95,7 +95,7 @@ describe('ScenarioBar', () => {
     expect(f.e.applyProperty({ IsEnabled: false, Type: 3 })).toBe(true)
     await w.vm.$nextTick()
     expect(w.text()).toContain('꺼짐')
-    expect(w.text()).toContain('상태 점검')
+    expect(w.text()).toContain('설비 컨디션유지') // 유형 이름은 운영 속성 창과 같은 표
   })
 
   describe('시나리오 단위 경고·알림 줄', () => {

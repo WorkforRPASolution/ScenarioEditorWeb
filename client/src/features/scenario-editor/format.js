@@ -31,9 +31,14 @@ export const intervalSec = (ms) => Math.trunc(ms / 1000)
 export const actionLabel = (typeName) => (typeName ? LABELS.action[typeName] ?? typeName : '알 수 없는 동작')
 export const conditionLabel = (kind) => LABELS.condition[kind] ?? kind
 
-// ScenarioType enum 순서(사내 DataStruct). 운영 속성 Type 숫자 → 라벨.
+// ScenarioType enum 순서(사내 DataStruct). 운영 속성 Type 숫자 → 라벨(LABELS.scenarioType 한 표).
 export const SCENARIO_TYPE_KEYS = ['NOT_DEFINED', 'ALARM_RECOVERY', 'PM_MACRO', 'CONDITION_CHECK', 'SILENT_DOWN_INFORM', 'GLASS_DEFECT', 'SOP_INFORM', 'FAP', 'ACCIDENT_PREVENTION']
-export const scenarioTypeLabel = (n) => LABELS.scenarioType[SCENARIO_TYPE_KEYS[n]] ?? String(n)
+const typeKeyOf = (n) => (Number.isInteger(n) ? SCENARIO_TYPE_KEYS[n] : undefined)
+export const isScenarioType = (n) => typeKeyOf(n) !== undefined
+export const scenarioTypeLabel = (n) => LABELS.scenarioType[typeKeyOf(n)] ?? String(n)
+// 고를 수 있는 유형(사내 속성 창 콤보 순서) — 미지정(0)·PM 매크로(2)는 저장된 값을 보일 때만
+export const SCENARIO_TYPE_CHOICES = [1, 3, 4, 5, 6, 7, 8]
+export const scenarioTypeOptions = SCENARIO_TYPE_CHOICES.map((n) => [n, scenarioTypeLabel(n)])
 export const enabledLabel = (v) => LABELS.enabled[v === true ? 'true' : v === false ? 'false' : 'unknown']
 
 const joinList = (v) => (Array.isArray(v) ? v.join(', ') : '') || '(없음)'

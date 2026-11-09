@@ -1071,9 +1071,11 @@ export const LABELS = {
     None: '선택 안 함', TextEqual: '문자 같음', TextNotEqual: '문자 다름', TextContain: '문자 포함', TextNotContain: '문자 미포함',
     NumberEqual: '숫자 같음', NumberNotEqual: '숫자 다름', NumberInRange: '범위 안', NumberOutOfRange: '범위 밖', NumberLessThan: '보다 작음', NumberGreaterThan: '보다 큼'
   },
+  // 시나리오 유형(운영 속성 Type) — 모든 화면이 이 표 하나를 쓴다(바·불러오기 목록·저장 창·운영 속성 창·새 시나리오 창).
+  // 이름은 사내 속성 창 콤보 문구(분석 01 유형 표·13 §4.4). 미지정·PM 매크로는 콤보에 없어 저장된 값을 보일 때만 쓴다(고를 수 있는 것은 format SCENARIO_TYPE_CHOICES).
   scenarioType: {
-    NOT_DEFINED: '미지정', ALARM_RECOVERY: '알람자동조치', PM_MACRO: 'PM 매크로', CONDITION_CHECK: '상태 점검', SILENT_DOWN_INFORM: '무알람 다운 알림',
-    GLASS_DEFECT: '글라스 불량', SOP_INFORM: 'SOP 안내', FAP: 'FAP', ACCIDENT_PREVENTION: '사고 예방'
+    NOT_DEFINED: '미지정', ALARM_RECOVERY: '알람자동조치', PM_MACRO: 'PM 매크로', CONDITION_CHECK: '설비 컨디션유지', SILENT_DOWN_INFORM: '설비 비가동인폼',
+    GLASS_DEFECT: '품질사고 예방', SOP_INFORM: '작업 SOP 인폼', FAP: 'PM 자동화(Full Auto PM 포함)', ACCIDENT_PREVENTION: '사고예방 및 피해최소화'
   },
   listStatus: { NO_CURRENT_VERSION: '현재 버전 없음', DUPLICATE_PROPERTY: '같은 키 2건', PARSE_FAILED: '해석 실패' },
   eqpTarget: { main: 'MAIN', chamber: '챔버', loadport: '로드포트', unknown: '알 수 없음' },
@@ -1090,7 +1092,7 @@ export const LABELS = {
     DoNotSendEmailWhenSuccess: '성공 메일 보내지 않음', DoNotSendEmailWhenStop: '중지 메일 보내지 않음', DoNotSendEmailWhenFail: '실패 메일 보내지 않음',
     DetailedDescriptionTitle: '데스크탑 설명', DetailedDescription: '상세 설명', EDMLink: '데스크탑 링크'
   },
-  // 운영 속성 창의 짧은 이름(목업 v2). 유형은 사내 속성 창 콤보 문구(13 §4.4), 우선순위는 1·5·10 = 높음·보통·낮음.
+  // 운영 속성 창의 짧은 이름(목업 v2). 유형 이름은 위 scenarioType 표, 우선순위는 1·5·10 = 높음·보통·낮음.
   prop: {
     title: '운영 속성', edit: '수정', editing: '수정 중', type: '유형', priority: '우선순위', path: '실행 경로', request: '요청',
     delay: '시작 지연', delayNone: '바로 시작', run: ['시나리오', '실행'], success: '성공', fail: '실패', stop: '중지',
@@ -1101,8 +1103,6 @@ export const LABELS = {
     more: '데스크탑과 그 밖의 값', cancel: '취소', apply: '적용', leaveKeep: '계속 고치기', leaveDrop: '버리고 닫기',
     none: '없음', yes: '예', no: '아니오', on: '켜짐', off: '꺼짐', send: '보냄', noSend: '안 보냄', retryOff: '안 함', emptyFollow: '빈 값',
     hour: '시간', minute: '분', second: '초',
-    typeNone: '미지정',
-    types: [[1, '알람자동조치'], [3, '설비 컨디션유지'], [4, '설비 비가동인폼'], [5, '품질사고 예방'], [6, '작업 SOP 인폼'], [7, 'PM 자동화(Full Auto PM 포함)'], [8, '사고예방 및 피해최소화']],
     priorities: [[1, '높음'], [5, '보통'], [10, '낮음']],
     triggerTypes: ['USER_DEFINED', 'EES', 'REALTIME'],
     // 바닥 줄 "바뀐 값"·"고칠 곳" 의 칸 이름(목업 diffs·FIELD)

@@ -1,6 +1,7 @@
 // 운영 속성 창의 보이는 값(목업 v2 human·typeName·priName·diffs). 저장 값은 바꾸지 않고 글로만 바꾼다.
 import { LABELS, t } from '../messages'
 import { canonicalJson } from './diff'
+import { isScenarioType, scenarioTypeLabel } from '../format'
 
 const P = LABELS.prop
 
@@ -15,7 +16,8 @@ export function human(sec) {
   return [h ? `${h}${P.hour}` : '', m ? `${m}${P.minute}` : '', s ? `${s}${P.second}` : ''].filter(Boolean).join(' ')
 }
 
-export const typeName = (v) => (v === 0 ? P.typeNone : P.types.find(([k]) => k === v)?.[1] ?? t('SEW_PROP_STORED', { value: v }))
+// 유형 이름은 모든 화면과 같은 표(format scenarioTypeLabel) — 표에 없는 저장 값은 "저장 값 N"
+export const typeName = (v) => (isScenarioType(v) ? scenarioTypeLabel(v) : t('SEW_PROP_STORED', { value: v }))
 export const priorityName = (v) => P.priorities.find(([k]) => k === v)?.[1] ?? t('SEW_PROP_STORED', { value: v })
 export const isStandardPriority = (v) => P.priorities.some(([k]) => k === v)
 // 후속: 이름이 있으면 그 이름, 저장된 빈 후속 {Name:''} 은 "빈 값", 없음(null)은 "없음"

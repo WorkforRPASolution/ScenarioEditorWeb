@@ -10,7 +10,7 @@ import { useEditStore } from '../stores/editStore'
 import { useSaveFlow, causeText } from '../stores/saveFlow'
 import { scenarioEditorApi as api } from '../api'
 import { t, LABELS, errorMessage } from '../messages'
-import { formatCrtime, enabledLabel } from '../format'
+import { formatCrtime, enabledLabel, scenarioTypeOptions } from '../format'
 import { nameRuleOf, NAME_MAX, PART3_MIN, FREE_HEAD } from '../editor/nameRule'
 import { typeName } from '../editor/propertyView'
 import { DEFAULT_TIMEOUT, newScenarioId, checkNewScenario, newName, issueKey, humanMinutes } from '../editor/newScenario'
@@ -317,7 +317,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
             <select class="se-inp" :class="{ 'se-inp-bad': msg('type').error }" :value="form.type" data-nfield="type" :aria-label="F.type" data-testid="se-new-type"
               @change="set('type', $event.target.value)" @blur="touch('type')">
               <option v-if="!form.type" :value="0">{{ t('SEW_SAVE_MODEL_PICK') }}</option>
-              <option v-for="[v, label] in LABELS.prop.types" :key="v" :value="v">{{ label }}</option>
+              <option v-for="[v, label] in scenarioTypeOptions" :key="v" :value="v">{{ label }}</option>
             </select>
             <div class="se-ns-msg" :class="{ err: msg('type').error }" data-testid="se-new-msg-type">{{ msg('type').text }}</div>
           </div>

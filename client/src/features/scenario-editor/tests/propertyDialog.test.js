@@ -88,6 +88,15 @@ describe('운영 속성 창(PropertyDialog)', () => {
     expect(dlgText()).toContain(t('SEW_PROP_NOT_REVIEWED'))
   })
 
+  it('유형: 보기·고르기 콤보는 모든 화면과 같은 이름 표, 콤보에 없는 저장 값 PM 매크로(2)는 그 이름으로 맨 위에 둔다', async () => {
+    setup({ property: { ...PROP, Type: 2 } })
+    await flushPromises()
+    expect(dlgText()).toContain('PM 매크로')
+    await startEdit()
+    const opts = field(w, 'Type').findAll('option').map((o) => o.text())
+    expect(opts).toEqual(['PM 매크로', '알람자동조치', '설비 컨디션유지', '설비 비가동인폼', '품질사고 예방', '작업 SOP 인폼', 'PM 자동화(Full Auto PM 포함)', '사고예방 및 피해최소화'])
+  })
+
   it('운영 속성을 해석하지 못했으면 그 사실만 — [수정] 없음', () => {
     setup({ property: null })
     expect(dlgText()).toContain(t('SEW_UI_PROPERTY_PARSE_FAILED'))
