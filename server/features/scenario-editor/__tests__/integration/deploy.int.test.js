@@ -12,13 +12,13 @@ const require = createRequire(import.meta.url)
 const HERE = fileURLToPath(new URL('.', import.meta.url))
 const ROOT = join(HERE, '../../../../..')
 const { startFaultProxy } = require(join(ROOT, 'tools/infra/fault-proxy.js'))
+const { cleanupSewW } = require(join(ROOT, 'tools/infra/sew-w-cleanup.js'))
 const { EJSON } = require('bson')
 const { parseField, pickCurrent } = require('../../domain/versionPick')
 const { emptyPerformance } = require('../../domain/performanceEdit')
 const { kstDate } = require('../../domain/owners')
 const { seError } = require('../../errors')
 
-const USERS = ['sew_master', 'sew_cvd', 'sew_multi', 'sew_mastercvd', 'sew_spaces', 'sew_longgrade', 'sew_none']
 const STAMP = Date.now().toString(36).toUpperCase()
 const NAME = (tag) => `SEW_W_${STAMP}_${tag}`
 const CVD = { process: 'SEWCVD', model: 'SEWMODELA' }
@@ -58,23 +58,10 @@ beforeAll(async () => {
   deps = require('../../deps').getDeps()
 })
 
-// 실패해도 지운다: SEW_W_ 시나리오의 SC_PROPERTY·GridFS·Redis 필드, 시험 사용자의 초안·초안 그림·배포 기록
+// 실패해도 지운다: SEW_W_ 시나리오의 SC_PROPERTY·GridFS·Redis 필드, 시험 사용자의 초안·초안 그림·배포 기록(저장 E2E 와 같은 정리 — tools/infra/sew-w-cleanup.js)
 async function cleanup() {
   if (!db) return
-  await db.collection('SC_PROPERTY').deleteMany({ process: /^SEW/, scname: /^SEW_W_/ })
-  const bucket = new mongo.GridFSBucket(db)
-  for (const f of await db.collection('fs.files').find({ 'metadata.process': /^SEW/, 'metadata.name': /^SEW_W_/ }, { projection: { _id: 1 } }).toArray()) await bucket.delete(f._id)
-  for (const key of await redis.keys('SEW*-*')) {
-    if ((await redis.type(key)) !== 'hash') continue
-    const fields = (await redis.hkeys(key)).filter((f) => f.startsWith('SEW_W_'))
-    if (fields.length) await redis.hdel(key, ...fields)
-  }
-  if (webDb && webDb.databaseName === 'SE_WEB_DEV') {
-    await webDb.collection('SCENARIO_EDITOR_DRAFTS').deleteMany({ owner: { $in: USERS } })
-    await webDb.collection('SCENARIO_EDITOR_DEPLOYS').deleteMany({ user: { $in: USERS } })
-    const images = new mongo.GridFSBucket(webDb, { bucketName: 'seDraftImages' })
-    for (const f of await webDb.collection('seDraftImages.files').find({ 'metadata.owner': { $in: USERS } }, { projection: { _id: 1 } }).toArray()) await images.delete(f._id)
-  }
+  await cleanupSewW({ db, webDb, redis, GridFSBucket: mongo.GridFSBucket })
 }
 
 afterAll(async () => {
