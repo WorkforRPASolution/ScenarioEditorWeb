@@ -65,24 +65,44 @@ describe('checkName — 시험 시나리오 이름', () => {
 // 가짜 fetch: 경로 → [status, body] 또는 Error
 function fakeFetch(routes) {
   const calls = []
-  const fetch = async (url) => {
+  const options = []
+  const fetch = async (url, opts) => {
     calls.push(url)
+    options.push(opts)
     const path = url.replace('http://127.0.0.1:3100/api/scenario-editor', '')
     const r = routes[path]
     if (r instanceof Error) throw r
     if (!r) return { status: 404, json: async () => ({ code: 'NOT_FOUND' }) }
     return { status: r[0], json: async () => r[1] }
   }
-  return { fetch, calls }
+  return { fetch, calls, options }
 }
 const API = 'http://127.0.0.1:3100/api/scenario-editor'
 const ME_OK = ['/me', [200, { success: true, data: { singleid: 'hong.gildong', canWrite: true } }]]
 const LIST = '/scenarios?process=CVD&model=MODEL_A'
+const NO_RULE = ['/name-rule', [200, { success: true, data: { exists: false, rules: [] } }]]
+const RULES = [{ groupLevel: '1', name: 'ALARM' }, { groupLevel: '2', name: 'RECOVERY' }]
 
 describe('remoteChecks — 떠 있는 서버에 묻기', () => {
-  it('서버가 떠 있지 않으면 경고만(쓰기 권한·이름은 보지 않음)', async () => {
+  it('서버가 떠 있지 않으면 이름 없이 돌릴 때는 경고, 이름을 주면 멈춤 — 보라고 한 것을 못 봤는데 통과로 알리지 않는다', async () => {
     const { fetch } = fakeFetch({ '/me': new TypeError('fetch failed') })
-    expect(codes(await remoteChecks({ api: API, fetch, name: 'SEW_TEST_20261110', process: 'CVD', model: 'MODEL_A' }))).toEqual(['warn:SERVER_DOWN'])
+    expect(codes(await remoteChecks({ api: API, fetch }))).toEqual(['warn:SERVER_DOWN'])
+    expect(codes(await remoteChecks({ api: API, fetch, name: 'SEW_TEST_20261110', process: 'CVD', model: 'MODEL_A' }))).toEqual(['stop:SERVER_DOWN'])
+  })
+  it('묻는 요청마다 시간 제한을 단다(응답 없는 서버에 매달리지 않게)', async () => {
+    const { fetch, options } = fakeFetch(Object.fromEntries([ME_OK, NO_RULE, [LIST, [200, { success: true, data: [] }]]]))
+    await remoteChecks({ api: API, fetch, name: 'SEW_TEST_20261110', process: 'CVD', model: 'MODEL_A' })
+    expect(options).toHaveLength(3)
+    for (const o of options) expect(o.signal).toBeInstanceOf(AbortSignal)
+  })
+  it('이름 규칙이 있으면 경고 — 새 시나리오 창에 이름 칸이 없어 README 의 우회 절차를 따른다', async () => {
+    const ruled = fakeFetch(Object.fromEntries([ME_OK, ['/name-rule', [200, { success: true, data: { exists: true, rules: RULES } }]], [LIST, [200, { success: true, data: [] }]]]))
+    expect(codes(await remoteChecks({ api: API, fetch: ruled.fetch, name: 'SEW_TEST_20261110', process: 'CVD', model: 'MODEL_A' }))).toEqual(['warn:NAME_RULE'])
+    // 한쪽 분류만 있으면 규칙이 아니다(화면 nameRuleOf 와 같은 판정)
+    const half = fakeFetch(Object.fromEntries([ME_OK, ['/name-rule', [200, { success: true, data: { exists: true, rules: [RULES[0]] } }]], [LIST, [200, { success: true, data: [] }]]]))
+    expect(await remoteChecks({ api: API, fetch: half.fetch, name: 'SEW_TEST_20261110', process: 'CVD', model: 'MODEL_A' })).toEqual([])
+    const failed = fakeFetch(Object.fromEntries([ME_OK, ['/name-rule', [500, { code: 'INTERNAL' }]], [LIST, [200, { success: true, data: [] }]]]))
+    expect(codes(await remoteChecks({ api: API, fetch: failed.fetch, name: 'SEW_TEST_20261110', process: 'CVD', model: 'MODEL_A' }))).toEqual(['warn:NAME_RULE_UNKNOWN'])
   })
   it('쓰기 권한이 없으면 멈춤', async () => {
     const { fetch } = fakeFetch({ '/me': [200, { success: true, data: { canWrite: false } }] })
@@ -95,21 +115,21 @@ describe('remoteChecks — 떠 있는 서버에 묻기', () => {
     expect(fs[0].message).toContain('USER_NOT_REGISTERED')
   })
   it('같은 공정·모델에 그 이름이 이미 있으면 멈춤 — 다른 날짜 접미사를 권한다', async () => {
-    const { fetch, calls } = fakeFetch(Object.fromEntries([ME_OK, [LIST, [200, { success: true, data: [{ name: 'SEW_TEST_20261110' }, { name: 'X' }] }]]]))
+    const { fetch, calls } = fakeFetch(Object.fromEntries([ME_OK, NO_RULE, [LIST, [200, { success: true, data: [{ name: 'SEW_TEST_20261110' }, { name: 'X' }] }]]]))
     const fs = await remoteChecks({ api: API, fetch, name: 'SEW_TEST_20261110', process: 'CVD', model: 'MODEL_A' })
     expect(codes(fs)).toEqual(['stop:NAME_EXISTS'])
     expect(fs[0].message).toContain('SEW_TEST_20261110_2')
     expect(calls).toContain(`${API}${LIST}`)
   })
   it('이미 _n 이 붙은 이름이면 다음 번호를 권한다', async () => {
-    const { fetch } = fakeFetch(Object.fromEntries([ME_OK, [LIST, [200, { success: true, data: [{ name: 'SEW_TEST_20261110_2' }] }]]]))
+    const { fetch } = fakeFetch(Object.fromEntries([ME_OK, NO_RULE, [LIST, [200, { success: true, data: [{ name: 'SEW_TEST_20261110_2' }] }]]]))
     const fs = await remoteChecks({ api: API, fetch, name: 'SEW_TEST_20261110_2', process: 'CVD', model: 'MODEL_A' })
     expect(fs[0].message).toContain('SEW_TEST_20261110_3')
   })
   it('이름이 없으면 통과, 목록 조회가 실패하면 멈춤', async () => {
-    const free = fakeFetch(Object.fromEntries([ME_OK, [LIST, [200, { success: true, data: [{ name: 'X' }] }]]]))
+    const free = fakeFetch(Object.fromEntries([ME_OK, NO_RULE, [LIST, [200, { success: true, data: [{ name: 'X' }] }]]]))
     expect(await remoteChecks({ api: API, fetch: free.fetch, name: 'SEW_TEST_20261110', process: 'CVD', model: 'MODEL_A' })).toEqual([])
-    const denied = fakeFetch(Object.fromEntries([ME_OK, [LIST, [403, { code: 'PROCESS_FORBIDDEN' }]]]))
+    const denied = fakeFetch(Object.fromEntries([ME_OK, NO_RULE, [LIST, [403, { code: 'PROCESS_FORBIDDEN' }]]]))
     expect(codes(await remoteChecks({ api: API, fetch: denied.fetch, name: 'SEW_TEST_20261110', process: 'CVD', model: 'MODEL_A' }))).toEqual(['stop:LIST_FAILED'])
   })
 })

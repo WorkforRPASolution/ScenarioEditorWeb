@@ -1,7 +1,7 @@
 'use strict'
 // 사내 쓰기 시험(P2-E) 사전 점검 — 단독판을 사내 운영 EARS 에 붙여 저장·배포하기 전에 server/.env 를 본다(설계 §12, README "사내 쓰기 시험").
 // 쓰기: node tools/inhouse/preflight.js [--env server/.env] [--name SEW_TEST_yyyyMMdd --process <공정> --model <모델>]
-// 멈춤이 하나라도 있으면 종료 코드 1. 서버가 떠 있으면 쓰기 권한(/me)과 시험 이름이 이미 있는지(/scenarios)도 본다.
+// 멈춤이 하나라도 있으면 종료 코드 1. 서버가 떠 있으면 쓰기 권한(/me)을, --name 을 주면 이름 규칙(/name-rule)과 그 이름이 이미 있는지(/scenarios)도 본다.
 // tools 의 패키지를 쓰지 않는다 — 사내 PC 는 tools 를 설치하지 않으므로 Node 내장과 server 의 dotenv·순수 모듈만 부른다.
 const { readFileSync, existsSync } = require('node:fs')
 const { join, resolve } = require('node:path')
@@ -58,21 +58,33 @@ const errorCode = async (res) => {
   try { const b = await res.json(); return b?.code ?? '' } catch { return '' }
 }
 
-// 떠 있는 서버에 묻는다. 서버가 없으면 경고만 하고 나머지는 보지 않는다(서버를 띄운 뒤 다시 돌린다).
+const TIMEOUT_MS = 5000 // 묻는 요청 하나의 시간 제한 — 응답 없는 서버에 매달리지 않는다
+
+// 이름 규칙이 있는가 — 화면 editor/nameRule nameRuleOf 와 같은 판정(대분류·중분류가 둘 다 있어야 규칙이다)
+const hasNameRule = (res) => res?.exists === true && Array.isArray(res.rules) &&
+  ['1', '2'].every((lv) => res.rules.some((r) => r && String(r.groupLevel) === lv && typeof r.name === 'string' && r.name !== ''))
+
+// 떠 있는 서버에 묻는다. 서버에 닿지 않으면 나머지는 보지 않는다 — 이름 없이 돌릴 때(서버를 띄우기 전 첫 실행)는 경고,
+// --name 을 주었으면 보라고 한 쓰기 권한·이름을 못 봤으므로 멈춤.
 async function remoteChecks({ api, fetch, name, process, model }) {
-  let me
-  try {
-    me = await fetch(`${api}/me`)
-  } catch {
-    return [warn('SERVER_DOWN', `${api} 에 닿지 않는다 — 쓰기 권한과 시험 이름은 보지 않았다. 서버를 띄운 뒤 다시 돌린다`)]
+  const get = async (path) => {
+    try { return await fetch(`${api}${path}`, { signal: AbortSignal.timeout(TIMEOUT_MS) }) } catch { return null }
   }
+  const named = name !== undefined && !blank(process) && !blank(model)
+  const down = () => (named ? stop : warn)('SERVER_DOWN', `${api} 에 닿지 않는다 — 쓰기 권한과 시험 이름은 보지 않았다. 서버(npm run dev)를 띄운 창은 두고 새 명령 프롬프트 창에서 다시 돌린다`)
+  const me = await get('/me')
+  if (!me) return [down()]
   if (me.status !== 200) return [stop('ME_FAILED', `사용자 조회가 ${me.status} ${await errorCode(me)} — SE_USER_SINGLEID 가 운영 ARS_USER_INFO 에 있는지 본다`)]
   const user = (await me.json())?.data ?? {}
   const out = []
   if (user.canWrite !== true) out.push(stop('CANNOT_WRITE', `${user.singleid ?? 'SE_USER_SINGLEID'} 에 쓰기(WRITE) 권한이 없다 — 저장·배포가 막힌다. WRITE 권한이 있는 본인 계정을 쓴다`))
-  if (name === undefined || blank(process) || blank(model)) return out
-  const q = new URLSearchParams({ process, model })
-  const list = await fetch(`${api}/scenarios?${q}`)
+  if (!named) return out
+  const rule = await get('/name-rule')
+  if (!rule) return [...out, down()]
+  if (rule.status !== 200) out.push(warn('NAME_RULE_UNKNOWN', `이름 규칙 조회가 ${rule.status} ${await errorCode(rule)} — 새 시나리오 창에 이름 칸이 없으면 README "이름 규칙이 있을 때" 를 따른다`))
+  else if (hasNameRule((await rule.json())?.data)) out.push(warn('NAME_RULE', `이름 규칙이 있다 — 새 시나리오 창에서 ${name} 을 칠 수 없다. README 5단계 "이름 규칙이 있을 때" 대로 저장 창에서 이름을 바꾼다`))
+  const list = await get(`/scenarios?${new URLSearchParams({ process, model })}`)
+  if (!list) return [...out, down()]
   if (list.status !== 200) return [...out, stop('LIST_FAILED', `${process}·${model} 목록 조회가 ${list.status} ${await errorCode(list)} — 공정·모델 이름과 권한을 본다`)]
   const rows = (await list.json())?.data ?? []
   if (rows.some((r) => r.name === name)) {
