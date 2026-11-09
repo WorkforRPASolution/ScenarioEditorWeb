@@ -17,12 +17,19 @@ const USER_IDS_MAX = 50 // 등록 여부 확인 한 번에 묻는 아이디 수(
 const bad = (path, reason) => seError(400, 'BAD_REQUEST', '요청 본문이 틀립니다', { path, reason })
 const isObject = (v) => v && typeof v === 'object' && !Array.isArray(v)
 const userRow = (u) => ({ singleid: u.singleid, name: u.name, process: typeof u.process === 'string' ? u.process : '' })
-// 검사는 저장 뒤 다시 읽을 값으로 한다 — 옛 문서에 없는(또는 null 인) 키는 읽을 때(performanceFromBson)처럼 빈 값이다.
-// 화면은 그 칸을 0·빈 값으로 읽어 고치지 않으면 보내지 않으므로, 없는 키를 막으면 그 칸을 고칠 길이 없다. 없는 키는 쓰지 않는다.
+// 검사는 화면이 읽은 값(performanceFromBson — 그룹 대문자, 숫자는 정수로 자름·Int64 는 숫자, 없는·null 키는 빈 값)으로 한다.
+// 화면은 그렇게 다듬은 값과 같으면 "바뀌지 않은" 칸으로 보고 보내지 않으므로, 원래 값(소문자 그룹·소수 효과·없는 키)으로 검사하면
+// 고치지 않은 옛 값 때문에 다른 칸만 고쳐도 막히고 그 칸을 고칠 길도 없다. 보낸 칸은 보낸 값 그대로 검사하고, 고치지 않은 옛 값은 쓰지 않는다.
+// 원개발자는 따로(보냈을 때만 dev.list) 검사한다.
 const asRead = (current) => {
-  const out = emptyPerformance()
-  for (const [k, v] of Object.entries(current)) if (v !== undefined && v !== null) out[k] = v
-  return out
+  const v = performanceFromBson(current)
+  return {
+    ...emptyPerformance(),
+    Group: v.group, Trigger: v.trigger, TriggerInfo: v.triggerInfo, Grade: v.grade, Supervisor: v.supervisor, SupervisorComment: v.supervisorComment,
+    PerformType: v.performType, ScenarioDescription: v.scenarioDescription, ManWorkLoss: v.manWorkLoss, EqpPerfornmanceLoss: v.eqpPerformanceLoss,
+    EqpStopLoss: v.eqpStopLoss, WaferLoss: v.waferLoss, InvestCostLoss: v.investCostLoss, AdditionalEffect: v.additionalEffect,
+    AccidentType: v.accidentType, AccidentInfo: v.accidentInfo, UpdateDate: v.updateDate
+  }
 }
 
 function createPerformanceService({ repo, scopes, now = () => Date.now() }) {
@@ -84,10 +91,12 @@ function createPerformanceService({ repo, scopes, now = () => Date.now() }) {
     const doc = await propertyDoc(user, key)
     const dev = await developerContext(devList)
     const current = performanceOf(doc)
+    const read = asRead(current)
 
+    // previous(저장된 트리거 RV·EqState 는 그대로 둘 수 있음)도 화면이 읽은 값 — Int64 로 저장된 트리거가 숫자와 달라 막히지 않게
     const check = checkPerformance(
-      { ...asRead(current), ...fields, CitizenDeveloper: dev ? dev.list : undefined },
-      { previous: current, registeredIds: new Set(dev ? dev.usersById.keys() : []) }
+      { ...read, ...fields, CitizenDeveloper: dev ? dev.list : undefined },
+      { previous: read, registeredIds: new Set(dev ? dev.usersById.keys() : []) }
     )
     if (check.length) throw seError(422, 'VALIDATION_FAILED', '성과 입력을 확인하세요', { blocks: check })
 

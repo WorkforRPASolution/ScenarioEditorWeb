@@ -142,6 +142,26 @@ describe('savePerformance', () => {
     await svc.savePerformance(admin, key, { fields: { Grade: 1 }, alsoModels: [] })
     expect(calls.perf).toEqual([['M1', { 'performance.Grade': 1, 'performance.Supervisor': 'adm' }]])
   })
+  it('옛 값(소문자 그룹·소수 효과·Int64 트리거 RV)이 저장된 문서에서 의견만 고쳐도 저장된다 — 검사는 화면이 읽는 값(performanceFromBson)으로, 고치지 않은 옛 값은 그대로 둔다', async () => {
+    // 화면은 그룹을 대문자로, 효과를 정수로 읽어 "바뀌지 않은" 칸을 보내지 않는다. 서버가 원래 값으로 검사하면 GROUP_FORMAT·EFFECT_VALUE·TRIGGER_NOT_SELECTABLE 로 막혔다.
+    const legacy = { ...GOOD, PerformType: 2, Group: 'grp_a', ManWorkLoss: 12.7, EqpStopLoss: Long.fromNumber(30), Trigger: Long.fromNumber(2) }
+    const { svc, calls, docs } = setup({ docs: { 'P|M1|N': [{ scname: 'N', property: {}, performance: legacy }] } })
+    const out = await svc.savePerformance(admin, key, { fields: { SupervisorComment: '의견을 새로 고쳤습니다' }, alsoModels: [] })
+    expect(calls.perf).toEqual([['M1', { 'performance.SupervisorComment': '의견을 새로 고쳤습니다', 'performance.Supervisor': 'adm' }]])
+    const stored = docs.get('P|M1|N')[0].performance
+    expect(stored.Group).toBe('grp_a')
+    expect(stored.ManWorkLoss).toBe(12.7)
+    expect(Long.isLong(stored.Trigger)).toBe(true)
+    expect(out.performance).toMatchObject({ group: 'GRP_A', manWorkLoss: 12, trigger: 2, supervisorComment: '의견을 새로 고쳤습니다' })
+  })
+  it('보낸 칸은 보낸 값 그대로 검사한다 — 소문자 그룹을 보내면 GROUP_FORMAT, 소수 효과를 보내면 400', async () => {
+    const legacy = { ...GOOD, PerformType: 2, Group: 'GRP_A' }
+    const { svc, calls } = setup({ docs: { 'P|M1|N': [{ scname: 'N', property: {}, performance: legacy }] } })
+    const e = await fail(svc.savePerformance(admin, key, { fields: { Group: 'grp_b' }, alsoModels: [] }))
+    expect(e.details.blocks.map((b) => b.code)).toEqual(['GROUP_FORMAT'])
+    expect((await fail(svc.savePerformance(admin, key, { fields: { ManWorkLoss: 1.5 }, alsoModels: [] }))).statusCode).toBe(400)
+    expect(calls.perf).toEqual([])
+  })
 })
 
 describe('savePerformance — 칸 형·범위(400, 어떤 모델에도 쓰지 않는다)', () => {
