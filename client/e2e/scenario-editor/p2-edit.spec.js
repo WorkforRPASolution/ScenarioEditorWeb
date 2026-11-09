@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { asUser, openFromDialog } from './helpers'
+import { asUser, openFromDialog, rows, rowAt, rowOf, cellOf, toast, order, selectRow, menu } from './helpers'
 
 // P2-C 편집 명령(설계 §2 완료 조건 2 의 편집 부분). 저장 → 다시 열기는 저장 창이 있는 P2-D E2E 가 맡는다.
 // 시험 데이터: basic NEXT_RULES(1 이미지 · 2 →4/SKIP · 3 도달 불가 · 4 OCR NEXT/→2 · 5 끝), ALL_CONDITIONS(1 이미지 · 2 OCR · 3 대기 · 4 설비 상태).
@@ -8,24 +8,6 @@ const IMG = { w: 1920, h: 1200 }
 const DIALOG = [560, 320, 880, 520] // 검색 영역(tools/scenario-gen/scenarios/basic.js)
 const RESET = [711, 660, 255, 96] // 찾을 그림
 
-const table = '[data-testid="se-step-table"] .ag-center-cols-container'
-const rows = (page) => page.locator(`${table} .ag-row`)
-const rowAt = (page, i) => page.locator(`${table} .ag-row[row-index="${i}"]`)
-const rowOf = (page, uid) => page.locator(`${table} .ag-row[row-id="${uid}"]`)
-const cellOf = (page, uid, col) => rowOf(page, uid).locator(`[col-id="${col}"]`)
-const toast = (page) => page.getByTestId('se-toast')
-// 표 순서(uid). AG Grid 행 DOM 순서는 보장되지 않아 row-index 로 정렬한다.
-const order = (page) => rows(page).evaluateAll((els) => els.sort((a, b) => Number(a.getAttribute('row-index')) - Number(b.getAttribute('row-index'))).map((r) => r.getAttribute('row-id')))
-
-// 한 줄 고르기. AG Grid 는 cellClicked 를 0ms 타이머로 넘기므로 고른 표시가 뜰 때까지 기다린다(단축키·도구 줄 전에).
-async function selectRow(page, uid) {
-  await cellOf(page, uid, 'no').click()
-  await expect(rowOf(page, uid)).toHaveClass(/ag-row-selected/)
-}
-async function menu(page, opener, item) {
-  await page.getByTestId(opener).click()
-  await page.getByTestId('se-tool-menu').locator(item).click()
-}
 // 큰 화면 잡기 층 위의 기준 화면 픽셀 → 화면 좌표(층은 확대·이동이 들어간 상자 안에 있다)
 async function toScreen(layer, x, y) {
   const b = await layer.boundingBox()
@@ -58,8 +40,8 @@ test('① 잡아 넣기·삭제 막힘·다른 시나리오 붙여넣기·잘라
   await page.getByTestId('se-tool-copy').click()
   await expect(toast(page)).toContainText('스텝 1개를 복사했습니다')
 
-  // ── NEXT_RULES 를 연다(복사해 둔 묶음은 남는다) ──
-  await openFromDialog(page, 'SEWCVD', 'SEWMODELA', 'NEXT_RULES')
+  // ── NEXT_RULES 를 연다(복사해 둔 묶음은 남는다). 실패 시를 바꿔 둔 ALL_CONDITIONS 는 저장 전 변경이 있어 떠날 때 확인에서 [버리고 열기](P2-D) ──
+  await openFromDialog(page, 'SEWCVD', 'SEWMODELA', 'NEXT_RULES', { leave: 'drop' })
   await expect(rows(page)).toHaveCount(5)
   await expect(page.getByTestId('se-tool-paste')).toContainText('1개')
   await expect(cellOf(page, 's1', 'onTrue')).toHaveText('→4')
