@@ -3,7 +3,8 @@
 // [수정] → 창 안 초안을 고친다 → [적용]은 작업본 property 에만(editStore.applyProperty — 배포·초안이 함께 싣는다, Q-103).
 // 칸 검사는 서버와 같은 code·"바뀐 칸만"(editor/propertyRules) — 기준은 저장 기준 판(새 시나리오는 기준 없음).
 // 심의(등급·의견)는 PropertyReview 가 [심의 저장]으로 바로 쓴다. 칸 조각들은 provide('sePropertyCtx') 로 같은 값을 본다.
-import { ref, shallowRef, reactive, computed, provide, watch, nextTick } from 'vue'
+// 적용하지 않은 운영 속성·저장하지 않은 심의 글이 있으면 ✕·바깥 누르기로 닫을 때 묻는다(편집 화면의 다른 확인 창과 같은 갈래).
+import { ref, shallowRef, reactive, computed, provide, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
 import { useEditStore } from '../stores/editStore'
 import { scenarioEditorApi as api } from '../api'
@@ -113,10 +114,34 @@ async function goFocus(field) {
   if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest' })
   el.focus()
 }
-// 창을 열 때마다 보기로 시작한다(닫으면 고치던 초안은 버린다).
+// 닫기: 적용하지 않은 운영 속성(수정 중 바뀐 칸)이나 저장하지 않은 심의 글이 있으면 바로 닫지 않고 묻는다. ✕·바깥 누르기 같은 길.
+// 묻는 동안 Esc 는 [계속 고치기](EditDialogs 의 확인 창과 같다). 고친 것이 없으면 바로 닫는다.
+const reviewDirty = ref(false)
+const leaving = ref(false)
+const keepEl = ref(null)
+const propertyDirty = computed(() => editing.value && diffs.value.length > 0)
+const leaveBody = computed(() => [
+  propertyDirty.value ? t('SEW_PROP_LEAVE_PROPERTY', { n: diffs.value.length }) : '',
+  reviewDirty.value ? t('SEW_PROP_LEAVE_REVIEW') : '',
+  t('SEW_PROP_LEAVE_KEEPS')
+].filter(Boolean).join(' '))
+function requestClose() {
+  if (!propertyDirty.value && !reviewDirty.value) { emit('update:modelValue', false); return }
+  leaving.value = true
+  nextTick(() => keepEl.value?.focus())
+}
+function leaveKeep() { leaving.value = false }
+function leaveDrop() { leaving.value = false; emit('update:modelValue', false) }
+const onLeaveKey = (e) => { if (e.key === 'Escape') leaveKeep() }
+watch(leaving, (on) => (on ? document.addEventListener('keydown', onLeaveKey) : document.removeEventListener('keydown', onLeaveKey)))
+onBeforeUnmount(() => document.removeEventListener('keydown', onLeaveKey))
+
+// 창을 열 때마다 보기로 시작한다(닫으면 고치던 초안·심의 글은 버린다 — 닫기 전에 위에서 물었다).
 watch(() => props.modelValue, (open) => {
   stopEdit()
   moreOpen.value = false
+  leaving.value = false
+  reviewDirty.value = false
   if (!open) return
   loadNames()
   if (props.focus?.field) goFocus(props.focus.field)
@@ -125,8 +150,8 @@ watch(() => props.focus, (f) => { if (props.modelValue && f?.field) goFocus(f.fi
 </script>
 
 <template>
-  <ModalShell :model-value="modelValue" :title="P.title" :width="1080" :height="820" testid="se-property-dialog" @update:model-value="emit('update:modelValue', $event)">
-    <div ref="rootEl" class="se-pp h-full flex flex-col">
+  <ModalShell :model-value="modelValue" :title="P.title" :width="1080" :height="760" testid="se-property-dialog" @update:model-value="(v) => (v ? emit('update:modelValue', true) : requestClose())">
+    <div ref="rootEl" class="se-pp relative h-full flex flex-col">
       <div class="se-pp-sub">
         <span class="se-pp-id">{{ sk?.id }}</span>
         <span class="se-pp-who">{{ t('SEW_PROP_CURRENT') }}</span>
@@ -140,7 +165,7 @@ watch(() => props.focus, (f) => { if (props.modelValue && f?.field) goFocus(f.fi
         <PropertyPath />
         <p v-if="editing && namesFailed" class="se-pp-warn mt-1.5">{{ t('SEW_PROP_NAMES_FAILED') }}</p>
         <div class="se-pp-below">
-          <section><PropertyReview @open-performance="emit('open-performance')" /></section>
+          <section><PropertyReview @open-performance="emit('open-performance')" @dirty="reviewDirty = $event" /></section>
           <section><PropertyPeople /></section>
         </div>
         <PropertyMore v-model:open="moreOpen" />
@@ -163,6 +188,16 @@ watch(() => props.focus, (f) => { if (props.modelValue && f?.field) goFocus(f.fi
         </div>
         <button type="button" class="se-pp-btn" data-testid="se-prop-cancel" @click="stopEdit">{{ P.cancel }}</button>
         <button type="button" class="se-pp-btn p" :disabled="!canApply" data-testid="se-prop-apply" @click="apply">{{ P.apply }}</button>
+      </div>
+      <div v-if="leaving" class="se-pp-cf-dim" data-testid="se-prop-leave">
+        <div class="se-pp-cf" role="alertdialog" aria-modal="true" aria-labelledby="se-pp-leave-t" aria-describedby="se-pp-leave-d">
+          <h3 id="se-pp-leave-t">{{ t('SEW_PROP_LEAVE_TITLE') }}</h3>
+          <p id="se-pp-leave-d">{{ leaveBody }}</p>
+          <div class="se-pp-cf-f">
+            <button ref="keepEl" type="button" class="se-pp-btn p" data-testid="se-prop-leave-keep" @click="leaveKeep">{{ P.leaveKeep }}</button>
+            <button type="button" class="se-pp-btn danger" data-testid="se-prop-leave-drop" @click="leaveDrop">{{ P.leaveDrop }}</button>
+          </div>
+        </div>
       </div>
     </div>
   </ModalShell>
