@@ -28,8 +28,8 @@ const PERF = {
   group: '', trigger: 1, triggerName: 'Log', triggerInfo: 'E1234', grade: 2, gradeName: 'A', supervisor: 'kim_conductor', supervisorNotEntered: false,
   supervisorComment: '재발률이 낮고 조치 범위가 좁아 A 로 판단',
   citizenDevelopers: [{ knoxId: 'minsu.park', sdwt: '', name: '박민수', contribution: 60 }, { knoxId: 'seoyeon.lee', sdwt: '', name: '이서연', contribution: 40 }],
-  performType: 1, performTypeName: 'Active', scenarioDescription: 'E1234 알람 때 진공 펌프를 초기화한다', manWorkLoss: 5400, eqpPerformanceLoss: 0,
-  eqpStopLoss: 18000, waferLoss: 0, investCostLoss: 120, additionalEffect: '야간 호출 감소', accidentType: 0, accidentTypeName: 'None', accidentInfo: '',
+  performType: 1, performTypeName: 'Active', scenarioDescription: 'E1234 알람 때 진공 펌프를 초기화한다', manWorkLoss: 90, eqpPerformanceLoss: 0,
+  eqpStopLoss: 300, waferLoss: 0, investCostLoss: 120, additionalEffect: '야간 호출 감소', accidentType: 0, accidentTypeName: 'None', accidentInfo: '',
   updateDate: '2026-10-28', rawKeys: []
 }
 const EMPTY = {
@@ -65,12 +65,12 @@ describe('성과 입력 창(PerformanceDialog)', () => {
     expect(api.sameName).toHaveBeenCalledWith('P', 'N')
     expect(api.registeredUsers).toHaveBeenCalledWith(['minsu.park', 'seoyeon.lee'])
     expect(id('se-perf-done').text()).toBe('완료')
-    for (const v of ['심의', t('SEW_PERF_REVIEW_HELP'), 'kim_conductor', '성과', 'Active', 'Passive', '공수 Loss', '설비 정지 Loss', 'Wafer', '투자비', '원개발자', '박민수', '이서연', '합계 100%'])
+    for (const v of ['심의', t('SEW_PERF_REVIEW_HELP'), 'kim_conductor', '성과', 'Active', 'Passive', '공수절감', '정지LOSS 개선', '연 생산 LOSS 감소', '연 투자비 절감', '원개발자', '박민수', '이서연', '합계 100%'])
       expect(dlgText()).toContain(v)
     expect(pf('also:MODEL_B').exists()).toBe(true)
     expect(pf('also:M').exists()).toBe(false)
     expect(pf('also:MODEL_B').element.checked).toBe(false)
-    expect(pf('effv:ManWorkLoss').element.value).toBe('5400')
+    expect(pf('effv:ManWorkLoss').element.value).toBe('90')
     expect(pf('effon:WaferLoss').element.checked).toBe(false)
     expect(pf('effv:WaferLoss').attributes('disabled')).toBeDefined()
     expect(dlgText()).toContain('1시간 30분')
@@ -122,13 +122,12 @@ describe('성과 입력 창(PerformanceDialog)', () => {
     expect(saveBtn().attributes('disabled')).toBeDefined()
   })
 
-  it('Passive 면 그룹 칸(입력은 대문자로), Active 면 숨김 — 공수·정지 Loss 단위가 초/년', async () => {
+  it('Passive 면 그룹 칸(입력은 대문자로), Active 면 숨김', async () => {
     setup()
     await flushPromises()
     expect(pf('group').exists()).toBe(false)
     await pf('type:2').trigger('click')
     expect(pf('group').exists()).toBe(true)
-    expect(dlgText()).toContain('초/년')
     await pf('group').setValue('cvd-pump')
     expect(pf('group').element.value).toBe('CVD-PUMP')
     expect(errAt('group').text()).toBe(t('RULE_GROUP_FORMAT'))
@@ -136,7 +135,29 @@ describe('성과 입력 창(PerformanceDialog)', () => {
     expect(errAt('group').exists()).toBe(false)
     await pf('type:1').trigger('click')
     expect(pf('group').exists()).toBe(false)
-    expect(dlgText()).toContain('초/회')
+  })
+
+  // 사내 기여 창 문구(42 Q-121 답 2026-11-09). 사내 창은 입력값을 그대로 저장한다 — 공수·정지 값은 분이다(초가 아님).
+  it('효과 단위는 사내 기여 창 문구 — 공수절감 분(Passive 면 분/일), 정지LOSS 개선 분/일, 연 생산 LOSS 감소 매, 연 투자비 절감 KRW 1,000,000', async () => {
+    setup()
+    await flushPromises()
+    const unit = (k) => pf(`effv:${k}`).element.parentElement.querySelector('.u').textContent.trim()
+    expect(unit('ManWorkLoss')).toBe('분 · 1시간 30분')
+    expect(unit('EqpStopLoss')).toBe('분/일 · 5시간')
+    expect(unit('WaferLoss')).toBe('매')
+    expect(unit('InvestCostLoss')).toBe('KRW 1,000,000')
+    await pf('type:2').trigger('click')
+    expect(unit('ManWorkLoss')).toBe('분/일 · 1시간 30분')
+    expect(unit('EqpStopLoss')).toBe('분/일 · 5시간')
+    await pf('effv:ManWorkLoss').setValue('59')
+    expect(unit('ManWorkLoss')).toBe('분/일')
+  })
+
+  it('고치지 않는 설비 성능 Loss 는 저장 값만 알린다(단위를 단정할 근거가 없음)', async () => {
+    setup({ performance: { ...PERF, eqpPerformanceLoss: 90 } })
+    await flushPromises()
+    expect(dlgText()).toContain(t('SEW_PERF_KEPT_LOSS', { value: '90' }))
+    expect(dlgText()).not.toContain('90초')
   })
 
   it('사고 유형을 바꾸면 사고 정보를 비우고 다시 고르게 한다(값은 Key, 화면은 문구), 옛 값은 글자 그대로', async () => {

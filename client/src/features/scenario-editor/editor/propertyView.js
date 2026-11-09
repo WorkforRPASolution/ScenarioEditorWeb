@@ -16,6 +16,17 @@ export function human(sec) {
   return [h ? `${h}${P.hour}` : '', m ? `${m}${P.minute}` : '', s ? `${s}${P.second}` : ''].filter(Boolean).join(' ')
 }
 
+// 효과 단위(사내 기여 창 문구, 42 Q-121 답 2026-11-09). 사내 창은 입력값을 그대로 저장하므로 공수·정지 값은 분이다
+// (사본 PerformanceItem 주석의 "단위: 초" 는 화면과 다르다). 공수절감은 Passive 면 정지LOSS 개선과 같은 분/일로 바뀐다(사내 rbType_Click).
+export function effectUnit(key, performType) {
+  const U = LABELS.perf.units
+  if (key === 'WaferLoss') return U.wafer
+  if (key === 'InvestCostLoss') return U.invest
+  return key === 'EqpStopLoss' || performType === 2 ? U.perDay : U.minute
+}
+// 분 → "1시간 30분"(60분 미만은 빈 글)
+export const minutesHuman = (min) => (min >= 60 ? human(min * 60) : '')
+
 // 유형 이름은 모든 화면과 같은 표(format scenarioTypeLabel) — 표에 없는 저장 값은 "저장 값 N"
 export const typeName = (v) => (isScenarioType(v) ? scenarioTypeLabel(v) : t('SEW_PROP_STORED', { value: v }))
 export const priorityName = (v) => P.priorities.find(([k]) => k === v)?.[1] ?? t('SEW_PROP_STORED', { value: v })

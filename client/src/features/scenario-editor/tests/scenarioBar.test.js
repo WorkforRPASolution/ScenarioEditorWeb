@@ -78,12 +78,12 @@ describe('ScenarioBar', () => {
     expect(w.text()).toContain('SEWT_DUP01')
     expect(w.text()).toContain('필수 필드 빈 값')
   })
-  it('[운영 속성 전체] 로 운영 속성 창을 연다(작업본이 없는 뼈대는 뼈대 값 — 비표준 우선순위·후속·심의 메모·Wafer)', async () => {
+  it('[운영 속성 전체] 로 운영 속성 창을 연다(작업본이 없는 뼈대는 뼈대 값 — 비표준 우선순위·후속·심의 메모·연 생산 LOSS 감소)', async () => {
     const s = useEditorStore(); s.skeleton = skeleton()
     const w = mountBar()
     await w.find('[data-testid="se-property"]').trigger('click')
     const text = w.text()
-    for (const v of [MESSAGES.SEW_PROP_CURRENT, '1·5·10', 'NEXT_SC', '심의 메모', 'Wafer', '42']) expect(text).toContain(v)
+    for (const v of [MESSAGES.SEW_PROP_CURRENT, '1·5·10', 'NEXT_SC', '심의 메모', '연 생산 LOSS 감소', '42']) expect(text).toContain(v)
     expect(text).not.toContain('글라스 손실')
   })
   it('운영 속성 창에서 [적용] 한 켜짐·유형을 바가 따라간다(작업본 값)', async () => {

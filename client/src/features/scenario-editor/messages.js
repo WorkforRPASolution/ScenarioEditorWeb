@@ -1133,7 +1133,6 @@ export const LABELS = {
       updated: '갱신일', keys: '저장된 키'
     },
     performTypes: { None: '미입력', Active: '실행마다', Passive: '있는 것만으로' },
-    metrics: { man: '공수 Loss', stop: '설비 정지 Loss', wafer: 'Wafer', invest: '투자비', waferUnit: '매/년', investUnit: '만/년' },
     // 등급 안내(2026-11-08 성과 입력 목업 GRADE_HINT, 등급 enum 순서 N/A·S·A·B·C·D·NotUsed)
     gradeHints: ['아직 심의하지 않은 상태입니다', '전 공정에 횡전개', '한 공정의 모든 모델에 횡전개', '한 공정의 한 모델에 횡전개', '', '임시 시험용', '삭제 대상 — 효과를 넣지 않아도 완료로 셉니다'],
     grades: ['N/A', 'S', 'A', 'B', 'C', 'D', 'NotUsed']
@@ -1149,9 +1148,9 @@ export const LABELS = {
     kinds: [[1, 'Active'], [2, 'Passive']],
     performTypes: ['None', 'Active', 'Passive'],
     triggers: ['NA', 'Log', 'RV', 'EqState', 'Time', 'Scenario', 'Manual'],
-    effectNames: { ManWorkLoss: '공수 Loss', EqpStopLoss: '설비 정지 Loss', WaferLoss: 'Wafer', InvestCostLoss: '투자비' },
-    // 공수·정지 Loss 단위(Active 초/회, Passive 초/년)는 추정이다 — 사내 화면 문구 확인 남음(40 §2.0 ⑫)
-    units: { run: '초/회', year: '초/년', wafer: '매/년', invest: '만/년' },
+    // 효과 이름·단위는 사내 기여 창 문구(42 Q-121 답 2026-11-09). 운영 속성 창 성과 줄도 같은 이름·단위를 쓴다.
+    effectNames: { ManWorkLoss: '공수절감', EqpStopLoss: '정지LOSS 개선', WaferLoss: '연 생산 LOSS 감소', InvestCostLoss: '연 투자비 절감' },
+    units: { minute: '분', perDay: '분/일', wafer: '매', invest: 'KRW 1,000,000' },
     accidents: ['없음', '전기 사고', '누출 (가스·물)', '화재·탄화', '화학 사고', '작업자 실수', '시스템 장애'],
     // AccidentCatalog 6유형 23개(13 §5.9) — 값은 Key(DC-139), 화면은 뜻에 Key 를 괄호로
     accidentCatalog: {
@@ -1165,7 +1164,7 @@ export const LABELS = {
     // 바뀐 칸·함께 쓸 칸·닫기 확인의 칸 이름
     fields: {
       PerformType: '효과 유형', Group: '그룹', Grade: '등급', SupervisorComment: '심사 의견', ScenarioDescription: '시나리오 설명', Trigger: '트리거', TriggerInfo: '트리거 정보',
-      ManWorkLoss: '공수 Loss', EqpStopLoss: '설비 정지 Loss', WaferLoss: 'Wafer', InvestCostLoss: '투자비', AccidentType: '사고 유형', AccidentInfo: '사고 정보',
+      ManWorkLoss: '공수절감', EqpStopLoss: '정지LOSS 개선', WaferLoss: '연 생산 LOSS 감소', InvestCostLoss: '연 투자비 절감', AccidentType: '사고 유형', AccidentInfo: '사고 정보',
       AdditionalEffect: '부가 효과', CitizenDeveloper: '원개발자'
     },
     // 바닥 줄 "고칠 곳·채울 곳" 의 자리 이름(원개발자 줄은 SEW_PERF_AT_DEV·SEW_PERF_DEV_PCT)

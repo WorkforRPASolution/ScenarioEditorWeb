@@ -1,5 +1,5 @@
 <script setup>
-// 심의와 성과(목업 v2 reviewBlock·metrics·perfAction, 성과 줄 이름은 2026-11-08 성과 입력 목업의 뒤 창).
+// 심의와 성과(목업 v2 reviewBlock·metrics·perfAction). 성과 줄 이름·단위는 성과 입력 창과 같은 사내 기여 창 문구(42 Q-121).
 // 등급·의견은 관리 등급 1·2(Administrator·Conductor)만 [심의 고치기] → [심의 저장]으로 바로 쓴다 — 작업본·배포와 상관없다(설계 §3·§7).
 // WRITE·현재 버전·운영 속성 [수정]은 보지 않는다(서버 writePolicy reviewDenial 과 같다). 고치는 상태도 운영 속성 수정과 따로다 —
 // 운영 속성 [적용]·[취소]가 저장하지 않은 심의 글을 지우지 않는다. 새 시나리오(저장 전)는 등급 칸을 끈다(40 §2.6).
@@ -10,7 +10,7 @@ import { useEditorStore } from '../../stores/editorStore'
 import { useEditStore } from '../../stores/editStore'
 import { scenarioEditorApi as api } from '../../api'
 import { t, LABELS, errorMessage } from '../../messages'
-import { human } from '../../editor/propertyView'
+import { effectUnit } from '../../editor/propertyView'
 import { isReviewer } from '../../editor/permissions'
 import { isPerformanceComplete } from '../../editor/performanceRules'
 import { savedFields } from '../../editor/performanceForm'
@@ -73,15 +73,11 @@ async function save() {
   }
 }
 
+// 성과 줄 이름·단위는 성과 입력 창과 같다(사내 기여 창 문구)
+const METRICS = [['ManWorkLoss', 'manWorkLoss'], ['EqpStopLoss', 'eqpStopLoss'], ['WaferLoss', 'waferLoss'], ['InvestCostLoss', 'investCostLoss']]
 const metrics = computed(() => {
   const f = perf.value ?? {}
-  const M = P.metrics
-  return [
-    { label: M.man, value: f.manWorkLoss, text: human(f.manWorkLoss) },
-    { label: M.stop, value: f.eqpStopLoss, text: human(f.eqpStopLoss) },
-    { label: M.wafer, value: f.waferLoss, text: String(f.waferLoss), unit: M.waferUnit },
-    { label: M.invest, value: f.investCostLoss, text: String(f.investCostLoss), unit: M.investUnit }
-  ]
+  return METRICS.map(([key, field]) => ({ label: LABELS.perf.effectNames[key], value: f[field], text: String(f[field]), unit: effectUnit(key, f.performType) }))
 })
 </script>
 

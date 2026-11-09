@@ -32,8 +32,8 @@ const PROP = {
 const PERF = {
   group: 'CVD', trigger: 1, triggerName: 'Log', triggerInfo: 'E1234', grade: 2, gradeName: 'A', supervisor: 'kim_conductor', supervisorNotEntered: false,
   supervisorComment: '재발률이 낮아 A 로 판단', citizenDevelopers: [{ knoxId: 'minsu.park', sdwt: 'CVD1', name: '박민수', contribution: 60 }],
-  performType: 1, performTypeName: 'Active', scenarioDescription: 'E1234 알람 때 펌프를 초기화한다', manWorkLoss: 9000, eqpPerformanceLoss: 5400,
-  eqpStopLoss: 18000, waferLoss: 0, investCostLoss: 120, additionalEffect: '야간 호출 감소', accidentType: 0, accidentTypeName: 'None', accidentInfo: '',
+  performType: 1, performTypeName: 'Active', scenarioDescription: 'E1234 알람 때 펌프를 초기화한다', manWorkLoss: 150, eqpPerformanceLoss: 5400,
+  eqpStopLoss: 300, waferLoss: 0, investCostLoss: 120, additionalEffect: '야간 호출 감소', accidentType: 0, accidentTypeName: 'None', accidentInfo: '',
   updateDate: '2026-10-28', rawKeys: ['Group', 'Grade']
 }
 const NAMES = [{ name: 'N' }, { name: 'CHAMBER_LEAK_CHECK' }, { name: 'PUMP_RESTART' }]
@@ -70,15 +70,24 @@ describe('운영 속성 창(PropertyDialog)', () => {
     expect(api.list).toHaveBeenCalledWith('P', 'M')
   })
 
-  it('보기: 성과 줄은 공수 Loss·설비 정지 Loss·Wafer·투자비, 심의·원개발자·수정 이력(최근 먼저)·그 밖의 값', async () => {
+  it('보기: 성과 줄은 사내 기여 창 이름·단위(공수절감 150분·정지LOSS 개선 300분/일·연 생산 LOSS 감소·연 투자비 절감), 심의·원개발자·수정 이력(최근 먼저)·그 밖의 값', async () => {
     setup()
     await flushPromises()
     const m = find(w, 'se-prop-metrics').text()
-    for (const v of ['공수 Loss', '2시간 30분', '설비 정지 Loss', '5시간', 'Wafer', '없음', '투자비', '120']) expect(m).toContain(v)
+    for (const v of ['공수절감', '150분', '정지LOSS 개선', '300분/일', '연 생산 LOSS 감소', '없음', '연 투자비 절감', '120KRW 1,000,000']) expect(m).toContain(v)
+    expect(m).not.toContain('시간')
     for (const v of ['인력 손실', '웨이퍼 손실', '설비 성능 손실']) expect(dlgText()).not.toContain(v)
     const text = dlgText()
     for (const v of ['A', '심의자 kim_conductor', '재발률이 낮아 A 로 판단', '박민수', '60%', '야간 호출 감소', '심의 메모', 'E1234']) expect(text).toContain(v)
     expect(text.indexOf('hong_eng')).toBeLessThan(text.indexOf('lee_eng'))
+  })
+
+  it('보기: Passive 성과면 공수절감 단위도 분/일(사내 기여 창이 효과 유형에 따라 바꾼다)', async () => {
+    setup({ performance: { ...PERF, performType: 2, performTypeName: 'Passive', group: 'PUMP' } })
+    await flushPromises()
+    const m = find(w, 'se-prop-metrics').text()
+    expect(m).toContain('150분/일')
+    expect(m).toContain('300분/일')
   })
 
   it('보기: 1·5·10 이 아닌 우선순위는 저장 값 그대로 알리고, 심의자가 없으면 "아직 심의하지 않았습니다"', async () => {

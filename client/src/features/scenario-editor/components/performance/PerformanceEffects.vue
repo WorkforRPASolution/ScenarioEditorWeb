@@ -1,11 +1,11 @@
 <script setup>
 // 성과(목업 renderMain): 효과 유형(Passive 면 그룹)·시나리오 설명·트리거·효과 4개(체크 + 값)·사고 유형/정보·부가 효과.
 // 트리거 이름은 enum 영문 그대로, RV·EqState 는 저장된 값일 때만 고를 수 있다. 사고 정보 값은 Key 이고 화면에서만 문구(DC-139).
-// 설비 성능 Loss(EqpPerfornmanceLoss)는 칸이 없고 그대로 둔다(SE-031).
+// 설비 성능 Loss(EqpPerfornmanceLoss)는 칸이 없고 그대로 둔다(SE-031). 효과 단위는 사내 기여 창 문구(effectUnit).
 import { computed, inject, nextTick } from 'vue'
 import { t, LABELS } from '../../messages'
 import { EFFECT_KEYS, NOT_SELECTABLE_TRIGGERS, GRADE_NOT_USED, isIntText } from '../../editor/performanceRules'
-import { human } from '../../editor/propertyView'
+import { effectUnit, minutesHuman } from '../../editor/propertyView'
 import PerformanceErrors from './PerformanceErrors.vue'
 
 defineOptions({ name: 'PerformanceEffects' })
@@ -24,20 +24,21 @@ const triggerOptions = computed(() => L.triggers.slice(1).map((name, i) => {
 }))
 const triggerKept = computed(() => (NOT_SELECTABLE_TRIGGERS.includes(savedTrigger.value) && !ctx.hasErr('trigger') ? t('SEW_PERF_TRIGGER_KEPT', { name: L.triggers[savedTrigger.value] }) : ''))
 
-const unitOf = (k) => (k === 'WaferLoss' ? L.units.wafer : k === 'InvestCostLoss' ? L.units.invest : f.value.type === 2 ? L.units.year : L.units.run)
-// 초 값 풀이(1분 이상일 때만): 공수·정지 Loss
+const unitOf = (k) => effectUnit(k, f.value.type)
+// 분 값 풀이(1시간 이상일 때만): 공수·정지
 const humanOf = (k) => {
   const e = f.value.eff[k]
-  if (!e.on || (k !== 'ManWorkLoss' && k !== 'EqpStopLoss') || !isIntText(e.v) || Number(e.v) < 60) return ''
-  return human(Number(e.v))
+  if (!e.on || (k !== 'ManWorkLoss' && k !== 'EqpStopLoss') || !isIntText(e.v)) return ''
+  return minutesHuman(Number(e.v))
 }
 async function toggleEffect(k, on) {
   ctx.setEffOn(k, on)
   if (on) { await nextTick(); ctx.focus(`effv:${k}`) }
 }
+// 사내 창에 칸이 없어 단위를 단정할 근거가 없다 — 저장 값만 보인다
 const keptLoss = computed(() => {
   const v = ctx.savedView?.eqpPerformanceLoss ?? 0
-  return v ? t('SEW_PERF_KEPT_LOSS', { value: v >= 60 ? `${v}초(${human(v)})` : `${v}초` }) : ''
+  return v ? t('SEW_PERF_KEPT_LOSS', { value: String(v) }) : ''
 })
 
 const catalog = computed(() => L.accidentCatalog[f.value.acc] ?? [])
