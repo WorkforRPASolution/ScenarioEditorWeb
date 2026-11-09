@@ -246,6 +246,21 @@ describe('저장 창(SaveDialog)', () => {
     bar.unmount()
   })
 
+  it('새로고침 뒤 다른 시나리오에서 되살린 결과 모름 — 그곳으로 다시 보내지 않는다고 알리고, [다시 배포]는 지금 시나리오의 저장 창(알림 줄)', async () => {
+    sessionStorage.setItem('se-save-pending', JSON.stringify({ requestId: '11111111-2222-4333-8444-555555555555', target: { process: 'P', model: 'M', name: 'NEW_ONE' }, at: 1 }))
+    const { bar } = setup()
+    await openSave(bar)
+    expect(find(bar, 'se-save-unknown-restored').text()).toBe(t('SEW_SAVE_UNKNOWN_RESTORED_OTHER', { id: 'P-M-NEW_ONE' }))
+    api.verifyDeploy.mockReturnValue(ok({ found: 'none', crtime: null }))
+    await find(bar, 'se-save-verify').trigger('click')
+    await flushPromises()
+    await find(bar, 'se-save-redeploy').trigger('click')
+    await flushPromises()
+    expect(find(bar, 'se-save-notice').text()).toBe(t('SEW_SAVE_REDEPLOY_OWN_TARGET', { from: 'P-M-NEW_ONE', to: 'P-M-N' }))
+    expect(api.check.mock.calls.at(-1)[0].target).toEqual({ process: 'P', model: 'M', name: 'N' })
+    bar.unmount()
+  })
+
   it('초안을 저장하면 결과 화면과 바에 초안 시각', async () => {
     const { bar, e } = setup()
     e.editCell('s1', 'skip', true)

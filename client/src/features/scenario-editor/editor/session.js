@@ -59,7 +59,7 @@ export function restoreSessionOf(oldSk, curSk, me) {
 // [초안 이어서 열기](설계 §6.1). draft = GET /drafts/:id + 키 { process, model, name }(목록의 공정·모델·이름).
 // 작업본 = 초안, 연 때 값(headCrtime·propertyRev) = 초안의 것 — 그 뒤 새 버전·운영 속성 변경은 배포 때 충돌로 알린다.
 // draft = { id, savedAt }: 서버에만 있는 초안 그림을 보이고(refUrl), 다시 저장·배포할 때 올리지 않는다(request.uploadsToSend).
-// fromDraft = 바·알림이 쓰는 연 길(시작한 버전·옛것인지·원본이 지워졌는지).
+// fromDraft = 바·알림이 쓰는 연 길(시작한 버전·옛것인지·원본이 지워졌는지)과 초안이 저장하려던 곳(target = { process, model, name } — 저장 창 기본 대상).
 // - 기준 판 뼈대(sourceSkeleton)가 있으면: 저장 기준점 = 기준 판 — "저장 전 N곳" 은 초안이 바꾼 곳.
 // - 새 시나리오 초안(출처 없음): Task 6 새 시나리오 세션과 같은 모양. 만들 때 모습은 남지 않아 스텝 0·기본 운영 속성(newScenarioOf)으로 어림한다.
 // - 원본이 지워져 서버 사본으로만 남은 판(출처는 있는데 뼈대 없음): 기준 판 내용을 받을 길이 없어 연 때 작업본을 기준점으로 둔다(저장 전 0곳).
@@ -69,7 +69,8 @@ export function draftSessionOf(draft, sourceSkeleton, me) {
   const info = { id: draft.draftId, savedAt: draft.savedAt }
   const head = draft.headCrtime ?? null
   const base = { source: scenario.source, headCrtime: head, propertyRev: draft.propertyRev ?? null, readOnly: writeMode(me), seq: 0, draft: info }
-  const fromDraft = (over) => ({ savedAt: draft.savedAt, baseCrtime: draft.base?.crtime ?? null, target: draft.target ?? null, stale: false, gone: false, ...over })
+  const target = draft.target ? { process: draft.target.process ?? draft.process, model: draft.target.model, name: draft.target.name } : null // 초안 키의 공정
+  const fromDraft = (over) => ({ savedAt: draft.savedAt, baseCrtime: draft.base?.crtime ?? null, target, stale: false, gone: false, ...over })
   if (!scenario.source) {
     const { working: made, skeleton } = newScenarioOf({ process: draft.process, model: draft.model, name: draft.name, type: scenario.property?.Type, description: scenario.header?.description, timeoutLimit: scenario.header?.timeoutLimit })
     return {

@@ -73,6 +73,7 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
   const requestId = ref(null)
   const sentTarget = ref(null) // 배포를 보낸 대상 { process, model, name } — 결과 화면·새 판 다시 열기
   const restored = ref(false) // 앞서 끝난 결과 모름을 다시 연 것이고 지금 작업본은 그때 보낸 내용이 아니다(새로고침 뒤·그 뒤에 고침)
+  const restoredOther = ref(false) // 되살린 결과 모름의 대상이 지금 세션의 대상이 아니다 — [다시 배포]는 그곳이 아니라 지금 세션의 대상으로 저장 창을 연다
   const result = ref(null) // { result, crtime, partialFailed } | { found: 'none', noRecord? }
   const error = ref(null) // fail 화면: { kind: 'notSent' | 'rejected', code, cause, upstreamText }
   const notice = ref(null) // { key, params, tone: 'error' | 'info' }
@@ -92,7 +93,19 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
     const sk = editor.skeleton
     return { model: s?.model ?? sk?.model ?? '', name: s?.name ?? sk?.name ?? '' }
   }
+  // 초안이 저장하려던 곳: 이 세션에서 초안을 저장했으면 그 대상, 초안에서 이어 열었으면 그 초안의 대상(같은 공정일 때만)
+  function draftTarget() {
+    const s = session()
+    const t = s?.draft?.target ?? s?.fromDraft?.target
+    return t && t.process === process() && t.model && t.name ? { model: t.model, name: t.name } : null
+  }
+  // 이 세션의 저장 대상: 닫을 때 남긴 대상(같은 저장 기준점일 때 — 다른 시나리오를 열었으면 버린다) → 초안의 대상 → 열린 시나리오
+  function ownTarget() {
+    if (kept && kept.base === session()?.saveBase) return { model: kept.model, name: kept.name }
+    return draftTarget() ?? defaultTarget()
+  }
   const fullTarget = () => ({ process: process(), model: target.value.model, name: target.value.name })
+  const idOf = (t) => `${t.process}-${t.model}-${t.name}`
   // 멀티파트 본문 — 초안에서 이어 연 세션은 서버 초안에만 있는 그림을 다시 올리지 않는다(editor/request uploadsToSend)
   const formOf = (meta, used) => buildFormData(meta, edit.uploads, uploadsToSend(used, edit.uploads, edit.draftId))
   const sameScenario = computed(() => { const s = source(); return !!s && target.value.model === s.model && target.value.name === s.name })
@@ -149,7 +162,7 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
     seq++
     check.value = null; checkedFor.value = null; checking.value = false; checkError.value = null
     confirm.value = { overwrite: false, force: false }
-    requestId.value = null; sentTarget.value = null; restored.value = false
+    requestId.value = null; sentTarget.value = null; restored.value = false; restoredOther.value = false
     result.value = null; error.value = null; notice.value = null; busy.value = null
   }
 
@@ -165,15 +178,19 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
     resetForm()
     loadNameRule()
     const pend = pendingStore.read()
+    const own = ownTarget()
     if (pend) {
+      const t = pend.target
       requestId.value = pend.requestId
-      sentTarget.value = pend.target
+      sentTarget.value = t
       restored.value = !sent || sent !== s.working
-      target.value = pend.target.process === process() ? { model: pend.target.model, name: pend.target.name } : defaultTarget()
+      // 되살렸는데 그 대상이 지금 세션의 대상이 아니면(새로고침 뒤 다른 시나리오를 엶 등) 지금 작업본을 그곳으로 보내지 않는다 — 대상은 지금 세션의 것
+      restoredOther.value = restored.value && !(t.process === process() && t.model === own.model && t.name === own.name)
+      target.value = !restoredOther.value && t.process === process() ? { model: t.model, name: t.name } : own
       stage.value = 'unknown'
       return true
     }
-    target.value = kept && kept.base === s.saveBase ? { model: kept.model, name: kept.name } : defaultTarget() // 다른 시나리오를 열었으면 남긴 대상은 버린다
+    target.value = own
     stage.value = 'form'
     runCheck()
     return true
@@ -320,7 +337,7 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
     try {
       const { meta, uploadsUsed } = buildMeta(s, { target: fullTarget() })
       const data = (await api.saveDraft(formOf(meta, uploadsUsed))).data.data
-      edit.markDraft(data)
+      edit.markDraft({ ...data, target: fullTarget() })
       result.value = { savedAt: data.savedAt }
       stage.value = 'draft'
     } catch (e) {
@@ -330,14 +347,15 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
     }
   }
 
-  // 저장 창 밖에서 지금 작업본을 제 대상(열린 시나리오 — 새 시나리오는 만든 공정·모델·이름)의 초안으로 저장한다
-  // (새 시나리오 창의 [초안 저장하고 만들기]·[초안 저장하고 열기]). 저장 창이 열려 있거나 쓸 수 없는 세션이면 하지 않는다. 실패하면 던진다.
+  // 저장 창 밖에서 지금 작업본을 제 대상(저장 창을 열면 기본이 될 대상 — 초안이 저장하려던 곳, 없으면 열린 시나리오·새 시나리오는 만든 공정·모델·이름)의
+  // 초안으로 저장한다(새 시나리오 창의 [초안 저장하고 만들기]·[초안 저장하고 열기]). 저장 창이 열려 있거나 쓸 수 없는 세션이면 하지 않는다. 실패하면 던진다.
   async function draftCurrent() {
     const s = session()
     if (stage.value || !s?.working || s.readOnly) throw new Error('draft unavailable')
-    const { meta, uploadsUsed } = buildMeta(s, { target: { process: process(), ...defaultTarget() } })
+    const tg = { process: process(), ...ownTarget() }
+    const { meta, uploadsUsed } = buildMeta(s, { target: tg })
     const data = (await api.saveDraft(formOf(meta, uploadsUsed))).data.data
-    edit.markDraft(data)
+    edit.markDraft({ ...data, target: tg })
     return data
   }
 
@@ -361,11 +379,20 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
   }
 
   // [다시 배포]: 옛 requestId 를 잊고 확인 단계로(검사가 이 대상의 것이 아니면 저장 창에서 다시 검사). 보낼 때 새 requestId.
+  // 되살린 결과 모름의 대상이 지금 세션의 대상이 아니면 그곳으로 보내지 않는다 — 지금 세션의 대상으로 저장 창을 열고 그 사실을 알린다.
   function redeploy() {
     if (busy.value) return
+    const other = restoredOther.value ? sentTarget.value : null
     setPending(null)
-    requestId.value = null; result.value = null; error.value = null; notice.value = null; restored.value = false
+    requestId.value = null; result.value = null; error.value = null; notice.value = null; restored.value = false; restoredOther.value = false
     stage.value = 'form'
+    if (other) {
+      target.value = ownTarget()
+      confirm.value = { overwrite: false, force: false }
+      notice.value = { key: 'SEW_SAVE_REDEPLOY_OWN_TARGET', params: { from: idOf(other), to: idOf(fullTarget()) }, tone: 'info' }
+      runCheck()
+      return
+    }
     if (checkFresh.value && !deployBlock.value) stage.value = 'confirm'
     else runCheck()
   }
@@ -394,7 +421,7 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
   }
 
   return {
-    stage, target, check, checkedFor, checking, checkError, confirm, requestId, sentTarget, restored, result, error, notice, busy, focusReq, nameRule,
+    stage, target, check, checkedFor, checking, checkError, confirm, requestId, sentTarget, restored, restoredOther, result, error, notice, busy, focusReq, nameRule,
     fieldErrors, checkFresh, visibleBlocks, recreateNoCache, sameScenario, targetKind, changes, eqpCount, enabled, deployBlock, closable, canDraft,
     open, close, setTarget, setOverwrite, setForce, requestFocus, runCheck, toConfirm, back, deploy, saveDraft, draftCurrent, verify, redeploy, finish, jump
   }

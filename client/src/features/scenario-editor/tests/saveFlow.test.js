@@ -435,7 +435,7 @@ describe('saveFlow', () => {
     expect(meta.target).toEqual({ process: 'P', model: 'M', name: 'N' })
     expect(meta.requestId).toBeUndefined()
     expect(flow.stage).toBe('draft')
-    expect(e.session.draft).toEqual({ id: 'd1', savedAt: '2026-11-09T05:23:00.000Z' })
+    expect(e.session.draft).toEqual({ id: 'd1', savedAt: '2026-11-09T05:23:00.000Z', target: { process: 'P', model: 'M', name: 'N' } })
     expect(unsavedChanges(e.session.working, e.session.saveBase)).toEqual(before)
   })
 
@@ -619,6 +619,111 @@ describe('saveFlow', () => {
     expect(api.saveDraft.mock.calls[0][0].get('img:tDraft')).toBe(null)
     expect(e.draftId).toBe('d1')
   })
+  // 초안이 저장하려던 곳(원본과 다른 모델·이름)을 가진 초안을 이어 연다
+  const openDraftWithTarget = (target, over = {}) => {
+    const f = setup()
+    const base = versionOf(30, 30, [imageStep(0), noneStep(1)])
+    f.s.me = { ...f.s.me, canWrite: true }
+    f.e.beginFromDraft({ draftId: 'd1', savedAt: '2026-11-07T05:23:51.000Z', base: { crtime: 30, fileId: 'F30' }, headCrtime: 30, propertyRev: 'r30', target,
+      scenario: { ...base.edited }, imageUrls: {}, process: 'P', model: 'M', name: 'N', ...over }, base)
+    return f
+  }
+  it('초안 이어서 연 세션: 저장 창 기본 대상은 초안이 저장하려던 곳 — 다시 열어도·초안 다시 저장·draftCurrent 도 그곳(원본의 새 판으로 보내지 않는다)', async () => {
+    openDraftWithTarget({ model: 'M2', name: 'COPY' })
+    const flow = useSaveFlow()
+    flow.open(); await flushPromises()
+    expect(flow.target).toEqual({ model: 'M2', name: 'COPY' })
+    expect(api.check.mock.calls[0][0].target).toEqual({ process: 'P', model: 'M2', name: 'COPY' })
+    expect(flow.sameScenario).toBe(false)
+    flow.close() // 입력한 대상을 남기지 않고 닫아도
+    flow.open(); await flushPromises()
+    expect(flow.target).toEqual({ model: 'M2', name: 'COPY' })
+    api.saveDraft.mockReturnValue(ok({ draftId: 'd1', savedAt: '2026-11-09T05:23:00.000Z', revision: 2 }))
+    await flow.saveDraft()
+    expect(metaOf(api.saveDraft.mock.calls[0]).target).toEqual({ process: 'P', model: 'M2', name: 'COPY' })
+    flow.close()
+    await flow.draftCurrent() // 새 시나리오 창의 [초안 저장하고 만들기]
+    expect(metaOf(api.saveDraft.mock.calls[1]).target).toEqual({ process: 'P', model: 'M2', name: 'COPY' })
+  })
+  it('초안의 저장 대상이 다른 공정이면 쓰지 않는다(열린 시나리오가 기본 대상)', async () => {
+    openDraftWithTarget({ model: 'M2', name: 'COPY' }, { process: 'Q' })
+    const flow = useSaveFlow()
+    flow.open(); await flushPromises()
+    expect(flow.target).toEqual({ model: 'M', name: 'N' })
+  })
+  it('이 세션에서 다른 곳으로 초안을 저장했으면 draftCurrent 도 그곳 — 저장해 둔 대상을 말없이 원본으로 덮지 않는다', async () => {
+    const { flow } = setup()
+    flow.open(); await flushPromises()
+    flow.setTarget({ name: 'ELSE' })
+    api.saveDraft.mockReturnValue(ok({ draftId: 'd9', savedAt: '2026-11-09T05:23:00.000Z', revision: 1 }))
+    await flow.saveDraft()
+    expect(flow.stage).toBe('draft')
+    flow.close()
+    await flow.draftCurrent()
+    expect(metaOf(api.saveDraft.mock.calls[1]).target).toEqual({ process: 'P', model: 'M', name: 'ELSE' })
+  })
+
+  // 되살린 결과 모름(새로고침 뒤 등)의 대상이 지금 세션의 대상이 아니면 [다시 배포]가 지금 작업본을 그곳으로 보내지 않는다
+  async function unknownTo(name) {
+    const f = setup(() => clean({ target: { exists: false, eqpCount: 3 } }))
+    const { flow } = f
+    flow.open(); await flushPromises()
+    flow.setTarget({ name })
+    await flow.runCheck()
+    flow.toConfirm()
+    api.deploy.mockImplementationOnce((fd) => fail(504, 'UPSTREAM_TIMEOUT', { requestId: JSON.parse(fd.get('meta')).requestId }))
+    await flow.deploy()
+    expect(flow.stage).toBe('unknown')
+    return f
+  }
+  it('되살린 결과 모름의 대상이 지금 시나리오의 대상이 아니면 [다시 배포]는 그곳으로 보내지 않는다 — 지금 시나리오의 대상으로 저장 창을 열고 그 사실을 알린다', async () => {
+    await unknownTo('NEW_ONE')
+    setActivePinia(createPinia()) // 새로고침 → 시나리오 N 을 엶
+    const again = setup()
+    again.flow.open()
+    expect(again.flow.stage).toBe('unknown')
+    expect(again.flow.restored).toBe(true)
+    expect(again.flow.restoredOther).toBe(true)
+    expect(again.flow.sentTarget).toMatchObject({ name: 'NEW_ONE' })
+    api.verifyDeploy.mockReturnValue(ok({ found: 'none', crtime: null }))
+    await again.flow.verify()
+    api.check.mockClear()
+    again.flow.redeploy()
+    expect(again.flow.stage).toBe('form')
+    expect(again.flow.target).toEqual({ model: 'M', name: 'N' })
+    expect(again.flow.notice).toMatchObject({ key: 'SEW_SAVE_REDEPLOY_OWN_TARGET', params: { from: 'P-M-NEW_ONE', to: 'P-M-N' }, tone: 'info' })
+    expect(sessionStorage.getItem(PENDING_KEY)).toBe(null)
+    await flushPromises()
+    expect(api.check).toHaveBeenCalledTimes(1)
+    expect(api.check.mock.calls[0][0].target).toEqual({ process: 'P', model: 'M', name: 'N' })
+    expect(again.flow.restoredOther).toBe(false)
+  })
+  it('되살린 결과 모름이라도 대상이 지금 시나리오의 대상이면 [다시 배포]는 그 대상 그대로(알림 없음)', async () => {
+    const { flow } = setup()
+    await toUnknown(flow)
+    setActivePinia(createPinia())
+    const again = setup()
+    again.flow.open()
+    expect(again.flow.restored).toBe(true)
+    expect(again.flow.restoredOther).toBe(false)
+    api.verifyDeploy.mockReturnValue(ok({ found: 'none', crtime: null }))
+    await again.flow.verify()
+    again.flow.redeploy()
+    await flushPromises()
+    expect(again.flow.target).toEqual({ model: 'M', name: 'N' })
+    expect(again.flow.notice).toBe(null)
+    expect(api.check.mock.calls.at(-1)[0].target).toEqual({ process: 'P', model: 'M', name: 'N' })
+  })
+  it('같은 화면에서 다른 이름으로 보낸 배포가 결과 모름이고 그 뒤 고쳤으면(되살림) — 닫을 때 남긴 대상이 그곳이라 [다시 배포]도 그곳', async () => {
+    const { flow, e } = await unknownTo('COPY')
+    flow.close() // 결과 모름 뒤 닫으면 대상을 남긴다
+    e.editCell('s1', 'skip', true)
+    flow.open()
+    expect(flow.restored).toBe(true)
+    expect(flow.restoredOther).toBe(false)
+    expect(flow.target).toEqual({ model: 'M', name: 'COPY' })
+  })
+
   it('되돌려 연 세션 → 배포 meta: restoredFrom = 옛 판 crtime, 기준 판 = 옛 판, 연 때의 현재 버전 = 현재 판', async () => {
     const { e } = setup()
     e.beginRestore(versionOf(10, 30, [imageStep(0), noneStep(1)]), versionOf(30, 30, [imageStep(0), noneStep(1), noneStep(2)]))

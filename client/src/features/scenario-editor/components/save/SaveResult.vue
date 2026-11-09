@@ -54,7 +54,7 @@ const showDraft = computed(() => (st.value === 'fail' || st.value === 'unknown')
     </template>
     <template v-else-if="st === 'unknown'">
       <p>{{ t('SEW_SAVE_UNKNOWN_BODY') }}</p>
-      <div v-if="flow.restored" class="se-sv-note">{{ t('SEW_SAVE_UNKNOWN_RESTORED', { id }) }}</div>
+      <div v-if="flow.restored" class="se-sv-note" data-testid="se-save-unknown-restored">{{ t(flow.restoredOther ? 'SEW_SAVE_UNKNOWN_RESTORED_OTHER' : 'SEW_SAVE_UNKNOWN_RESTORED', { id }) }}</div>
     </template>
 
     <div v-if="verifyNote" class="se-sv-note" data-testid="se-save-verify-note">{{ verifyNote }}</div>

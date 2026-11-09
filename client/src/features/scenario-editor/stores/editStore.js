@@ -183,9 +183,9 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     syncFocus(uid) // 앞 판과 같은 uid 면 초점 감시가 울리지 않는다
   }
 
-  // 초안 저장 뒤 — 바에 보일 초안 id·시각. 작업본은 그대로라 저장 전 표시는 남는다.
-  function markDraft({ draftId, savedAt }) {
-    if (session.value) session.value = { ...session.value, draft: { id: draftId, savedAt } }
+  // 초안 저장 뒤 — 바에 보일 초안 id·시각과 그 초안이 저장하려던 곳(target, 저장 창 기본 대상). 작업본은 그대로라 저장 전 표시는 남는다.
+  function markDraft({ draftId, savedAt, target }) {
+    if (session.value) session.value = { ...session.value, draft: target ? { id: draftId, savedAt, target } : { id: draftId, savedAt } }
   }
 
   function clearMoved() {
