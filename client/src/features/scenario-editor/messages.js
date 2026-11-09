@@ -163,7 +163,6 @@ export const MESSAGES = {
   SEW_PERF_TRIGGER_LOCKED: '{name} — 새로 고를 수 없음',
   SEW_PERF_TRIGGER_STORED: '{name} — 저장된 값',
   SEW_PERF_TRIGGER_KEPT: '{name} 는 새로 고를 수 없는 트리거입니다. 저장된 값이라 그대로 둘 수 있습니다.',
-  SEW_PERF_TRIGGER_INFO_PH: '무엇이 시나리오를 시작하는지. 예: 알람 E1234',
   SEW_PERF_EFFECTS_HELP: '효과를 하나 이상 체크하거나 사고 유형을 고르세요',
   SEW_PERF_EFFECTS_NOT_USED: '등급이 NotUsed 라 넣지 않아도 됩니다',
   SEW_PERF_KEPT_LOSS: '설비 성능 Loss {value}는 이 창에서 고치지 않고 그대로 둡니다.',
@@ -1140,7 +1139,7 @@ export const LABELS = {
   // 성과 입력 창의 짧은 이름(목업 2026-11-08-performance-v1). 등급 이름·풀이는 LABELS.prop.grades·gradeHints.
   perf: {
     title: '성과 입력', review: '심의', perf: '성과', grade: '등급', comment: '심사 의견', supervisor: '심의자', required: '필수', commentRequired: '필수 · 5자 이상',
-    kind: '효과 유형', group: '그룹', desc: '시나리오 설명', trigger: '트리거', triggerInfo: '트리거 정보',
+    kind: '효과 유형', group: '그룹', desc: '시나리오 설명', trigger: '트리거',
     effects: '효과와 사고 예방', accident: '사고 유형', accidentInfo: '사고 정보', add: '부가 효과', devs: '원개발자', devName: '이름 · 아이디', devPct: '기여도',
     sameTitle: '같은 이름의 다른 모델에도 쓰기', done: '완료', notDone: '미완료', none: '없음',
     close: '닫기', save: '성과 저장', saving: '저장하는 중…', keep: '계속 고치기', drop: '버리고 닫기', search: '원개발자 찾기',
@@ -1163,7 +1162,7 @@ export const LABELS = {
     },
     // 바뀐 칸·함께 쓸 칸·닫기 확인의 칸 이름
     fields: {
-      PerformType: '효과 유형', Group: '그룹', Grade: '등급', SupervisorComment: '심사 의견', ScenarioDescription: '시나리오 설명', Trigger: '트리거', TriggerInfo: '트리거 정보',
+      PerformType: '효과 유형', Group: '그룹', Grade: '등급', SupervisorComment: '심사 의견', ScenarioDescription: '시나리오 설명', Trigger: '트리거',
       ManWorkLoss: '공수절감', EqpStopLoss: '정지LOSS 개선', WaferLoss: '연 생산 LOSS 감소', InvestCostLoss: '연 투자비 절감', AccidentType: '사고 유형', AccidentInfo: '사고 정보',
       AdditionalEffect: '부가 효과', CitizenDeveloper: '원개발자'
     },

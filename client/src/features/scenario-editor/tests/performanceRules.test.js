@@ -47,7 +47,7 @@ describe('작업본(formOf·payloadOf·sentFields)', () => {
     expect(f.type).toBe(1)
     expect(f.eff).toEqual({ ManWorkLoss: { on: true, v: '5400' }, EqpStopLoss: { on: true, v: '18000' }, WaferLoss: { on: false, v: '' }, InvestCostLoss: { on: true, v: '120' } })
     expect(f.devs).toEqual([{ id: 'minsu.park', name: '박민수', sdwt: '', p: '60' }, { id: 'seoyeon.lee', name: '이서연', sdwt: '', p: '40' }])
-    expect(f.trigInfo).toBe('E1234')
+    expect(f).not.toHaveProperty('trigInfo') // 트리거 정보는 웹에서 받지 않는다(42 Q-122 결정)
   })
   it('효과 유형 None 이면 Active 를 골라 둔 채 열고(사내 :270), 저장하면 Active(1)로 간다', () => {
     const v = { ...VIEW, performType: 0 }
@@ -57,10 +57,10 @@ describe('작업본(formOf·payloadOf·sentFields)', () => {
   })
   it('성과가 없으면(null) 빈 값으로 읽는다 — 화면 문구를 값으로 쓰지 않는다(SE-032)', () => {
     const f = formOf(null)
-    expect(f).toMatchObject({ type: 1, group: '', grade: 0, comment: '', trig: 0, trigInfo: '', acc: 0, accInfo: '', devs: [] })
-    expect(savedFields(null)).toMatchObject({ PerformType: 0, Grade: 0, Trigger: 0, TriggerInfo: null, ManWorkLoss: 0 })
+    expect(f).toMatchObject({ type: 1, group: '', grade: 0, comment: '', trig: 0, acc: 0, accInfo: '', devs: [] })
+    expect(savedFields(null)).toMatchObject({ PerformType: 0, Grade: 0, Trigger: 0, ManWorkLoss: 0 })
   })
-  it('체크를 끈 효과는 0, 바꾼 칸만 보낸다(트리거 정보 null 과 빈 글은 같다)', () => {
+  it('체크를 끈 효과는 0, 바꾼 칸만 보낸다', () => {
     const saved = savedFields(VIEW)
     const f = formOf(VIEW)
     expect(sentFields(f, saved)).toEqual({})
@@ -68,9 +68,17 @@ describe('작업본(formOf·payloadOf·sentFields)', () => {
     f.grade = 1
     expect(payloadOf(f, saved).InvestCostLoss).toBe(0)
     expect(sentFields(f, saved)).toEqual({ InvestCostLoss: 0, Grade: 1 })
-    const empty = formOf({ ...VIEW, triggerInfo: null })
-    expect(empty.trigInfo).toBe('')
-    expect(sentFields(empty, savedFields({ ...VIEW, triggerInfo: null }))).toEqual({})
+  })
+  it('트리거 정보는 보내지도 바뀐 것으로 세지도 않는다 — 저장된 값은 그대로 남는다(42 Q-122 결정 2026-11-09)', () => {
+    for (const info of ['E1234', null, '']) {
+      const v = { ...VIEW, triggerInfo: info }
+      const saved = savedFields(v)
+      const f = formOf(v)
+      f.trig = 4
+      expect(payloadOf(f, saved)).not.toHaveProperty('TriggerInfo')
+      expect(sentFields(f, saved)).toEqual({ Trigger: 4 })
+      expect(changesOf(formOf(v), f, saved)).toEqual([{ key: 'Trigger', from: 1, to: 4 }])
+    }
   })
   it('Passive 에서 Active 로 바꾸면 그룹은 빈 값, 이미 Active 인 성과의 남은 그룹은 건드리지 않는다', () => {
     const passive = { ...VIEW, performType: 2, group: 'CVD_PUMP' }

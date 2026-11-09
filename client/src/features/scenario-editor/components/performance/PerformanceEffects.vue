@@ -1,6 +1,6 @@
 <script setup>
 // 성과(목업 renderMain): 효과 유형(Passive 면 그룹)·시나리오 설명·트리거·효과 4개(체크 + 값)·사고 유형/정보·부가 효과.
-// 트리거 이름은 enum 영문 그대로, RV·EqState 는 저장된 값일 때만 고를 수 있다. 사고 정보 값은 Key 이고 화면에서만 문구(DC-139).
+// 트리거는 유형 하나만 고른다(enum 영문 이름 그대로) — 트리거 정보 칸은 두지 않는다(42 Q-122). RV·EqState 는 저장된 값일 때만 고를 수 있다. 사고 정보 값은 Key 이고 화면에서만 문구(DC-139).
 // 설비 성능 Loss(EqpPerfornmanceLoss)는 칸이 없고 그대로 둔다(SE-031). 효과 단위는 사내 기여 창 문구(effectUnit).
 import { computed, inject, nextTick } from 'vue'
 import { t, LABELS } from '../../messages'
@@ -87,10 +87,6 @@ async function inputGroup(e) {
           <option v-if="f.trig === 0" :value="0">{{ t('SEW_PERF_PICK') }}</option>
           <option v-for="o in triggerOptions" :key="o.v" :value="o.v" :disabled="o.disabled">{{ o.text }}</option>
         </select>
-      </div>
-      <div>
-        <label class="se-pf-lbl" for="se-pf-trig-info">{{ L.triggerInfo }}</label>
-        <input id="se-pf-trig-info" class="se-pp-inp" :value="f.trigInfo" :placeholder="t('SEW_PERF_TRIGGER_INFO_PH')" data-pf="trigInfo" @input="ctx.setField('trigInfo', $event.target.value)">
       </div>
     </div>
     <div v-if="ctx.hasErr('trigger') || triggerKept" class="-mt-1.5 mb-2">

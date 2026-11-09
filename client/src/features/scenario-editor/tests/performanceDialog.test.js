@@ -187,6 +187,21 @@ describe('성과 입력 창(PerformanceDialog)', () => {
     expect(dlgText()).toContain(t('SEW_PERF_TRIGGER_KEPT', { name: 'RV' }))
   })
 
+  it('트리거는 유형 하나만 고른다 — 트리거 정보 칸이 없고, 저장하면 트리거만 보내 저장된 트리거 정보는 그대로 남는다(42 Q-122 결정)', async () => {
+    setup()
+    await flushPromises()
+    expect(pf('trigInfo').exists()).toBe(false)
+    expect(q('#se-pf-trig-info').exists()).toBe(false)
+    expect(dlgText()).not.toContain('트리거 정보')
+    expect(dlgText()).not.toContain('E1234')
+    await pf('trigger').setValue('4')
+    expect(footText()).toContain(t('SEW_PERF_CHANGED_N', { n: 1 }))
+    api.savePerformance.mockReturnValue(ok({ performance: { ...PERF, trigger: 4, triggerName: 'Time' }, applied: [] }))
+    await saveBtn().trigger('click')
+    await flushPromises()
+    expect(api.savePerformance.mock.calls[0][3]).toEqual({ fields: { Trigger: 4 }, alsoModels: [] })
+  })
+
   it('원개발자 찾기(2자 이상): 이름·아이디·공정, 이미 넣은 사람은 꺼짐 — 고르면 기여도 빈칸에 초점, 합계 110 → DEV_TOTAL', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     setup()

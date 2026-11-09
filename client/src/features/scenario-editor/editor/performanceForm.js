@@ -1,9 +1,10 @@
 // 성과 입력 창의 작업본(form) ↔ 서버 값(설계 §7). 순수 함수만.
 // 서버 값 = performanceFromBson 모양(camelCase), 보내는 값 = BSON 키(사내 C# 이름). EqpPerfornmanceLoss 는 칸이 없고 보내지 않는다.
+// 트리거는 유형 하나만 고르고 트리거 정보(TriggerInfo)는 받지도 보내지도 않는다 — 저장된 값은 그대로 남는다(42 Q-122 결정 2026-11-09).
 import { EFFECT_KEYS, isIntText } from './performanceRules'
 
 // 창이 보낼 수 있는 성과 칸(서버 performanceService INPUT_KEYS). 순서 = 화면에 보이는 바뀐 칸 순서.
-const FIELD_KEYS = ['PerformType', 'Group', 'Grade', 'SupervisorComment', 'ScenarioDescription', 'Trigger', 'TriggerInfo',
+const FIELD_KEYS = ['PerformType', 'Group', 'Grade', 'SupervisorComment', 'ScenarioDescription', 'Trigger',
   ...EFFECT_KEYS, 'AccidentType', 'AccidentInfo', 'AdditionalEffect']
 
 // 저장된 성과 → BSON 키 값(완료 판정·바뀐 칸 비교). 성과가 없거나 칸이 없으면 서버가 읽은 대로 빈 값(SE-032 — 화면 문구를 값으로 쓰지 않는다).
@@ -11,7 +12,7 @@ export function savedFields(view) {
   const v = view ?? {}
   return {
     PerformType: v.performType ?? 0, Group: v.group ?? '', Grade: v.grade ?? 0, SupervisorComment: v.supervisorComment ?? '',
-    ScenarioDescription: v.scenarioDescription ?? '', Trigger: v.trigger ?? 0, TriggerInfo: v.triggerInfo ?? null,
+    ScenarioDescription: v.scenarioDescription ?? '', Trigger: v.trigger ?? 0,
     ManWorkLoss: v.manWorkLoss ?? 0, EqpStopLoss: v.eqpStopLoss ?? 0, WaferLoss: v.waferLoss ?? 0, InvestCostLoss: v.investCostLoss ?? 0,
     AccidentType: v.accidentType ?? 0, AccidentInfo: v.accidentInfo ?? '', AdditionalEffect: v.additionalEffect ?? ''
   }
@@ -28,7 +29,6 @@ export function formOf(view) {
     comment: s.SupervisorComment,
     desc: s.ScenarioDescription,
     trig: s.Trigger,
-    trigInfo: s.TriggerInfo ?? '',
     eff: Object.fromEntries(EFFECT_KEYS.map((k) => [k, eff(s[k])])),
     acc: s.AccidentType,
     accInfo: s.AccidentInfo,
@@ -50,7 +50,6 @@ export function payloadOf(f, saved) {
     SupervisorComment: f.comment,
     ScenarioDescription: f.desc,
     Trigger: f.trig,
-    TriggerInfo: f.trigInfo,
     AccidentType: f.acc,
     AccidentInfo: f.accInfo,
     AdditionalEffect: f.add
@@ -62,7 +61,7 @@ export function payloadOf(f, saved) {
 const norm = (v) => (v === null || v === undefined ? '' : v)
 const differs = (a, b) => String(norm(a)) !== String(norm(b))
 
-// 서버에 보낼 칸 = 저장된 값과 다른 칸(설계 §7 "바꾼 필드만 $set"). 트리거 정보 null 과 빈 글은 같다.
+// 서버에 보낼 칸 = 저장된 값과 다른 칸(설계 §7 "바꾼 필드만 $set")
 export function sentFields(f, saved) {
   const p = payloadOf(f, saved)
   return Object.fromEntries(FIELD_KEYS.filter((k) => differs(p[k], saved[k])).map((k) => [k, p[k]]))
