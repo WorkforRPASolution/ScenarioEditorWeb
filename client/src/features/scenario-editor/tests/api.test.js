@@ -42,6 +42,17 @@ describe('scenarioEditorApi', () => {
     await api.saveReview('P 1', 'M', 'N/2', { grade: 1, comment: '의견입니다' })
     expect(put).toHaveBeenCalledWith('/scenario-editor/scenarios/P%201/M/N%2F2/review', { grade: 1, comment: '의견입니다' })
   })
+  it('성과 저장은 PUT …/performance 본문 그대로, 같은 이름 모델·원개발자 찾기·등록 여부는 GET', async () => {
+    const body = { fields: { Grade: 1 }, citizenDevelopers: [{ KnoxId: 'a', Contribution: 10 }], alsoModels: ['M2'] }
+    await api.savePerformance('P 1', 'M', 'N/2', body)
+    expect(put).toHaveBeenCalledWith('/scenario-editor/scenarios/P%201/M/N%2F2/performance', body)
+    await api.sameName('P 1', 'N/2')
+    expect(get).toHaveBeenLastCalledWith('/scenario-editor/scenarios/P%201/same-name/N%2F2')
+    await api.searchUsers('박민')
+    expect(get).toHaveBeenLastCalledWith('/scenario-editor/users', { params: { q: '박민' } })
+    await api.registeredUsers(['a', 'b'])
+    expect(get).toHaveBeenLastCalledWith('/scenario-editor/users', { params: { ids: 'a,b' } })
+  })
   it('이미지 URL 은 API 주소를 붙이고, 개발 사용자가 있으면 ?seUser=', () => {
     expect(imageUrl('/scenario-editor/a/images/s0-bi')).toBe('http://x:3100/api/scenario-editor/a/images/s0-bi')
     localStorage.setItem('se-dev-user', 'sew_cvd')

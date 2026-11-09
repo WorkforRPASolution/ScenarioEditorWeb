@@ -23,7 +23,7 @@ import './property/property.css'
 defineOptions({ name: 'PropertyDialog' })
 // focus = { field, n } — 저장 창의 운영 속성 막힌 줄이 준다(editor/propertyRules propertyFieldOf). 받으면 수정으로 열고 그 칸에 초점.
 const props = defineProps({ modelValue: Boolean, focus: { type: Object, default: null } })
-// open-performance = [성과 입력](관리 등급 1·2). 창은 부모가 연다(Task 5).
+// open-performance = [성과 입력](관리 등급 1·2). 창(PerformanceDialog)은 부모가 열고, 닫으면 focusPerformance() 로 초점을 [성과 입력]에 돌려준다.
 const emit = defineEmits(['update:modelValue', 'open-performance'])
 const store = useEditorStore()
 const edit = useEditStore()
@@ -114,6 +114,8 @@ async function goFocus(field) {
   if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest' })
   el.focus()
 }
+function focusPerformance() { rootEl.value?.querySelector('[data-pfield="performance"]')?.focus() }
+defineExpose({ focusPerformance })
 // 닫기: 적용하지 않은 운영 속성(수정 중 바뀐 칸)이나 저장하지 않은 심의 글이 있으면 바로 닫지 않고 묻는다. ✕·바깥 누르기 같은 길.
 // 묻는 동안 Esc 는 [계속 고치기](EditDialogs 의 확인 창과 같다). 고친 것이 없으면 바로 닫는다.
 const reviewDirty = ref(false)

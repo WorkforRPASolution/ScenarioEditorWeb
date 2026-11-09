@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, nextTick, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
 import { useEditStore } from '../stores/editStore'
 import { useSaveFlow } from '../stores/saveFlow'
@@ -7,6 +7,7 @@ import { t, LABELS, noteMessage } from '../messages'
 import { barFieldErrors } from '../editor/fieldRules'
 import { formatCrtime, scenarioTypeLabel, enabledLabel } from '../format'
 import PropertyDialog from './PropertyDialog.vue'
+import PerformanceDialog from './PerformanceDialog.vue'
 import DataCheckDialog from './DataCheckDialog.vue'
 import SaveDialog from './SaveDialog.vue'
 
@@ -22,6 +23,10 @@ function openProperty(field) {
   propertyFocus.value = field ? { field, n: (propertyFocus.value?.n ?? 0) + 1 } : null
   showProperty.value = true
 }
+// 성과 입력 창: 운영 속성 창의 [성과 입력]으로 열고, 닫으면 초점을 [성과 입력]으로 돌린다
+const propertyEl = ref(null)
+const showPerformance = ref(false)
+watch(showPerformance, (open) => { if (!open) nextTick(() => propertyEl.value?.focusPerformance()) })
 const showDataCheck = ref(false)
 const sk = computed(() => store.skeleton)
 // 켜짐·유형 표시: 운영 속성 창에서 [적용]한 작업본 값을 따른다(해석하지 못한 운영 속성은 표시하지 않는다)
@@ -149,7 +154,8 @@ const btn = 'h-8 px-3 rounded-lg text-sm'
       <span v-for="(n, i) in scenarioNotes" :key="i" :class="n.level === 'warning' ? 'text-amber-700 dark:text-amber-300' : 'text-gray-600 dark:text-gray-300'">
         {{ n.level === 'warning' ? '⚠' : 'ⓘ' }} {{ noteMessage(n) }}</span>
     </div>
-    <PropertyDialog v-model="showProperty" :focus="propertyFocus" />
+    <PropertyDialog ref="propertyEl" v-model="showProperty" :focus="propertyFocus" @open-performance="showPerformance = true" />
+    <PerformanceDialog v-model="showPerformance" />
     <DataCheckDialog v-model="showDataCheck" />
     <SaveDialog @bar="focusBar" @property="openProperty" />
   </div>

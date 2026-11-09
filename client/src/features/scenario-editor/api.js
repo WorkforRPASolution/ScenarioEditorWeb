@@ -26,7 +26,14 @@ export const scenarioEditorApi = {
   finishDeploy: (requestId) => api.post(`/scenario-editor/deploy/${enc(requestId)}/finish`, null, { timeout: OPEN_TIMEOUT_MS }),
   nameRule: () => api.get('/scenario-editor/name-rule'),
   // 심의 저장(운영 속성 창, 관리 등급 1·2): 본문 { grade, comment } → { performance }(서버가 다시 읽은 값)
-  saveReview: (p, m, n, body) => api.put(`/scenario-editor/scenarios/${enc(p)}/${enc(m)}/${enc(n)}/review`, body)
+  saveReview: (p, m, n, body) => api.put(`/scenario-editor/scenarios/${enc(p)}/${enc(m)}/${enc(n)}/review`, body),
+  // 성과 저장(성과 입력 창, 관리 등급 1·2): 본문 { fields, citizenDevelopers?, alsoModels } → { performance, applied }
+  savePerformance: (p, m, n, body) => api.put(`/scenario-editor/scenarios/${enc(p)}/${enc(m)}/${enc(n)}/performance`, body),
+  // 같은 공정·같은 이름의 모델 이름(공정 권한 안, 자기 모델 포함)
+  sameName: (p, n) => api.get(`/scenario-editor/scenarios/${enc(p)}/same-name/${enc(n)}`),
+  // 원개발자 찾기(2자 이상) → [{ singleid, name, process }], 등록 여부(아이디 목록) → 등록된 사람만 같은 모양
+  searchUsers: (q) => api.get('/scenario-editor/users', { params: { q } }),
+  registeredUsers: (ids) => api.get('/scenario-editor/users', { params: { ids: ids.join(',') } })
 }
 
 export function readDevUser() {

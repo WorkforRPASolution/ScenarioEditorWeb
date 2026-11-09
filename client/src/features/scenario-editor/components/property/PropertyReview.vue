@@ -3,26 +3,30 @@
 // 등급·의견은 관리 등급 1·2(Administrator·Conductor)만 [심의 고치기] → [심의 저장]으로 바로 쓴다 — 작업본·배포와 상관없다(설계 §3·§7).
 // WRITE·현재 버전·운영 속성 [수정]은 보지 않는다(서버 writePolicy reviewDenial 과 같다). 고치는 상태도 운영 속성 수정과 따로다 —
 // 운영 속성 [적용]·[취소]가 저장하지 않은 심의 글을 지우지 않는다. 새 시나리오(저장 전)는 등급 칸을 끈다(40 §2.6).
-// 저장하지 않은 심의 글이 있으면 dirty 로 알린다(창 닫기 확인). [성과 입력]은 부모에 알리기만 한다(창은 Task 5).
+// 저장하지 않은 심의 글이 있으면 dirty 로 알린다(창 닫기 확인). [성과 입력]은 부모에 알리기만 한다(창은 PerformanceDialog — ScenarioBar 가 연다).
+// "성과 완료/미완료" 칩은 성과 입력 창과 같은 완료 판정(editor/performanceRules isPerformanceComplete, SE-034)이다.
 import { ref, computed, watch } from 'vue'
 import { useEditorStore } from '../../stores/editorStore'
 import { useEditStore } from '../../stores/editStore'
 import { scenarioEditorApi as api } from '../../api'
 import { t, LABELS, errorMessage } from '../../messages'
 import { human } from '../../editor/propertyView'
+import { isReviewer } from '../../editor/permissions'
+import { isPerformanceComplete } from '../../editor/performanceRules'
+import { savedFields } from '../../editor/performanceForm'
 
 defineOptions({ name: 'PropertyReview' })
 const emit = defineEmits(['open-performance', 'dirty'])
 const store = useEditorStore()
 const edit = useEditStore()
 const P = LABELS.prop
-const REVIEWER_LEVELS = [1, 2] // 서버 writePolicy REVIEWER_LEVELS(관리 등급 Unlimited·Conductor)
 const NOT_USED = 6
 
 const perf = computed(() => store.skeleton?.performance ?? null)
 const source = computed(() => edit.session?.source ?? null)
 const fresh = computed(() => !!edit.session?.working && !source.value)
-const reviewer = computed(() => REVIEWER_LEVELS.includes(store.me?.authorityManager))
+const reviewer = computed(() => isReviewer(store.me))
+const perfDone = computed(() => isPerformanceComplete(savedFields(perf.value)))
 const canReview = computed(() => reviewer.value && !!source.value)
 
 const savedGrade = computed(() => perf.value?.grade ?? 0)
@@ -132,7 +136,8 @@ const metrics = computed(() => {
       </dl>
       <div v-if="perf?.additionalEffect" class="se-pp-who mt-1.5">{{ t('SEW_PROP_ADDITIONAL', { text: perf.additionalEffect }) }}</div>
       <div class="se-pp-perf-action">
-        <button v-if="reviewer && source" type="button" class="se-pp-btn-line" data-testid="se-prop-perf-open" @click="emit('open-performance')">{{ P.perfOpen }}</button>
+        <span v-if="source" class="se-pp-chip" :class="perfDone ? 'ok' : 'am'" data-testid="se-prop-perf-done"><i />{{ t(perfDone ? 'SEW_PROP_PERF_COMPLETE' : 'SEW_PROP_PERF_INCOMPLETE') }}</span>
+        <button v-if="reviewer && source" type="button" class="se-pp-btn-line" data-pfield="performance" data-testid="se-prop-perf-open" @click="emit('open-performance')">{{ P.perfOpen }}</button>
         <span v-else class="se-pp-lock" data-testid="se-prop-perf-lock">{{ reviewer ? t('SEW_PROP_PERF_FRESH') : t('SEW_PROP_PERF_LOCK') }}</span>
       </div>
     </div>
