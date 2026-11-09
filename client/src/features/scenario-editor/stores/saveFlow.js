@@ -330,7 +330,7 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
       }
     } else notice.value = { key: 'SEW_SAVE_NOT_REBASED', tone: 'info' }
     sent = null
-    restored.value = false
+    restored.value = false; restoredOther.value = false
     stage.value = r.result === 'partial' ? 'partial' : 'ok'
   }
 
