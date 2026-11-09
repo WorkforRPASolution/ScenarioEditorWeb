@@ -659,6 +659,31 @@ describe('deployService.verify — 결과 모름 확인', () => {
     expect(s.records.get(RID)).toEqual(before)
     expect(s.calls.finish).toEqual([])
   })
+  // 설계 §6.1: 배포가 성공하면 그 대상의 초안을 지운다 — 바로 성공한 배포(deploy)와 같게 확인으로 알게 된 성공도
+  it('확인으로 내 판을 찾으면 배포 성공처럼 그 사용자 초안(기준 키)을 지운다 — 못 찾으면 지우지 않는다', async () => {
+    const s = await unknownCase()
+    expect(s.calls.delDraft).toEqual([]) // 결과 모름이면 deploy 는 지우지 않았다
+    expect((await s.svc.verify(user, RID)).found).toBe('none')
+    expect(s.calls.delDraft).toEqual([])
+    s.redis.set(`N.${NEW}`, s.calls.sent[0].Body)
+    expect((await s.svc.verify(user, RID)).result).toBe('ok')
+    expect(s.calls.delDraft).toEqual(['sew_x|P|M|N'])
+    expect(s.calls.delImages).toEqual([['g-M-N']])
+  })
+  it('다른 이름으로 보낸 결과 모름을 확인으로 찾으면 기준 키·대상 키 초안을 모두 지운다 — 마무리가 실패해도(partial, 설비에는 갔다)', async () => {
+    const s = setup({ streamError: seError(504, 'UPSTREAM_TIMEOUT', 'x'), finish: 'throw' })
+    await fail(s.svc.deploy(user, s.meta({ target: { process: 'P', model: 'M', name: 'N2' } }), new Map()))
+    expect(s.calls.delDraft).toEqual([])
+    s.applySent()
+    expect(await s.svc.verify(user, RID)).toMatchObject({ found: 'mine', result: 'partial' })
+    expect(s.calls.delDraft).toEqual(['sew_x|P|M|N', 'sew_x|P|M|N2'])
+  })
+  it('확인의 초안 지우기가 실패해도 결과에 영향 없음(로그만)', async () => {
+    const s = await unknownCase({ deleteDraftFails: true })
+    s.redis.set(`N.${NEW}`, s.calls.sent[0].Body)
+    expect(await s.svc.verify(user, RID)).toEqual({ found: 'mine', crtime: NEW, result: 'ok', partialFailed: [] })
+    expect(s.logs.some(([lv, m]) => lv === 'warn' && m.includes('초안을 지우지 못했습니다'))).toBe(true)
+  })
   it('내 줄이 이미 목록에 있으면 다시 넣지 않는다', async () => {
     const owners = [...propertyDoc.Owners, LINE, 'lee@2026-11-07 11:00:00']
     const s = await unknownCase()
@@ -701,6 +726,16 @@ describe('deployService.finish — 마무리 다시 쓰기', () => {
     expect(s.calls.finish).toHaveLength(1)
     expect(await s.svc.finish(user, RID)).toEqual({ result: 'ok', crtime: NEW, partialFailed: [] })
     expect(s.calls.finish).toHaveLength(1)
+  })
+  it('다시 쓰기로 마무리되면(ok) 그 사용자 초안(기준 키·다른 이름이면 대상 키)을 지운다 — 0건(partial 그대로)이면 지우지 않는다', async () => {
+    const s = setup({ finish: 'zero' })
+    await s.svc.deploy(user, s.meta({ target: { process: 'P', model: 'M', name: 'N2' } }), new Map())
+    s.calls.delDraft.length = 0
+    expect((await s.svc.finish(user, RID)).result).toBe('partial')
+    expect(s.calls.delDraft).toEqual([])
+    s.repoOk()
+    expect((await s.svc.finish(user, RID)).result).toBe('ok')
+    expect(s.calls.delDraft).toEqual(['sew_x|P|M|N', 'sew_x|P|M|N2'])
   })
   it('partial 이 아닌 기록(unknown)은 아무것도 쓰지 않고 지금 결과를 돌려준다', async () => {
     const s = await unknownCase()

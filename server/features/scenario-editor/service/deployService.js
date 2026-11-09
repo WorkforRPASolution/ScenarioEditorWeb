@@ -218,8 +218,7 @@ function createDeployService({ check, opener, web, repo, hash, scopes, interface
     const partialFailed = finished ? [] : ['finish']
 
     // 그 뒤는 결과에 영향 없음(로그만): 내 초안(기준 키, 새 이름이면 대상 키도)과 기록 마무리
-    await dropDraft(user.singleid, draftKey.process, draftKey.model, draftKey.name)
-    if (draftKey.model !== t.model || draftKey.name !== t.name) await dropDraft(user.singleid, t.process, t.model, t.name)
+    await dropDrafts(user.singleid, baseVersion, t)
     await note(requestId, { result, crtime, ...(written ? { finish: written } : {}), steps: finished ? ['setscenario', 'finish'] : ['setscenario'], finishedAt: now() })
     log.info(`deploy ${id} ${requestId} result=${result} crtime=${crtime} bytes=${contentLength}`)
     return { result, crtime, partialFailed, requestId }
@@ -247,6 +246,14 @@ function createDeployService({ check, opener, web, repo, hash, scopes, interface
     } catch (e) {
       log.warn(`deploy: 초안을 지우지 못했습니다 ${process}-${model}-${name} — ${e.message}`)
     }
+  }
+
+  // 배포가 성공(설비에 갔다 — ok·partial)하면 그 사용자의 초안을 지운다(설계 §6.1): 초안 키(초안 저장과 같은 규칙 — 기준 판이 있으면 그 모델·이름,
+  // 없으면 대상)와, 새 이름이면 대상 키도. 바로 성공한 배포·확인(verify)으로 알게 된 성공·다시 쓰기(finish) 모두 같다. 실패는 로그만.
+  async function dropDrafts(owner, source, t) {
+    const key = { model: source ? source.model : t.model, name: source ? source.name : t.name }
+    await dropDraft(owner, t.process, key.model, key.name)
+    if (key.model !== t.model || key.name !== t.name) await dropDraft(owner, t.process, t.model, t.name)
   }
 
   // ---- 결과 모름 확인(§6.3)·마무리 다시 쓰기. 기록은 본인 것만 본다(없거나 남의 것이면 404). ----
@@ -308,6 +315,7 @@ function createDeployService({ check, opener, web, repo, hash, scopes, interface
       if (crtime === null) return { found: 'none', crtime: null }
       const finish = await tryFinish(record)
       const result = finish ? 'ok' : 'partial'
+      await dropDrafts(record.user, record.source, t) // 설비에는 갔다 — 바로 성공한 배포처럼(마무리 실패여도)
       await note(requestId, { result, crtime, ...(finish ? { finish } : {}), steps: finish ? ['setscenario', 'finish'] : ['setscenario'], finishedAt: now() })
       log.info(`deploy ${requestId} verify result=${result} crtime=${crtime}`)
       return { found: 'mine', crtime, result, partialFailed: partialOf(result) }
@@ -322,6 +330,7 @@ function createDeployService({ check, opener, web, repo, hash, scopes, interface
       // partial 응답은 DB 가 답했는데 쓸 문서가 없을 때(0건)뿐이다.
       const done = await rewriteFinish(record)
       if (!done) return { result: 'partial', crtime: record.crtime ?? null, partialFailed: ['finish'] }
+      await dropDrafts(record.user, record.source, record.target) // 배포·확인이 이미 지웠으면 지울 것이 없다(그 사이 옛 서버가 남긴 것까지)
       await note(requestId, { result: 'ok', finish: done, steps: ['setscenario', 'finish'], finishedAt: now() })
       log.info(`deploy ${requestId} finish rewritten`)
       return { result: 'ok', crtime: record.crtime ?? null, partialFailed: [] }

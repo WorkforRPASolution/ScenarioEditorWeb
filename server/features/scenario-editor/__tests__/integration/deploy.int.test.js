@@ -386,12 +386,17 @@ describe('고장 주입 (설계 §6.3·§13.2)', () => {
     const src = await open(SOURCE)
     const t = { ...CVD, name: NAME(mode.toUpperCase()) }
     const meta = metaOf(src, t)
+    // 배포 전에 저장한 초안(키 = 기준 판 ALL_CONDITIONS, 저장할 곳 = t). 결과 모름이면 남고, 확인으로 성공을 알면 지운다(설계 §6.1)
+    const draftCount = () => webDb.collection('SCENARIO_EDITOR_DRAFTS').countDocuments({ owner: 'sew_master', ...SOURCE })
+    const dr = await call('POST', '/drafts', { form: formOf(metaOf(src, t)) })
+    expect(dr.status, show(dr)).toBe(200)
     const started = Date.now()
     const r = await withProxy(mode, () => deploy(meta))
     expect(r.status, show(r)).toBe(504)
     expect(r.body.code).toBe('UPSTREAM_TIMEOUT')
     expect(r.body.details).toEqual({ requestId: meta.requestId })
     expect((await deployRecord(meta.requestId)).result).toBe('unknown')
+    expect(await draftCount()).toBe(1)
     // 판은 저장됐고 마무리(Owners 줄·scCategory)는 아직
     const fields = await redisFields(t)
     expect(fields).toHaveLength(1)
@@ -409,6 +414,7 @@ describe('고장 주입 (설계 §6.3·§13.2)', () => {
     expectDeployLine(doc.property.Owners.at(-1), 'sew_master', started)
     expect(await typeCount(t, 'scCategory', 'long')).toBe(1)
     expect(await deployRecord(meta.requestId)).toMatchObject({ result: 'ok', crtime: v1.body.data.crtime })
+    expect(await draftCount()).toBe(0)
 
     const v2 = await verify(meta.requestId)
     expect(v2.body.data).toEqual(v1.body.data)
