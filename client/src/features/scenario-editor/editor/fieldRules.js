@@ -9,9 +9,10 @@ const CLICKS = [1, 2, 3]
 const TEXT_OPS = [1, 2, 3, 4]
 const NUMBER_OPS = [5, 6, 9, 10]
 const RANGE_OPS = [7, 8]
-// 서버 hasImage 의 브라우저판: 참조 또는 공백을 뺀 길이 4 초과의 base64 literal
+// 서버 hasImage 의 브라우저판: 참조 또는 공백을 뺀 길이가 4 초과이고 4의 배수인 base64 literal(패딩 없는 base64 는 C# 이 못 읽는다)
 const isRef = (b) => !!b && typeof b === 'object' && 'from' in b
-const hasImage = (b) => isRef(b) || (!!b && typeof b === 'object' && typeof b.literal === 'string' && b.literal.replace(/\s+/g, '').length > 4)
+const literalLength = (v) => v.replace(/\s+/g, '').length
+const hasImage = (b) => isRef(b) || (!!b && typeof b === 'object' && typeof b.literal === 'string' && literalLength(b.literal) > 4 && literalLength(b.literal) % 4 === 0)
 
 // 조립이 쓸 키 코드 목록(서버 keyboardCodes 와 같은 고르기)
 function keyboardCodes(k) {

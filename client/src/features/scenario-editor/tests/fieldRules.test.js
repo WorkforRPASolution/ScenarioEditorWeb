@@ -34,6 +34,13 @@ describe('checkStepFields', () => {
     const s = imageStep(); s.images = { ...s.images, train: {} }
     expect(codes(check(s))).toEqual({ train: 'TRAIN_IMAGE_MISSING' })
   })
+  it('찾을 그림 literal: 공백을 뺀 길이 4 초과이고 4의 배수여야 그림이다(서버 hasImage 와 같다 — 패딩 없는 base64 는 C# 이 못 읽는다)', () => {
+    const lit = (literal) => { const s = imageStep(); s.images = { ...s.images, train: { 0: { literal } } }; return codes(check(s)) }
+    expect(lit('iVBORw0KGgo=')).toEqual({})
+    expect(lit('iVBO Rw0K\nGgo=')).toEqual({})
+    expect(lit('iVBORw0KGgo')).toEqual({ train: 'TRAIN_IMAGE_MISSING' })
+    expect(lit('AA==')).toEqual({ train: 'TRAIN_IMAGE_MISSING' })
+  })
   it('정확도: 0.3 낮음, 1.5·숫자 아님 높음', () => {
     const acc = (accept) => codes(check(withCond({ image: { accept, multi: { count: '1', op: 0 } } })))
     expect(acc(0.3)).toEqual({ accept: 'ACCEPT_TOO_LOW' })
