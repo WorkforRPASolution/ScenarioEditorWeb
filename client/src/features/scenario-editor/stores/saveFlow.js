@@ -10,6 +10,7 @@ import { t, errorCode, errorMessage, MESSAGES } from '../messages'
 import { buildMeta, buildFormData } from '../editor/request'
 import { unsavedChanges } from '../editor/diff'
 import { checkName, nameRuleOf } from '../editor/nameRule'
+import { propertyFieldOf } from '../editor/propertyRules'
 import { useEditStore } from './editStore'
 import { useEditorStore } from './editorStore'
 
@@ -19,13 +20,12 @@ export const SV_STEPS = ['SEW_SAVE_STEP_CHECK', 'SEW_SAVE_STEP_BUILD', 'SEW_SAVE
 
 // 검사 줄을 누르면 갈 곳(목업 svjump·svbar): 스텝 / 바 칸(메일 제목·제한 시간) / 운영 속성 창 / 저장 창의 칸(모델·이름)
 const BAR_CODES = { MAIL_TITLE_EMPTY: 'description', MAIL_TITLE_COLON: 'description', TIMEOUT_INVALID: 'timeoutLimit' }
-const PROPERTY_CODES = new Set(['START_DELAY_RANGE', 'RETRY_INTERVAL_RANGE', 'RETRY_CNT_RANGE', 'PRIORITY_VALUE', 'EXECUTING_LEVEL_VALUE',
-  'FOLLOW_NAME_REQUIRED', 'FOLLOW_DESC_SHORT', 'FOLLOW_MISSING', 'FOLLOW_SELF', 'FOLLOW_CYCLE', 'TYPE_UNSET', 'FAP_TYPE_MISMATCH'])
 const FORM_CODES = { NAME_EMPTY: 'name', NAME_TOO_LONG: 'name', NAME_CHARS: 'name', MODEL_MISSING: 'model' }
 export function issueGoal(issue) {
   if (issue?.uid !== undefined && issue?.uid !== null) return { kind: 'step', uid: issue.uid }
   if (BAR_CODES[issue?.code]) return { kind: 'bar', field: BAR_CODES[issue.code] }
-  if (PROPERTY_CODES.has(issue?.code)) return { kind: 'property' }
+  const field = propertyFieldOf(issue) // 운영 속성 창의 그 칸(범위 5종·후속 5종·유형 2종)
+  if (field) return { kind: 'property', field }
   if (FORM_CODES[issue?.code]) return { kind: 'form', field: FORM_CODES[issue.code] }
   return null
 }

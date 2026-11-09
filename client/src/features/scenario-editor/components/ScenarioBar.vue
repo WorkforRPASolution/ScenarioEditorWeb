@@ -16,8 +16,16 @@ const store = useEditorStore()
 const edit = useEditStore()
 const flow = useSaveFlow()
 const showProperty = ref(false)
+// 운영 속성 창 초점({ field, n }) — 저장 창의 운영 속성 막힌 줄이 그 칸을 알려 준다. [운영 속성 전체]는 초점 없이 보기로 연다.
+const propertyFocus = ref(null)
+function openProperty(field) {
+  propertyFocus.value = field ? { field, n: (propertyFocus.value?.n ?? 0) + 1 } : null
+  showProperty.value = true
+}
 const showDataCheck = ref(false)
 const sk = computed(() => store.skeleton)
+// 켜짐·유형 표시: 운영 속성 창에서 [적용]한 작업본 값을 따른다(해석하지 못한 운영 속성은 표시하지 않는다)
+const barProperty = computed(() => (sk.value?.property ? edit.session?.working?.property ?? sk.value.property : null))
 const tw = computed(() => sk.value?.header.targetWindow)
 const twText = computed(() => {
   const w = tw.value
@@ -113,10 +121,10 @@ const btn = 'h-8 px-3 rounded-lg text-sm'
         <span v-if="unsaved && edit.editable" :class="badge" class="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" :title="t('SEW_BAR_UNSAVED_TITLE')" data-testid="se-bar-unsaved">{{ t('SEW_BAR_UNSAVED', { n: unsaved }) }}</span>
         <span :class="badge" class="bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-400" data-testid="se-bar-version">
           {{ sk.version.isCurrent ? t('SEW_UI_CURRENT_VERSION') : t('SEW_UI_OLD_VERSION') }} · {{ formatCrtime(sk.version.crtime) }}</span>
-        <template v-if="sk.property">
-          <span :class="[badge, sk.property.IsEnabled ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400']">
-            {{ enabledLabel(sk.property.IsEnabled) }}</span>
-          <span :class="badge" class="bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">{{ scenarioTypeLabel(sk.property.Type) }}</span>
+        <template v-if="barProperty">
+          <span :class="[badge, barProperty.IsEnabled ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400']">
+            {{ enabledLabel(barProperty.IsEnabled) }}</span>
+          <span :class="badge" class="bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">{{ scenarioTypeLabel(barProperty.Type) }}</span>
         </template>
         <span v-if="sk.performance" :class="badge" class="bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">등급 {{ sk.performance.gradeName }}</span>
         <span v-if="draftTime" :class="badge" class="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" data-testid="se-bar-draft">{{ t('SEW_SAVE_BAR_DRAFT', { time: draftTime }) }}</span>
@@ -133,7 +141,7 @@ const btn = 'h-8 px-3 rounded-lg text-sm'
       <!-- 데이터 점검은 열린 시나리오와 상관없는 내 권한 범위의 점검이라 늘 보인다(0 이면 숨김) -->
       <button v-if="store.dataCheckCount" :class="btn" class="bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200" data-testid="se-data-check" @click="showDataCheck = true">
         {{ t('SEW_UI_DATA_CHECK') }} ⚠{{ store.dataCheckCount }}</button>
-      <button v-if="sk" :class="btn" class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300" data-testid="se-property" @click="showProperty = true">{{ t('SEW_UI_PROPERTY_ALL') }}</button>
+      <button v-if="sk" :class="btn" class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300" data-testid="se-property" @click="openProperty()">{{ t('SEW_UI_PROPERTY_ALL') }}</button>
     </div>
     <!-- 시나리오 단위 경고·알림 줄(바 아래 칸 전체). 본문이 깨져 스텝이 0개일 때도 여기서 원인이 보인다. -->
     <div v-if="sk && scenarioNotes.length" ref="notesEl" tabindex="-1" class="basis-full flex flex-wrap gap-x-4 gap-y-0.5 text-xs outline-none px-1 -mx-1"
@@ -141,8 +149,8 @@ const btn = 'h-8 px-3 rounded-lg text-sm'
       <span v-for="(n, i) in scenarioNotes" :key="i" :class="n.level === 'warning' ? 'text-amber-700 dark:text-amber-300' : 'text-gray-600 dark:text-gray-300'">
         {{ n.level === 'warning' ? '⚠' : 'ⓘ' }} {{ noteMessage(n) }}</span>
     </div>
-    <PropertyDialog v-model="showProperty" />
+    <PropertyDialog v-model="showProperty" :focus="propertyFocus" />
     <DataCheckDialog v-model="showDataCheck" />
-    <SaveDialog @bar="focusBar" @property="showProperty = true" />
+    <SaveDialog @bar="focusBar" @property="openProperty" />
   </div>
 </template>

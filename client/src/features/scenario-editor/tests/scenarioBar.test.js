@@ -1,6 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
+
+// 바가 여는 창(저장 창 검사·운영 속성 창 후속 목록)이 실제 서버로 요청하지 않게
+const api = vi.hoisted(() => {
+  const ok = (data) => Promise.resolve({ data: { success: true, data } })
+  return { check: vi.fn(() => ok({ blocks: [], warns: [], target: { exists: true, eqpCount: 1 }, conflict: null, targetExists: null })), nameRule: vi.fn(() => ok({ exists: false, rules: [] })), list: vi.fn(() => ok([])) }
+})
+vi.mock('../api', () => ({ scenarioEditorApi: api, imageUrl: (p) => p }))
 import ScenarioBar from '../components/ScenarioBar.vue'
 import { useEditorStore } from '../stores/editorStore'
 import { useEditStore } from '../stores/editStore'
@@ -70,22 +77,24 @@ describe('ScenarioBar', () => {
     expect(w.text()).toContain('SEWT_DUP01')
     expect(w.text()).toContain('필수 필드 빈 값')
   })
-  it('운영 속성 창: 현재 값 안내·비표준 우선순위·후속 시나리오·미입력', async () => {
+  it('[운영 속성 전체] 로 운영 속성 창을 연다(작업본이 없는 뼈대는 뼈대 값 — 비표준 우선순위·후속·심의 메모·Wafer)', async () => {
     const s = useEditorStore(); s.skeleton = skeleton()
     const w = mountBar()
     await w.find('[data-testid="se-property"]').trigger('click')
     const text = w.text()
-    for (const v of ['운영 속성은 버전과 상관없이 현재 값입니다', '1·5·10', 'NEXT_SC', '미입력']) expect(text).toContain(v)
-  })
-  it('운영 속성 창: 심의 의견은 DescriptionFromConductor, 성과는 웨이퍼 손실(사내 이름)', async () => {
-    const s = useEditorStore(); s.skeleton = skeleton()
-    const w = mountBar()
-    await w.find('[data-testid="se-property"]').trigger('click')
-    const text = w.text()
-    expect(text).toContain('심의 메모')
-    expect(text).toContain('웨이퍼 손실')
-    expect(text).toContain('42')
+    for (const v of [MESSAGES.SEW_PROP_CURRENT, '1·5·10', 'NEXT_SC', '심의 메모', 'Wafer', '42']) expect(text).toContain(v)
     expect(text).not.toContain('글라스 손실')
+  })
+  it('운영 속성 창에서 [적용] 한 켜짐·유형을 바가 따라간다(작업본 값)', async () => {
+    const f = panelFixture([noneStep(0)])
+    f.s.skeleton = { ...f.s.skeleton, id: 'P-M-N', header: { description: '', timeoutLimit: '1', targetWindow: null }, property: { IsEnabled: true, Type: 1 }, performance: null }
+    f.e.session = { ...f.e.session, working: { ...f.e.session.working, property: { IsEnabled: true, Type: 1 } } }
+    const w = mountBar()
+    expect(w.text()).toContain('켜짐')
+    expect(f.e.applyProperty({ IsEnabled: false, Type: 3 })).toBe(true)
+    await w.vm.$nextTick()
+    expect(w.text()).toContain('꺼짐')
+    expect(w.text()).toContain('상태 점검')
   })
 
   describe('시나리오 단위 경고·알림 줄', () => {

@@ -24,7 +24,9 @@ export const scenarioEditorApi = {
   // 결과 모름 확인은 큰 판의 저장 값을 읽어 지문을 비교한다 — 열기와 같은 시간을 준다
   verifyDeploy: (requestId) => api.post(`/scenario-editor/deploy/${enc(requestId)}/verify`, null, { timeout: OPEN_TIMEOUT_MS }),
   finishDeploy: (requestId) => api.post(`/scenario-editor/deploy/${enc(requestId)}/finish`, null, { timeout: OPEN_TIMEOUT_MS }),
-  nameRule: () => api.get('/scenario-editor/name-rule')
+  nameRule: () => api.get('/scenario-editor/name-rule'),
+  // 심의 저장(운영 속성 창, 관리 등급 1·2): 본문 { grade, comment } → { performance }(서버가 다시 읽은 값)
+  saveReview: (p, m, n, body) => api.put(`/scenario-editor/scenarios/${enc(p)}/${enc(m)}/${enc(n)}/review`, body)
 }
 
 export function readDevUser() {

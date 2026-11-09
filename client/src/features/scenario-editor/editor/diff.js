@@ -33,7 +33,8 @@ function outsideLis(pos) {
   return new Set(pos.map((_, i) => i).filter((i) => !keep.has(i)))
 }
 
-const changedPropertyKeys = (a, b) => {
+// 운영 속성에서 바뀐 키(저장 전 변경의 운영 속성 행·운영 속성 창의 "아직 배포 전" 표시)
+export const changedPropertyKeys = (a, b) => {
   const x = a || {}
   const y = b || {}
   return [...new Set([...Object.keys(x), ...Object.keys(y)])].filter((k) => k !== 'Owners' && canonicalJson(x[k]) !== canonicalJson(y[k])).sort() // Owners 는 배포가 정한다

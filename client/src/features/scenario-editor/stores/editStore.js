@@ -4,6 +4,7 @@ import { beginSession, nextUid, stepNo } from '../editor/session'
 import { copySteps, pasteSteps, detachClip, deleteSteps, moveSteps, setCell, movedRefKeys, applyStep, insertStep, sameOrder, STEP_MAX } from '../editor/commands'
 import { sameStep, canonicalJson, unsavedChanges } from '../editor/diff'
 import { checkStepFields } from '../editor/fieldRules'
+import { checkPropertyFields } from '../editor/propertyRules'
 import { firstError, CLICK_TYPES } from '../editor/panel'
 import { refUrl, loadBitmap, newTempId, uploadIdsOf } from '../editor/images'
 import { cropPng, imageDataOf } from '../editor/crop'
@@ -229,6 +230,15 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     const w = session.value.working
     const v = String(value ?? '')
     session.value = { ...session.value, working: { ...w, header: { ...w.header, [field]: v } } }
+    return true
+  }
+  // 운영 속성 창 [적용](P2-D Task 4, 설계 §7·Q-103): 작업본 property 만 바꾼다 — 배포·초안이 함께 싣는다. 바 칸처럼 되돌리기 목록에 넣지 않는다.
+  // 창이 바뀐 칸만 고친 값을 준다. 칸 검사(서버와 같은 기준 = 저장 기준 판, 새 시나리오는 기준 없음)에 걸리면 받지 않는다.
+  function applyProperty(next) {
+    const s = session.value
+    if (!editable.value || !next || typeof next !== 'object') return false
+    if (Object.keys(checkPropertyFields(next, s.source ? s.saveBase?.property : null)).length) return false
+    session.value = { ...s, working: { ...s.working, property: { ...next } } }
     return true
   }
   const unsavedCount = computed(() => {
@@ -708,7 +718,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     begin, end, rebase, markDraft, run, undoLast, redoLast,
     setSelection, syncFocus, requestSelect, clickRow, panelDirty, notify,
     openPanel, syncPanel, updateDraft, panelErrors, applyPanel, discardPanel, requestFocus,
-    guard, guardKeep, guardDrop, guardApply, setHeader, unsavedCount, askLeave, leaveKeep, leaveDrop,
+    guard, guardKeep, guardDrop, guardApply, setHeader, applyProperty, unsavedCount, askLeave, leaveKeep, leaveDrop,
     undoCommand, redoCommand, copySelection, pasteClip, deleteSelection, moveSelected, editCell,
     setUpload, requestView, startCapture, captureNext, cancelCapture, finishCapture, repick, findSpot, setAreaDrag, startNew, addNew, cancelNew
   }

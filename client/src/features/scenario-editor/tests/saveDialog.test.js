@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 
-const api = vi.hoisted(() => ({ check: vi.fn(), saveDraft: vi.fn(), deploy: vi.fn(), verifyDeploy: vi.fn(), finishDeploy: vi.fn(), open: vi.fn(), nameRule: vi.fn() }))
+const api = vi.hoisted(() => ({ check: vi.fn(), saveDraft: vi.fn(), deploy: vi.fn(), verifyDeploy: vi.fn(), finishDeploy: vi.fn(), open: vi.fn(), nameRule: vi.fn(), list: vi.fn() }))
 vi.mock('../api', () => ({ scenarioEditorApi: api, imageUrl: (p) => p }))
 import ScenarioBar from '../components/ScenarioBar.vue'
 import EditDialogs from '../components/EditDialogs.vue'
@@ -14,14 +14,17 @@ const ok = (data) => Promise.resolve({ data: { success: true, data } })
 const fail = (status, code, details) => Promise.reject({ response: { status, data: { code, details } }, request: {} })
 const clean = (over = {}) => ({ blocks: [], warns: [], target: { exists: true, eqpCount: 3 }, conflict: null, targetExists: null, ...over })
 const find = (w, id) => w.find(`[data-testid="${id}"]`)
+const inDoc = (sel) => document.querySelector(sel)
 
-function setup(check = clean(), { nameRule = { exists: false, rules: [] }, canWrite = true } = {}) {
+function setup(check = clean(), { nameRule = { exists: false, rules: [] }, canWrite = true, realTeleport = false } = {}) {
   const f = panelFixture([imageStep(0), noneStep(1), noneStep(2)], { canWrite })
   f.s.skeleton = { ...f.s.skeleton, id: 'P-M-N', header: { description: '메일 제목', timeoutLimit: '1', targetWindow: null }, property: null, performance: null }
   f.s.scopes = { processes: [{ process: 'P', models: [{ model: 'M', eqpCount: 3 }, { model: 'M2', eqpCount: 5 }] }] }
   api.check.mockImplementation(() => ok(check))
   api.nameRule.mockReturnValue(ok(nameRule))
-  const bar = mount(ScenarioBar, { attachTo: document.body })
+  api.list.mockReturnValue(ok([]))
+  // realTeleport: 시험 기본값(Teleport 대역)은 창을 가운데로 옮겨 다시 그릴 때 안쪽을 새로 만든다 — 창 안 초점 시험은 실제 Teleport 로 문서에서 찾는다
+  const bar = mount(ScenarioBar, { attachTo: document.body, ...(realTeleport ? { global: { stubs: { teleport: false } } } : {}) })
   return { ...f, bar, flow: useSaveFlow() }
 }
 async function openSave(bar) {
@@ -109,15 +112,34 @@ describe('저장 창(SaveDialog)', () => {
     bar.unmount()
   })
 
-  it('운영 속성 막힘(FOLLOW_NAME_REQUIRED)을 누르면 저장 창을 닫고 운영 속성 창을 연다', async () => {
-    const { bar } = setup(clean({ blocks: [{ code: 'FOLLOW_NAME_REQUIRED', params: { which: 'success' } }] }))
+  it('운영 속성 막힘을 누르면 저장 창을 닫고 운영 속성 창을 수정으로 열어 그 칸에 초점(저장된 빈 후속 = 잇기 단추)', async () => {
+    const { bar, s, e } = setup(clean({ blocks: [{ code: 'FOLLOW_NAME_REQUIRED', params: { which: 'success' } }] }), { realTeleport: true })
+    // 지워진 시나리오 다시 만들기: 서버는 기준이 없어 저장된 빈 후속 {Name:''} 도 바뀐 것으로 본다(Task 2a 판단)
+    const property = { StartDelay: 0, RetryCnt: 0, RetryInterval: 10, Priority: 10, ExecutingLevel: 0, Type: 1, IsEnabled: true, NextScenarioIfSuccess: { Name: '', Text: '' }, NextScenarioIfFail: null, Owners: [] }
+    s.skeleton = { ...s.skeleton, property }
+    e.session = { ...e.session, working: { ...e.session.working, property }, saveBase: { ...e.session.saveBase, property } }
     await openSave(bar)
-    const row = find(bar, 'se-save-issue')
-    expect(row.text()).toContain(t('RULE_FOLLOW_NAME_REQUIRED'))
-    await row.trigger('click')
+    const row = inDoc('[data-testid="se-save-issue"]')
+    expect(row.textContent).toContain(t('RULE_FOLLOW_NAME_REQUIRED'))
+    row.click()
     await flushPromises()
-    expect(find(bar, 'se-save-dialog').exists()).toBe(false)
-    expect(find(bar, 'se-property-dialog').exists()).toBe(true)
+    expect(inDoc('[data-testid="se-save-dialog"]')).toBeNull()
+    expect(inDoc('[data-testid="se-property-dialog"]')).not.toBeNull()
+    expect(inDoc('[data-testid="se-prop-editing"]')).not.toBeNull()
+    expect(document.activeElement).toBe(inDoc('[data-pfield="NextScenarioIfSuccess"]'))
+    bar.unmount()
+  })
+
+  it('운영 속성 범위 막힘(START_DELAY_RANGE)은 그 입력칸에 초점', async () => {
+    const { bar, s, e } = setup(clean({ blocks: [{ code: 'START_DELAY_RANGE' }] }), { realTeleport: true })
+    const property = { StartDelay: 5, RetryCnt: 0, RetryInterval: 10, Priority: 10, ExecutingLevel: 0, Type: 1, IsEnabled: true, NextScenarioIfSuccess: null, NextScenarioIfFail: null, Owners: [] }
+    s.skeleton = { ...s.skeleton, property }
+    e.session = { ...e.session, working: { ...e.session.working, property } }
+    await openSave(bar)
+    inDoc('[data-testid="se-save-issue"]').click()
+    await flushPromises()
+    expect(document.activeElement).toBe(inDoc('[data-pfield="StartDelay"]'))
+    expect(inDoc('[data-testid="se-prop-err-StartDelay"]').textContent).toBe(t('RULE_START_DELAY_RANGE'))
     bar.unmount()
   })
 

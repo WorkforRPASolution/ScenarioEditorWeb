@@ -89,6 +89,11 @@ export const useEditorStore = defineStore('scenarioEditor', () => {
     }
   }
 
+  // 성과(심의 저장·성과 저장 뒤 서버가 다시 읽은 값). 뼈대 객체는 그대로 두고 그 칸만 바꾼다 — 뼈대를 갈면 순서도·주소 감시가 다시 돈다.
+  function setPerformance(performance) {
+    if (skeleton.value) skeleton.value.performance = performance ?? null
+  }
+
   // 초점(보는 스텝)이 다른 경로(순서도·상세·경고 순회·↑↓)로 바뀌면 여러 줄 선택을 그 한 줄로 접는다.
   // 편집 저장소가 여러 줄을 고를 때는 기준 줄을 먼저 정하고 초점을 옮기므로 접히지 않는다.
   watch(selectedUid, (uid) => edit.syncFocus(uid), { flush: 'sync' })
@@ -121,6 +126,6 @@ export const useEditorStore = defineStore('scenarioEditor', () => {
   return {
     me, meError, scopes, dataCheck, skeleton, opening, openError, selectedUid, view, expanded,
     steps, scenarioNotes, selectedStep, warningCount, infoCount, dataCheckCount,
-    init, refreshCaches, openScenario, select, selectByNo, moveSelection, nextNoted
+    init, refreshCaches, openScenario, setPerformance, select, selectByNo, moveSelection, nextNoted
   }
 })
