@@ -126,7 +126,31 @@ P2(편집·저장)를 사내 PC 에서 운영 EARS·InterfaceServer 에 붙여 �
 
 그래서 쓰기 시험의 `MONGODB_URI` 는 `SC_PROPERTY` 에 쓸 수 있는 계정이어야 한다(데스크톱 편집기가 저장할 때 쓰는 것과 같은 권한). 읽기 전용 계정이면 설비에는 배포되고 마무리만 실패한다("배포는 됐지만 마무리가 남았습니다" 화면) — 그러면 시험을 멈추고 결과를 적는다.
 
-### 2. 설정
+### 2. 운영 Mongo 계정 (DBA 에게 부탁)
+
+웹이 운영 Mongo 에 쓰는 것은 둘뿐이다: EARS `SC_PROPERTY` 의 update(배포 마무리 — 문서를 새로 만들거나 지우지 않는다)와 웹 전용 DB(초안·배포 기록, 시험 뒤 지우는 임시 DB `SE_WEB_TEST`). 그래서 이 두 권한만 가진 시험 계정을 하나 만든다. 데스크톱 편집기나 사내 WebManager 가 쓰는 계정도 이 권한이 있지만, EARS 의 다른 컬렉션까지 쓸 수 있으므로 시험 계정을 권한다. 사용자 관리 권한이 있는 계정으로 `mongo` 셸(운영 4.2)에서 primary 에 접속해 친다.
+
+```js
+use admin
+db.createRole({
+  role: 'sewScPropertyUpdate',
+  privileges: [{ resource: { db: 'EARS', collection: 'SC_PROPERTY' }, actions: ['update'] }],
+  roles: []
+})
+db.createUser({
+  user: 'sew_test',
+  pwd: passwordPrompt(),
+  roles: [
+    { role: 'read', db: 'EARS' },
+    { role: 'sewScPropertyUpdate', db: 'admin' },
+    { role: 'readWrite', db: 'SE_WEB_TEST' }
+  ]
+})
+```
+
+확인: 그 계정으로 접속해 `db.runCommand({ connectionStatus: 1, showPrivileges: true })` — `EARS.SC_PROPERTY` 의 `update` 와 `SE_WEB_TEST` 의 쓰기 권한이 보이면 된다. 계정을 `admin` 에 만들었으므로 주소 끝에 `authSource=admin` 을 붙인다. 운영 Mongo 에 계정 인증이 꺼져 있으면 이 절은 건너뛴다.
+
+### 3. 설정
 
 읽기 시험의 `server\.env` 에 더한다(없으면 `copy server\.env.inhouse.example server\.env`).
 
@@ -136,14 +160,14 @@ notepad server\.env
 
 | 변수 | 넣을 값 |
 |---|---|
-| `MONGODB_URI` | 운영 EARS. 읽기 시험에서 읽기 전용 계정을 썼다면 `SC_PROPERTY` 에 쓸 수 있는 계정으로 바꾼다(위) |
-| `SE_WEB_DB_URI` | 웹 전용 DB. 운영 Mongo 에 두면 EARS 가 아닌 새 DB 이름(예: `…/SE_WEB_TEST?authSource=admin`), 계정은 그 DB 에 쓰기 권한. EARS 와 같은 이름이면 서버가 뜨지 않는다 |
+| `MONGODB_URI` | 운영 EARS, 2 의 시험 계정: `mongodb://sew_test:<비밀번호>@<호스트>:<포트>/EARS?authSource=admin` |
+| `SE_WEB_DB_URI` | 웹 전용 임시 DB, 같은 계정: `mongodb://sew_test:<비밀번호>@<호스트>:<포트>/SE_WEB_TEST?authSource=admin`. EARS 와 같은 이름이면 서버가 뜨지 않는다 |
 | `EARS_INTERFACE_URL` | 사내 InterfaceServer 주소(사내 WebManager 설정과 같은 값) |
 | `EARS_INTERFACE_MAX_REQUEST_MB` | 사내 InterfaceServer 의 `max-content-length`(MB). 모르면 `100` 그대로 |
 | `SE_USER_SINGLEID` | WRITE 권한이 있는 본인 SingleID |
 | 그대로 둘 것 | `HOST=127.0.0.1` · `SE_WEBMANAGER_DB=0` · `SE_DEV_USER_OVERRIDE=0` |
 
-### 3. 사전 점검
+### 4. 사전 점검
 
 ```bat
 node tools\inhouse\preflight.js
@@ -153,15 +177,15 @@ node tools\inhouse\preflight.js
 
 첫 실행에서는 서버를 아직 띄우지 않았으므로 `경고 SERVER_DOWN` 이 나오는 것이 맞다.
 
-서버를 띄운 뒤(4), 서버 창은 그대로 두고 **새 명령 프롬프트 창**(저장소 폴더)에서 시험 이름과 함께 한 번 더 돌린다. 쓰기 권한, 이름 규칙, 그 이름이 이미 있는지를 본다. 이때는 서버에 닿지 않으면 멈춤이다.
+서버를 띄운 뒤(5), 서버 창은 그대로 두고 **새 명령 프롬프트 창**(저장소 폴더)에서 시험 이름과 함께 한 번 더 돌린다. 쓰기 권한, 이름 규칙, 그 이름이 이미 있는지를 본다. 이때는 서버에 닿지 않으면 멈춤이다.
 
 ```bat
 node tools\inhouse\preflight.js --name SEW_TEST_20261110 --process <공정> --model <모델>
 ```
 
-이름이 이미 있으면 `SEW_TEST_20261110_2` 처럼 접미사를 바꾼다. `경고 NAME_RULE` 이 나오면 5단계 2번의 "이름 규칙이 있을 때" 를 따른다.
+이름이 이미 있으면 `SEW_TEST_20261110_2` 처럼 접미사를 바꾼다. `경고 NAME_RULE` 이 나오면 6단계 2번의 "이름 규칙이 있을 때" 를 따른다.
 
-### 4. 실행·확인
+### 5. 실행·확인
 
 ```bat
 npm run dev
@@ -173,7 +197,7 @@ npm run dev
 2. `HOST=… 는 루프백이 아니라` 경고가 보이면 끄고 `HOST` 를 고친다.
 3. `Failed to start server: SE_WEB_DB_URI 의 DB 이름이 운영 EARS…` 로 끝나면 웹 전용 DB 이름을 바꾼다. 웹 전용 DB 에 붙지 못해도 서버가 뜨지 않는다 — 주소·계정을 고치거나, 읽기 시험만 하려면 `SE_WEB_DB_URI` 를 비운다.
 
-### 5. 절차
+### 6. 절차
 
 단계마다 적을 것: 시각, 판 시각(저장 결과 화면의 새 버전·불러오기 창 버전 목록), 화면 사진, 데스크톱 편집기가 연 결과. 실패하면 화면 문구와 `server\logs` 의 그날 로그를 함께 적는다.
 
@@ -189,8 +213,9 @@ npm run dev
 9. **고쳐 배포**: 웹에서 이미지 스텝 하나를 골라 기준 화면에서 찾을 그림을 [다시 잡기]로 새로 자르고 배포한다. 확인 창은 6번과 같은 조건일 때만 [배포].
 10. **데스크톱으로 다시 열기**: 새로 자른 찾을 그림이 데스크톱에 보이는지 본다.
 11. **지우기**: 웹 불러오기 창에서 `SEW_TEST_<날짜>` 행을 고르고 오른쪽 [시나리오 지우기…] → 시나리오 이름을 그대로 입력 → [지우기]. Redis 에 남은 판 기록은 지우지 않고 적기만 한다.
+12. **정리**: 서버를 끄고, DBA 에게 웹 전용 임시 DB 와 시험 계정을 지워 달라고 한다 — `use SE_WEB_TEST` → `db.dropDatabase()`, `use admin` → `db.dropUser('sew_test')` → `db.dropRole('sewScPropertyUpdate')`. 지우기 전에 `SCENARIO_EDITOR_DEPLOYS` 의 배포 기록을 결과와 함께 적어 두면 좋다.
 
-### 6. 하지 말 것
+### 7. 하지 말 것
 
 - `SEW_TEST_<날짜>` 말고 다른 시나리오에 배포하지 않는다. 확인 창의 ID 가 다르거나 "덮어씁니다"·"켜져 있는 시나리오입니다." 가 보이면 [돌아가기]. 1번에서 연 운영 시나리오에서는 [저장]을 누르지 않는다.
 - 켜지 않는다(운영 속성 켜짐, 불러오기 창 켜기). 켜면 설비에서 실행될 수 있다.

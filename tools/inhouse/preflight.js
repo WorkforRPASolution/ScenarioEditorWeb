@@ -82,7 +82,7 @@ async function remoteChecks({ api, fetch, name, process, model }) {
   const rule = await get('/name-rule')
   if (!rule) return [...out, down()]
   if (rule.status !== 200) out.push(warn('NAME_RULE_UNKNOWN', `이름 규칙 조회가 ${rule.status} ${await errorCode(rule)} — 새 시나리오 창에 이름 칸이 없으면 README "이름 규칙이 있을 때" 를 따른다`))
-  else if (hasNameRule((await rule.json())?.data)) out.push(warn('NAME_RULE', `이름 규칙이 있다 — 새 시나리오 창에서 ${name} 을 칠 수 없다. README 5단계 "이름 규칙이 있을 때" 대로 저장 창에서 이름을 바꾼다`))
+  else if (hasNameRule((await rule.json())?.data)) out.push(warn('NAME_RULE', `이름 규칙이 있다 — 새 시나리오 창에서 ${name} 을 칠 수 없다. README "사내 쓰기 시험" 절차 2번의 "이름 규칙이 있을 때" 대로 저장 창에서 이름을 바꾼다`))
   const list = await get(`/scenarios?${new URLSearchParams({ process, model })}`)
   if (!list) return [...out, down()]
   if (list.status !== 200) return [...out, stop('LIST_FAILED', `${process}·${model} 목록 조회가 ${list.status} ${await errorCode(list)} — 공정·모델 이름과 권한을 본다`)]
