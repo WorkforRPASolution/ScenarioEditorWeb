@@ -4,8 +4,8 @@ import { setActivePinia, createPinia } from 'pinia'
 const api = vi.hoisted(() => ({ me: vi.fn(), scopes: vi.fn(), dataCheck: vi.fn(), refreshCache: vi.fn(), open: vi.fn(), list: vi.fn(), versions: vi.fn() }))
 vi.mock('../api', () => ({ scenarioEditorApi: api, imageUrl: (p) => `http://x/api${p}` }))
 // 큰 화면 잡기의 브라우저 전용 부분(fetch·canvas)은 가짜로 — 저장소가 부르는 값과 그 결과만 본다.
-const fx = vi.hoisted(() => ({ loadBitmap: vi.fn(), cropPng: vi.fn(), imageDataOf: vi.fn(), locate: vi.fn() }))
-vi.mock('../editor/images', async (orig) => ({ ...(await orig()), loadBitmap: fx.loadBitmap }))
+const fx = vi.hoisted(() => ({ loadBitmap: vi.fn(), loadBlob: vi.fn(), cropPng: vi.fn(), imageDataOf: vi.fn(), locate: vi.fn() }))
+vi.mock('../editor/images', async (orig) => ({ ...(await orig()), loadBitmap: fx.loadBitmap, loadBlob: fx.loadBlob }))
 vi.mock('../editor/crop', async (orig) => ({ ...(await orig()), cropPng: fx.cropPng, imageDataOf: fx.imageDataOf }))
 vi.mock('../editor/locate', () => ({ locate: fx.locate }))
 import { useEditorStore } from '../stores/editorStore'
@@ -1503,3 +1503,177 @@ describe('editStore — 새 시나리오(beginNew), P2-D Task 6', () => {
   })
 })
 import { unsavedChanges } from '../editor/diff'
+
+// ── 불러오기 창에서 여는 세션(P2-D Task 7): 되돌려 열기·초안 이어서 열기·지워짐 ──
+describe('editStore — 되돌려 열기(beginRestore)·초안 이어서 열기(beginFromDraft)·지워짐, P2-D Task 7', () => {
+  beforeEach(() => { setActivePinia(createPinia()); Object.values(api).forEach((f) => f.mockReset()); Object.values(fx).forEach((f) => f.mockReset()) })
+  const start = (canWrite = true) => { const s = useEditorStore(); s.me = { singleid: 'u', canWrite, authorityManager: 3 }; return { s, e: useEditStore() } }
+  // 판 하나를 연 뼈대(P1 열기 응답). head = 그 이름의 현재 버전, property = 문서의 지금 값(판마다 남지 않는다)
+  const versionOf = (crtime, steps, { head = 30, fileId = `F${crtime}`, property = { IsEnabled: true, Type: 1 }, rev = `r${head}`, description = '메일' } = {}) => {
+    const ed = { source: { process: 'P', model: 'M', name: 'N', crtime, fileId }, headCrtime: head, header: { description, timeoutLimit: '10' }, steps, property }
+    return {
+      process: 'P', model: 'M', name: 'N', id: 'P-M-N', headCrtime: head, propertyRev: rev, version: { crtime, isCurrent: crtime === head, fileId },
+      header: { description, timeoutLimit: 10, targetWindow: null }, property, performance: null, notes: [],
+      steps: steps.map((st, i) => ({ ...st, no: i + 1, notes: [] })), edited: ed
+    }
+  }
+  const OLD = () => versionOf(10, [imageStep(0), noneStep(1, { descriptionToEmail: '옛 설명' })], { property: { IsEnabled: true, Type: 1 }, description: '옛 메일' })
+  const CUR = () => versionOf(30, [imageStep(0), noneStep(1), noneStep(2)], { property: { IsEnabled: false, Type: 2 } })
+
+  it('beginRestore: 작업본 = 옛 판 내용, 출처 = 옛 판, headCrtime·propertyRev·운영 속성 = 현재 판, restoredFrom = 옛 판 crtime, 쓸 수 있다', () => {
+    const { s, e } = start()
+    const old = OLD(); const cur = CUR()
+    expect(e.beginRestore(old, cur)).toBe(true)
+    expect(e.session.source).toEqual({ process: 'P', model: 'M', name: 'N', crtime: 10, fileId: 'F10' })
+    expect(e.session.headCrtime).toBe(30)
+    expect(e.session.propertyRev).toBe('r30')
+    expect(e.session.restoredFrom).toBe(10)
+    expect(e.session.readOnly).toBe(null)
+    expect(e.editable).toBe(true)
+    expect(e.session.working.steps).toBe(old.edited.steps)
+    expect(e.session.working.header).toEqual({ description: '옛 메일', timeoutLimit: '10' })
+    expect(e.session.working.property).toEqual({ IsEnabled: false, Type: 2 })
+    expect(e.session.working.source).toEqual(old.edited.source)
+    // 저장 기준점 = 현재 판 — "저장 전 N곳" 은 배포하면 바뀌는 곳(메일 제목·고친 스텝 1·지워질 스텝 1)
+    expect(e.session.saveBase).toBe(cur.edited)
+    expect(unsavedChanges(e.session.working, e.session.saveBase).map((c) => c.key ?? c.kind)).toEqual(['description', 'changed', 'deleted'])
+    // 열린 뼈대는 현재 판(바 "현재 버전", 주소)이고 내용(스텝·대상 창)은 옛 판
+    expect(s.skeleton.version).toEqual(cur.version)
+    expect(toRaw(s.skeleton).steps).toBe(old.steps) // 열린 뼈대는 ref(깊은 반응형)라 원본으로 비교
+    expect(s.selectedUid).toBe('s0')
+    // 배포 meta: 기준 판은 옛 판, 연 때의 현재 버전은 현재 판
+    const { meta } = buildMeta(e.session)
+    expect(meta.scenario.source.crtime).toBe(10)
+    expect(meta.scenario.headCrtime).toBe(30)
+    expect(meta.propertyRev).toBe('r30')
+    expect(meta.target).toEqual({ process: 'P', model: 'M', name: 'N' })
+  })
+  it('beginRestore: 쓰기 권한이 없으면 열지 않는다', () => {
+    const { e } = start(false)
+    expect(e.beginRestore(OLD(), CUR())).toBe(false)
+    expect(e.session).toBe(null)
+  })
+
+  // 초안(GET /drafts/:id) + 키(목록의 공정·모델·이름)
+  const draftOf = (scenario, over = {}) => ({ draftId: 'd1', savedAt: '2026-11-07T05:23:51.000Z', revision: 2, base: scenario.source ? { crtime: scenario.source.crtime, fileId: scenario.source.fileId } : null,
+    headCrtime: scenario.headCrtime, propertyRev: 'rD', target: { model: 'M', name: 'N' }, scenario, imageUrls: {}, process: 'P', model: 'M', name: 'N', ...over })
+
+  it('beginFromDraft: 작업본 = 초안, 기준 판 = 초안 기준 판, 연 때 값(headCrtime·propertyRev)은 초안의 것 — 손대지 않은 스텝은 기준 판 스텝 객체를 쓴다', () => {
+    const { s, e } = start()
+    const base = versionOf(30, [imageStep(0), noneStep(1), noneStep(2)])
+    const changed = { ...noneStep(1), descriptionToEmail: '초안에서 고침' }
+    const scenario = { ...base.edited, header: { description: '초안 메일', timeoutLimit: '10' }, steps: [JSON.parse(JSON.stringify(imageStep(0))), changed, JSON.parse(JSON.stringify(noneStep(2)))], property: { IsEnabled: true, Type: 3 } }
+    expect(e.beginFromDraft(draftOf(scenario), base)).toBe(true)
+    expect(e.session.source).toEqual(base.edited.source)
+    expect(e.session.headCrtime).toBe(30)
+    expect(e.session.propertyRev).toBe('rD')
+    expect(e.session.readOnly).toBe(null)
+    expect(e.session.working.header).toEqual({ description: '초안 메일', timeoutLimit: '10' })
+    expect(e.session.working.property).toEqual({ IsEnabled: true, Type: 3 })
+    expect(e.session.working.steps[0]).toBe(base.edited.steps[0])
+    expect(e.session.working.steps[1]).toEqual(changed)
+    expect(e.session.working.steps[2]).toBe(base.edited.steps[2])
+    expect(e.session.saveBase).toBe(base.edited)
+    expect(unsavedChanges(e.session.working, e.session.saveBase).map((c) => c.key ?? c.kind)).toEqual(['description', 'property', 'changed'])
+    expect(e.session.draft).toEqual({ id: 'd1', savedAt: '2026-11-07T05:23:51.000Z' })
+    expect(e.session.fromDraft).toMatchObject({ savedAt: '2026-11-07T05:23:51.000Z', baseCrtime: 30, stale: false, gone: false })
+    expect(e.draftId).toBe('d1')
+    expect(toRaw(s.skeleton)).toBe(base)
+    expect(s.selectedUid).toBe('s0')
+    expect(e.editable).toBe(true)
+  })
+  it('beginFromDraft: 초안을 시작한 뒤 새 버전이 배포됐으면(초안 headCrtime ≠ 지금 현재 버전) 옛것으로 표시하고, 연 때 값은 초안의 것(배포 때 충돌로 알린다)', () => {
+    const { e } = start()
+    const base = versionOf(20, [noneStep(0)], { head: 30 }) // 초안은 20 에서 시작, 지금 현재는 30
+    e.beginFromDraft(draftOf({ ...base.edited, headCrtime: 20 }), base)
+    expect(e.session.headCrtime).toBe(20)
+    expect(e.session.fromDraft.stale).toBe(true)
+    expect(buildMeta(e.session).meta.scenario.headCrtime).toBe(20)
+  })
+  it('beginFromDraft: 서버에만 있는 초안 그림(올릴 그림, 로컬 Blob 없음)은 초안 그림 URL 로 보인다', () => {
+    const { s, e } = start()
+    const base = versionOf(30, [imageStep(0)])
+    const st = { ...JSON.parse(JSON.stringify(imageStep(0))), images: { train: { 0: { from: 'upload', tempId: 'tUp' } }, base: { from: 'source', id: 's0-bi' } } }
+    e.beginFromDraft(draftOf({ ...base.edited, steps: [st] }), base)
+    expect(e.uploads.size).toBe(0)
+    const shown = s.steps[0]
+    expect(shown.condition.image.trainImages[0].src).toBe('http://x/api/scenario-editor/drafts/d1/images/tUp')
+    expect(e.canCapture).toBe(true) // 기준 화면(기준 판 참조)으로 잡을 수 있다
+  })
+  it('beginFromDraft: 배포한 적 없는 새 시나리오 초안은 Task 6 새 시나리오 세션과 같은 모양(출처 없음·새 시나리오 뼈대)', () => {
+    const { s, e } = start()
+    const scenario = { source: null, headCrtime: null, header: { description: '새 메일', timeoutLimit: '240' }, steps: [noneStep(0, { uid: 'n1', origin: null })], property: { ...defaultProperty({ id: 'P-M-NEW_ONE', type: 1 }), RetryCnt: 2 } }
+    e.beginFromDraft(draftOf(scenario, { name: 'NEW_ONE', base: null, headCrtime: null, propertyRev: null, target: { model: 'M', name: 'NEW_ONE' } }), null)
+    expect(e.session).toMatchObject({ source: null, headCrtime: null, propertyRev: null, readOnly: null })
+    expect(e.session.newId).toMatch(/^new/)
+    expect(e.session.working).toBe(scenario)
+    expect(s.skeleton).toMatchObject({ process: 'P', model: 'M', name: 'NEW_ONE', id: 'P-M-NEW_ONE', isNew: true })
+    // 기준점 = 만들 때 모습(스텝 0·기본 운영 속성) — 초안이 만든 스텝과 바꾼 운영 속성을 센다
+    expect(unsavedChanges(e.session.working, e.session.saveBase).map((c) => c.key ?? c.kind)).toEqual(['property', 'added'])
+    expect(e.draftId).toBe('d1')
+    expect(buildMeta(e.session).meta.target).toBe(null) // 저장 창이 뼈대의 공정·모델·이름을 대상으로 넣는다
+  })
+  it('beginFromDraft: 원본이 지워져 기준 판 뼈대가 없으면(서버 사본으로만 남음) 초안 그대로 연다 — 저장 전 0곳, 스텝은 작업본에서 그린다', () => {
+    const { s, e } = start()
+    const gone = versionOf(10, [noneStep(0), noneStep(1)])
+    e.beginFromDraft(draftOf(gone.edited), null)
+    expect(e.session.source).toEqual(gone.edited.source)
+    expect(e.session.fromDraft.gone).toBe(true)
+    expect(e.unsavedCount).toBe(0)
+    expect(s.skeleton).toMatchObject({ process: 'P', model: 'M', name: 'N', sourceGone: true, version: { crtime: 10, isCurrent: false, fileId: 'F10' } })
+    expect(s.steps.map((x) => x.uid)).toEqual(['s0', 's1'])
+    e.setHeader('description', '고침')
+    expect(e.unsavedCount).toBe(1)
+  })
+  it('초안 지우기(forgetDraft): 그 초안으로 연 세션은 초안 그림 URL 을 잃는다', () => {
+    const { e } = start()
+    const base = versionOf(30, [noneStep(0)])
+    e.beginFromDraft(draftOf(base.edited), base)
+    e.forgetDraft('other')
+    expect(e.draftId).toBe('d1')
+    e.forgetDraft('d1')
+    expect(e.draftId).toBe(null)
+    expect(e.session.draft).toBe(null)
+  })
+  it('지워짐(markDeleted): 편집 화면은 읽기 전용, 고친 내용은 남고(볼 수만 있음) 떠날 때 묻지 않는다', () => {
+    const { e } = panelFixture([imageStep(0), noneStep(1)])
+    e.editCell('s0', 'accept', 0.8)
+    expect(e.unsavedCount).toBe(1)
+    e.markDeleted()
+    expect(e.session.readOnly).toBe('deleted')
+    expect(e.editable).toBe(false)
+    expect(e.session.working.steps[0].condition.image.accept).toBe(0.8)
+    expect(e.changeCount).toBe(1)
+    expect(e.unsavedCount).toBe(0)
+    const next = vi.fn()
+    expect(e.askLeave(next)).toBe(true)
+    expect(next).toHaveBeenCalled()
+  })
+  it('열린 시나리오를 불러오기 창에서 켜고 끄면(markPropertyChanged) 세션에 남기고 propertyRev 는 그대로 둔다(다음 배포 때 충돌로 알린다)', () => {
+    const { e } = panelFixture([noneStep(0)])
+    const rev = e.session.propertyRev
+    e.markPropertyChanged()
+    expect(e.session.propertyChanged).toBe(true)
+    expect(e.session.propertyRev).toBe(rev)
+  })
+  it('초안으로 연 세션의 스텝을 복사해 다른 시나리오에 붙이면, 서버에만 있는 초안 그림을 받아 그 세션의 올릴 그림에 넣는다', async () => {
+    const { e } = start()
+    const base = versionOf(30, [imageStep(0)])
+    const st = { ...JSON.parse(JSON.stringify(imageStep(0))), images: { train: { 0: { from: 'upload', tempId: 'tUp' } }, base: { from: 'source', id: 's0-bi' } } }
+    e.beginFromDraft(draftOf({ ...base.edited, steps: [st] }), base)
+    e.setSelection({ uids: ['s0'], anchor: 's0' })
+    e.copySelection(false)
+    const blob = new Blob(['png'])
+    fx.loadBlob.mockResolvedValue(blob)
+    const other = { ...versionOf(30, [noneStep(0)]), name: 'B', id: 'P-M-B' }
+    other.edited = { ...other.edited, source: { ...other.edited.source, name: 'B' } }
+    e.begin(other, useEditorStore().me)
+    expect(e.pasteClip('end')).toBe(true)
+    await flushPromises()
+    expect(fx.loadBlob).toHaveBeenCalledWith('http://x/api/scenario-editor/drafts/d1/images/tUp')
+    expect(e.uploads.get('tUp')).toBe(blob)
+  })
+})
+import { buildMeta } from '../editor/request'
+import { flushPromises } from '@vue/test-utils'
+import { toRaw } from 'vue'

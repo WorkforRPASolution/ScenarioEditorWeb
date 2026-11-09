@@ -15,7 +15,7 @@ export function useTrainSpot(source) {
   const edit = useEditStore()
   const input = computed(() => {
     const s = source()
-    if (s?.draft) return spotInputOfDraft(s.draft, { session: edit.session, uploads: edit.uploads, draftId: null })
+    if (s?.draft) return spotInputOfDraft(s.draft, { session: edit.session, uploads: edit.uploads, draftId: edit.draftId })
     return s?.step ? spotInputOfStep(s.step) : null
   })
   const key = computed(() => spotKey(input.value))

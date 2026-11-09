@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { beginSession } from '../editor/session'
-import { buildMeta, buildFormData } from '../editor/request'
+import { buildMeta, buildFormData, uploadsToSend } from '../editor/request'
 import { imageStep, noneStep } from './panelFixture'
 
 // 서버 계약(편집 시나리오 해석)을 그대로 불러 비교한다 — 서버 domain 은 이 저장소 코드이고 바깥 의존이 없다.
@@ -97,5 +97,11 @@ describe('buildFormData', () => {
 
   it('쓰는 tempId 의 그림이 없으면 던진다(빠진 채 보내지 않는다)', () => {
     expect(() => buildFormData({ scenario: {} }, new Map(), ['gone'])).toThrow(/gone/)
+  })
+
+  it('uploadsToSend: 초안에서 이어 연 세션은 로컬 Blob 이 없는 그림(서버 초안 그림)을 빼고, 초안이 없으면 그대로 둔다(빠진 그림은 buildFormData 가 막는다)', () => {
+    const uploads = new Map([['tNew', new Blob(['x'])]])
+    expect(uploadsToSend(['tDraft', 'tNew'], uploads, 'd1')).toEqual(['tNew'])
+    expect(uploadsToSend(['tDraft', 'tNew'], uploads, null)).toEqual(['tDraft', 'tNew'])
   })
 })

@@ -1,7 +1,9 @@
 import { defineStore } from 'pinia'
 import { ref, computed, toRaw, watch } from 'vue'
 import { scenarioEditorApi as api } from '../api'
-import { errorCode, errorMessage } from '../messages'
+import { t, errorCode, errorMessage } from '../messages'
+import { buildMeta } from '../editor/request'
+import { formatCrtime } from '../format'
 import { useEditStore } from './editStore'
 import { displaySteps } from '../editor/display'
 
@@ -23,7 +25,7 @@ export const useEditorStore = defineStore('scenarioEditor', () => {
   // 편집 중(작업본이 있음)이면 작업본을 뼈대 스텝 모양으로 — 표·순서도·큰 화면·상세가 고친 내용을 따라간다. 고친 것이 없으면 뼈대 배열 그대로.
   const steps = computed(() => {
     const session = edit.session
-    if (session?.working && skeleton.value) return displaySteps(session, skeleton.value, { uploads: edit.uploads, draftId: edit.draftId ?? null, user: me.value })
+    if (session?.working && skeleton.value) return displaySteps(session, skeleton.value, { uploads: edit.uploads, draftId: edit.draftId, user: me.value })
     return skeleton.value?.steps ?? []
   })
   // 시나리오 알림. 스텝을 바꾸면 저장된 순서로 계산한 NO_SUCCESS 는 낡으므로 뺀다(R-T5c — 저장 창의 서버 /check 가 다시 본다).
@@ -64,34 +66,85 @@ export const useEditorStore = defineStore('scenarioEditor', () => {
   // 열기 요청이 겹치면 마지막 요청만 화면 상태를 바꾼다(앞 요청의 늦은 성공·실패·진행 표시 해제를 무시).
   // 여는 동안(opening)은 편집 저장소가 고치기를 막는다(editable) — 새 세션을 시작하기 전에 여는 중 표시를 먼저 내려야
   // 새 세션의 패널이 첫 스텝을 연다.
+  // load() 는 읽기를 마치고 세션을 시작할 함수를 돌려준다. 실패하면 오류 상태(target 으로 다시 시도 — kind 가 여는 길을 고른다).
   let openSeq = 0
-  async function openScenario({ process, model, name, crtime = 'current' }) {
+  async function runOpen(target, load) {
     const id = ++openSeq
     expanded.value = false // 넓게 보기에서는 위쪽(여는 중·오류 표시)이 가려진다
-    opening.value = { process, model, name, crtime, startedAt: Date.now() }
+    opening.value = { ...target, startedAt: Date.now() }
     openError.value = null
     try {
-      const next = (await api.open(process, model, name, crtime)).data.data
+      const begin = await load()
       if (id !== openSeq) return
       opening.value = null
-      skeleton.value = next
-      edit.begin(toRaw(next), me.value)
-      selectedUid.value = next.steps[0]?.uid ?? null
-      edit.syncFocus(selectedUid.value) // 앞 시나리오와 첫 uid 가 같으면 아래 감시자가 울리지 않는다
+      begin()
     } catch (e) {
       if (id !== openSeq) return
       skeleton.value = null
       edit.end()
       selectedUid.value = null
-      openError.value = { ...fail(e), target: { process, model, name, crtime } }
+      openError.value = { ...(e?.seOpen ?? fail(e)), target }
     } finally {
       if (id === openSeq) opening.value = null
     }
   }
+  function openScenario({ process, model, name, crtime = 'current' }) {
+    return runOpen({ process, model, name, crtime }, async () => {
+      const next = (await api.open(process, model, name, crtime)).data.data
+      return () => {
+        skeleton.value = next
+        edit.begin(toRaw(next), me.value)
+        selectedUid.value = next.steps[0]?.uid ?? null
+        edit.syncFocus(selectedUid.value) // 앞 시나리오와 첫 uid 가 같으면 아래 감시자가 울리지 않는다
+      }
+    })
+  }
 
-  // 새 시나리오(P2-D Task 6): 서버에 없는 뼈대를 연 것으로 둔다(편집 저장소 beginNew 가 세션과 함께 부른다).
-  // 진행 중인 열기는 버린다 — 늦게 끝나도 새 시나리오를 덮지 않게(마지막 동작이 이긴다, openScenario 와 같은 규칙).
-  function showNew(sk) {
+  // [이 버전으로 되돌려 열기](P2-D Task 7, 설계 §6.7): 옛 판과 현재 판을 읽어 되돌린 작업본을 연다. 바로 배포하지 않는다.
+  function openRestore({ process, model, name, crtime }) {
+    return runOpen({ kind: 'restore', process, model, name, crtime }, async () => {
+      const [old, cur] = await Promise.all([api.open(process, model, name, String(crtime)), api.open(process, model, name, 'current')])
+      return () => {
+        if (edit.beginRestore(old.data.data, cur.data.data)) edit.notify(t('SEW_LOAD_RESTORED', { at: formatCrtime(crtime) }))
+      }
+    })
+  }
+
+  // 원본이 지워진 초안의 기준 판이 서버 사본(디스크 캐시)으로 남았는지 — 배포의 [다시 만듭니다]와 같은 판정(force 검사에 SOURCE_GONE 이 없다, 2026-11-07 결정 (a)).
+  // draft = GET /drafts/:id + 키. 검사 결과의 다른 막힘은 상관없다(열고 나서 저장 창이 보인다).
+  async function draftSourceKept(draft) {
+    const working = draft.scenario
+    const { meta } = buildMeta({ working, source: working.source, headCrtime: draft.headCrtime ?? null, propertyRev: draft.propertyRev ?? null },
+      { target: { process: draft.process, model: draft.model, name: draft.name }, extra: { force: true } })
+    const r = (await api.check(meta)).data.data
+    return !r.blocks.some((b) => b.code === 'SOURCE_GONE')
+  }
+
+  // [초안 이어서 열기](P2-D Task 7, 설계 §6.1): 초안과 그 기준 판 뼈대를 읽어 연다. target = { process, model, name, draftId }(목록의 키).
+  // 기준 판이 없으면(지워짐 404) 서버 사본이 있을 때만 초안 그대로 연다. 새 시나리오 초안은 기준 판이 없다.
+  function openDraft({ process, model, name, draftId }) {
+    return runOpen({ kind: 'draft', process, model, name, draftId }, async () => {
+      const draft = { ...(await api.getDraft(draftId)).data.data, process, model, name }
+      let base = null
+      if (draft.base) {
+        try {
+          base = (await api.open(process, model, name, String(draft.base.crtime))).data.data
+        } catch (e) {
+          if (errorCode(e) !== 'NOT_FOUND') throw e
+          if (!(await draftSourceKept(draft))) throw Object.assign(new Error('draft source gone'), { seOpen: { code: 'DRAFT_SOURCE_GONE', message: t('SEW_LOAD_DRAFT_GONE_OPEN') } })
+        }
+      }
+      return () => {
+        if (!edit.beginFromDraft(draft, base)) return
+        const key = edit.session.fromDraft.stale ? 'SEW_LOAD_DRAFT_OPENED_STALE' : edit.session.fromDraft.gone ? 'SEW_LOAD_DRAFT_OPENED_GONE' : 'SEW_LOAD_DRAFT_OPENED'
+        edit.notify(t(key, { time: formatCrtime(Date.parse(draft.savedAt)).slice(5, 16) }))
+      }
+    })
+  }
+
+  // 편집 저장소가 만든 뼈대를 연 것으로 둔다 — 새 시나리오(서버에 없음)·되돌려 열기·초안 이어서 열기(세션과 함께 부른다).
+  // 진행 중인 열기는 버린다 — 늦게 끝나도 이 뼈대를 덮지 않게(마지막 동작이 이긴다, openScenario 와 같은 규칙).
+  function showSkeleton(sk) {
     openSeq++
     opening.value = null
     openError.value = null
@@ -137,6 +190,6 @@ export const useEditorStore = defineStore('scenarioEditor', () => {
   return {
     me, meError, scopes, dataCheck, skeleton, opening, openError, selectedUid, view, expanded,
     steps, scenarioNotes, selectedStep, warningCount, infoCount, dataCheckCount,
-    init, refreshCaches, openScenario, showNew, setPerformance, select, selectByNo, moveSelection, nextNoted
+    init, refreshCaches, openScenario, openRestore, openDraft, draftSourceKept, showSkeleton, setPerformance, select, selectByNo, moveSelection, nextNoted
   }
 })

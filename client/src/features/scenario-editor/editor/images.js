@@ -24,7 +24,7 @@ export function refUrl(ref, { session, draftId, uploads } = {}) {
       if (!u) { u = URL.createObjectURL(blob); blobUrls.set(blob, u) }
       return u
     }
-    if (draftId) return imageUrl(`/scenario-editor/drafts/${enc(draftId)}/images/${enc(ref.tempId)}`)
+    if (draftId) return draftImageUrl(draftId, ref.tempId)
   }
   return null
 }
@@ -40,12 +40,20 @@ export function uploadIdsOf(steps) {
   return [...ids]
 }
 
-// 다른 출처 <img> 는 canvas 를 오염시키므로 fetch 로 받아 비트맵으로.
-export async function loadBitmap(url) {
+// 그림 바이트(Blob) — 서버에만 있는 초안 그림을 다른 세션의 올릴 그림으로 옮길 때(붙여넣기)
+export async function loadBlob(url) {
   const res = await fetch(url, { credentials: 'include' })
   if (!res.ok) throw new Error(`image ${res.status}`)
-  return createImageBitmap(await res.blob())
+  return res.blob()
 }
+
+// 다른 출처 <img> 는 canvas 를 오염시키므로 fetch 로 받아 비트맵으로.
+export async function loadBitmap(url) {
+  return createImageBitmap(await loadBlob(url))
+}
+
+// 서버 초안 그림 URL(refUrl 이 로컬 Blob 이 없을 때 쓰는 것과 같은 경로)
+export const draftImageUrl = (draftId, tempId) => imageUrl(`/scenario-editor/drafts/${enc(draftId)}/images/${enc(tempId)}`)
 
 export function newTempId() {
   return `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`

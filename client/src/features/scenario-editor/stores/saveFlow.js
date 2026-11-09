@@ -7,7 +7,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { scenarioEditorApi as api } from '../api'
 import { t, errorCode, errorMessage, MESSAGES } from '../messages'
-import { buildMeta, buildFormData } from '../editor/request'
+import { buildMeta, buildFormData, uploadsToSend } from '../editor/request'
 import { unsavedChanges } from '../editor/diff'
 import { checkName, nameRuleOf } from '../editor/nameRule'
 import { propertyFieldOf } from '../editor/propertyRules'
@@ -93,6 +93,8 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
     return { model: s?.model ?? sk?.model ?? '', name: s?.name ?? sk?.name ?? '' }
   }
   const fullTarget = () => ({ process: process(), model: target.value.model, name: target.value.name })
+  // 멀티파트 본문 — 초안에서 이어 연 세션은 서버 초안에만 있는 그림을 다시 올리지 않는다(editor/request uploadsToSend)
+  const formOf = (meta, used) => buildFormData(meta, edit.uploads, uploadsToSend(used, edit.uploads, edit.draftId))
   const sameScenario = computed(() => { const s = source(); return !!s && target.value.model === s.model && target.value.name === s.name })
   // 다른 대상에는 확인할 충돌이 없다(서버는 같은 시나리오만 본다) — force 는 기준 판 파일이 지워졌을 때 서버 캐시로 읽는 것만 켠다(Task 2a).
   // 같은 시나리오는 사용자가 [내 내용으로 덮어씁니다]·[다시 만듭니다]·운영 속성 확인을 체크했을 때만.
@@ -266,7 +268,7 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
     let data
     try {
       const { meta, uploadsUsed } = buildMeta(s, { target: sentTarget.value, extra: { requestId: id, overwrite: confirm.value.overwrite, force: sendForce(), restoredFrom: s.restoredFrom ?? null } })
-      const body = buildFormData(meta, edit.uploads, uploadsUsed)
+      const body = formOf(meta, uploadsUsed)
       setPending({ requestId: id, target: sentTarget.value, at: Date.now() })
       data = (await api.deploy(body)).data.data
     } catch (e) {
@@ -317,7 +319,7 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
     notice.value = null
     try {
       const { meta, uploadsUsed } = buildMeta(s, { target: fullTarget() })
-      const data = (await api.saveDraft(buildFormData(meta, edit.uploads, uploadsUsed))).data.data
+      const data = (await api.saveDraft(formOf(meta, uploadsUsed))).data.data
       edit.markDraft(data)
       result.value = { savedAt: data.savedAt }
       stage.value = 'draft'
@@ -334,7 +336,7 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
     const s = session()
     if (stage.value || !s?.working || s.readOnly) throw new Error('draft unavailable')
     const { meta, uploadsUsed } = buildMeta(s, { target: { process: process(), ...defaultTarget() } })
-    const data = (await api.saveDraft(buildFormData(meta, edit.uploads, uploadsUsed))).data.data
+    const data = (await api.saveDraft(formOf(meta, uploadsUsed))).data.data
     edit.markDraft(data)
     return data
   }

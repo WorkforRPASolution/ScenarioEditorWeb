@@ -5,6 +5,8 @@ export const OPEN_TIMEOUT_MS = 120000
 // 배포 한 번 = 기준 판 열기(차가운 큰 시나리오) + 조립 + setscenario(15초 + 1MB 마다 0.5초, 최대 120초, 설계 §6.3) + 마무리.
 // 브라우저가 먼저 끊으면 결과를 모르게 되므로(확인으로 넘어간다) 넉넉히 기다린다.
 export const DEPLOY_TIMEOUT_MS = 300000
+// 지우기(delscenario)는 판이 많으면 오래 걸린다 — 서버의 InterfaceServer 시간 제한(기본 15초)보다 먼저 끊지 않게 넉넉히 기다린다
+export const ADMIN_TIMEOUT_MS = 60000
 // 공용 axios 의 기본 머리글은 JSON 이고, axios 는 그때 FormData 를 JSON 으로 바꾼다 — 멀티파트를 적으면 브라우저가 경계값과 함께 다시 쓴다.
 const MULTIPART = { 'Content-Type': 'multipart/form-data' }
 
@@ -25,8 +27,14 @@ export const scenarioEditorApi = {
   verifyDeploy: (requestId) => api.post(`/scenario-editor/deploy/${enc(requestId)}/verify`, null, { timeout: OPEN_TIMEOUT_MS }),
   finishDeploy: (requestId) => api.post(`/scenario-editor/deploy/${enc(requestId)}/finish`, null, { timeout: OPEN_TIMEOUT_MS }),
   nameRule: () => api.get('/scenario-editor/name-rule'),
-  // 내 초안 목록(공정·모델) → [{ draftId, name, target, base, savedAt, revision }] — 새 시나리오 창이 같은 새 ID 의 초안을 찾는다
+  // 내 초안 목록(공정·모델) → [{ draftId, name, target, base, headCrtime, savedAt, revision }] — 불러오기 창의 내 초안, 새 시나리오 창이 같은 새 ID 의 초안을 찾는다
   listDrafts: (process, model) => api.get('/scenario-editor/drafts', { params: { process, model } }),
+  // 초안 하나 → { draftId, savedAt, revision, base, headCrtime, propertyRev, target, scenario, imageUrls }. 큰 시나리오일 수 있어 열기와 같은 시간.
+  getDraft: (id) => api.get(`/scenario-editor/drafts/${enc(id)}`, { timeout: OPEN_TIMEOUT_MS }),
+  deleteDraft: (id) => api.delete(`/scenario-editor/drafts/${enc(id)}`),
+  // 판 관리(불러오기 창): 켜기·끄기 → { isEnabled, propertyRev }, 지우기(본문 확인 이름) → { deleted: true }
+  setEnabled: (p, m, n, enabled) => api.put(`/scenario-editor/scenarios/${enc(p)}/${enc(m)}/${enc(n)}/enabled`, { enabled }),
+  removeScenario: (p, m, n, confirmName) => api.delete(`/scenario-editor/scenarios/${enc(p)}/${enc(m)}/${enc(n)}`, { data: { confirmName }, timeout: ADMIN_TIMEOUT_MS }),
   // 심의 저장(운영 속성 창, 관리 등급 1·2): 본문 { grade, comment } → { performance }(서버가 다시 읽은 값)
   saveReview: (p, m, n, body) => api.put(`/scenario-editor/scenarios/${enc(p)}/${enc(m)}/${enc(n)}/review`, body),
   // 성과 저장(성과 입력 창, 관리 등급 1·2): 본문 { fields, citizenDevelopers?, alsoModels } → { performance, applied }

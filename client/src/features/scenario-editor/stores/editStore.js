@@ -1,12 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref, shallowRef, computed } from 'vue'
-import { beginSession, nextUid, stepNo } from '../editor/session'
+import { beginSession, restoreSessionOf, draftSessionOf, nextUid, stepNo } from '../editor/session'
 import { copySteps, pasteSteps, detachClip, deleteSteps, moveSteps, setCell, movedRefKeys, applyStep, insertStep, sameOrder, STEP_MAX } from '../editor/commands'
 import { sameStep, canonicalJson, unsavedChanges } from '../editor/diff'
 import { checkStepFields } from '../editor/fieldRules'
 import { checkPropertyFields } from '../editor/propertyRules'
 import { firstError, CLICK_TYPES } from '../editor/panel'
-import { refUrl, loadBitmap, newTempId, uploadIdsOf } from '../editor/images'
+import { refUrl, loadBitmap, loadBlob, draftImageUrl, newTempId, uploadIdsOf } from '../editor/images'
 import { cropPng, imageDataOf } from '../editor/crop'
 import { locate } from '../editor/locate'
 import { spotKey } from '../editor/trainView'
@@ -66,6 +66,8 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   // 다른 시나리오를 여는 동안(editorStore.opening)도 아니다 — 열기가 끝나면 begin() 이 작업본을 갈아 끼우므로, 그 사이 친 값은 받지 않는다.
   // 도구 줄·패널·편집 창·표 칸 고치기·단축키가 모두 이 값을 본다.
   const editable = computed(() => !!session.value?.working && session.value.readOnly === null && !useEditorStore().opening)
+  // 서버에 이 세션의 초안이 있다(초안에서 이어 열었거나 이 세션에서 초안을 저장함) — 로컬 Blob 이 없는 올릴 그림은 그 초안 그림이다
+  const draftId = computed(() => session.value?.draft?.id ?? null)
 
   function reset() {
     selection.value = emptySelection()
@@ -121,10 +123,48 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     const { working, skeleton } = newScenarioOf(params)
     reset()
     carryClip()
-    editor.showNew(skeleton)
+    editor.showSkeleton(skeleton)
     session.value = { source: null, headCrtime: null, propertyRev: null, readOnly: null, working, saveBase: working, seq: 0, newId: `new${++newSeq}` }
     syncFocus(null)
     return true
+  }
+
+  // 불러오기 창에서 여는 세션(P2-D Task 7): 세션과 열린 뼈대를 함께 바꾸고 첫 스텝에 초점. 쓰기 권한이 없으면 열지 않는다(되돌리기·초안은 쓰기 동작).
+  function beginWith(build) {
+    const editor = useEditorStore()
+    if (!editor.me?.canWrite) return false
+    const { session: next, skeleton } = build(editor.me)
+    reset()
+    carryClip()
+    editor.showSkeleton(skeleton)
+    session.value = next.source ? next : { ...next, newId: `new${++newSeq}` }
+    const first = next.working.steps[0]?.uid ?? null
+    editor.selectedUid = first
+    syncFocus(first)
+    return true
+  }
+  // [이 버전으로 되돌려 열기]: 옛 판 내용을 현재 판 위 작업본으로(editor/session restoreSessionOf). 배포 meta 에 restoredFrom 이 실린다.
+  const beginRestore = (oldSkeleton, currentSkeleton) => beginWith((me) => restoreSessionOf(oldSkeleton, currentSkeleton, me))
+  // [초안 이어서 열기]: draft = GET /drafts/:id + 키, sourceSkeleton = 초안 기준 판(없으면 null — 새 시나리오 초안·원본이 지워진 판)
+  const beginFromDraft = (draft, sourceSkeleton) => beginWith((me) => draftSessionOf(draft, sourceSkeleton, me))
+  // 불러오기 창이 열린 시나리오를 지웠다 — 편집 화면은 읽기 전용(고친 내용은 볼 수만 있다, 설계 §6.7)
+  function markDeleted() {
+    if (!session.value) return
+    capture.value = null
+    dialog.value = null
+    pending = null
+    pendingLeave = null
+    session.value = { ...session.value, readOnly: 'deleted' }
+    syncPanel()
+  }
+  // 불러오기 창이 열린 시나리오를 켜거나 껐다. propertyRev 는 그대로 둔다 — 다음 배포 때 서버가 운영 속성 충돌로 알린다(설계 §6.7).
+  // 되돌려 다시 켜도 지문이 바뀌어(Owners 줄) 충돌이므로 "한 번이라도 바꿨음" 만 남긴다.
+  function markPropertyChanged() {
+    if (session.value) session.value = { ...session.value, propertyChanged: true }
+  }
+  // 초안을 지웠다 — 그 초안으로 연 세션은 서버 초안 그림을 더 볼 수 없다(로컬 Blob 이 없는 올릴 그림은 다시 잡아야 한다)
+  function forgetDraft(id) {
+    if (session.value?.draft?.id === id) session.value = { ...session.value, draft: null }
   }
 
   // 배포 성공 뒤 기준을 새 판으로(P2-D, DC-025): 새 판을 다시 연 뼈대로 세션(source·headCrtime·propertyRev·saveBase·작업본)을 다시 시작하고
@@ -262,10 +302,12 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     session.value = { ...s, working: { ...s.working, property: { ...next } } }
     return true
   }
-  const unsavedCount = computed(() => {
+  // 고친 곳 수(changeCount)와 저장 전 변경 수(unsavedCount). 읽기 전용이 된 세션(지워짐)의 고친 곳은 볼 수만 있어 떠날 때 묻지 않는다.
+  const changeCount = computed(() => {
     const s = session.value
     return s?.working && s.saveBase ? unsavedChanges(s.working, s.saveBase).length : 0
   })
+  const unsavedCount = computed(() => (session.value?.readOnly ? 0 : changeCount.value))
   // 저장 전 변경(적용한 값)이 있으면 한 번 더 묻는다 — 패널 확인(guard) 뒤에 부른다. 없으면 바로 next.
   function askLeave(next, { onKeep = null } = {}) {
     const n = unsavedCount.value
@@ -404,14 +446,22 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     if (r.refused) { refused(r.refused); return false }
     // R-P3: 묶음이 쓰는 올릴 그림의 Blob 을 함께 든다 — 다른 시나리오를 열면 이 세션의 올릴 그림은 비워진다
     const own = uploads.value
-    clip.value = { ...r, uploads: new Map(uploadIdsOf(r.steps).filter((id) => own.has(id)).map((id) => [id, own.get(id)])) }
+    // 초안에서 이어 연 세션의 서버 초안 그림(로컬 Blob 없음)은 다른 세션에 붙일 때 받아 온다(draftId)
+    clip.value = { ...r, uploads: new Map(uploadIdsOf(r.steps).filter((id) => own.has(id)).map((id) => [id, own.get(id)])), draftId: draftId.value }
     notify(t(cut ? 'SEW_CMD_CUT' : 'SEW_CMD_COPIED', { n: r.uids.length }))
     return true
   }
 
   // 묶음이 든 올릴 그림을 이 세션의 올릴 그림에 넣는다(R-P3, setUpload 와 같은 길) — 붙인 스텝의 그림이 보이고, 저장 요청에 실린다.
-  function takeUploads(c) {
+  // 묶음이 초안에서 이어 연 세션의 것이면 Blob 이 없는 그림(서버 초안에만 있음)을 받아 넣는다 — 받기 전에 세션이 바뀌면 버린다.
+  // 같은 초안 세션이면 받지 않는다(그 초안 그림이 그대로 보인다).
+  function takeUploads(c, steps) {
     putUploads([...(c.uploads ?? [])].filter(([id]) => !uploads.value.has(id)))
+    if (!c.draftId || c.draftId === draftId.value) return
+    const gen = spotGen.value
+    for (const id of uploadIdsOf(steps).filter((x) => !uploads.value.has(x))) {
+      loadBlob(draftImageUrl(c.draftId, id)).then((blob) => { if (gen === spotGen.value && !uploads.value.has(id)) setUpload(id, blob) }, () => {})
+    }
   }
 
   // where: 'after' | 'before' | 'end'. 새 스텝이 되는 설비 상태 스텝이 든 묶음은 먼저 알린다(서버가 origin 없는 설비 상태 스텝을
@@ -434,7 +484,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     if (r.refused) { refused(r.refused); return false }
     // 잘라낸 스텝을 같은 자리에 붙였다 — 쌓지 않고 묶음을 남긴다(다른 자리를 고르면 된다)
     if (r.working === working) { notify(t('SEW_CMD_PASTE_SAME_PLACE')); return false }
-    if (!moving) takeUploads(c)
+    if (!moving) takeUploads(c, r.working.steps.filter((st) => r.pasted.includes(st.uid)))
     const n = r.pasted.length
     const label = moving ? t('SEW_CMD_MOVED', { n }) : r.unresolved ? t('SEW_CMD_PASTED_UNRESOLVED', { n, open: r.unresolved }) : t('SEW_CMD_PASTED', { n })
     const firstOpen = moving ? null : r.working.steps.find((st) => r.pasted.includes(st.uid) && (st.next.onTrue.kind === 'unresolved' || st.next.onFalse.kind === 'unresolved'))
@@ -497,7 +547,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
 
   // ── 큰 화면 잡기(목업 CAP_FLOW·capStart·capNext·capDone·capCancel, 조작판 3~6) ──
   // 잡은 값은 패널 초안에만 들어간다. 작업본은 [적용](고른 스텝) 또는 [N번 앞에 넣기]·[맨 끝에 추가](새 스텝)로만 바뀐다.
-  const imgCtx = () => ({ session: session.value, uploads: uploads.value, draftId: null })
+  const imgCtx = () => ({ session: session.value, uploads: uploads.value, draftId: draftId.value })
   // 올릴 그림 넣기 — 넣을 것이 있으면 한 번에 새 Map 으로 바꾼다(화면이 따라 그린다)
   function putUploads(entries) {
     if (!entries.length) return
@@ -735,11 +785,11 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   }
 
   return {
-    session, selection, panel, undo, redo, clip, uploads, capture, locating, viewReq, canCapture, toast, dialog, moved, focusReq, editable, spots, spotGen, areaDragging,
-    begin, beginNew, end, rebase, markDraft, run, undoLast, redoLast,
+    session, selection, panel, undo, redo, clip, uploads, capture, locating, viewReq, canCapture, toast, dialog, moved, focusReq, editable, draftId, spots, spotGen, areaDragging,
+    begin, beginNew, beginRestore, beginFromDraft, markDeleted, markPropertyChanged, forgetDraft, end, rebase, markDraft, run, undoLast, redoLast,
     setSelection, syncFocus, requestSelect, clickRow, panelDirty, notify,
     openPanel, syncPanel, updateDraft, panelErrors, applyPanel, discardPanel, requestFocus,
-    guard, guardKeep, guardDrop, guardApply, setHeader, applyProperty, unsavedCount, askLeave, leaveKeep, leaveDrop,
+    guard, guardKeep, guardDrop, guardApply, setHeader, applyProperty, changeCount, unsavedCount, askLeave, leaveKeep, leaveDrop,
     undoCommand, redoCommand, copySelection, pasteClip, deleteSelection, moveSelected, editCell,
     setUpload, requestView, startCapture, captureNext, cancelCapture, finishCapture, repick, findSpot, setAreaDrag, startNew, addNew, cancelNew
   }

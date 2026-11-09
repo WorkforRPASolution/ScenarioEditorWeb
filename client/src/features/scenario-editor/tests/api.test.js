@@ -3,11 +3,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const get = vi.fn().mockResolvedValue({ data: {} })
 const post = vi.fn().mockResolvedValue({ data: {} })
 const put = vi.fn().mockResolvedValue({ data: {} })
-vi.mock('@/shared/api', () => ({ default: { get: (...a) => get(...a), post: (...a) => post(...a), put: (...a) => put(...a), defaults: { baseURL: 'http://x:3100/api' } } }))
-import { scenarioEditorApi as api, OPEN_TIMEOUT_MS, DEPLOY_TIMEOUT_MS, imageUrl } from '../api'
+const del = vi.fn().mockResolvedValue({ data: {} })
+vi.mock('@/shared/api', () => ({ default: { get: (...a) => get(...a), post: (...a) => post(...a), put: (...a) => put(...a), delete: (...a) => del(...a), defaults: { baseURL: 'http://x:3100/api' } } }))
+import { scenarioEditorApi as api, OPEN_TIMEOUT_MS, DEPLOY_TIMEOUT_MS, ADMIN_TIMEOUT_MS, imageUrl } from '../api'
 
 describe('scenarioEditorApi', () => {
-  beforeEach(() => { get.mockClear(); post.mockClear(); put.mockClear(); localStorage.clear() })
+  beforeEach(() => { get.mockClear(); post.mockClear(); put.mockClear(); del.mockClear(); localStorage.clear() })
   it('열기는 120초, 경로 값은 인코딩', async () => {
     await api.open('P 1', 'M/2', 'N', 'current')
     expect(get).toHaveBeenCalledWith('/scenario-editor/scenarios/P%201/M%2F2/N/versions/current', { timeout: OPEN_TIMEOUT_MS })
@@ -41,6 +42,19 @@ describe('scenarioEditorApi', () => {
   it('내 초안 목록은 공정·모델 쿼리', async () => {
     await api.listDrafts('P', 'M')
     expect(get).toHaveBeenLastCalledWith('/scenario-editor/drafts', { params: { process: 'P', model: 'M' } })
+  })
+  it('켜기·끄기는 PUT …/enabled { enabled }, 지우기는 DELETE 본문 { confirmName } — 판이 많으면 오래 걸려 서버 시간 제한(15초)보다 길게 기다린다', async () => {
+    await api.setEnabled('P 1', 'M', 'N/2', false)
+    expect(put).toHaveBeenLastCalledWith('/scenario-editor/scenarios/P%201/M/N%2F2/enabled', { enabled: false })
+    await api.removeScenario('P', 'M', 'N', 'N')
+    expect(del).toHaveBeenLastCalledWith('/scenario-editor/scenarios/P/M/N', { data: { confirmName: 'N' }, timeout: ADMIN_TIMEOUT_MS })
+    expect(ADMIN_TIMEOUT_MS).toBeGreaterThan(15000)
+  })
+  it('초안 하나 읽기(큰 시나리오일 수 있어 열기와 같은 시간)·지우기', async () => {
+    await api.getDraft('d 1')
+    expect(get).toHaveBeenLastCalledWith('/scenario-editor/drafts/d%201', { timeout: OPEN_TIMEOUT_MS })
+    await api.deleteDraft('d1')
+    expect(del).toHaveBeenLastCalledWith('/scenario-editor/drafts/d1')
   })
   it('심의 저장은 PUT …/review 본문 { grade, comment }, 경로 값은 인코딩', async () => {
     await api.saveReview('P 1', 'M', 'N/2', { grade: 1, comment: '의견입니다' })

@@ -32,7 +32,7 @@ const shown = computed(() => isNew.value || !!step.value)
 const kind = computed(() => (draft.value ?? step.value)?.condition?.kind)
 const newSrc = computed(() => {
   const b = isNew.value ? edit.panel.draft.images?.base : null
-  return isRef(b) ? refUrl(b, { session: edit.session, uploads: edit.uploads, draftId: null }) : null
+  return isRef(b) ? refUrl(b, { session: edit.session, uploads: edit.uploads, draftId: edit.draftId }) : null
 })
 const baseState = computed(() => {
   if (!isNew.value) return step.value?.baseImage.state

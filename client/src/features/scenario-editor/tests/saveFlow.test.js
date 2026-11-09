@@ -570,4 +570,72 @@ describe('saveFlow', () => {
     expect(api.open).not.toHaveBeenCalled()
     expect(e.session.source.crtime).toBe(1)
   })
+
+  // ── 불러오기 창에서 연 세션(P2-D Task 7) ──
+  const versionOf = (crtime, head, steps, property = { IsEnabled: true }) => {
+    const edited = { source: { process: 'P', model: 'M', name: 'N', crtime, fileId: `F${crtime}` }, headCrtime: head, header: { description: 'm', timeoutLimit: '1' }, steps, property }
+    return { process: 'P', model: 'M', name: 'N', id: 'P-M-N', headCrtime: head, propertyRev: `r${head}`, version: { crtime, isCurrent: crtime === head, fileId: `F${crtime}` },
+      header: { description: 'm', timeoutLimit: 1, targetWindow: null }, property, notes: [], steps: steps.map((x, i) => ({ ...x, no: i + 1, notes: [] })), edited }
+  }
+  it('초안 이어서 연 세션 → 배포: 서버 초안에만 있는 그림(로컬 Blob 없음)은 다시 올리지 않고 meta 만 그 tempId 를 가리킨다, 새로 잡은 그림은 싣는다', async () => {
+    const { s, e } = setup()
+    const base = versionOf(30, 30, [imageStep(0), noneStep(1)])
+    const fromDraft = { ...imageStep(0), images: { train: { 0: { from: 'upload', tempId: 'tDraft' } }, base: { from: 'source', id: 's0-bi' } } }
+    s.me = { ...s.me, canWrite: true }
+    e.beginFromDraft({ draftId: 'd1', savedAt: '2026-11-07T05:23:51.000Z', base: { crtime: 30, fileId: 'F30' }, headCrtime: 30, propertyRev: 'r30', target: { model: 'M', name: 'N' },
+      scenario: { ...base.edited, steps: [fromDraft, noneStep(1)] }, imageUrls: {}, process: 'P', model: 'M', name: 'N' }, base)
+    const fresh = new Blob([new Uint8Array([137, 80, 78, 71])], { type: 'image/png' })
+    e.setUpload('tNew', fresh)
+    const st1 = e.session.working.steps[1]
+    e.run('x', (w) => ({ working: { ...w, steps: [w.steps[0], { ...st1, images: { train: { 0: { from: 'upload', tempId: 'tNew' } }, base: null } }] } }))
+    const flow = useSaveFlow()
+    flow.open(); await flushPromises()
+    flow.toConfirm()
+    expect(flow.stage).toBe('confirm')
+    api.deploy.mockImplementationOnce(() => ok({ result: 'ok', crtime: 99, partialFailed: [] }))
+    api.open.mockReturnValue(ok(reopened()))
+    await flow.deploy()
+    expect(flow.stage).toBe('ok')
+    const fd = api.deploy.mock.calls[0][0]
+    const meta = JSON.parse(fd.get('meta'))
+    expect(meta.scenario.steps[0].images.train[0]).toEqual({ from: 'upload', tempId: 'tDraft' })
+    expect(meta.scenario.headCrtime).toBe(30)
+    expect(meta.propertyRev).toBe('r30')
+    expect(fd.get('img:tDraft')).toBe(null)
+    expect(fd.get('img:tNew')).toBeInstanceOf(Blob)
+  })
+  it('초안 이어서 연 세션 → 초안 다시 저장도 서버 초안 그림은 다시 올리지 않는다', async () => {
+    const { s, e } = setup()
+    const base = versionOf(30, 30, [imageStep(0)])
+    const fromDraft = { ...imageStep(0), images: { train: { 0: { from: 'upload', tempId: 'tDraft' } }, base: { from: 'source', id: 's0-bi' } } }
+    s.me = { ...s.me, canWrite: true }
+    e.beginFromDraft({ draftId: 'd1', savedAt: '2026-11-07T05:23:51.000Z', base: { crtime: 30, fileId: 'F30' }, headCrtime: 30, propertyRev: 'r30', target: { model: 'M', name: 'N' },
+      scenario: { ...base.edited, steps: [fromDraft] }, imageUrls: {}, process: 'P', model: 'M', name: 'N' }, base)
+    const flow = useSaveFlow()
+    flow.open(); await flushPromises()
+    api.saveDraft.mockReturnValue(ok({ draftId: 'd1', savedAt: '2026-11-09T05:23:00.000Z', revision: 3 }))
+    await flow.saveDraft()
+    expect(flow.stage).toBe('draft')
+    expect(api.saveDraft.mock.calls[0][0].get('img:tDraft')).toBe(null)
+    expect(e.draftId).toBe('d1')
+  })
+  it('되돌려 연 세션 → 배포 meta: restoredFrom = 옛 판 crtime, 기준 판 = 옛 판, 연 때의 현재 버전 = 현재 판', async () => {
+    const { e } = setup()
+    e.beginRestore(versionOf(10, 30, [imageStep(0), noneStep(1)]), versionOf(30, 30, [imageStep(0), noneStep(1), noneStep(2)]))
+    const flow = useSaveFlow()
+    flow.open(); await flushPromises()
+    expect(api.check.mock.calls[0][0].scenario.source.crtime).toBe(10)
+    expect(flow.changes.length).toBeGreaterThan(0)
+    flow.toConfirm()
+    api.deploy.mockImplementationOnce(() => ok({ result: 'ok', crtime: 99, partialFailed: [] }))
+    api.open.mockReturnValue(ok(reopened()))
+    await flow.deploy()
+    const meta = lastMeta(api.deploy)
+    expect(meta.restoredFrom).toBe(10)
+    expect(meta.scenario.source.crtime).toBe(10)
+    expect(meta.scenario.headCrtime).toBe(30)
+    expect(meta.propertyRev).toBe('r30')
+    expect(flow.stage).toBe('ok')
+    expect(e.session.restoredFrom).toBeUndefined() // 새 판으로 기준을 바꾸면 되돌림 표시는 끝난다
+  })
 })

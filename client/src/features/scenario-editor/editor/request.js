@@ -34,3 +34,9 @@ export function buildFormData(meta, uploads, uploadsUsed) {
   }
   return fd
 }
+
+// 보낼 그림: 초안에서 이어 연 세션(draftId)은 서버 초안에만 있는 그림(로컬 Blob 이 없는 tempId)을 다시 올리지 않는다 —
+// 서버가 그 사용자·시나리오의 초안 그림을 그대로 쓴다(P2-B Task 9). 초안이 없는 세션은 그대로(빠진 Blob 은 buildFormData 가 막는다).
+export function uploadsToSend(uploadsUsed, uploads, draftId) {
+  return draftId ? uploadsUsed.filter((id) => uploads?.get(id) instanceof Blob) : uploadsUsed
+}

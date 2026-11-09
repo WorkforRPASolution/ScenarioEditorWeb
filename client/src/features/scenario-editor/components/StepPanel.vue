@@ -45,7 +45,7 @@ const say = computed(() => (d.value ? sentence(d.value, working.value, p.value.i
 const shownStep = computed(() => (store.selectedStep?.uid === d.value?.uid ? store.selectedStep : null))
 const skStep = computed(() => (store.skeleton?.steps ?? []).find((s) => s.uid === d.value?.uid) ?? null)
 
-const ctx = computed(() => ({ session: edit.session, uploads: edit.uploads, draftId: edit.draftId ?? null }))
+const ctx = computed(() => ({ session: edit.session, uploads: edit.uploads, draftId: edit.draftId }))
 const isRef = (r) => !!r && typeof r === 'object' && 'from' in r
 const baseSrc = computed(() => (isRef(d.value?.images?.base) ? refUrl(d.value.images.base, ctx.value) : null))
 // other = 다른 시나리오 판의 그림(붙여 온 스텝) — 불러오지 못하면 그림 자리에 "그 버전을 찾지 못했습니다"
