@@ -1,6 +1,6 @@
 # ScenarioEditorWeb
 
-사내 ScenarioEditor 웹 MVP. 설계: `../docs/scenario-editor-web/design/` · 계획: `../docs/scenario-editor-web/plans/`. 개발(맥·로컬 데이터) 실행법은 `CLAUDE.md`, 사내 Windows PC 에서 운영 DB 로 보는 법은 아래.
+사내 ScenarioEditor 웹 MVP. 설계: `../docs/scenario-editor-web/design/` · 계획: `../docs/scenario-editor-web/plans/`. 개발(맥·로컬 데이터) 실행법은 `CLAUDE.md`, 사내 Windows PC 에서 운영 DB 로 보는 법(읽기 시험)과 저장해 보는 법(쓰기 시험)은 아래.
 
 ## 사내 운영 DB 로 읽기 시험 (Windows)
 
@@ -60,6 +60,7 @@ notepad server\.env
 | `REDIS_URL` | 운영 Redis DB0. 사내 WebManager 설정의 `REDIS_URL` 형식 그대로. Sentinel 이면 `{호스트:포트},{호스트:포트}#master이름` 꼴이고 `REDIS_PASSWORD=` 줄을 더한다 |
 | `SE_USER_SINGLEID` | 본인 SingleID. 이 사용자의 공정·권한으로 보인다 |
 | `SE_WEBMANAGER_DB` | **반드시 `0` 그대로 둔다** |
+| `SE_WEB_DB_URI` | 읽기 시험에서는 비워 둔다(쓰기 시험 때 채운다) |
 
 `HOST=127.0.0.1` 도 그대로 둔다(인증 없는 서버라 이 PC 안에서만 받는다). `client\.env` 는 고칠 것이 없다.
 
@@ -107,3 +108,86 @@ Windows 방화벽 허용 창이 뜨면 허용하지 않아도 된다(이 PC 안�
 - 시나리오를 처음 열면 기준 화면 묶음(BI)을 조각으로 흘려 읽어 PNG 로 디스크에 쓴다. 100MB 급이면 이 PC 메모리를 약 300MB 쓰고(로컬 측정), 운영 Mongo 에서는 그 파일 전체를 읽는다. 서로 다른 시나리오의 첫 열기는 한 번에 하나씩 돈다. 다시 열 때는 `server\.cache\images`(상한 2GB)를 쓰고 Mongo 에서는 파일 id 만 조회한다.
 - 데이터 점검 창은 사용자 범위(공정·모델) 안의 `SC_PROPERTY` 를 집계한다. 마스터 사용자면 전체다.
 - 실제 운영 데이터는 처음 본다. 해석이 깨지면 화면이 죽지 않고 경고로 보인다. 어떤 시나리오에서 무엇이 어떻게 보였는지(경고 문구·화면) 적어 오면 고친다.
+
+## 사내 쓰기 시험 (Windows)
+
+P2(편집·저장)를 사내 PC 에서 운영 EARS·InterfaceServer 에 붙여 한 번 저장해 본다(설계 §12). **배포가 곧 설비 배포다.** 그래서 새로 만든 꺼진 시나리오 `SEW_TEST_<날짜>` 하나에만 쓴다 — 꺼져 있으면 CommandServer 가 실행 요청을 만들지 않는다. 사용자와 Claude 가 함께 하고 결과를 적는다.
+
+준비물·받기·설치·문제 해결은 위 읽기 시험과 같다. 이미 받아 두었으면 서버를 끄고 `git pull` 한 뒤 설치 세 줄을 다시 친다.
+
+### 1. 어디에 쓰나
+
+| 동작 | 쓰는 곳 |
+|---|---|
+| 초안 저장 | 웹 전용 DB(`SE_WEB_DB_URI`)만. 운영 EARS 에는 쓰지 않는다 |
+| 배포 | 사내 InterfaceServer `setscenario`(본문·기준 화면·운영 속성·판) + 웹 전용 DB 의 배포 기록. 성공하면 그 시나리오의 내 초안을 지운다 |
+| 삭제 | 사내 InterfaceServer `delscenario`(운영 속성·판 파일. Redis 판 기록은 남는다 — 사내와 같다) |
+| 켜기·끄기(불러오기 창)·심의·성과 저장 | 운영 EARS `SC_PROPERTY` 에 직접 쓴다. **이번 시험에서는 쓰지 않는다** |
+
+### 2. 설정
+
+읽기 시험의 `server\.env` 에 더한다(없으면 `copy server\.env.inhouse.example server\.env`).
+
+```bat
+notepad server\.env
+```
+
+| 변수 | 넣을 값 |
+|---|---|
+| `SE_WEB_DB_URI` | 웹 전용 DB. 운영 Mongo 에 두면 EARS 가 아닌 새 DB 이름(예: `…/SE_WEB_TEST?authSource=admin`), 계정은 그 DB 에 쓰기 권한. EARS 와 같은 이름이면 서버가 뜨지 않는다 |
+| `EARS_INTERFACE_URL` | 사내 InterfaceServer 주소(사내 WebManager 설정과 같은 값) |
+| `EARS_INTERFACE_MAX_REQUEST_MB` | 사내 InterfaceServer 의 `max-content-length`(MB). 모르면 `100` 그대로 |
+| `SE_USER_SINGLEID` | WRITE 권한이 있는 본인 SingleID |
+| 그대로 둘 것 | `HOST=127.0.0.1` · `SE_WEBMANAGER_DB=0` · `SE_DEV_USER_OVERRIDE=0` |
+
+### 3. 사전 점검
+
+```bat
+node tools\inhouse\preflight.js
+```
+
+`멈춤` 줄이 하나라도 있으면 그 줄의 안내대로 고치고 다시 돌린다. 멈춤이 있는 채로 시험하지 않는다. 보는 것: `HOST` 가 이 PC 인지, `SE_WEBMANAGER_DB=0`, 웹 전용 DB 주소가 있고 EARS 와 다른 DB 인지, InterfaceServer 주소·사용자, 다른 사용자로 바꾸기가 꺼졌는지. `tools` 설치 없이 된다.
+
+서버를 띄운 뒤(4) 시험 이름과 함께 한 번 더 돌린다. 쓰기 권한과 그 이름이 이미 있는지를 본다.
+
+```bat
+node tools\inhouse\preflight.js --name SEW_TEST_20261110 --process <공정> --model <모델>
+```
+
+이름이 이미 있으면 `SEW_TEST_20261110_2` 처럼 접미사를 바꾼다.
+
+### 4. 실행·확인
+
+```bat
+npm run dev
+```
+
+`[server]` 로그에서 본다.
+
+1. `MongoDB EARS Connected … SE_WEBMANAGER_DB=0` 과 `MongoDB 웹 전용 DB Connected … (SE_WEB_DB_URI)` 가 둘 다 있다. 웹 전용 DB 줄이 없으면 `SE_WEB_DB_URI` 가 비었다(저장·배포가 503).
+2. `HOST=… 는 루프백이 아니라` 경고가 보이면 끄고 `HOST` 를 고친다.
+3. `Failed to start server: SE_WEB_DB_URI 의 DB 이름이 운영 EARS…` 로 끝나면 웹 전용 DB 이름을 바꾼다. 웹 전용 DB 에 붙지 못해도 서버가 뜨지 않는다 — 주소·계정을 고치거나, 읽기 시험만 하려면 `SE_WEB_DB_URI` 를 비운다.
+
+### 5. 절차
+
+단계마다 적을 것: 시각, 판 시각(저장 결과 화면의 새 버전·불러오기 창 버전 목록), 화면 사진, 데스크톱 편집기가 연 결과. 실패하면 화면 문구와 `server\logs` 의 그날 로그를 함께 적는다.
+
+1. **스텝 복사**: 불러오기 창에서 시험할 공정·모델의 시나리오 하나를 열고, 이미지·OCR·대기 스텝 몇 개를 골라 [복사]. (설비 상태 조건 스텝은 새로 만들 수 없는 조건이라 빼고 고른다.)
+2. **새 시나리오**: 바 [새 시나리오] → 같은 공정·모델, 이름 `SEW_TEST_<오늘 날짜>`, 메일 제목 → [만들기].
+3. **붙여넣기**: 빈 화면의 [붙여넣기]. 마지막 스텝의 갈 곳이 `NEXT` 면 `SUCCESS` 로 바꾼다.
+4. **끄기**: 바 [운영 속성 전체] → [수정] → 켜짐을 끈다 → [적용]. 새 시나리오는 사내처럼 켜진 채 만들어지므로 **꼭 끈다**. 바에 꺼짐이 보이는지 본다.
+5. **초안 저장**: [저장] → [초안 저장]. 새로고침해도 불러오기 창 [초안 이어서 열기]로 같은 스텝이 열리는지 본다.
+6. **배포**: [저장] → [배포] → 확인 문구의 대상 ID·설비 수를 보고 [배포]. 새 버전 시각을 적는다. "배포됐는지 알 수 없습니다" 가 나오면 [버전 목록 확인]부터 누른다(바로 다시 배포하지 않는다).
+7. **데스크톱으로 열기**: 사내 ScenarioEditor 로 같은 시나리오를 연다 — 스텝·기준 화면·찾을 그림·운영 속성(사용 꺼짐)이 웹과 같은지 본다.
+8. **데스크톱 판을 웹으로**: 데스크톱에서 스텝 설명 하나만 바꿔 서버에 저장한다(사용 꺼짐 그대로). 웹에서 그 시나리오를 다시 열어(불러오기 창 → 현재 버전) 바뀐 설명과 그림이 보이는지 본다.
+9. **고쳐 배포**: 웹에서 이미지 스텝 하나를 골라 기준 화면에서 찾을 그림을 [다시 잡기]로 새로 자르고 배포한다.
+10. **데스크톱으로 다시 열기**: 새로 자른 찾을 그림이 데스크톱에 보이는지 본다.
+11. **지우기**: 웹 불러오기 창에서 `SEW_TEST_<날짜>` 를 골라 [지우기]. Redis 에 남은 판 기록은 지우지 않고 적기만 한다.
+
+### 6. 하지 말 것
+
+- `SEW_TEST_<날짜>` 말고 다른 시나리오에 배포하지 않는다. "덮어씁니다" 확인이 뜨면 **취소**한다.
+- 켜지 않는다(운영 속성 켜짐, 불러오기 창 켜기). 켜면 설비에서 실행될 수 있다.
+- 불러오기 창의 켜기·끄기, 심의·성과 저장을 하지 않는다(운영 EARS 에 직접 쓴다).
+- 큰 시나리오를 복사해 배포하지 않는다.
+- 위 읽기 시험 "하지 말 것"(시험 데이터·통합 시험·E2E·측정 도구)도 그대로다.
