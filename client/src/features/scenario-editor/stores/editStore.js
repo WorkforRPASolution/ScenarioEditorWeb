@@ -104,6 +104,27 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     session.value = null
   }
 
+  // 배포 성공 뒤 기준을 새 판으로(P2-D, DC-025): 새 판을 다시 연 뼈대로 세션(source·headCrtime·propertyRev·saveBase·작업본)을 다시 시작하고
+  // 열린 뼈대도 바꾼다 — 다른 이름으로 배포했으면 바의 ID·주소가 새 이름이 된다. 올릴 그림·되돌리기는 비운다(새 판 그림은 서버 참조다).
+  // 초점은 같은 번호의 스텝에 둔다(없으면 마지막 스텝).
+  function rebase(skeleton) {
+    const editor = useEditorStore()
+    const no = session.value?.working ? stepNo(session.value.working, editor.selectedUid) : 0
+    reset()
+    carryClip()
+    editor.skeleton = skeleton
+    session.value = beginSession(skeleton, editor.me)
+    const steps = session.value.working?.steps ?? []
+    const uid = steps.length ? steps[Math.min(Math.max(no, 1), steps.length) - 1].uid : null
+    editor.selectedUid = uid
+    syncFocus(uid) // 앞 판과 같은 uid 면 초점 감시가 울리지 않는다
+  }
+
+  // 초안 저장 뒤 — 바에 보일 초안 id·시각. 작업본은 그대로라 저장 전 표시는 남는다.
+  function markDraft({ draftId, savedAt }) {
+    if (session.value) session.value = { ...session.value, draft: { id: draftId, savedAt } }
+  }
+
   function clearMoved() {
     clearTimeout(movedTimer)
     movedTimer = null
@@ -657,7 +678,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
 
   return {
     session, selection, panel, undo, redo, clip, uploads, capture, locating, viewReq, canCapture, toast, dialog, moved, focusReq, editable, spots, spotGen, areaDragging,
-    begin, end, run, undoLast, redoLast,
+    begin, end, rebase, markDraft, run, undoLast, redoLast,
     setSelection, syncFocus, requestSelect, clickRow, panelDirty, notify,
     openPanel, syncPanel, updateDraft, panelErrors, applyPanel, discardPanel, requestFocus,
     guard, guardKeep, guardDrop, guardApply,

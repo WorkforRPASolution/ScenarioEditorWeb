@@ -1,14 +1,19 @@
 <script setup>
 import { ref, computed, nextTick, onBeforeUnmount } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
+import { useEditStore } from '../stores/editStore'
+import { useSaveFlow } from '../stores/saveFlow'
 import { t, LABELS, noteMessage } from '../messages'
 import { formatCrtime, scenarioTypeLabel, enabledLabel } from '../format'
 import PropertyDialog from './PropertyDialog.vue'
 import DataCheckDialog from './DataCheckDialog.vue'
+import SaveDialog from './SaveDialog.vue'
 
 defineOptions({ name: 'ScenarioBar' })
 defineEmits(['load'])
 const store = useEditorStore()
+const edit = useEditStore()
+const flow = useSaveFlow()
 const showProperty = ref(false)
 const showDataCheck = ref(false)
 const sk = computed(() => store.skeleton)
@@ -41,6 +46,27 @@ async function onNotesClick() {
   el.focus({ preventScroll: true })
 }
 onBeforeUnmount(() => clearTimeout(flashTimer))
+
+// [저장](P2-D Task 2): 쓸 수 있는 세션에만. 패널에 적용 안 한 변경이 있으면 저장 창 전에 확인 창(목업 조작판 22).
+// 개수 "(N)"·"저장 전 N곳" 과 바 칸 입력은 Task 3 몫이다.
+function onSave() {
+  if (edit.capture) { edit.notify(t('SEW_SAVE_REFUSED_CAPTURE')); return }
+  edit.guard(() => flow.open(), { action: 'save' })
+}
+// 저장 창의 막힌 줄·[고치기]가 바 칸으로 보낼 때(목업 svbar). 칸 입력은 Task 3 이 만든다 — 지금은 그 칸의 글자에 초점.
+const descEl = ref(null)
+const timeoutEl = ref(null)
+async function focusBar(field) {
+  await nextTick()
+  const el = field === 'timeoutLimit' ? timeoutEl.value : descEl.value
+  if (!el) return
+  if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest' })
+  el.focus()
+}
+const draftTime = computed(() => {
+  const ms = edit.session?.draft?.savedAt ? new Date(edit.session.draft.savedAt).getTime() : NaN
+  return Number.isFinite(ms) ? formatCrtime(ms).slice(11, 16) : ''
+})
 const flashRing = 'ring-2 ring-amber-400 dark:ring-amber-500 rounded'
 const badge = 'px-2 py-0.5 rounded text-xs font-medium'
 const btn = 'h-8 px-3 rounded-lg text-sm'
@@ -49,10 +75,12 @@ const btn = 'h-8 px-3 rounded-lg text-sm'
 <template>
   <div class="bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:border-dark-border px-3 py-2 flex items-center gap-3 flex-wrap" data-testid="se-bar">
     <button :class="btn" class="bg-primary-500 hover:bg-primary-600 text-white font-medium" data-testid="se-load" @click="$emit('load')">{{ t('SEW_UI_LOAD') }}</button>
+    <button v-if="edit.editable" :class="btn" class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-100 font-medium" data-testid="se-save" @click="onSave">{{ t('SEW_SAVE_OPEN') }}</button>
     <template v-if="sk">
       <div class="min-w-0">
         <div class="font-mono text-sm text-gray-900 dark:text-white truncate" data-testid="se-bar-id">{{ sk.id }}</div>
-        <div class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ sk.header.description }} · 제한 {{ sk.header.timeoutLimit }}분</div>
+        <div class="text-xs text-gray-500 dark:text-gray-400 truncate"><span ref="descEl" tabindex="-1" class="outline-none focus:ring-2 focus:ring-primary-400 rounded" data-testid="se-bar-description">{{ sk.header.description }}</span>
+          · <span ref="timeoutEl" tabindex="-1" class="outline-none focus:ring-2 focus:ring-primary-400 rounded" data-testid="se-bar-timeout">제한 {{ sk.header.timeoutLimit }}분</span></div>
       </div>
       <div class="flex items-center gap-1.5 flex-wrap text-xs">
         <span :class="badge" class="bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-400" data-testid="se-bar-version">
@@ -63,6 +91,7 @@ const btn = 'h-8 px-3 rounded-lg text-sm'
           <span :class="badge" class="bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">{{ scenarioTypeLabel(sk.property.Type) }}</span>
         </template>
         <span v-if="sk.performance" :class="badge" class="bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">등급 {{ sk.performance.gradeName }}</span>
+        <span v-if="draftTime" :class="badge" class="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" data-testid="se-bar-draft">{{ t('SEW_SAVE_BAR_DRAFT', { time: draftTime }) }}</span>
       </div>
       <div class="text-xs text-gray-600 dark:text-gray-300 min-w-0" data-testid="se-bar-target-window">
         <div class="truncate">{{ twText }}</div>
@@ -86,5 +115,6 @@ const btn = 'h-8 px-3 rounded-lg text-sm'
     </div>
     <PropertyDialog v-model="showProperty" />
     <DataCheckDialog v-model="showDataCheck" />
+    <SaveDialog @bar="focusBar" @property="showProperty = true" />
   </div>
 </template>

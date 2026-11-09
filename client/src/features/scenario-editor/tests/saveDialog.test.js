@@ -1,0 +1,263 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+import { setActivePinia, createPinia } from 'pinia'
+
+const api = vi.hoisted(() => ({ check: vi.fn(), saveDraft: vi.fn(), deploy: vi.fn(), verifyDeploy: vi.fn(), finishDeploy: vi.fn(), open: vi.fn(), nameRule: vi.fn() }))
+vi.mock('../api', () => ({ scenarioEditorApi: api, imageUrl: (p) => p }))
+import ScenarioBar from '../components/ScenarioBar.vue'
+import EditDialogs from '../components/EditDialogs.vue'
+import { useSaveFlow } from '../stores/saveFlow'
+import { t, MESSAGES } from '../messages'
+import { panelFixture, imageStep, noneStep } from './panelFixture'
+
+const ok = (data) => Promise.resolve({ data: { success: true, data } })
+const fail = (status, code, details) => Promise.reject({ response: { status, data: { code, details } }, request: {} })
+const clean = (over = {}) => ({ blocks: [], warns: [], target: { exists: true, eqpCount: 3 }, conflict: null, targetExists: null, ...over })
+const find = (w, id) => w.find(`[data-testid="${id}"]`)
+
+function setup(check = clean(), { nameRule = { exists: false, rules: [] }, canWrite = true } = {}) {
+  const f = panelFixture([imageStep(0), noneStep(1), noneStep(2)], { canWrite })
+  f.s.skeleton = { ...f.s.skeleton, id: 'P-M-N', header: { description: '메일 제목', timeoutLimit: '1', targetWindow: null }, property: null, performance: null }
+  f.s.scopes = { processes: [{ process: 'P', models: [{ model: 'M', eqpCount: 3 }, { model: 'M2', eqpCount: 5 }] }] }
+  api.check.mockImplementation(() => ok(check))
+  api.nameRule.mockReturnValue(ok(nameRule))
+  const bar = mount(ScenarioBar, { attachTo: document.body })
+  return { ...f, bar, flow: useSaveFlow() }
+}
+async function openSave(bar) {
+  await find(bar, 'se-save').trigger('click')
+  await flushPromises()
+}
+
+describe('저장 창(SaveDialog)', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    Object.values(api).forEach((f) => f.mockReset())
+    sessionStorage.clear()
+  })
+
+  it('[저장] 은 쓸 수 있는 세션에만 보이고, 누르면 저장 창이 열려 검사를 한 번 부른다', async () => {
+    const { bar } = setup()
+    await openSave(bar)
+    expect(find(bar, 'se-save-dialog').exists()).toBe(true)
+    expect(api.check).toHaveBeenCalledTimes(1)
+    expect(find(bar, 'se-save-dialog').text()).toContain(t('SEW_SAVE_CHECKS_OK'))
+    bar.unmount()
+    setActivePinia(createPinia())
+    const ro = setup(clean(), { canWrite: false })
+    expect(find(ro.bar, 'se-save').exists()).toBe(false)
+    ro.bar.unmount()
+  })
+
+  it('패널에 적용 안 한 변경이 있으면 저장 창 전에 확인 창(조작판 22) — [버리고 저장 창 열기] 뒤 열린다', async () => {
+    const { bar, e } = setup()
+    const dlg = mount(EditDialogs, { attachTo: document.body })
+    e.updateDraft((d) => ({ ...d, descriptionToEmail: '고치는 중' }))
+    await find(bar, 'se-save').trigger('click')
+    await flushPromises()
+    expect(find(dlg, 'se-guard').text()).toContain(t('SEW_EDIT_GUARD_BODY_SAVE', { n: 1 }))
+    expect(find(bar, 'se-save-dialog').exists()).toBe(false)
+    expect(find(dlg, 'se-guard-drop').text()).toBe(t('SEW_EDIT_GUARD_DROP_SAVE'))
+    await find(dlg, 'se-guard-drop').trigger('click')
+    await flushPromises()
+    expect(find(bar, 'se-save-dialog').exists()).toBe(true)
+    dlg.unmount(); bar.unmount()
+  })
+
+  it('막힌 줄을 누르면 창이 닫히고 그 스텝이 선택된다', async () => {
+    const { bar, s, e } = setup(clean({ blocks: [{ code: 'NEXT_UNRESOLVED', uid: 's2', params: { which: 'onTrue' } }] }))
+    e.editCell('s0', 'accept', 0.8) // 바뀐 것이 있어야 초안을 저장할 수 있다
+    await openSave(bar)
+    const row = find(bar, 'se-save-issue')
+    expect(row.text()).toContain(t('RULE_NEXT_UNRESOLVED'))
+    expect(row.text()).toContain('3번')
+    expect(find(bar, 'se-save-deploy').attributes('disabled')).toBeDefined()
+    expect(find(bar, 'se-save-draft').attributes('disabled')).toBeUndefined()
+    await row.trigger('click')
+    expect(find(bar, 'se-save-dialog').exists()).toBe(false)
+    expect(s.selectedUid).toBe('s2')
+    expect(e.selection.uids).toEqual(['s2'])
+    bar.unmount()
+  })
+
+  it('바뀐 곳(스텝)을 누르면 그 스텝으로 간다', async () => {
+    const { bar, s, e } = setup()
+    e.editCell('s1', 'skip', true)
+    await openSave(bar)
+    const rows = bar.findAll('[data-testid="se-save-change"]')
+    expect(rows).toHaveLength(1)
+    expect(rows[0].text()).toContain('2번')
+    await rows[0].trigger('click')
+    expect(find(bar, 'se-save-dialog').exists()).toBe(false)
+    expect(s.selectedUid).toBe('s1')
+    bar.unmount()
+  })
+
+  it('메일 제목 막힘을 누르면 창이 닫히고 바의 메일 제목 칸에 초점, 다시 열면 입력한 이름이 남아 있다(조작판 39)', async () => {
+    const { bar, flow } = setup(clean({ blocks: [{ code: 'MAIL_TITLE_COLON' }] }))
+    await openSave(bar)
+    flow.setTarget({ name: 'TYPED_NAME' })
+    await bar.vm.$nextTick()
+    const row = find(bar, 'se-save-issue')
+    expect(row.text()).toContain(t('SEW_SAVE_ISSUE_BAR'))
+    await row.trigger('click')
+    await flushPromises()
+    expect(find(bar, 'se-save-dialog').exists()).toBe(false)
+    expect(document.activeElement).toBe(find(bar, 'se-bar-description').element)
+    await openSave(bar)
+    expect(find(bar, 'se-save-name').element.value).toBe('TYPED_NAME')
+    bar.unmount()
+  })
+
+  it('운영 속성 막힘(FOLLOW_NAME_REQUIRED)을 누르면 저장 창을 닫고 운영 속성 창을 연다', async () => {
+    const { bar } = setup(clean({ blocks: [{ code: 'FOLLOW_NAME_REQUIRED', params: { which: 'success' } }] }))
+    await openSave(bar)
+    const row = find(bar, 'se-save-issue')
+    expect(row.text()).toContain(t('RULE_FOLLOW_NAME_REQUIRED'))
+    await row.trigger('click')
+    await flushPromises()
+    expect(find(bar, 'se-save-dialog').exists()).toBe(false)
+    expect(find(bar, 'se-property-dialog').exists()).toBe(true)
+    bar.unmount()
+  })
+
+  it('이미 있는 이름이면 덮어쓰기 확인 칸과 바뀌는 운영 속성 — 빈 후속과 "없음" 은 차이 줄이 아니다', async () => {
+    const diff = [{ key: 'IsEnabled', from: false, to: true }, { key: 'NextScenarioIfSuccess', from: { Name: '', Text: '' }, to: null }]
+    const { bar } = setup(clean({ targetExists: { diff } }))
+    await openSave(bar)
+    expect(find(bar, 'se-save-deploy').attributes('disabled')).toBeDefined()
+    const rows = bar.findAll('[data-testid="se-save-diff"]')
+    expect(rows).toHaveLength(1)
+    expect(rows[0].text()).toContain('꺼짐')
+    expect(rows[0].text()).toContain('켜짐')
+    await find(bar, 'se-save-overwrite').setValue(true)
+    expect(find(bar, 'se-save-deploy').attributes('disabled')).toBeUndefined()
+    bar.unmount()
+  })
+
+  it('삭제 충돌에 캐시마저 없으면 다시 만들 수 없다고 알리고 초안만 켠다', async () => {
+    const gone = clean({ blocks: [{ code: 'SOURCE_GONE' }], conflict: { kind: 'deleted' }, target: { exists: false, eqpCount: 3 } })
+    const { bar, e } = setup(gone)
+    e.editCell('s0', 'accept', 0.8)
+    await openSave(bar)
+    const box = find(bar, 'se-save-conflict')
+    expect(box.text()).toContain(t('SEW_SAVE_CONFLICT_DELETED'))
+    expect(bar.findAll('[data-testid="se-save-issue"]')).toHaveLength(0)
+    await find(bar, 'se-save-force').setValue(true)
+    await flushPromises()
+    expect(find(bar, 'se-save-conflict').text()).toContain(t('SEW_SAVE_RECREATE_NO_CACHE'))
+    expect(find(bar, 'se-save-deploy').attributes('disabled')).toBeDefined()
+    expect(find(bar, 'se-save-draft').attributes('disabled')).toBeUndefined()
+    bar.unmount()
+  })
+
+  it('[설비에 배포…] → 확인(대상·설비 수) → 배포 중에는 닫기 단추가 없고 바깥을 눌러도 닫히지 않는다', async () => {
+    const { bar, flow } = setup()
+    await openSave(bar)
+    await find(bar, 'se-save-deploy').trigger('click')
+    expect(find(bar, 'se-save-confirm').text()).toContain('P-M-N')
+    expect(find(bar, 'se-save-confirm').text()).toContain(t('SEW_SAVE_CONFIRM_SAME', { id: 'P-M-N', model: 'M', n: 3 }))
+    let release
+    api.deploy.mockReturnValueOnce(new Promise((res) => { release = res }))
+    await find(bar, 'se-save-go').trigger('click')
+    expect(find(bar, 'se-save-run').exists()).toBe(true)
+    expect(find(bar, 'se-save-dialog').find('[aria-label="닫기"]').exists()).toBe(false)
+    await find(bar, 'se-save-dialog').find('.bg-black\\/40').trigger('click')
+    expect(flow.stage).toBe('run')
+    api.open.mockReturnValue(ok({ process: 'P', model: 'M', name: 'N', id: 'P-M-N', headCrtime: 9, version: { crtime: 9, isCurrent: true, fileId: 'F9' }, notes: [], steps: [], header: { description: '', timeoutLimit: '1' }, edited: { source: { process: 'P', model: 'M', name: 'N', crtime: 9, fileId: 'F9' }, headCrtime: 9, header: { description: '', timeoutLimit: '1' }, steps: [], property: {} } }))
+    release({ data: { data: { result: 'ok', crtime: 9, partialFailed: [] } } })
+    await flushPromises()
+    expect(find(bar, 'se-save-result').text()).toContain(t('SEW_SAVE_OK_TITLE'))
+    bar.unmount()
+  })
+
+  it('배포 중에는 브라우저 떠나기(새로고침·창 닫기)를 묻고, 결과가 나오면 풀린다', async () => {
+    const { bar } = setup()
+    await openSave(bar)
+    await find(bar, 'se-save-deploy').trigger('click')
+    let reject
+    api.deploy.mockReturnValueOnce(new Promise((res, rej) => { reject = rej }))
+    await find(bar, 'se-save-go').trigger('click')
+    const leave = () => { const ev = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(ev); return ev.defaultPrevented }
+    expect(leave()).toBe(true)
+    reject({ response: { status: 503, data: { code: 'UPSTREAM_DOWN' } }, request: {} })
+    await flushPromises()
+    expect(find(bar, 'se-save-result').exists()).toBe(true)
+    expect(leave()).toBe(false)
+    bar.unmount()
+  })
+
+  it('503 실패 화면: 아무것도 바뀌지 않았다고 알리고 "잠시 뒤" 라는 말이 없다 — [다시 배포]·[초안 저장]', async () => {
+    const { bar } = setup()
+    await openSave(bar)
+    await find(bar, 'se-save-deploy').trigger('click')
+    api.deploy.mockImplementationOnce(() => fail(503, 'UPSTREAM_DOWN'))
+    await find(bar, 'se-save-go').trigger('click')
+    await flushPromises()
+    const r = find(bar, 'se-save-result')
+    expect(r.text()).toContain(t('SEW_SAVE_FAIL_TITLE'))
+    expect(r.text()).toContain(t('SEW_SAVE_CAUSE_UPSTREAM_DOWN'))
+    expect(r.text()).not.toContain('잠시 뒤')
+    expect(find(bar, 'se-save-redeploy').exists()).toBe(true)
+    expect(find(bar, 'se-save-result-draft').exists()).toBe(true)
+    bar.unmount()
+  })
+
+  it('결과 모름 화면 — [버전 목록 확인] 으로 확인하고, 없으면 [다시 확인]·[다시 배포]', async () => {
+    const { bar } = setup()
+    await openSave(bar)
+    await find(bar, 'se-save-deploy').trigger('click')
+    api.deploy.mockImplementationOnce((fd) => fail(504, 'UPSTREAM_TIMEOUT', { requestId: JSON.parse(fd.get('meta')).requestId }))
+    await find(bar, 'se-save-go').trigger('click')
+    await flushPromises()
+    expect(find(bar, 'se-save-result').text()).toContain(t('SEW_SAVE_UNKNOWN_TITLE'))
+    expect(find(bar, 'se-save-redeploy').exists()).toBe(false)
+    api.verifyDeploy.mockReturnValue(ok({ found: 'none', crtime: null }))
+    await find(bar, 'se-save-verify').trigger('click')
+    await flushPromises()
+    expect(find(bar, 'se-save-result').text()).toContain(t('SEW_SAVE_VERIFY_NONE'))
+    expect(find(bar, 'se-save-verify').text()).toBe(t('SEW_SAVE_VERIFY_AGAIN'))
+    expect(find(bar, 'se-save-redeploy').exists()).toBe(true)
+    bar.unmount()
+  })
+
+  it('초안을 저장하면 결과 화면과 바에 초안 시각', async () => {
+    const { bar, e } = setup()
+    e.editCell('s1', 'skip', true)
+    await openSave(bar)
+    api.saveDraft.mockReturnValue(ok({ draftId: 'd1', savedAt: new Date(2026, 10, 9, 14, 23).toISOString(), revision: 1 }))
+    await find(bar, 'se-save-draft').trigger('click')
+    await flushPromises()
+    expect(find(bar, 'se-save-result').text()).toContain(t('SEW_SAVE_DRAFT_TITLE'))
+    expect(find(bar, 'se-bar-draft').text()).toContain('14:23')
+    bar.unmount()
+  })
+
+  it('이름 만들기: 규칙이 있으면 칸을 나눠 만들고 [이 이름 쓰기] 로 이름 칸에 넣는다(3번 칸 5자 미만이면 못 씀)', async () => {
+    const nameRule = { exists: true, rules: [{ groupLevel: 1, name: 'ALARM', description: '알람' }, { groupLevel: 2, name: 'RESET', description: '해제' }] }
+    const { bar, flow } = setup(clean(), { nameRule })
+    await openSave(bar)
+    await find(bar, 'se-save-name-make').trigger('click')
+    await find(bar, 'se-save-name-major').setValue('ALARM')
+    await find(bar, 'se-save-name-middle').setValue('RESET')
+    await find(bar, 'se-save-name-part3').setValue('E12')
+    expect(find(bar, 'se-save-name-use').attributes('disabled')).toBeDefined()
+    expect(find(bar, 'se-save-name-panel').text()).toContain(t('SEW_NAME_PART_SHORT', { min: 5, n: 3 }))
+    await find(bar, 'se-save-name-part3').setValue('E1234')
+    expect(find(bar, 'se-save-name-panel').text()).toContain('ALARM_RESET_E1234')
+    await find(bar, 'se-save-name-use').trigger('click')
+    expect(flow.target.name).toBe('ALARM_RESET_E1234')
+    expect(find(bar, 'se-save-name-panel').exists()).toBe(false)
+    bar.unmount()
+  })
+
+  it('이름 규칙이 없으면 [이름 만들기] 가 없고 직접 입력만 — 칸 오류는 바로 보인다', async () => {
+    const { bar } = setup()
+    await openSave(bar)
+    expect(find(bar, 'se-save-name-make').exists()).toBe(false)
+    await find(bar, 'se-save-name').setValue('BAD-NAME')
+    expect(find(bar, 'se-save-dialog').text()).toContain(MESSAGES.RULE_NAME_CHARS)
+    expect(find(bar, 'se-save-deploy').attributes('disabled')).toBeDefined()
+    bar.unmount()
+  })
+})

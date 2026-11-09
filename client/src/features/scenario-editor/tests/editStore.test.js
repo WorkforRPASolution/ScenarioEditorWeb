@@ -1373,3 +1373,50 @@ describe('editStore — 찾을 그림 위치 보기(findSpot, 찾을 그림 밖 
     expect(e.areaDragging).toBe(false)
   })
 })
+
+describe('editStore — 배포 뒤 새 판으로(rebase)·초안 시각(markDraft), P2-D Task 2', () => {
+  beforeEach(() => { setActivePinia(createPinia()); Object.values(api).forEach((f) => f.mockReset()) })
+  // 배포한 판을 다시 연 뼈대 — 같은 스텝 내용, 새 이름·crtime
+  const deployed = (steps, name = 'COPY', crtime = 9) => {
+    const ed = { source: { process: 'P', model: 'M', name, crtime, fileId: 'F9' }, headCrtime: crtime, header: { description: '', timeoutLimit: '1' }, steps, property: {} }
+    return { process: 'P', model: 'M', name, id: `P-M-${name}`, headCrtime: crtime, propertyRev: 'r9', version: { crtime, isCurrent: true, fileId: 'F9' }, notes: [], steps: steps.map((s, i) => ({ ...s, no: i + 1, notes: [] })), edited: ed }
+  }
+
+  it('세션(기준·ID·작업본)과 열린 뼈대를 새 판으로 바꾸고, 올릴 그림·되돌리기를 비운다 — 초점은 같은 번호의 스텝', () => {
+    const { e, s } = panelFixture([imageStep(0), noneStep(1), noneStep(2)])
+    e.editCell('s1', 'skip', true)
+    e.setUpload('t1', new Blob([new Uint8Array([1])]))
+    e.markDraft({ draftId: 'd1', savedAt: '2026-11-09T05:00:00.000Z' })
+    s.select('s2')
+    const sk = deployed([imageStep(0), noneStep(1, { condition: { ...noneStep(1).condition, skipPreprocessing: true } }), noneStep(2)])
+    e.rebase(sk)
+    expect(e.session.source).toEqual({ process: 'P', model: 'M', name: 'COPY', crtime: 9, fileId: 'F9' })
+    expect(e.session.headCrtime).toBe(9)
+    expect(e.session.propertyRev).toBe('r9')
+    expect(e.session.working).toBe(sk.edited)
+    expect(e.session.saveBase).toBe(sk.edited)
+    expect(e.session.draft).toBeUndefined()
+    expect(s.skeleton).toEqual(sk)
+    expect(e.uploads.size).toBe(0)
+    expect([e.undo, e.redo]).toEqual([[], []])
+    expect(s.selectedUid).toBe('s2')
+    expect(e.panel.uid).toBe('s2')
+  })
+  it('초점 번호가 새 판에 없으면 마지막 스텝, 스텝이 없으면 비운다', () => {
+    const { e, s } = panelFixture([imageStep(0), noneStep(1), noneStep(2)])
+    s.select('s2')
+    e.rebase(deployed([imageStep(0)]))
+    expect(s.selectedUid).toBe('s0')
+    e.rebase(deployed([]))
+    expect(s.selectedUid).toBe(null)
+  })
+  it('markDraft: 세션에 초안 id·저장 시각을 남기고 작업본은 그대로(저장 전 표시는 남는다)', () => {
+    const { e } = panelFixture([imageStep(0)])
+    e.editCell('s0', 'accept', 0.8)
+    const working = e.session.working
+    e.markDraft({ draftId: 'd1', savedAt: '2026-11-09T05:00:00.000Z', revision: 2 })
+    expect(e.session.draft).toEqual({ id: 'd1', savedAt: '2026-11-09T05:00:00.000Z' })
+    expect(e.session.working).toBe(working)
+    expect(e.undo).toHaveLength(1)
+  })
+})
