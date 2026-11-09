@@ -74,6 +74,19 @@ describe('webRepository', () => {
     expect(await repo.deleteDraft('me', 'x')).toEqual({ deleted: false, gridIds: [] })
   })
 
+  it('listDrafts 는 본문 없이 목록 칸만 — 연 때의 현재 버전(headCrtime)도 준다(불러오기 창이 "초안 시작 뒤 새 버전" 을 가른다)', async () => {
+    const { col, repo } = fake()
+    const d = col('SCENARIO_EDITOR_DRAFTS')
+    const _id = new ObjectId()
+    const cursor = { project: vi.fn().mockReturnThis(), sort: vi.fn().mockReturnThis(), maxTimeMS: vi.fn().mockReturnThis(),
+      toArray: vi.fn(async () => [{ _id, name: 'N', target: { model: 'M', name: 'N' }, base: { crtime: 5, fileId: 'f' }, headCrtime: 7, savedAt: new Date(1), revision: 3 }]) }
+    d.find.mockReturnValue(cursor)
+    const list = await repo.listDrafts('me', 'P', 'M')
+    expect(d.find.mock.calls[0][0]).toEqual({ owner: 'me', process: 'P', model: 'M' })
+    expect(cursor.project.mock.calls[0][0]).toEqual({ name: 1, target: 1, base: 1, headCrtime: 1, savedAt: 1, revision: 1 })
+    expect(list).toEqual([{ draftId: String(_id), name: 'N', target: { model: 'M', name: 'N' }, base: { crtime: 5, fileId: 'f' }, headCrtime: 7, savedAt: new Date(1), revision: 3 }])
+  })
+
   it('getDeploy 는 requestId 로 찾고 없으면 null', async () => {
     const { col, repo } = fake()
     expect(await repo.getDeploy('r1')).toBeNull()

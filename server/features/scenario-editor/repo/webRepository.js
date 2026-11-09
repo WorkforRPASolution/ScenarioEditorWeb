@@ -51,8 +51,9 @@ function createWebRepository(getWebDb, mongo) {
     },
     async listDrafts(owner, process, model) {
       const rows = await drafts().find({ owner, process, model })
-        .project({ name: 1, target: 1, base: 1, savedAt: 1, revision: 1 }).sort({ savedAt: -1 }).maxTimeMS(MAX).toArray()
-      return rows.map((r) => ({ draftId: String(r._id), name: r.name, target: r.target, base: r.base, savedAt: r.savedAt, revision: r.revision }))
+        .project({ name: 1, target: 1, base: 1, headCrtime: 1, savedAt: 1, revision: 1 }).sort({ savedAt: -1 }).maxTimeMS(MAX).toArray()
+      // headCrtime = 초안을 시작할 때의 현재 버전 — 불러오기 창이 지금 현재 버전과 비교해 "초안 시작 뒤 새 버전" 을 가른다(옛 문서는 없을 수 있다)
+      return rows.map((r) => ({ draftId: String(r._id), name: r.name, target: r.target, base: r.base, headCrtime: r.headCrtime ?? null, savedAt: r.savedAt, revision: r.revision }))
     },
     async getDraft(owner, draftId) {
       const _id = toId(draftId)
