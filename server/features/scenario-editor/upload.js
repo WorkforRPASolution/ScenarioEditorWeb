@@ -13,9 +13,12 @@ const TEMP_ID = /^[A-Za-z0-9_-]{1,64}$/
 const PNG_HEAD = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
 const bad = (message) => seError(400, 'BAD_REQUEST', message)
-const tooLarge = (message) => seError(413, 'PAYLOAD_TOO_LARGE', message)
-
 const OVERHEAD = 1 * MB // 멀티파트 경계·머리글 여유
+const MAX_REQUEST = MAX_TOTAL + MAX_FIELD + OVERHEAD
+
+// 413 은 무엇이 큰지(limit: image 한 장 · imageTotal 그림 합계 · meta 본문 · request 요청 전체)와 그 한도를 알린다 — 저장 창이 무엇을 줄일지 말한다
+const LIMIT_BYTES = { image: MAX_FILE, imageTotal: MAX_TOTAL, meta: MAX_FIELD, request: MAX_REQUEST }
+const tooLarge = (limit, message) => seError(413, 'PAYLOAD_TOO_LARGE', message, { limit, maxBytes: LIMIT_BYTES[limit] })
 
 // 메모리 저장소 — multer memoryStorage 와 같되, 받는 중에 요청 전체 파일 합계를 세어 50MB 를 넘는 순간 모으기를 멈추고 오류를 낸다.
 // (200장 × 10MB 가 다 메모리에 올라온 뒤에야 막히면 서버 메모리 목표를 넘긴다.)
@@ -28,7 +31,7 @@ function countingStorage(maxTotal, onBuffered) {
       const fail = (err) => { chunks.length = 0; stream.removeAllListeners('data'); stream.resume(); cb(err) }
       stream.on('data', (c) => {
         req._seTotal = (req._seTotal || 0) + c.length
-        if (req._seTotal > maxTotal) return fail(tooLarge('그림 합계는 50MB 를 넘을 수 없습니다'))
+        if (req._seTotal > maxTotal) return fail(tooLarge('imageTotal', '그림 합계는 50MB 를 넘을 수 없습니다'))
         size += c.length
         chunks.push(c)
         if (onBuffered) onBuffered(req._seTotal)
@@ -42,8 +45,8 @@ function countingStorage(maxTotal, onBuffered) {
 
 function mapMulterError(e) {
   if (!(e instanceof multer.MulterError)) return e
-  if (e.code === 'LIMIT_FILE_SIZE') return tooLarge('그림 한 장은 10MB 를 넘을 수 없습니다')
-  if (e.code === 'LIMIT_FIELD_VALUE') return tooLarge('meta 가 10MB 를 넘습니다')
+  if (e.code === 'LIMIT_FILE_SIZE') return tooLarge('image', '그림 한 장은 10MB 를 넘을 수 없습니다')
+  if (e.code === 'LIMIT_FIELD_VALUE') return tooLarge('meta', 'meta 가 10MB 를 넘습니다')
   if (e.code === 'LIMIT_FILE_COUNT') return bad(`그림은 ${MAX_FILES}장까지 보낼 수 있습니다`)
   return bad(`멀티파트 요청이 틀립니다 (${e.code})`)
 }
@@ -61,9 +64,9 @@ function createMultipartMeta({ onBuffered } = {}) {
   return function multipartMeta(req, res, next) {
     // 길이를 미리 알리는 요청은 본문을 받기 전에 막는다 — 읽지 않고 흘려 버린다.
     const len = Number(req.headers['content-length'])
-    if (Number.isFinite(len) && len > MAX_TOTAL + MAX_FIELD + OVERHEAD) {
+    if (Number.isFinite(len) && len > MAX_REQUEST) {
       req.resume()
-      return next(tooLarge('요청이 너무 큽니다'))
+      return next(tooLarge('request', '요청이 너무 큽니다'))
     }
     parse(req, res, next)
   }
@@ -82,7 +85,7 @@ function createMultipartMeta({ onBuffered } = {}) {
         if (images.has(tempId)) throw bad(`같은 tempId 의 파일이 둘입니다: ${tempId}`)
         if (f.buffer.length < PNG_HEAD.length || !f.buffer.subarray(0, PNG_HEAD.length).equals(PNG_HEAD)) throw bad(`PNG 파일이 아닙니다: ${tempId}`)
         total += f.buffer.length
-        if (total > MAX_TOTAL) throw tooLarge('그림 합계는 50MB 를 넘을 수 없습니다')
+        if (total > MAX_TOTAL) throw tooLarge('imageTotal', '그림 합계는 50MB 를 넘을 수 없습니다')
         images.set(tempId, f.buffer)
       }
       req.seMeta = meta

@@ -18,6 +18,12 @@ export const MESSAGES = {
   SEW_ERR_UNKNOWN: '알 수 없는 오류가 났습니다.',
   SEW_ERR_GRADE_FORBIDDEN: '등급·심의 의견은 Conductor·Administrator 만 저장할 수 있습니다.',
   SEW_ERR_WRITE_DISABLED: '이 편집기 서버는 쓰기를 받지 않습니다. 서버를 이 PC 안에서만 받도록(localhost) 다시 띄우세요.',
+  SEW_ERR_WRITE_FORBIDDEN: 'WRITE 권한이 없어 저장할 수 없습니다.',
+  SEW_ERR_PAYLOAD_TOO_LARGE: '보낸 내용이 서버가 한 번에 받는 크기를 넘었습니다(새로 잡은 그림 한 장 10MB·합계 50MB, 시나리오 본문 10MB).',
+  SEW_ERR_VALIDATION_FAILED: '검사에서 막힌 곳이 있습니다. 표시한 곳을 고치세요.',
+  SEW_ERR_TARGET_EXISTS: '같은 이름의 시나리오가 이미 있습니다. 저장 창에서 덮어쓸지 확인하세요.',
+  SEW_ERR_SAVE_CONFLICT: '열어 둔 사이 시나리오가 바뀌었습니다. 저장 창에서 확인한 뒤 다시 배포하세요.',
+  SEW_ERR_SAVE_IN_PROGRESS: '같은 시나리오를 다른 곳에서 처리하는 중입니다. 끝난 뒤 다시 하세요.',
 
   SEW_NOTE_CONDITION_UNKNOWN: '해석할 수 없는 조건 종류입니다(Variable 등). 원래 값을 그대로 둡니다.',
   SEW_NOTE_ACTION_INVALID: '알 수 없는 동작 번호입니다. 에이전트가 이 시나리오를 거부할 수 있습니다.',
@@ -747,6 +753,11 @@ export const MESSAGES = {
   SEW_SAVE_CAUSE_UPSTREAM_FAILED: '서버가 저장을 거절했습니다.',
   SEW_SAVE_CAUSE_TIMEOUT: '응답 시간이 지났습니다.',
   SEW_SAVE_CAUSE_LOCAL: '보낼 요청을 만들지 못했습니다(올릴 그림이 빠졌습니다). 그 스텝의 그림을 다시 잡으세요.',
+  // 413(서버 upload details.limit 별 — 없으면 공통). 서버 한도: 그림 한 장 10MB·합계 50MB·본문(meta) 10MB
+  SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE: '보낼 내용이 서버가 한 번에 받는 크기(새로 잡은 그림 한 장 10MB·합계 50MB, 시나리오 본문 10MB)를 넘었습니다. 영역을 작게 다시 잡아 그림을 줄이거나, 고친 스텝을 나눠 여러 번 배포하세요(배포된 그림은 다시 보내지 않습니다).',
+  SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE_image: '새로 잡은 그림 한 장이 10MB 를 넘습니다. 그 그림을 더 작은 영역으로 다시 잡으세요.',
+  SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE_imageTotal: '새로 잡은 그림의 합계가 50MB 를 넘습니다. 영역을 작게 다시 잡아 그림을 줄이거나, 고친 스텝을 나눠 여러 번 배포하세요(배포된 그림은 다시 보내지 않습니다).',
+  SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE_meta: '시나리오 본문(스텝·설명·스크립트)이 10MB 를 넘습니다. 긴 설명·스크립트나 스텝 수를 줄여야 보낼 수 있습니다.',
   // 이름 만들기 칸 오류(editor/nameRule buildName code)
   SEW_NAME_MAJOR_REQUIRED: '대분류를 고르세요.',
   SEW_NAME_MIDDLE_REQUIRED: '중분류를 고르세요.',
@@ -1175,14 +1186,17 @@ export function errorCode(err) {
   const code = err?.response?.data?.code
   if (code) return code
   if (err?.code === 'ECONNABORTED') return 'TIMEOUT'
+  if (err?.response?.status === 413) return 'PAYLOAD_TOO_LARGE' // JSON 본문 한도(express.json 10mb)는 code 없이 413
   if (err?.response) return 'UNKNOWN'
   if (err?.request) return 'NETWORK'
   return 'UNKNOWN'
 }
 
+// 문구가 없는 code 는 키([SEW_ERR_…])를 드러내지 않고 공통 문구 — 서버 code 마다 문구가 있는지는 messages 시험이 서버 소스에서 읽어 본다
 export function errorMessage(err) {
   const code = errorCode(err)
-  return t(ERROR_KEYS[code] ?? `SEW_ERR_${code}`)
+  const key = ERROR_KEYS[code] ?? `SEW_ERR_${code}`
+  return t(MESSAGES[key] !== undefined ? key : 'SEW_ERR_UNKNOWN')
 }
 
 // 칸 오류 문구(칸 검사 결과 { code, params } — 패널 칸 옆·적용 줄·표 갈 곳 칸). 문구는 RULE_<code> 이고, 미해결 갈 곳은

@@ -19,6 +19,27 @@ function serverParseFailedFields() {
   return [...found].sort()
 }
 
+// 서버가 내는 오류 code 전부(seError·쓰기 문의 거절 denial·Host/출처 거절·InterfaceServer 실패) — 서버 소스에서 읽는다.
+// 서버가 새 code 를 내면 여기서 문구 누락이 드러난다(화면에 [SEW_ERR_…] 키가 보이지 않게).
+function serverErrorCodes() {
+  const root = join(__dirname, '../../../../../server')
+  const files = [join(root, 'localGuard.js')]
+  const walk = (d) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      if (e.isDirectory()) { if (e.name !== '__tests__' && e.name !== 'node_modules') walk(join(d, e.name)) } else if (e.name.endsWith('.js')) files.push(join(d, e.name))
+    }
+  }
+  walk(join(root, 'features/scenario-editor'))
+  const found = new Set()
+  for (const f of files) {
+    const src = readFileSync(f, 'utf8')
+    for (const re of [/seError\(\s*\d+,\s*'([A-Z_]+)'/g, /denial\('([A-Z_]+)'/g, /reject\(req, res, '([A-Z_]+)'/g, /failure\(fn, \d+, '([A-Z_]+)'/g]) {
+      for (const m of src.matchAll(re)) found.add(m[1])
+    }
+  }
+  return [...found].sort()
+}
+
 const NOTE_CODES = ['CONDITION_UNKNOWN', 'ACTION_INVALID', 'OCR_OP_NONE', 'PARSE_FAILED', 'NEXT_OUT_OF_RANGE', 'NEXT_SELF', 'LAST_STEP_NEXT',
   'FALSE_NEXT_WITH_ACTION', 'VALUE_EMPTY', 'OCR_WITH_MOUSE_CLICK', 'NONE_WITH_MOUSE_CLICK', 'UNREACHABLE', 'NO_SUCCESS', 'ACTION_NOT_IN_COMBO', 'EQPSTATE_SKIP_PREPROCESSING',
   'BASE_IMAGE_MISSING', 'KEY_CODE_UNKNOWN', 'PRIORITY_NONSTANDARD', 'TARGET_WINDOW_DIFFERS']
@@ -48,6 +69,20 @@ describe('messages', () => {
   })
   it('오류 코드 모두 문구가 있다', () => {
     for (const c of ERROR_CODES) expect(errorMessage({ response: { data: { code: c } } })).not.toMatch(/^\[/)
+  })
+  it('서버가 내는 오류 code 모두 제 문구가 있다(서버 소스에서 읽음) — 공통 "알 수 없는 오류" 로 떨어지지 않는다', () => {
+    const codes = serverErrorCodes()
+    expect(codes).toEqual(expect.arrayContaining(['PAYLOAD_TOO_LARGE', 'WRITE_FORBIDDEN', 'WRITE_DISABLED', 'GRADE_FORBIDDEN', 'SAVE_CONFLICT', 'SAVE_IN_PROGRESS', 'TARGET_EXISTS', 'VALIDATION_FAILED', 'HOST_FORBIDDEN', 'UPSTREAM_FAILED']))
+    for (const c of codes) {
+      const m = errorMessage({ response: { status: 400, data: { code: c } } })
+      expect(m, c).not.toMatch(/^\[/)
+      expect(m, c).not.toBe(MESSAGES.SEW_ERR_UNKNOWN)
+    }
+  })
+  it('문구가 없는 code 도 키를 드러내지 않고 공통 문구, 코드 없는 413(JSON 본문 한도)은 PAYLOAD_TOO_LARGE', () => {
+    expect(errorMessage({ response: { status: 409, data: { code: 'SOMETHING_NEW' } } })).toBe(MESSAGES.SEW_ERR_UNKNOWN)
+    expect(errorCode({ response: { status: 413, data: { error: 'request entity too large' } } })).toBe('PAYLOAD_TOO_LARGE')
+    expect(errorMessage({ response: { status: 413, data: {} } })).toBe(MESSAGES.SEW_ERR_PAYLOAD_TOO_LARGE)
   })
   it('미등록 사용자는 사내 키 Exception12', () => {
     expect(MESSAGES.Exception12).toBeTruthy()

@@ -37,9 +37,14 @@ export function overwriteDiff(diff) {
   return (Array.isArray(diff) ? diff : []).filter((d) => !(FOLLOW_KEYS.has(d.key) && followName(d.from) === followName(d.to)))
 }
 
-// 원인 한 줄 — 저장 창 문구가 있으면 그것(공통 문구의 "잠시 뒤 다시 시도하세요" 를 피한다), 없으면 공통 오류 문구
+// 원인 한 줄 — 저장 창 문구가 있으면 그것(공통 문구의 "잠시 뒤 다시 시도하세요" 를 피한다), 없으면 공통 오류 문구.
+// 서버가 details.limit(413 — 무엇이 큰지)을 주면 그 한도의 문구가 먼저다.
 export function causeText(e) {
-  const key = `SEW_SAVE_CAUSE_${errorCode(e)}`
+  const code = errorCode(e)
+  const limit = e?.response?.data?.details?.limit
+  const specific = typeof limit === 'string' ? `SEW_SAVE_CAUSE_${code}_${limit}` : null
+  if (specific && MESSAGES[specific] !== undefined) return t(specific)
+  const key = `SEW_SAVE_CAUSE_${code}`
   return MESSAGES[key] !== undefined ? t(key) : errorMessage(e)
 }
 

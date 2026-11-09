@@ -259,6 +259,31 @@ describe('saveFlow', () => {
     for (const [k, v] of saveCopy) expect(v, k).not.toContain('잠시 뒤')
   })
 
+  it('413 PAYLOAD_TOO_LARGE(배포·초안) → 키가 아니라 무엇이 크고 어떻게 줄이는지(서버 details.limit), 한도 종류를 모르면 공통 원인', async () => {
+    const { flow } = setup()
+    flow.open(); await flushPromises()
+    flow.toConfirm()
+    api.deploy.mockImplementationOnce(() => fail(413, 'PAYLOAD_TOO_LARGE', { limit: 'imageTotal', maxBytes: 52428800 }))
+    await flow.deploy()
+    expect(flow.stage).toBe('fail')
+    expect(flow.error).toMatchObject({ kind: 'notSent', code: 'PAYLOAD_TOO_LARGE', cause: MESSAGES.SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE_imageTotal })
+    expect(sessionStorage.getItem(PENDING_KEY)).toBe(null)
+    for (const limit of ['image', 'meta']) {
+      flow.close(); flow.open(); await flushPromises()
+      api.saveDraft.mockImplementationOnce(() => fail(413, 'PAYLOAD_TOO_LARGE', { limit, maxBytes: 10485760 }))
+      await flow.saveDraft()
+      expect(flow.notice.params.cause, limit).toBe(MESSAGES[`SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE_${limit}`])
+    }
+    for (const err of [fail(413, 'PAYLOAD_TOO_LARGE', { limit: 'request', maxBytes: 63963136 }), Promise.reject({ response: { status: 413, data: {} }, request: {} })]) {
+      api.saveDraft.mockImplementationOnce(() => err)
+      await flow.saveDraft()
+      expect(flow.notice.params.cause).toBe(MESSAGES.SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE)
+    }
+    for (const k of ['SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE', 'SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE_image', 'SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE_imageTotal', 'SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE_meta']) {
+      expect(MESSAGES[k], k).toMatch(/MB/) // 한도를 말한다
+    }
+  })
+
   it('requestId 가 없는 504(보내기 전 DB 시간 초과) → 보내지 않음', async () => {
     const { flow } = setup()
     flow.open(); await flushPromises()

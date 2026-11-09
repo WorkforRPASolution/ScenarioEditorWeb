@@ -14,7 +14,7 @@ beforeAll(async () => {
   const app = express()
   app.post('/up', multipartMeta, (req, res) => { handlerCalls++; seen = { meta: req.seMeta, images: [...req.seImages.entries()].map(([k, v]) => [k, v.length]) }; res.json({ ok: true }) })
   app.post('/up2', createMultipartMeta({ onBuffered: (n) => { highWater = Math.max(highWater, n) } }), (req, res) => { handlerCalls++; res.json({ ok: true }) })
-  app.use((err, req, res, next) => res.status(err.statusCode || 500).json({ code: err.code, error: err.message }))
+  app.use((err, req, res, next) => res.status(err.statusCode || 500).json({ code: err.code, error: err.message, details: err.details ?? null }))
   await new Promise((r) => { server = app.listen(0, '127.0.0.1', r) })
   base = `http://127.0.0.1:${server.address().port}`
 })
@@ -58,16 +58,17 @@ describe('multipartMeta', () => {
       expect(res.status, name).toBe(400)
     }
   })
-  it('한 장이 10MB 를 넘으면 413', async () => {
+  // 413 은 무엇이 큰지(details.limit)와 그 한도(maxBytes)를 함께 알린다 — 저장 창이 무엇을 줄일지 말한다
+  it('한 장이 10MB 를 넘으면 413(limit image)', async () => {
     const res = await send({ files: [['img:big', png(10 * 1048576 + 1)]] })
     expect(res.status).toBe(413)
-    expect((await res.json()).code).toBe('PAYLOAD_TOO_LARGE')
+    expect(await res.json()).toMatchObject({ code: 'PAYLOAD_TOO_LARGE', details: { limit: 'image', maxBytes: 10 * 1048576 } })
   })
   it('파일 합계가 50MB 를 넘으면 413', async () => {
     const files = Array.from({ length: 6 }, (_, i) => [`img:f${i}`, png(9 * 1048576)])
     const res = await send({ files })
     expect(res.status).toBe(413)
-    expect((await res.json()).code).toBe('PAYLOAD_TOO_LARGE')
+    expect(await res.json()).toMatchObject({ code: 'PAYLOAD_TOO_LARGE', details: { limit: 'imageTotal', maxBytes: 50 * 1048576 } })
   })
   it('meta 필드가 1MB 를 넘어도 10MB 까지는 받는다', async () => {
     const big = JSON.stringify({ pad: 'x'.repeat(3 * 1048576) })
@@ -78,7 +79,7 @@ describe('multipartMeta', () => {
   it('meta 필드가 10MB 를 넘으면 413', async () => {
     const res = await send({ meta: JSON.stringify({ pad: 'x'.repeat(10 * 1048576 + 10) }) })
     expect(res.status).toBe(413)
-    expect((await res.json()).code).toBe('PAYLOAD_TOO_LARGE')
+    expect(await res.json()).toMatchObject({ code: 'PAYLOAD_TOO_LARGE', details: { limit: 'meta', maxBytes: 10 * 1048576 } })
   })
   it('meta 외 다른 필드는 400', async () => {
     const fd = new FormData()
@@ -91,7 +92,7 @@ describe('multipartMeta', () => {
     const files = [['img:a', png(35 * 1048576)], ['img:b', png(35 * 1048576)]]
     const res = await send({ files })
     expect(res.status).toBe(413)
-    expect((await res.json()).code).toBe('PAYLOAD_TOO_LARGE')
+    expect(await res.json()).toMatchObject({ code: 'PAYLOAD_TOO_LARGE', details: { limit: 'request', maxBytes: 61 * 1048576 } })
     expect(handlerCalls).toBe(0)
   })
   it('Content-Length 없이 흘려 보내는 요청도 받는 중에 합계 50MB 를 넘으면 413 이고 전부 모아 두지 않는다', async () => {
@@ -110,6 +111,7 @@ describe('multipartMeta', () => {
     }
     const res = await fetch(`${base}/up2`, { method: 'POST', headers: { 'Content-Type': `multipart/form-data; boundary=${B}` }, body: body(), duplex: 'half' })
     expect(res.status).toBe(413)
+    expect(await res.json()).toMatchObject({ code: 'PAYLOAD_TOO_LARGE', details: { limit: 'imageTotal' } })
     expect(handlerCalls).toBe(0)
     expect(highWater).toBeGreaterThan(0)
     expect(highWater).toBeLessThanOrEqual(50 * 1048576 + 2 * 1048576) // 50MB 를 넘긴 청크에서 멈춘다 — 81MB 전부는 아니다
