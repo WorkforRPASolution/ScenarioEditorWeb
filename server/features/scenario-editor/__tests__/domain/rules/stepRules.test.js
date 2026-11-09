@@ -77,6 +77,10 @@ const BLOCK = [
   ['BASE_IMAGE_MISSING', ocrStep({ images: { train: {}, base: { literal: null } } })],
   ['TRAIN_IMAGE_MISSING', imgStep({ images: { train: { 0: { literal: 'AA==\n' } }, base: ref } })],
   ['TRAIN_IMAGE_MISSING', imgStep({ images: { train: { 0: { literal: 'not base64!!' } }, base: ref } })],
+  // 패딩 없는 base64(공백 뺀 길이가 4의 배수가 아님)는 사내 C# Convert.FromBase64String 이 못 읽는다 — 그림 없음
+  ['BASE_IMAGE_MISSING', imgStep({ images: { train: { 0: ref }, base: { literal: 'iVBORw0KGgoAAAANSUhEUg' } } })],
+  ['BASE_IMAGE_MISSING', ocrStep({ images: { train: {}, base: { literal: 'iVBORw0K\nGgoAAAANSUhEUg' } } })],
+  ['TRAIN_IMAGE_MISSING', imgStep({ images: { train: { 0: { literal: 'iVBORw0KGgoAAAANSUhEU' } }, base: ref } })],
   ['RETRY_RANGE', { retry: { limit: 21, intervalMs: 2000 } }],
   ['RETRY_RANGE', { retry: { limit: -1, intervalMs: 2000 } }],
   ['RETRY_RANGE', { retry: { limit: 1, intervalMs: 1999 } }],

@@ -16,7 +16,9 @@ const needsBase = (c) => c && (c.kind === 'image' || c.kind === 'ocr')
 const isRef = (b) => !!b && typeof b === 'object' && 'from' in b
 // 그림이 있는가(기준 화면·찾을 그림): 참조, 또는 사내 C# 이 그림으로 읽는 base64 literal — 판정 R5 로 정규가 아닌 저장값(줄바꿈 등)은
 // literal 로 남지만 Convert.FromBase64String 은 공백을 건너뛰고 읽는다. 공백을 뺀 길이가 4 이하(자리표시 AA==)·base64 가 아닌 글·null 은 없음.
-const hasImage = (b) => isRef(b) || (!!b && typeof b === 'object' && isCsBase64(b.literal) && csBase64Length(b.literal) > 4)
+// 공백을 뺀 길이가 4의 배수가 아닌 값(패딩 없는 base64)도 C# 이 못 읽으므로 없음.
+const hasImageLiteral = (v) => isCsBase64(v) && csBase64Length(v) > 4 && csBase64Length(v) % 4 === 0
+const hasImage = (b) => isRef(b) || (!!b && typeof b === 'object' && hasImageLiteral(b.literal))
 
 function stepCount(edited, source) {
   const out = []
