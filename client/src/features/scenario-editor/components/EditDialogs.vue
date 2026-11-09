@@ -56,6 +56,7 @@ function undoFromToast() { edit.undoCommand() }
 function onKey(e) {
   if (e.key !== 'Escape') return
   if (dialog.value?.kind === 'guard') edit.guardKeep()
+  else if (dialog.value?.kind === 'leave') edit.leaveKeep()
   else if (dialog.value?.kind === 'delblock' || dialog.value?.kind === 'pasteWarn') close()
 }
 onMounted(() => document.addEventListener('keydown', onKey))
@@ -104,6 +105,16 @@ const btnP = 'h-8 px-3 rounded-lg text-sm bg-primary-500 hover:bg-primary-600 te
           <button type="button" :class="btnS" data-testid="se-guard-keep" @click="edit.guardKeep()">{{ t(guardCopy.keep ?? 'SEW_EDIT_GUARD_KEEP') }}</button>
           <button type="button" :class="guardCopy.apply ? btnS : btnP" data-testid="se-guard-drop" @click="edit.guardDrop()">{{ t(guardCopy.drop) }}</button>
           <button v-if="guardCopy.apply" type="button" :class="btnP" data-testid="se-guard-apply" :title="guardBlocked ? t('SEW_EDIT_GUARD_BLOCKED') : undefined" @click="edit.guardApply()">{{ t(guardCopy.apply) }}</button>
+        </div>
+      </div>
+    </div>
+    <div v-else-if="dialog?.kind === 'leave'" :class="dim" @click.self="edit.leaveKeep()">
+      <div :class="box" role="alertdialog" aria-modal="true" data-testid="se-leave">
+        <h3 class="px-[18px] pt-3.5 text-[15px] font-semibold text-gray-900 dark:text-white">{{ t('SEW_LEAVE_TITLE') }}</h3>
+        <p class="mx-[18px] mt-1.5 text-[13px] text-gray-500 dark:text-gray-400">{{ t('SEW_LEAVE_BODY', { n: dialog.n }) }}</p>
+        <div class="flex justify-end gap-1.5 px-[18px] py-3.5">
+          <button type="button" :class="btnP" data-testid="se-leave-keep" @click="edit.leaveKeep()">{{ t('SEW_LEAVE_KEEP') }}</button>
+          <button type="button" :class="btnS" data-testid="se-leave-drop" @click="edit.leaveDrop()">{{ t('SEW_LEAVE_DROP') }}</button>
         </div>
       </div>
     </div>

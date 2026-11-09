@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { shallowMount, mount, flushPromises } from '@vue/test-utils'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { shallowMount, mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import { defineComponent, h, KeepAlive, ref, nextTick } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 
@@ -14,6 +14,7 @@ import { useEditStore } from '../stores/editStore'
 import { MESSAGES } from '../messages'
 import { imageStep } from './panelFixture'
 
+enableAutoUnmount(afterEach) // 화면이 beforeunload 감시자를 달므로 시험마다 내린다
 const ok = (data) => Promise.resolve({ data: { data } })
 const stubs = { ScenarioBar: true, LoadDialog: true, StepTable: true, StepFlow: true, StepViewer: true, StepDetail: true, StepPanel: true, StepToolbar: true, EditDialogs: true, MultiSelection: true }
 const mountView = () => shallowMount(ScenarioEditorView, { global: { stubs: { ...stubs, StatePanel: false, SplitGutter: false } } })
@@ -163,8 +164,64 @@ describe('ScenarioEditorView', () => {
       w.findComponent({ name: 'LoadDialog' }).vm.$emit('open', target)
       await flushPromises()
       e.guardApply(); await flushPromises()
+      expect(e.dialog).toEqual({ kind: 'leave', n: 1 }) // 적용한 값은 저장 전 변경이라 한 번 더 묻는다
+      e.leaveDrop(); await flushPromises()
       expect(appliedAtOpen).toBe(0.85)
       expect(useEditorStore().skeleton.name).toBe('B')
+    })
+    describe('저장 전 변경 확인(떠날 때)', () => {
+      const unload = () => { const ev = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(ev); return ev.defaultPrevented }
+      it('스텝 하나를 고쳐 적용한 뒤 다른 시나리오를 열면 한 번 더 묻고, [버리고 열기] 면 연다', async () => {
+        const w = await openA()
+        const e = useEditStore()
+        e.editCell('s0', 'descriptionToEmail', '고친 설명')
+        expect(e.unsavedCount).toBe(1)
+        api.open.mockReturnValue(ok(writable('B', 7)))
+        w.findComponent({ name: 'LoadDialog' }).vm.$emit('open', target)
+        await flushPromises()
+        expect(e.dialog).toEqual({ kind: 'leave', n: 1 })
+        expect(api.open).toHaveBeenCalledTimes(1)
+        e.leaveDrop(); await flushPromises()
+        expect(useEditorStore().skeleton.name).toBe('B')
+      })
+      it('[계속 고치기] 면 열지 않고 값이 남는다', async () => {
+        const w = await openA()
+        const e = useEditStore()
+        e.setHeader('description', '새 제목')
+        w.findComponent({ name: 'LoadDialog' }).vm.$emit('open', target)
+        await flushPromises()
+        expect(e.dialog.kind).toBe('leave')
+        e.leaveKeep(); await flushPromises()
+        expect(e.dialog).toBe(null)
+        expect(api.open).toHaveBeenCalledTimes(1)
+        expect(e.session.working.header.description).toBe('새 제목')
+      })
+      it('[적용하고 이동] 으로 패널 값을 넣은 경우에도 저장 전 변경으로 한 번 더 묻는다', async () => {
+        const w = await openA()
+        const e = useEditStore()
+        dirty()
+        w.findComponent({ name: 'LoadDialog' }).vm.$emit('open', target)
+        await flushPromises()
+        expect(e.dialog.kind).toBe('guard')
+        e.guardApply(); await flushPromises()
+        expect(e.dialog).toEqual({ kind: 'leave', n: 1 })
+        expect(api.open).toHaveBeenCalledTimes(1)
+      })
+      it('고친 곳이 없으면 묻지 않고 떠나기 확인도 걸지 않는다', async () => {
+        const w = await openA()
+        const e = useEditStore()
+        expect(unload()).toBe(false)
+        api.open.mockReturnValue(ok(writable('B', 7)))
+        w.findComponent({ name: 'LoadDialog' }).vm.$emit('open', target)
+        await flushPromises()
+        expect(e.dialog).toBe(null)
+        expect(useEditorStore().skeleton.name).toBe('B')
+      })
+      it('저장 전 변경이 있으면 브라우저 떠나기 확인이 걸린다', async () => {
+        await openA()
+        useEditStore().setHeader('timeoutLimit', '15')
+        expect(unload()).toBe(true)
+      })
     })
     it('돌아왔을 때 주소가 다른 시나리오를 가리켜도 먼저 묻는다 — [계속 고치기] 면 주소를 열린 시나리오로 되돌린다', async () => {
       api.me.mockReturnValue(ok({ singleid: 'u', canWrite: true }))

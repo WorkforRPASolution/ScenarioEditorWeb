@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, onMounted, onActivated, onDeactivated } from 'vue'
+import { ref, watch, onMounted, onBeforeUnmount, onActivated, onDeactivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useEditorStore } from './stores/editorStore'
 import { useEditStore } from './stores/editStore'
@@ -39,8 +39,17 @@ const queryOf = (sk) => ({ p: sk.process, m: sk.model, n: sk.name, v: sk.version
 const writeQuery = (sk) => router.replace({ name: 'ScenarioEditor', query: queryOf(sk) })
 
 // 다른 시나리오 열기 — 오른쪽 패널에 적용 안 한 변경이 있으면 먼저 묻는다(guard 'open'). onKeep = [계속 고치기]로 접을 때 할 일.
-// 저장 전 작업본 변경(적용한 값)을 떠나기 전에 묻는 것은 P2-D 다.
-const openGuarded = (target, onKeep = null) => edit.guard(() => store.openScenario(target), { action: 'open', onKeep })
+// 패널 확인 뒤에 저장 전 작업본 변경(적용한 값)도 한 번 더 묻는다([적용하고 이동]으로 넣은 값도 열기가 버리므로).
+const openGuarded = (target, onKeep = null) => edit.guard(() => edit.askLeave(() => store.openScenario(target), { onKeep }), { action: 'open', onKeep })
+
+// 저장 전 변경이 있으면 브라우저 떠나기·새로고침 앞에서 확인(설계 §4.2). 문구는 브라우저가 정한다.
+function onBeforeUnload(e) {
+  if (!edit.unsavedCount) return
+  e.preventDefault()
+  e.returnValue = ''
+}
+onMounted(() => window.addEventListener('beforeunload', onBeforeUnload))
+onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload))
 
 async function start() {
   const target = queryTarget() // await 뒤에는 다른 화면의 주소일 수 있어 먼저 읽는다

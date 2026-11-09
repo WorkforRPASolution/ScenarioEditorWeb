@@ -135,3 +135,22 @@ describe('EditDialogs — 적용 안 한 변경 확인(guard)', () => {
     panel.unmount(); dlg.unmount()
   })
 })
+
+describe('EditDialogs — 저장 전 변경 확인(leave)', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+  it('[계속 고치기]·[버리고 열기] 가 각각 미룬 일을 부른다', async () => {
+    const { e } = panelFixture([imageStep(0)])
+    e.setHeader('description', '고침')
+    const dlg = mount(EditDialogs, { attachTo: document.body })
+    const next = vi.fn(); const keep = vi.fn()
+    e.askLeave(next, { onKeep: keep })
+    await flushPromises()
+    expect(document.body.querySelector('[data-testid="se-leave"]').textContent).toContain(t('SEW_LEAVE_BODY', { n: 1 }))
+    document.body.querySelector('[data-testid="se-leave-keep"]').click()
+    expect(keep).toHaveBeenCalled(); expect(next).not.toHaveBeenCalled()
+    e.askLeave(next, { onKeep: keep }); await flushPromises()
+    document.body.querySelector('[data-testid="se-leave-drop"]').click()
+    expect(next).toHaveBeenCalledTimes(1)
+    dlg.unmount()
+  })
+})

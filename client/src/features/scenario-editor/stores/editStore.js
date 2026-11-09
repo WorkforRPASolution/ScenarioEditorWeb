@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, shallowRef, computed } from 'vue'
 import { beginSession, nextUid, stepNo } from '../editor/session'
 import { copySteps, pasteSteps, detachClip, deleteSteps, moveSteps, setCell, movedRefKeys, applyStep, insertStep, sameOrder, STEP_MAX } from '../editor/commands'
-import { sameStep, canonicalJson } from '../editor/diff'
+import { sameStep, canonicalJson, unsavedChanges } from '../editor/diff'
 import { checkStepFields } from '../editor/fieldRules'
 import { firstError, CLICK_TYPES } from '../editor/panel'
 import { refUrl, loadBitmap, newTempId, uploadIdsOf } from '../editor/images'
@@ -54,6 +54,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   const areaDragging = ref(false)
   // 적용 안 한 변경 확인 창이 미뤄 둔 일 { next, onKeep }(확인 창 dialog 는 화면 값만 — 함수는 여기에)
   let pending = null
+  let pendingLeave = null
 
   // 고칠 수 있는 세션: 작업본이 있고 읽기 전용이 아니다(작업본이 없는 뼈대는 P1 처럼 보기만).
   // 다른 시나리오를 여는 동안(editorStore.opening)도 아니다 — 열기가 끝나면 begin() 이 작업본을 갈아 끼우므로, 그 사이 친 값은 받지 않는다.
@@ -78,6 +79,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     dialog.value = null
     focusReq.value = null
     pending = null
+    pendingLeave = null
     clearMoved()
   }
 
@@ -219,6 +221,31 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     dialog.value = panel.value.isNew ? { kind: 'guard', action, to, isNew: true } : { kind: 'guard', action, to }
     return false
   }
+  // ── 바 칸(메일 제목·제한 시간)과 떠날 때 확인(P2-D Task 3) ──
+  // 바 칸은 작업본 header 에 두고 되돌리기 목록에 넣지 않는다(저장 창을 닫거나 초안을 저장해도 값이 남는다).
+  // 제한 시간은 정수로 읽히면 숫자로, 아니면 친 글자 그대로 둔다(검사가 막는다).
+  function setHeader(field, value) {
+    if (!editable.value || (field !== 'description' && field !== 'timeoutLimit')) return false
+    const w = session.value.working
+    const v = field === 'timeoutLimit' && /^[1-9][0-9]*$/.test(String(value)) ? Number(value) : value
+    session.value = { ...session.value, working: { ...w, header: { ...w.header, [field]: v } } }
+    return true
+  }
+  const unsavedCount = computed(() => {
+    const s = session.value
+    return s?.working && s.saveBase ? unsavedChanges(s.working, s.saveBase).length : 0
+  })
+  // 저장 전 변경(적용한 값)이 있으면 한 번 더 묻는다 — 패널 확인(guard) 뒤에 부른다. 없으면 바로 next.
+  function askLeave(next, { onKeep = null } = {}) {
+    const n = unsavedCount.value
+    if (!n) { next(); return true }
+    pendingLeave = { next, onKeep }
+    dialog.value = { kind: 'leave', n }
+    return false
+  }
+  function takeLeave() { const p = pendingLeave; pendingLeave = null; if (dialog.value?.kind === 'leave') dialog.value = null; return p ?? {} }
+  function leaveKeep() { takeLeave().onKeep?.() }
+  function leaveDrop() { takeLeave().next?.() }
   function closeGuard() { const p = pending; pending = null; if (dialog.value?.kind === 'guard') dialog.value = null; return p ?? {} }
   function guardKeep() { closeGuard().onKeep?.() }
   function guardDrop() { const { next } = closeGuard(); discardPanel(); next?.() }
@@ -681,7 +708,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     begin, end, rebase, markDraft, run, undoLast, redoLast,
     setSelection, syncFocus, requestSelect, clickRow, panelDirty, notify,
     openPanel, syncPanel, updateDraft, panelErrors, applyPanel, discardPanel, requestFocus,
-    guard, guardKeep, guardDrop, guardApply,
+    guard, guardKeep, guardDrop, guardApply, setHeader, unsavedCount, askLeave, leaveKeep, leaveDrop,
     undoCommand, redoCommand, copySelection, pasteClip, deleteSelection, moveSelected, editCell,
     setUpload, requestView, startCapture, captureNext, cancelCapture, finishCapture, repick, findSpot, setAreaDrag, startNew, addNew, cancelNew
   }

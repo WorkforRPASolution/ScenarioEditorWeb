@@ -4,7 +4,11 @@ import { setActivePinia, createPinia } from 'pinia'
 import ScenarioBar from '../components/ScenarioBar.vue'
 import { useEditorStore } from '../stores/editorStore'
 import { useEditStore } from '../stores/editStore'
-import { MESSAGES } from '../messages'
+import { useSaveFlow } from '../stores/saveFlow'
+import { MESSAGES, t } from '../messages'
+import { buildMeta } from '../editor/request'
+import { unsavedChanges } from '../editor/diff'
+import { panelFixture, noneStep } from './panelFixture'
 
 const ModalStub = { name: 'ModalShell', props: ['modelValue', 'title'], template: '<div v-if="modelValue" :data-title="title"><slot /></div>' }
 const skeleton = (over = {}) => ({
@@ -152,6 +156,86 @@ describe('ScenarioBar', () => {
       await w.find('[data-testid="se-notes"]').trigger('click')
       expect(s.selectedUid).toBe('s1')
       expect(w.find('[data-testid="se-scenario-notes"]').attributes('data-flash')).toBe('false')
+    })
+  })
+
+  describe('바 칸 — 메일 제목·제한 시간(P2-D Task 3)', () => {
+    const find = (w, id) => w.find(`[data-testid="${id}"]`)
+    const setup = (opts = {}) => {
+      const f = panelFixture([noneStep(0), noneStep(1)], opts)
+      f.edit = f.e
+      f.e.session = { ...f.e.session, working: { ...f.e.session.working, header: { description: '메일 제목', timeoutLimit: 240 } } }
+      f.e.session = { ...f.e.session, saveBase: f.e.session.working }
+      f.s.skeleton = { ...f.s.skeleton, id: 'P-M-N', header: { description: '메일 제목', timeoutLimit: 240, targetWindow: null }, property: null, performance: null }
+      return { ...f, w: mount(ScenarioBar, { global: { stubs: { ModalShell: ModalStub } } }) }
+    }
+    const type = async (w, id, v) => { const el = find(w, id); el.element.value = v; await el.trigger('input') }
+
+    it('두 칸은 입력이고 작업본 값을 보인다(뼈대 값이 아니라)', async () => {
+      const { w, e } = setup()
+      expect(find(w, 'se-bar-description').element.value).toBe('메일 제목')
+      expect(find(w, 'se-bar-timeout').element.value).toBe('240')
+      e.setHeader('description', '고침')
+      await w.vm.$nextTick()
+      expect(find(w, 'se-bar-description').element.value).toBe('고침')
+    })
+    it("메일 제목에 ':' 를 쓰면 오류, 저장 개수에 바 칸 1", async () => {
+      const { w, e } = setup()
+      await type(w, 'se-bar-description', 'a:b')
+      expect(find(w, 'se-bar-error-description').text()).toBe(MESSAGES.RULE_MAIL_TITLE_COLON)
+      expect(find(w, 'se-save').text()).toContain('(1)')
+      expect(find(w, 'se-bar-unsaved').text()).toContain('저장 전 1곳')
+      expect(unsavedChanges(e.session.working, e.session.saveBase)).toEqual([{ kind: 'field', key: 'description', before: '메일 제목', after: 'a:b' }])
+    })
+    it('빈 제목·제한 시간 0 은 오류, 오류가 없으면 줄이 없다', async () => {
+      const { w } = setup()
+      expect(find(w, 'se-bar-error-description').exists()).toBe(false)
+      await type(w, 'se-bar-description', '')
+      expect(find(w, 'se-bar-error-description').text()).toBe(MESSAGES.RULE_MAIL_TITLE_EMPTY)
+      await type(w, 'se-bar-timeout', '0')
+      expect(find(w, 'se-bar-error-timeout').text()).toBe(MESSAGES.RULE_TIMEOUT_INVALID)
+      await type(w, 'se-bar-timeout', '15')
+      expect(find(w, 'se-bar-error-timeout').exists()).toBe(false)
+    })
+    it('입력하는 동안 입력칸을 다시 그리지 않는다(같은 요소)', async () => {
+      const { w } = setup()
+      const el = find(w, 'se-bar-description').element
+      await type(w, 'se-bar-description', 'a:b')
+      await type(w, 'se-bar-description', 'a:bc')
+      expect(find(w, 'se-bar-description').element).toBe(el)
+    })
+    it('읽기 전용이면 입력이 없고 값만 보인다', () => {
+      const { w } = setup({ canWrite: false })
+      expect(find(w, 'se-bar-description').element.tagName).not.toBe('INPUT')
+      expect(find(w, 'se-bar-description').text()).toContain('메일 제목')
+      expect(find(w, 'se-bar-timeout').text()).toContain('240')
+      expect(find(w, 'se-save').exists()).toBe(false)
+    })
+    it('바 칸은 되돌리기 목록에 들지 않고, 저장 요청(buildMeta)이 고친 값을 싣는다', async () => {
+      const { w, e } = setup()
+      await type(w, 'se-bar-description', '새 제목')
+      await type(w, 'se-bar-timeout', '15')
+      expect(e.undo.length).toBe(0)
+      const { meta } = buildMeta(e.session)
+      expect(meta.scenario.header).toEqual({ description: '새 제목', timeoutLimit: 15 })
+    })
+    it('저장 창을 열었다 닫아도 값이 남는다', async () => {
+      const { w, e } = setup()
+      await type(w, 'se-bar-description', '새 제목')
+      await find(w, 'se-save').trigger('click')
+      useSaveFlow().close?.()
+      expect(e.session.working.header.description).toBe('새 제목')
+      expect(find(w, 'se-bar-description').element.value).toBe('새 제목')
+    })
+    it('고친 곳이 없으면 [저장] 에 개수가 없다', () => {
+      const { w } = setup()
+      expect(find(w, 'se-save').text()).toBe(MESSAGES.SEW_SAVE_OPEN)
+      expect(find(w, 'se-bar-unsaved').exists()).toBe(false)
+    })
+    it('읽기 전용 세션의 setHeader 는 아무것도 바꾸지 않는다', () => {
+      const { e } = setup({ canWrite: false })
+      expect(e.setHeader('description', 'x')).toBe(false)
+      expect(e.session.working.header.description).toBe('메일 제목')
     })
   })
 })
