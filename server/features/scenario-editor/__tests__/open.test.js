@@ -173,6 +173,60 @@ describe('openService', () => {
       expect(await t.svc.source({}, V)).toEqual({ gone: true })
       await expect(t.svc.resolveImage(V, 's0-bi')).rejects.toMatchObject({ statusCode: 404 })
     })
+    // 2026-11-07 결정 (a): 지워진 시나리오를 [다시 만듭니다](force)로 배포할 때만 — 판 파일이 없으면 같은 형식의 디스크 캐시를 기준 판으로 쓴다
+    describe('판 파일이 없을 때 디스크 캐시로 (cacheIfGone)', () => {
+      const ALLOW = { cacheIfGone: true }
+      it('캐시가 있으면 source 는 캐시 뼈대(운영 속성 문서가 없으면 null), resolveImage 는 캐시 그림 — 다시 풀지 않는다', async () => {
+        const t = setup({ fileId: HEX1 })
+        await t.svc.source({}, V)
+        t.deps.gridfs.findFileMeta = async () => null // delscenario 가 판 파일까지 지웠다
+        t.deps.repo.findScenarioKeyDocs = async () => []
+        const r = await t.svc.source({}, V, ALLOW)
+        expect(r.gone).toBeUndefined()
+        expect(r.skeleton.steps).toHaveLength(1)
+        expect(r.skeleton.version).toEqual({ crtime: 1730000000100, isCurrent: true, fileId: HEX1 })
+        expect(r.skeleton.propertyRev).toBeNull()
+        expect(r.propertyDoc).toBeNull()
+        expect(r.performanceDoc).toBeNull()
+        expect(await t.svc.resolveImage(V, 's0-bi', ALLOW)).toBe(LONG_B64)
+        expect(t.reads()).toBe(1)
+        // 옵션이 없으면 지금처럼 gone·404
+        expect(await t.svc.source({}, V)).toEqual({ gone: true })
+        await expect(t.svc.resolveImage(V, 's0-bi')).rejects.toMatchObject({ statusCode: 404, code: 'NOT_FOUND' })
+      })
+      it('파일 id 를 대문자로 보내도 같은 캐시를 찾는다', async () => {
+        const t = setup({ fileId: HEX1 })
+        await t.svc.source({}, V)
+        t.deps.gridfs.findFileMeta = async () => null
+        expect((await t.svc.source({}, { ...V, fileId: HEX1.toUpperCase() }, ALLOW)).skeleton.steps).toHaveLength(1)
+      })
+      it('캐시도 없으면 gone·404', async () => {
+        const t = setup({ fileId: HEX1 })
+        await t.svc.source({}, V)
+        await t.deps.imageCache.clear()
+        t.deps.gridfs.findFileMeta = async () => null
+        expect(await t.svc.source({}, V, ALLOW)).toEqual({ gone: true })
+        await expect(t.svc.resolveImage(V, 's0-bi', ALLOW)).rejects.toMatchObject({ statusCode: 404, code: 'NOT_FOUND' })
+      })
+      it('캐시 형식 번호가 다르면 없는 것으로 본다', async () => {
+        const t = setup({ fileId: HEX1 })
+        await t.svc.source({}, V)
+        const file = join(t.deps.imageCache.__dir, encodeURIComponent(versionKey('P', 'M', 'N', 1730000000100, HEX1)), 'skeleton.json')
+        writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, 'utf8')), cacheFormat: SKELETON_CACHE_FORMAT - 1 }))
+        t.deps.gridfs.findFileMeta = async () => null
+        expect(await t.svc.source({}, V, ALLOW)).toEqual({ gone: true })
+        await expect(t.svc.resolveImage(V, 's0-bi', ALLOW)).rejects.toMatchObject({ statusCode: 404 })
+      })
+      it('파일이 있는데 그 판이 아니면(메타데이터 다름)·잘못된 id·crtime 은 캐시가 있어도 gone', async () => {
+        const t = setup({ fileId: HEX1 })
+        await t.svc.source({}, V)
+        expect(await t.svc.source({}, { ...V, fileId: 'zzz' }, ALLOW)).toEqual({ gone: true })
+        expect(await t.svc.source({}, { ...V, crtime: 1.5 }, ALLOW)).toEqual({ gone: true })
+        t.deps.gridfs.findFileMeta = async (id) => ({ _id: id, length: 1, metadata: { process: 'P', model: 'M', name: 'OTHER', crtime: 1730000000100 } })
+        expect(await t.svc.source({}, V, ALLOW)).toEqual({ gone: true })
+        await expect(t.svc.resolveImage(V, 's0-bi', ALLOW)).rejects.toMatchObject({ statusCode: 404 })
+      })
+    })
     it('캐시가 맞는 경로는 본문이 든 파일 문서(findFile)를 읽지 않고 메타만 읽는다', async () => {
       const t = setup({ fileId: HEX1 })
       await t.svc.source({}, V)

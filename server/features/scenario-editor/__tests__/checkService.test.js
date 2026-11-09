@@ -11,8 +11,9 @@ const CUR = 1730000000000
 const propertyDoc = { IsEnabled: true, Type: 1, StartDelay: 0, Owners: ['kim@2026-11-01 10:00:00'], NextScenarioIfSuccess: { Name: '' }, NextScenarioIfFail: { Name: '' } }
 
 // 기준 판 = helpers 의 P-M-N (crtime 1730000000000). 편집본은 고치지 않은 상태(fresh)에 fileId 를 채운다.
-function setup({ keyDocs, docs, fields, gone = [], forbid = [], eqpCount = 7, sourceGone = false } = {}) {
-  const calls = { source: [], assert: [] }
+// cached: 기준 판 파일이 지워졌어도(sourceGone) 디스크 캐시가 남아 cacheIfGone 이면 열린다
+function setup({ keyDocs, docs, fields, gone = [], forbid = [], eqpCount = 7, sourceGone = false, cached = false } = {}) {
+  const calls = { source: [], assert: [], sourceOpts: [] }
   const src = okSource()
   const deps = {
     repo: {
@@ -25,9 +26,10 @@ function setup({ keyDocs, docs, fields, gone = [], forbid = [], eqpCount = 7, so
       scopeFor: async () => ({ pairs: [{ process: 'P', models: [{ model: 'M', eqpCount }, { model: 'M2', eqpCount: 1 }] }] })
     },
     opener: {
-      source: async (u, v) => {
+      source: async (u, v, opts) => {
         calls.source.push(`${v.process}-${v.model}-${v.name}-${v.crtime}`)
-        if (sourceGone && v.name === 'N') return { gone: true }
+        calls.sourceOpts.push(opts)
+        if (sourceGone && v.name === 'N' && !(cached && opts && opts.cacheIfGone)) return { gone: true }
         if (gone.includes(v.name)) return { gone: true }
         return { skeleton: src, propertyDoc, performanceDoc: null }
       }
@@ -101,6 +103,37 @@ describe('checkService.check', () => {
     const { svc, meta } = setup({ sourceGone: true })
     const r = await svc.check(user, meta())
     expect(r.blocks).toContainEqual({ code: 'SOURCE_GONE' })
+  })
+  // 2026-11-07 결정 (a): 디스크 캐시 대체는 force 일 때만, 기준 판에만(다른 판 그림은 그대로 IMAGE_SOURCE_GONE)
+  it('force 가 아니면 기준 판 파일이 지워졌을 때 캐시를 쓰지 않는다 — 삭제 충돌(deleted)과 SOURCE_GONE', async () => {
+    const { svc, meta, calls } = setup({ sourceGone: true, cached: true, keyDocs: async () => [] })
+    for (const m of [meta(), meta({ force: false })]) {
+      const r = await svc.check(user, m)
+      expect(r.blocks).toContainEqual({ code: 'SOURCE_GONE' })
+      expect(r.conflict).toEqual({ kind: 'deleted' })
+    }
+    expect(calls.sourceOpts.every((o) => !(o && o.cacheIfGone))).toBe(true)
+  })
+  it('force 면 기준 판을 cacheIfGone 으로 연다 — 캐시가 있으면 SOURCE_GONE 없이 그 판 기준으로 검사, 삭제 충돌은 그대로 알린다', async () => {
+    const { svc, meta, calls, edited } = setup({ sourceGone: true, cached: true, gone: ['OTHER'], keyDocs: async () => [] })
+    const e = edited()
+    e.steps[0].images.train = { 0: { from: 'other', process: 'P', model: 'M', name: 'OTHER', crtime: 1, fileId: FILE, id: 's0-train-0' } }
+    const r = await svc.check(user, meta({ scenario: e, force: true }))
+    expect(r.blocks).not.toContainEqual({ code: 'SOURCE_GONE' })
+    expect(r.blocks).toContainEqual({ code: 'IMAGE_SOURCE_GONE', uid: e.steps[0].uid })
+    expect(r.conflict).toEqual({ kind: 'deleted' })
+    expect(calls.sourceOpts).toEqual([{ cacheIfGone: true }, undefined]) // 기준 판만
+    const p = await svc.prepare(user, meta({ force: true }))
+    expect(p.sourceSkeleton).toBeTruthy()
+    expect(p.extraBlocks).toEqual([])
+  })
+  it('force 여도 캐시가 없으면 SOURCE_GONE', async () => {
+    const { svc, meta } = setup({ sourceGone: true, keyDocs: async () => [] })
+    expect((await svc.check(user, meta({ force: true }))).blocks).toContainEqual({ code: 'SOURCE_GONE' })
+  })
+  it('force 가 참거짓이 아니면 400', async () => {
+    const { svc, meta } = setup()
+    expect(await fail(svc.check(user, meta({ force: 'yes' })))).toMatchObject({ statusCode: 400, code: 'BAD_REQUEST', details: { path: 'force' } })
   })
   it('다른 판 그림이 가리키는 판이 없으면 그 스텝에 IMAGE_SOURCE_GONE', async () => {
     const { svc, meta, edited } = setup({ gone: ['OTHER'] })

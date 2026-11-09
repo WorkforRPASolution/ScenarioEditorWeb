@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
+import { readdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID, createHash } from 'node:crypto'
@@ -169,6 +170,17 @@ function expectDeployLine(line, user, startedMs) {
   expect(at).toBeLessThanOrEqual(Date.now())
 }
 const linesOf = (owners, user) => owners.filter((l) => ownerLine(user).test(l))
+
+// 그 시나리오의 디스크 캐시(판 디렉터리)를 지운다. 디렉터리 이름은 캐시 키(칸마다 인코딩해 '/' 로 이은 것)를 한 번 더 인코딩한 것이다.
+async function dropCache(k) {
+  const dir = process.env.IMAGE_CACHE_DIR
+  let dropped = 0
+  for (const entry of await readdir(dir)) {
+    const [p, m, n] = decodeURIComponent(entry).split('/').map(decodeURIComponent)
+    if (p === k.process && m === k.model && n === k.name) { await rm(join(dir, entry), { recursive: true, force: true }); dropped++ }
+  }
+  expect(dropped, `${k.name} 디스크 캐시`).toBeGreaterThan(0)
+}
 
 // 스텝 비교용(뼈대 화면 값). 그림 URL 은 시나리오 이름·판·파일 id 를 품어 판마다 다르다 — 참조는 edited 로 비교한다.
 const noUrls = (v) => JSON.parse(JSON.stringify(v, (k, x) => (k === 'url' ? undefined : x)))
@@ -532,22 +544,70 @@ describe('충돌 (설계 §6.5)', () => {
     expect((await propertyDoc(CF)).property.IsEnabled).toBe(true)
   })
 
-  it('삭제 뒤: /check 는 deleted 를 알리고, delscenario 가 기준 판 파일까지 지워 배포는 force 로도 422 SOURCE_GONE', async () => {
-    const mine = await open(CF)
-    const del = await call('DELETE', pathOf(CF), { json: { confirmName: CF.name } })
+  // delscenario 는 기준 판 파일까지 지운다. [다시 만듭니다](force)는 연 판의 디스크 캐시가 남아 있으면 그것을 기준 판으로 쓴다(2026-11-07 결정 (a)).
+  const checkOf = (sk, target, extra = {}) => call('POST', '/check', { json: { target, propertyRev: sk.propertyRev, scenario: sk.edited, ...extra } })
+  async function deleteScenario(k) {
+    const del = await call('DELETE', pathOf(k), { json: { confirmName: k.name } })
     expect(del.status, show(del)).toBe(200)
     expect(del.body.data).toEqual({ deleted: true })
-    expect(await propertyDocs(CF)).toEqual([])
-    expect(await filesOf(CF)).toEqual([])
-    expect((await redisFields(CF)).length).toBeGreaterThan(0) // Redis 판이 남는 것은 사내와 같다(03 §5.1 #7)
-    const c = await call('POST', '/check', { json: { target: CF, propertyRev: mine.propertyRev, scenario: mine.edited } })
+    expect(await propertyDocs(k)).toEqual([])
+    expect(await filesOf(k)).toEqual([])
+    expect((await redisFields(k)).length).toBeGreaterThan(0) // Redis 판이 남는 것은 사내와 같다(03 §5.1 #7)
+  }
+
+  it('삭제 뒤: /check 는 deleted·SOURCE_GONE 을 알리고 force 가 아닌 배포는 422, force 배포는 연 판의 디스크 캐시로 다시 만든다 — 다시 열면 같은 스텝', async () => {
+    const mine = await open(CF) // 연 판이 디스크 캐시에 남는다
+    const biBefore = await biOf(CF, mine.version.crtime)
+    await deleteScenario(CF)
+    const c = await checkOf(mine, CF)
     expect(c.status, show(c)).toBe(200)
     expect(c.body.data.conflict).toEqual({ kind: 'deleted' })
     expect(c.body.data.blocks.map((b) => b.code)).toContain('SOURCE_GONE')
-    const r = await deploy(metaOf(mine, CF, { force: true }))
-    expect(r.status, show(r)).toBe(422)
-    expect(r.body.details.blocks.map((b) => b.code)).toContain('SOURCE_GONE') // 기준 판이 없어 모든 스텝이 새 스텝으로 검사된다
+    const plain = await deploy(metaOf(mine, CF))
+    expect(plain.status, show(plain)).toBe(422)
+    expect(plain.body.details.blocks.map((b) => b.code)).toContain('SOURCE_GONE')
     expect(await propertyDocs(CF)).toEqual([])
+    // /check 도 force 를 받으면 같은 판정 — 캐시가 있어 막힘 없음, 삭제 충돌은 그대로
+    const cf = await checkOf(mine, CF, { force: true })
+    expect(cf.status, show(cf)).toBe(200)
+    expect(cf.body.data.conflict).toEqual({ kind: 'deleted' })
+    expect(cf.body.data.blocks).toEqual([])
+
+    const started = Date.now()
+    const data = expectOk(await deploy(metaOf(mine, CF, { force: true })))
+    // 문서가 없었으니 운영 속성은 작업본 값으로 새로, Owners 는 내 줄 하나, 성과는 빈 값(지워진 성과는 돌아오지 않는다)
+    const doc = await propertyDoc(CF)
+    expect(doc.property.Owners).toHaveLength(1)
+    expectDeployLine(doc.property.Owners[0], 'sew_master', started)
+    expect(doc.performance).toEqual(emptyPerformance())
+    // 본문·BI 는 지워진 판과 글자까지 같다 — 손대지 않은 그림을 캐시 PNG 에서 다시 만들었다
+    expect(await redisValue(CF, data.crtime)).toBe(await redisValue(CF, mine.version.crtime))
+    expect(await biOf(CF, data.crtime)).toBe(biBefore)
+    const back = await open(CF)
+    expect(back.version.crtime).toBe(data.crtime)
+    expect(back.steps.map(stepView)).toEqual(mine.steps.map(stepView))
+    expect(noUrls(back.edited.steps)).toEqual(noUrls(mine.edited.steps))
+    expect(back.edited.header).toEqual(mine.edited.header)
+    expect(withoutIdOwners(back.edited.property)).toEqual(withoutIdOwners(mine.edited.property))
+  })
+
+  it('삭제 뒤 디스크 캐시마저 없으면 /check(force)·force 배포 모두 SOURCE_GONE 이고 아무것도 쓰지 않는다', async () => {
+    const G = (await copyTo(SOURCE, NAME('GONE'))).target
+    const mine = await open(G)
+    await deleteScenario(G)
+    await dropCache(G)
+    const fields = await redisFields(G)
+    const c = await checkOf(mine, G, { force: true })
+    expect(c.status, show(c)).toBe(200)
+    expect(c.body.data.conflict).toEqual({ kind: 'deleted' })
+    expect(c.body.data.blocks.map((b) => b.code)).toContain('SOURCE_GONE')
+    const r = await deploy(metaOf(mine, G, { force: true }))
+    expect(r.status, show(r)).toBe(422)
+    expect(r.body.code).toBe('VALIDATION_FAILED')
+    expect(r.body.details.blocks.map((b) => b.code)).toContain('SOURCE_GONE')
+    expect(await propertyDocs(G)).toEqual([])
+    expect(await filesOf(G)).toEqual([])
+    expect(await redisFields(G)).toEqual(fields)
   })
 
   it('운영 속성 문서만 사라진 판(delscenario 가 첫 단계 뒤 멈춘 상태)은 409 deleted, force 로 다시 만들고 성과는 돌아오지 않는다', async () => {

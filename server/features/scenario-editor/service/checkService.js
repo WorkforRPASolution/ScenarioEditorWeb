@@ -52,7 +52,7 @@ const nextNames = (p) => ['NextScenarioIfSuccess', 'NextScenarioIfFail']
   .map((k) => p && p[k] && p[k].Name).filter((n) => typeof n === 'string' && n !== '')
 
 function createCheckService({ repo, hash, scopes, opener, env = process.env }) {
-  async function prepare(user, { source, target: rawTarget, scenario, propertyRev: metaRev }) {
+  async function prepare(user, { source, target: rawTarget, scenario, propertyRev: metaRev, force }) {
     if (scenario === undefined || scenario === null) throw bad('scenario 가 필요합니다', { path: 'scenario', reason: '객체여야 합니다' })
     let edited
     try { edited = parseEditedScenario(scenario) } catch (e) {
@@ -61,6 +61,7 @@ function createCheckService({ repo, hash, scopes, opener, env = process.env }) {
     }
     assertSameSource(source, edited.source)
     if (metaRev !== undefined && metaRev !== null && typeof metaRev !== 'string') throw bad('propertyRev 모양이 틀립니다', { path: 'propertyRev', reason: '문자열 또는 null 이어야 합니다' })
+    if (force !== undefined && typeof force !== 'boolean') throw bad('force 모양이 틀립니다', { path: 'force', reason: '참거짓이어야 합니다' })
     const t = parseTarget(rawTarget)
     const base = edited.source
     const process = base ? base.process : t.process
@@ -75,7 +76,8 @@ function createCheckService({ repo, hash, scopes, opener, env = process.env }) {
     const extraBlocks = []
     let sourceSkeleton = null
     if (base) {
-      const opened = await opener.source(user, base)
+      // force([다시 만듭니다]·[내 내용으로 덮어씁니다])면 기준 판 파일이 지워졌어도 디스크 캐시가 남아 있으면 그것을 기준 판으로 쓴다(2026-11-07 결정 (a))
+      const opened = await opener.source(user, base, force === true ? { cacheIfGone: true } : undefined)
       if (opened.gone) extraBlocks.push({ code: 'SOURCE_GONE' })
       else sourceSkeleton = opened.skeleton
     }

@@ -116,8 +116,10 @@ function createDeployService({ check, opener, web, repo, hash, scopes, interface
       }
     }
     // 그림 바이트 → base64. 기준 판·다른 판은 이미지 캐시(openService)에서, 새 그림은 요청 파일 또는 초안 GridFS 에서.
+    // force 면 기준 판 파일이 지워졌어도 디스크 캐시 그림을 쓴다(prepare 가 그 캐시를 기준 판으로 읽은 것과 같은 판정, 2026-11-07 결정 (a))
+    const sourceOpts = opts.force ? { cacheIfGone: true } : undefined
     async function resolveImage(ref) {
-      if (ref.from === 'source') return opener.resolveImage(baseVersion, ref.id)
+      if (ref.from === 'source') return opener.resolveImage(baseVersion, ref.id, sourceOpts)
       if (ref.from === 'other') return opener.resolveImage({ process: ref.process, model: ref.model, name: ref.name, crtime: ref.crtime, fileId: ref.fileId }, ref.id)
       if (ref.from === 'upload') {
         const buf = images.has(ref.tempId) ? images.get(ref.tempId) : await web.readDraftImage(draftGrid.get(ref.tempId))

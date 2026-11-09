@@ -87,20 +87,32 @@ function createOpenService({ repo, hash, gridfs, scopes, imageCache, log }) {
 
   // 판 하나를 (캐시 재사용으로) 푼다. 그 파일이 그 공정·모델·이름·crtime 이 아니거나 없으면 null.
   // 캐시는 파일이 지워져도 남으므로 파일 존재·메타데이터는 매번 본다(본문 없이 projection 으로 가볍게).
-  async function unpackVersion({ process, model, name, crtime, fileId }) {
+  // cacheIfGone: 파일이 없을 때만 같은 판 키·같은 형식 번호의 디스크 캐시를 쓴다 — 지워진 시나리오 다시 만들기(force, 2026-11-07 결정 (a)).
+  // 캐시 키에 공정·모델·이름·crtime·파일 id 가 다 들어 있고 캐시는 그 판을 확인하고 푼 것만 쓰므로 다른 판으로 바뀌지 않는다.
+  async function unpackVersion({ process, model, name, crtime, fileId }, { cacheIfGone = false } = {}) {
     const oid = toObjectId(fileId)
     if (!oid || !Number.isSafeInteger(crtime)) return null
     const file = await gridfs.findFileMeta(oid)
+    if (!file && cacheIfGone) return cachedVersion(process, model, name, crtime, oid)
     const m = file && file.metadata
     if (!m || m.process !== process || m.model !== model || m.name !== name || m.crtime !== crtime) return null
     return unpack(process, model, name, crtime, oid)
   }
 
+  async function cachedVersion(process, model, name, crtime, oid) {
+    const key = versionKey(process, model, name, crtime, oid)
+    const cached = await imageCache.readSkeleton(key)
+    if (!cached || cached.cacheFormat !== SKELETON_CACHE_FORMAT) return null
+    const { cacheFormat, ...core } = cached
+    log.info(`source ${process}-${model}-${name}@${crtime}: 판 파일이 없어 디스크 캐시로 읽음`)
+    return { core, fromCache: true }
+  }
+
   // 검사·배포가 기준 판으로 읽는다. 현재 운영 속성·성과를 붙인 뼈대와 그 문서(property·performance 하위 문서).
-  async function source(user, version) {
+  async function source(user, version, opts) {
     const { process, model, name, crtime } = version
     await scopes.assertAllowed(user, process, model)
-    const unpacked = await unpackVersion(version)
+    const unpacked = await unpackVersion(version, opts)
     if (!unpacked) return { gone: true }
     const docs = (await repo.findScenarioKeyDocs(process, model, name)).filter((d) => 'property' in d)
     if (docs.length > 1) throw seError(422, 'DATA_INVALID', '같은 공정·모델·이름의 운영 속성 문서가 둘 이상입니다')
@@ -112,8 +124,9 @@ function createOpenService({ repo, hash, gridfs, scopes, imageCache, log }) {
   }
 
   // 기준 판의 그림 하나를 base64 로 — 배포가 손대지 않은 그림을 다시 조립할 때 쓴다. 캐시가 없거나 옛 형식이면 다시 푼 뒤 읽는다.
-  async function resolveImage(version, imageId) {
-    const unpacked = await unpackVersion(version)
+  // opts.cacheIfGone 은 source 와 같다(파일이 없으면 캐시 그림).
+  async function resolveImage(version, imageId, opts) {
+    const unpacked = await unpackVersion(version, opts)
     if (!unpacked) throw seError(404, 'NOT_FOUND', '그 버전이 없습니다')
     const { process, model, name, crtime } = version
     const p = await imageCache.imagePath(versionKey(process, model, name, crtime, toObjectId(version.fileId)), imageId)
