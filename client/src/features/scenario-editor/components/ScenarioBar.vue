@@ -91,6 +91,12 @@ const draftTime = computed(() => {
   const ms = edit.session?.draft?.savedAt ? new Date(edit.session.draft.savedAt).getTime() : NaN
   return Number.isFinite(ms) ? formatCrtime(ms).slice(11, 16) : ''
 })
+// 불러오기 창에서 연 길(P2-D Task 7): 되돌려 연 작업본·초안으로 연 세션(시작한 버전·그 뒤 새 버전·원본 지워짐)·지워진 시나리오
+const opened = computed(() => {
+  const s = edit.session
+  return { restoredFrom: s?.restoredFrom ?? null, fromDraft: s?.fromDraft ?? null, deleted: s?.readOnly === 'deleted' }
+})
+const versionLabel = computed(() => (opened.value.fromDraft ? t('SEW_BAR_DRAFT_BASE') : sk.value.version.isCurrent ? t('SEW_UI_CURRENT_VERSION') : t('SEW_UI_OLD_VERSION')))
 const flashRing = 'ring-2 ring-amber-400 dark:ring-amber-500 rounded'
 const inp = 'h-7 px-2 rounded border border-gray-300 dark:border-dark-border bg-white dark:bg-dark-card text-gray-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-primary-400'
 const bad = 'border-red-500 dark:border-red-500 bg-red-50 dark:bg-red-900/20'
@@ -128,10 +134,17 @@ const btn = 'h-8 px-3 rounded-lg text-sm'
         </label>
       </div>
       <div class="flex items-center gap-1.5 flex-wrap text-xs">
+        <template v-if="opened.deleted">
+          <span :class="badge" class="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300" data-testid="se-bar-deleted">{{ t('SEW_BAR_DELETED') }}</span>
+          <span :class="badge" class="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">{{ t('SEW_BAR_READ_ONLY') }}</span>
+        </template>
         <span v-if="unsaved && edit.editable" :class="badge" class="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" :title="t('SEW_BAR_UNSAVED_TITLE')" data-testid="se-bar-unsaved">{{ t('SEW_BAR_UNSAVED', { n: unsaved }) }}</span>
+        <span v-if="opened.restoredFrom != null" :class="badge" class="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" data-testid="se-bar-restored">{{ t('SEW_BAR_RESTORED', { at: formatCrtime(opened.restoredFrom) }) }}</span>
+        <span v-if="opened.fromDraft?.stale" :class="badge" class="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" data-testid="se-bar-draft-stale">{{ t('SEW_BAR_DRAFT_STALE') }}</span>
+        <span v-if="opened.fromDraft?.gone" :class="badge" class="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" data-testid="se-bar-source-gone">{{ t('SEW_BAR_SOURCE_GONE') }}</span>
         <span v-if="sk.isNew" :class="badge" class="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" :title="t('SEW_BAR_NEVER_SAVED_TITLE')" data-testid="se-bar-version">{{ t('SEW_BAR_NEVER_SAVED') }}</span>
         <span v-else :class="badge" class="bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-400" data-testid="se-bar-version">
-          {{ sk.version.isCurrent ? t('SEW_UI_CURRENT_VERSION') : t('SEW_UI_OLD_VERSION') }} · {{ formatCrtime(sk.version.crtime) }}</span>
+          {{ versionLabel }} · {{ formatCrtime(sk.version.crtime) }}</span>
         <template v-if="barProperty">
           <span :class="[badge, barProperty.IsEnabled ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400']">
             {{ enabledLabel(barProperty.IsEnabled) }}</span>

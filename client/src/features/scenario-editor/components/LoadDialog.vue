@@ -2,37 +2,54 @@
 import { ref, computed, watch } from 'vue'
 import { AgGridVue } from 'ag-grid-vue3'
 import { useEditorStore } from '../stores/editorStore'
+import { useEditStore } from '../stores/editStore'
 import { scenarioEditorApi as api } from '../api'
 import { t, LABELS, errorMessage } from '../messages'
 import { formatCrtime, enabledLabel } from '../format'
 import { safeStorage } from '../composables/useSafeStorage'
 import { registerGrid, useGridTheme } from '../gridTheme'
+import { mergeDrafts, draftStale, isDup } from '../editor/loadRows'
 import { useToast } from '@/shared/composables/useToast'
 import BaseToast from '@/shared/components/BaseToast.vue'
 import ModalShell from './ModalShell.vue'
+import LoadPane from './load/LoadPane.vue'
+import LoadDelete from './load/LoadDelete.vue'
+import LoadDraftChoice from './load/LoadDraftChoice.vue'
+import './load/load.css'
 
 defineOptions({ name: 'LoadDialog' })
 registerGrid()
 const props = defineProps({ modelValue: Boolean })
-const emit = defineEmits(['update:modelValue', 'open'])
+// open = 시나리오 버전 열기 { process, model, name, crtime }. 쓰기 사용자(P2-D Task 7): open-draft = [초안 이어서 열기] { process, model, name, draftId },
+// restore = [이 버전으로 되돌려 열기] { process, model, name, crtime }. 여는 일(저장 전 변경 확인 포함)은 부모가 맡는다.
+const emit = defineEmits(['update:modelValue', 'open', 'open-draft', 'restore'])
 const store = useEditorStore()
+const edit = useEditStore()
 const theme = useGridTheme()
 const { toast, showToast } = useToast()
 const LAST = 'se-last-scope'
 
 const process = ref('')
 const model = ref('')
-const rows = ref([])
+const listRows = ref([])
+const drafts = ref([])
+const draftsError = ref('')
 const listError = ref('')
 const search = ref('')
 const enabledOnly = ref(false)
-const selected = ref(null)
-const selectedCrtime = ref(null)
+const draftOnly = ref(false)
+const selectedName = ref(null)
+const pick = ref(null) // 고른 버전 crtime, 내 초안 줄은 'draft'
 const versions = ref([])
 const versionsError = ref('')
+const sub = ref(null) // 창 위 작은 창 'delete' | 'choice'
+// 원본이 지워진 초안(초안만 · 원본 지워짐 행)의 서버 사본 확인: draftId → 'checking' | 'kept' | 'gone' | { failed: 문구 }
+const sourceChecks = ref(new Map())
 // 지금 rows 를 받아 온 { process, model } — 열기 요청은 화면의 선택값이 아니라 이 쌍으로 보낸다
 const loadedFor = ref(null)
 
+// 쓰기 사용자에게만 켜기·끄기·지우기·되돌려 열기·내 초안이 더해진다. 읽기만 하는 사용자는 P1 화면 그대로.
+const writer = computed(() => !!store.me?.canWrite)
 const processes = computed(() => store.scopes?.processes ?? [])
 const models = computed(() => processes.value.find((p) => p.process === process.value)?.models ?? [])
 // 권한·설비를 못 읽었거나(null) 비었을 때(빈 배열) 빈 선택 상자만 보이지 않게 한 줄로 알린다
@@ -41,9 +58,24 @@ const scopesNotice = computed(() => {
   if (processes.value.length === 0) return { text: t('SEW_UI_LOAD_NO_SCOPES'), error: false }
   return null
 })
+const rows = computed(() => (loadedFor.value ? mergeDrafts(listRows.value, writer.value ? drafts.value : [], loadedFor.value) : []))
+const draftCount = computed(() => rows.value.filter((r) => r.draft).length)
 const filtered = computed(() => {
   const q = search.value.trim().toLowerCase()
-  return rows.value.filter((r) => (!enabledOnly.value || r.isEnabled !== false) && r.name.toLowerCase().includes(q))
+  return rows.value.filter((r) => (!enabledOnly.value || r.isEnabled !== false) && (!draftOnly.value || r.draft) && r.name.toLowerCase().includes(q))
+})
+const selected = computed(() => rows.value.find((r) => r.name === selectedName.value) ?? null)
+const currentVersion = computed(() => versions.value.find((v) => v.isCurrent) ?? null)
+const eqpCount = computed(() => models.value.find((m) => m.model === loadedFor.value?.model)?.eqpCount ?? 0)
+
+// 고른 행이 편집 화면에 열려 있으면 { changes, propertyChanged, enabled }(지워져 읽기 전용이 된 화면은 아니다)
+const openInfo = computed(() => {
+  const sk = store.skeleton
+  const s = edit.session
+  const pair = loadedFor.value
+  const r = selected.value
+  if (!sk || !s || !pair || !r || sk.isNew || s.readOnly === 'deleted' || sk.process !== pair.process || sk.model !== pair.model || sk.name !== r.name) return null
+  return { changes: edit.unsavedCount, propertyChanged: !!s.propertyChanged, enabled: s.working?.property?.IsEnabled ?? r.isEnabled }
 })
 
 function pickInitial() {
@@ -55,55 +87,194 @@ function pickInitial() {
   model.value = processes.value[0]?.models[0]?.model ?? ''
 }
 
+function clearSelection() {
+  versionSeq++
+  selectedName.value = null; pick.value = null; versions.value = []; versionsError.value = ''; sub.value = null
+}
 // 요청마다 번호를 매겨 마지막 요청의 응답만 화면에 쓴다(앞 요청의 늦은 성공·실패는 버린다)
 let listSeq = 0
 let versionSeq = 0
 async function loadList() {
   const id = ++listSeq
-  versionSeq++
-  rows.value = []; selected.value = null; selectedCrtime.value = null; versions.value = []; versionsError.value = ''; listError.value = ''; loadedFor.value = null
+  clearSelection()
+  listRows.value = []; drafts.value = []; draftsError.value = ''; listError.value = ''; loadedFor.value = null; sourceChecks.value = new Map()
   if (!process.value || !model.value) return
   const pair = { process: process.value, model: model.value }
   safeStorage.set(LAST, JSON.stringify(pair))
-  try {
-    const next = (await api.list(pair.process, pair.model)).data.data
-    if (id !== listSeq) return
-    rows.value = next; loadedFor.value = pair
-  } catch (e) {
-    if (id === listSeq) listError.value = errorMessage(e)
-  }
+  const [list, mine] = await Promise.allSettled([api.list(pair.process, pair.model), writer.value ? api.listDrafts(pair.process, pair.model) : Promise.resolve(null)])
+  if (id !== listSeq) return
+  if (list.status === 'rejected') { listError.value = errorMessage(list.reason); return }
+  listRows.value = list.value.data.data
+  if (mine.status === 'fulfilled') drafts.value = mine.value?.data.data ?? []
+  else draftsError.value = t('SEW_LOAD_DRAFTS_FAILED', { cause: errorMessage(mine.reason) })
+  loadedFor.value = pair
 }
 
-watch(() => props.modelValue, (open) => { if (open && !process.value) pickInitial() }, { immediate: true })
+// 창은 화면과 함께 한 번 만들어진다 — 열 때마다 목록·내 초안을 다시 읽는다(그 사이 저장한 초안·켜기·끄기·배포, 처음엔 내 정보가 늦게 와 쓰기 권한을 몰랐을 수 있다)
+watch(() => props.modelValue, (open, was) => {
+  if (!open) return
+  if (!process.value) pickInitial()
+  else if (was === false) loadList()
+}, { immediate: true })
 watch(processes, () => { if (props.modelValue && !process.value) pickInitial() })
 watch(process, () => { if (!models.value.some((m) => m.model === model.value)) model.value = models.value[0]?.model ?? '' })
 watch([process, model], loadList, { immediate: true })
 
-async function onRowClicked(e) {
+// 행 고르기. "초안만" 행은 버전이 없어 내 초안 줄이 늘 골라져 있고, 원본이 지워진 초안이면 서버 사본이 있는지 본다.
+async function selectRow(row) {
   const pair = loadedFor.value
-  if (!pair) return
+  if (!pair || !row) return
   const id = ++versionSeq
-  if (selected.value?.name !== e.data.name) selectedCrtime.value = null
-  selected.value = e.data
+  if (selectedName.value !== row.name) pick.value = null
+  selectedName.value = row.name
   versions.value = []; versionsError.value = ''
+  if (row.draftOnly) {
+    pick.value = 'draft'
+    if (row.draftOnly === 'gone') checkSource(row)
+    return
+  }
   try {
-    const next = (await api.versions(pair.process, pair.model, e.data.name)).data.data
+    const next = (await api.versions(pair.process, pair.model, row.name)).data.data
     if (id === versionSeq) versions.value = next
   } catch (err) {
     if (id === versionSeq) versionsError.value = errorMessage(err)
   }
 }
-function openRow(name, crtime = 'current') {
+const onRowClicked = (e) => selectRow(e.data)
+
+// 원본이 지워진 초안: 배포의 [다시 만듭니다]와 같은 판정(force 검사에 SOURCE_GONE 이 없으면 서버 사본이 있다 — editorStore.draftSourceKept)
+async function checkSource(row) {
   const pair = loadedFor.value
-  if (!pair) return
-  emit('open', { process: pair.process, model: pair.model, name, crtime: String(crtime) })
+  const id = row.draft.draftId
+  if (sourceChecks.value.has(id)) return
+  const set = (v) => { if (loadedFor.value === pair) sourceChecks.value = new Map(sourceChecks.value).set(id, v) }
+  set('checking')
+  try {
+    const d = (await api.getDraft(id)).data.data
+    set((await store.draftSourceKept({ ...d, process: pair.process, model: pair.model, name: row.name })) ? 'kept' : 'gone')
+  } catch (e) {
+    set({ failed: t('SEW_LOAD_DRAFT_CHECK_FAILED', { cause: errorMessage(e) }) })
+  }
 }
-const onRowDoubleClicked = (e) => openRow(e.data.name)
-const openVersion = (v) => { if (selected.value) openRow(selected.value.name, v.isCurrent ? 'current' : v.crtime) }
+const sourceCheck = computed(() => (selected.value?.draftOnly === 'gone' ? sourceChecks.value.get(selected.value.draft.draftId) ?? 'checking' : null))
+
+// ── 열기 ──
+const target = (name, crtime) => ({ process: loadedFor.value.process, model: loadedFor.value.model, name, crtime: String(crtime) })
+function openRow(name, crtime = 'current') {
+  if (!loadedFor.value) return
+  emit('open', target(name, crtime))
+}
+function openDraft() {
+  const r = selected.value
+  if (!loadedFor.value || !r?.draft || sourceCheck.value === 'gone' || sourceCheck.value === 'checking') return
+  sub.value = null
+  emit('open-draft', { process: loadedFor.value.process, model: loadedFor.value.model, name: r.name, draftId: r.draft.draftId })
+}
+function restore() {
+  const r = selected.value
+  if (!loadedFor.value || !r || typeof pick.value !== 'number') return
+  emit('restore', { process: loadedFor.value.process, model: loadedFor.value.model, name: r.name, crtime: pick.value })
+}
+const isOld = (crtime) => typeof crtime === 'number' && crtime !== currentVersion.value?.crtime
+// [열기]·행 두 번 누르기: 쓰기 사용자는 초안이 있으면 고르기 창, 초안만 있으면 이어서 열기, 옛 버전을 골랐으면 그 버전(읽기 전용)
 function openSelected() {
-  if (!selected.value) return
-  const v = versions.value.find((x) => x.crtime === selectedCrtime.value)
-  openRow(selected.value.name, v && !v.isCurrent ? v.crtime : 'current')
+  const r = selected.value
+  if (!r) return
+  if (!writer.value) {
+    const v = versions.value.find((x) => x.crtime === pick.value)
+    openRow(r.name, v && !v.isCurrent ? v.crtime : 'current')
+    return
+  }
+  if (r.draftOnly) { openDraft(); return }
+  if (isOld(pick.value)) { openRow(r.name, pick.value); return }
+  if (r.draft && !isDup(r)) { sub.value = 'choice'; return }
+  openRow(r.name)
+}
+async function onRowDoubleClicked(e) {
+  if (!writer.value) { openRow(e.data.name); return }
+  pick.value = null
+  if (selectedName.value !== e.data.name) await selectRow(e.data)
+  pick.value = e.data.draftOnly ? 'draft' : null
+  openSelected()
+}
+// 버전 줄 두 번 누르기·Enter: 내 초안 → 이어서, 옛 버전 → 읽기 전용, 현재 버전 → 묻지 않고 현재 버전(목업 "현재 버전을 직접 고르면")
+function openVersion(crtime) {
+  const r = selected.value
+  if (!r) return
+  if (crtime === 'draft') { pick.value = 'draft'; openDraft(); return }
+  const v = versions.value.find((x) => x.crtime === crtime)
+  openRow(r.name, v && !v.isCurrent ? v.crtime : 'current')
+}
+// P1 버전 줄(읽기만 하는 사용자)
+const openVersionP1 = (v) => { if (selected.value) openRow(selected.value.name, v.isCurrent ? 'current' : v.crtime) }
+
+// ── 바닥 줄(쓰기 사용자): 무엇을 열지 한두 줄 + 고른 것에 따른 버튼 ──
+const short = (ms) => formatCrtime(ms).slice(5, 16)
+const foot = computed(() => {
+  const r = selected.value
+  if (!r) return { text: t('SEW_LOAD_FOOT_PICK'), buttons: [{ act: 'open', disabled: true }] }
+  if (isDup(r)) return { text: t('SEW_LOAD_FOOT_DUP'), buttons: [{ act: 'open' }] }
+  if (r.draftOnly || pick.value === 'draft') {
+    const check = sourceCheck.value
+    if (check === 'gone') return { text: t('SEW_LOAD_DRAFT_GONE_NO_CACHE'), buttons: [] }
+    const tail = check === 'checking' ? ` ${t('SEW_LOAD_DRAFT_CHECKING')}` : check?.failed ? ` ${check.failed}`
+      : draftStale(r) ? t('SEW_LOAD_FOOT_DRAFT_STALE') : r.draftOnly === 'gone' ? t('SEW_LOAD_FOOT_DRAFT_GONE') : ''
+    return { lead: t('SEW_LOAD_FOOT_DRAFT_LEAD'), text: t('SEW_LOAD_FOOT_DRAFT', { time: short(Date.parse(r.draft.savedAt)) }) + tail, buttons: [{ act: 'draft', disabled: check === 'checking' }] }
+  }
+  if (isOld(pick.value)) {
+    if (!r.currentCrtime) return { lead: t('SEW_LOAD_FOOT_OLD_LEAD'), text: t('SEW_LOAD_FOOT_OLD_NO_CURRENT', { at: formatCrtime(pick.value) }), buttons: [{ act: 'old', primary: true }] }
+    return { lead: t('SEW_LOAD_FOOT_RESTORE_LEAD'), text: t('SEW_LOAD_FOOT_RESTORE', { cur: short(r.currentCrtime) }), buttons: [{ act: 'old' }, { act: 'restore' }] }
+  }
+  if (pick.value !== null && r.draft) return { lead: t('SEW_LOAD_FOOT_CURRENT_LEAD'), text: t('SEW_LOAD_FOOT_CURRENT_DRAFT'), buttons: [{ act: 'current' }] }
+  if (!r.currentCrtime) return { text: t('SEW_LOAD_FOOT_NO_CURRENT'), buttons: [{ act: 'open' }] }
+  if (r.draft) return { text: t('SEW_LOAD_FOOT_HAS_DRAFT'), buttons: [{ act: 'open' }] }
+  return { lead: t('SEW_LOAD_FOOT_CURRENT_LEAD'), text: t('SEW_LOAD_FOOT_CURRENT', { at: formatCrtime(r.currentCrtime) }), buttons: [{ act: 'open' }] }
+})
+const FOOT_BUTTONS = {
+  open: { key: 'SEW_LOAD_OPEN', testid: 'se-load-open', primary: true, run: () => openSelected() },
+  current: { key: 'SEW_LOAD_OPEN_CURRENT', testid: 'se-load-open-current', primary: true, run: () => openRow(selected.value.name) },
+  old: { key: 'SEW_LOAD_OPEN_OLD', testid: 'se-load-open-old', primary: false, run: () => openRow(selected.value.name, pick.value) },
+  restore: { key: 'SEW_LOAD_RESTORE', testid: 'se-load-restore', primary: true, run: () => restore() },
+  draft: { key: 'SEW_LOAD_OPEN_DRAFT', testid: 'se-load-open-draft', primary: true, run: () => openDraft() }
+}
+const footButtons = computed(() => foot.value.buttons.map((b) => ({ ...FOOT_BUTTONS[b.act], primary: b.primary ?? FOOT_BUTTONS[b.act].primary, disabled: !!b.disabled, act: b.act })))
+
+// ── 칸의 쓰기 동작 결과 ──
+function onEnabled({ name, isEnabled }) {
+  listRows.value = listRows.value.map((r) => (r.name === name ? { ...r, isEnabled, lastOwner: { singleid: store.me?.singleid ?? '', at: formatCrtime(Date.now()), note: null } } : r))
+  if (openInfo.value && selected.value?.name === name) edit.markPropertyChanged()
+}
+function onDraftDeleted(id) {
+  drafts.value = drafts.value.filter((d) => d.draftId !== id)
+  edit.forgetDraft(id)
+  if (pick.value === 'draft') pick.value = null
+  if (!selected.value) clearSelection()
+  showToast('success', t('SEW_LOAD_DRAFT_DELETED'))
+}
+function onDeleted() {
+  const r = selected.value
+  const wasOpen = !!openInfo.value
+  sub.value = null
+  if (wasOpen) edit.markDeleted()
+  listRows.value = listRows.value.filter((x) => x.name !== r.name)
+  // 초안이 있으면 그 행은 "초안만 · 원본 지워짐" 으로 남는다
+  if (selected.value) selectRow(selected.value)
+  else clearSelection()
+  showToast('success', t(wasOpen ? 'SEW_LOAD_DELETED_OPEN' : 'SEW_LOAD_DELETED'))
+}
+async function relist() {
+  sub.value = null
+  await loadList()
+  showToast('success', t('SEW_LOAD_RELISTED'))
+}
+// 지우기 결과 모름 뒤 [목록 다시 읽기]: 남았는지 알린다(남았으면 다시 고른다 — 자동으로 다시 보내지 않는다)
+async function relistAfterDelete() {
+  const name = selected.value?.name
+  sub.value = null
+  await loadList()
+  const still = rows.value.find((r) => r.name === name && !r.draftOnly)
+  if (still) selectRow(still)
+  showToast(still ? 'info' : 'success', t(still ? 'SEW_LOAD_RELISTED_KEPT' : 'SEW_LOAD_RELISTED_GONE', { name }))
 }
 
 // useToast 는 ref 만 준다 — 화면에 그리는 건 아래 <BaseToast>
@@ -122,19 +293,36 @@ async function refresh() {
   }
 }
 
-const columnDefs = [
-  { field: 'name', headerName: '이름', minWidth: 220, flex: 1 },
-  { field: 'isEnabled', headerName: '켜짐', width: 70, valueFormatter: (p) => enabledLabel(p.value) },
+// "내 초안" 칸: 저장 시각 칩(시작한 뒤 새 버전이 배포됐으면 주황)
+function renderDraft(p) {
+  const d = p.data?.draft
+  if (!d) return ''
+  const el = document.createElement('span')
+  const stale = draftStale(p.data)
+  const at = formatCrtime(Date.parse(d.savedAt))
+  el.className = `se-load-dchip${stale ? ' am' : ''}`
+  el.textContent = at.slice(5, 16)
+  el.title = t(stale ? 'SEW_LOAD_DRAFT_CHIP_TITLE_STALE' : 'SEW_LOAD_DRAFT_CHIP_TITLE', { at })
+  return el
+}
+const draftOnlyText = (r) => t(r.draftOnly === 'new' ? 'SEW_LOAD_ROW_DRAFT_NEW' : 'SEW_LOAD_ROW_DRAFT_GONE')
+const columnDefs = computed(() => [
+  { field: 'name', headerName: '이름', minWidth: 220, flex: 1, cellClass: (p) => (p.data?.draft ? 'se-load-has-draft' : '') },
+  ...(writer.value ? [{ field: 'draft', headerName: t('SEW_LOAD_COL_DRAFT'), width: 112, cellRenderer: renderDraft }] : []),
+  // cellDataType: false — AG Grid 가 참거짓 열을 체크 칸으로 그리면 문구(켜짐·꺼짐·초안만 —·같은 키 ?)가 나오지 않는다(목업은 글자)
+  { field: 'isEnabled', headerName: '켜짐', width: 70, cellDataType: false, valueFormatter: (p) => (p.data?.draftOnly ? '—' : writer.value && isDup(p.data) ? '?' : enabledLabel(p.value)), cellClass: (p) => (p.data?.draftOnly ? 'se-load-dim' : '') },
   { field: 'typeName', headerName: '유형', width: 120, valueFormatter: (p) => LABELS.scenarioType[p.value] ?? p.value ?? '' },
   { field: 'triggerName', headerName: '트리거', width: 90 },
   { field: 'gradeName', headerName: '등급', width: 70 },
   { field: 'description', headerName: '설명', minWidth: 180, flex: 1 },
   { headerName: '최근 수정자', width: 120, valueGetter: (p) => p.data.lastOwner?.singleid ?? '' },
-  { field: 'currentCrtime', headerName: '현재 버전', width: 160, valueFormatter: (p) => (p.value ? formatCrtime(p.value) : '') },
+  { field: 'currentCrtime', headerName: '현재 버전', width: 160, valueFormatter: (p) => (p.data?.draftOnly ? t('SEW_LOAD_NONE') : p.value ? formatCrtime(p.value) : ''), cellClass: (p) => (p.data?.draftOnly ? 'se-load-dim' : '') },
   // 열 합계(약 1170px)가 창의 표 영역(약 760px)보다 넓다 — 열 수 없는 원인(완료 조건 3)이 가로 스크롤 뒤로 숨지 않게 오른쪽에 고정한다
-  { field: 'status', headerName: '상태', width: 140, pinned: 'right', valueFormatter: (p) => p.value.map((s) => LABELS.listStatus[s] ?? s).join(', ') }
-]
+  { field: 'status', headerName: '상태', width: 140, pinned: 'right', valueFormatter: (p) => (p.data?.draftOnly ? draftOnlyText(p.data) : p.value.map((s) => LABELS.listStatus[s] ?? s).join(', ')) }
+])
 const select = 'h-[38px] rounded-lg border border-gray-300 dark:border-dark-border bg-white dark:bg-dark-bg px-2 text-sm text-gray-900 dark:text-gray-100'
+const btnP = 'px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-lg transition text-sm disabled:opacity-50 whitespace-nowrap'
+const btnS = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg transition text-sm disabled:opacity-50 whitespace-nowrap'
 </script>
 
 <template>
@@ -145,10 +333,14 @@ const select = 'h-[38px] rounded-lg border border-gray-300 dark:border-dark-bord
         <select v-model="model" :class="select" data-testid="se-load-model"><option v-for="m in models" :key="m.model" :value="m.model">{{ m.model }}</option></select>
         <input v-model="search" :class="select" class="w-56" :placeholder="t('SEW_UI_SEARCH_NAME')" data-testid="se-load-search" />
         <label class="text-xs text-gray-600 dark:text-gray-300 flex items-center gap-1"><input v-model="enabledOnly" type="checkbox" data-testid="se-load-enabled" /> {{ t('SEW_UI_ENABLED_ONLY') }}</label>
+        <label v-if="writer" class="text-xs text-gray-600 dark:text-gray-300 flex items-center gap-1 whitespace-nowrap" data-testid="se-load-draft-only">
+          <input v-model="draftOnly" type="checkbox" /> {{ t('SEW_LOAD_DRAFT_ONLY') }}
+          <span class="min-w-[18px] px-1.5 rounded-full text-[11px] font-semibold text-center bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-300" data-testid="se-load-draft-count">{{ draftCount }}</span></label>
         <span class="text-xs text-gray-500 ml-1">{{ t('SEW_UI_LOAD_SCOPE_HINT') }}</span>
         <button class="ml-auto h-[38px] px-3 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm" data-testid="se-load-refresh" @click="refresh">{{ t('SEW_UI_REFRESH_SCOPES') }}</button>
       </div>
       <p v-if="scopesNotice" class="px-5 py-2 text-sm border-b border-gray-200 dark:border-dark-border" :class="scopesNotice.error ? 'text-red-600' : 'text-gray-600 dark:text-gray-300'" data-testid="se-load-scopes-notice">{{ scopesNotice.text }}</p>
+      <p v-if="draftsError" class="px-5 py-1.5 text-xs text-red-600 border-b border-gray-200 dark:border-dark-border" data-testid="se-load-drafts-error">{{ draftsError }}</p>
       <div class="flex-1 min-h-0 grid" style="grid-template-columns: minmax(0, 1fr) 280px">
         <div class="min-h-0 flex flex-col border-r border-gray-200 dark:border-dark-border">
           <p v-if="listError" class="p-3 text-sm text-red-600" data-testid="se-load-list-error">{{ listError }}</p>
@@ -156,14 +348,20 @@ const select = 'h-[38px] rounded-lg border border-gray-300 dark:border-dark-bord
             :row-selection="{ mode: 'singleRow', checkboxes: false, enableClickSelection: true }" @row-clicked="onRowClicked" @row-double-clicked="onRowDoubleClicked"
             style="width: 100%; height: 100%" data-testid="se-load-grid" />
         </div>
-        <div class="p-3 flex flex-col min-h-0">
+        <template v-if="writer">
+          <LoadPane v-if="selected && loadedFor" :key="`${loadedFor.process}/${loadedFor.model}/${selected.name}`" :process="loadedFor.process" :model="loadedFor.model" :row="selected"
+            :versions="versions" :versions-error="versionsError" :pick="pick" :open="openInfo" :draft-open-draft-id="edit.draftId"
+            @pick="pick = $event" @open-version="openVersion" @enabled="onEnabled" @draft-deleted="onDraftDeleted" @delete="sub = 'delete'" @relist="relist" @toast="showToast" />
+          <div v-else class="p-3 text-xs leading-relaxed text-gray-500" data-testid="se-load-pane-empty">{{ t('SEW_LOAD_PANE_EMPTY') }}</div>
+        </template>
+        <div v-else class="p-3 flex flex-col min-h-0">
           <div class="text-xs font-semibold text-gray-700 dark:text-gray-200 mb-2">버전 <span v-if="selected" class="font-normal text-gray-500">— {{ selected.name }}</span></div>
           <p v-if="versionsError" class="text-xs text-red-600" data-testid="se-load-versions-error">{{ versionsError }}</p>
           <ul class="flex-1 overflow-auto space-y-1 text-sm" role="listbox">
-            <li v-for="v in versions" :key="v.crtime" role="option" :aria-selected="selectedCrtime === v.crtime" data-testid="se-load-version"
+            <li v-for="v in versions" :key="v.crtime" role="option" :aria-selected="pick === v.crtime" data-testid="se-load-version"
               class="px-2 py-1.5 rounded-md cursor-pointer flex items-center gap-2"
-              :class="selectedCrtime === v.crtime ? 'bg-primary-100 dark:bg-primary-900/30' : 'hover:bg-gray-100 dark:hover:bg-dark-border'"
-              @click="selectedCrtime = v.crtime" @dblclick="openVersion(v)">
+              :class="pick === v.crtime ? 'bg-primary-100 dark:bg-primary-900/30' : 'hover:bg-gray-100 dark:hover:bg-dark-border'"
+              @click="pick = v.crtime" @dblclick="openVersionP1(v)">
               <span class="font-mono text-xs text-gray-800 dark:text-gray-200">{{ formatCrtime(v.crtime) }}</span>
               <span v-if="v.isCurrent" class="px-1.5 rounded text-[10px] bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-400">현재</span>
             </li>
@@ -171,10 +369,19 @@ const select = 'h-[38px] rounded-lg border border-gray-300 dark:border-dark-bord
           <p class="text-[11px] text-gray-500 mt-2">{{ t('SEW_UI_LOAD_VERSION_HINT') }}</p>
         </div>
       </div>
+      <LoadDelete v-if="sub === 'delete' && selected && loadedFor" :process="loadedFor.process" :model="loadedFor.model" :row="selected" :version-count="versions.length"
+        :eqp-count="eqpCount" :open="openInfo" @deleted="onDeleted" @relist="relistAfterDelete" @close="sub = null" />
+      <LoadDraftChoice v-if="sub === 'choice' && selected?.draft" :row="selected" :model="loadedFor.model"
+        @draft="openDraft" @current="sub = null; openRow(selected.name)" @close="sub = null" />
       <BaseToast :toast="toast" />
     </div>
     <template #footer>
-      <button class="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-lg transition text-sm disabled:opacity-50" :disabled="!selected" data-testid="se-load-open"
+      <template v-if="writer">
+        <div class="flex-1 min-w-0 mr-2 self-center text-xs leading-snug text-gray-500 dark:text-gray-400" data-testid="se-load-foot">
+          <b v-if="foot.lead" class="font-medium text-gray-700 dark:text-gray-200">{{ foot.lead }}</b>{{ foot.text }}</div>
+        <button v-for="b in footButtons" :key="b.act" :class="b.primary ? btnP : btnS" :disabled="b.disabled" :data-testid="b.testid" @click="b.run">{{ t(b.key) }}</button>
+      </template>
+      <button v-else class="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-lg transition text-sm disabled:opacity-50" :disabled="!selected" data-testid="se-load-open"
         @click="openSelected">열기</button>
     </template>
   </ModalShell>

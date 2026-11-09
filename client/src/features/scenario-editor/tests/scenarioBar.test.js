@@ -16,6 +16,7 @@ import { MESSAGES, t } from '../messages'
 import { buildMeta } from '../editor/request'
 import { unsavedChanges } from '../editor/diff'
 import { panelFixture, noneStep } from './panelFixture'
+import { formatCrtime } from '../format'
 
 const ModalStub = { name: 'ModalShell', props: ['modelValue', 'title'], template: '<div v-if="modelValue" :data-title="title"><slot /></div>' }
 const skeleton = (over = {}) => ({
@@ -294,6 +295,46 @@ describe('ScenarioBar', () => {
       await w.vm.$nextTick()
       expect(find(w, 'se-bar-unsaved').text()).toContain('저장 전 1곳')
       expect(find(w, 'se-bar-description').classes()).toContain('border-amber-400')
+    })
+  })
+
+  describe('불러오기 창에서 연 세션의 표시(P2-D Task 7)', () => {
+    const find = (w, id) => w.find(`[data-testid="${id}"]`)
+    const versionOf = (crtime, head, desc = 'm') => {
+      const st = noneStep(0, { descriptionToEmail: desc })
+      const edited = { source: { process: 'P', model: 'M', name: 'N', crtime, fileId: `F${crtime}` }, headCrtime: head, header: { description: 'm', timeoutLimit: '1' }, steps: [st], property: { IsEnabled: true, Type: 1 } }
+      return { process: 'P', model: 'M', name: 'N', id: 'P-M-N', headCrtime: head, propertyRev: 'r', version: { crtime, isCurrent: crtime === head, fileId: `F${crtime}` },
+        header: { description: 'm', timeoutLimit: 1, targetWindow: null }, property: { IsEnabled: true, Type: 1 }, performance: null, notes: [], steps: [{ ...st, no: 1, notes: [] }], edited }
+    }
+    const start = () => { const s = useEditorStore(); s.me = { singleid: 'u', canWrite: true, authorityManager: 3 }; return useEditStore() }
+    it('되돌려 연 작업본: "옛 버전 … 에서 되돌림" 과 현재 버전', () => {
+      const e = start()
+      e.beginRestore(versionOf(1730000000000, 1731000000000, '옛'), versionOf(1731000000000, 1731000000000))
+      const w = mountBar()
+      expect(find(w, 'se-bar-restored').text()).toBe(t('SEW_BAR_RESTORED', { at: formatCrtime(1730000000000) }))
+      expect(find(w, 'se-bar-version').text()).toContain(t('SEW_UI_CURRENT_VERSION'))
+    })
+    it('초안으로 연 세션: 버전 태그는 "시작한 버전", 초안 시작 뒤 새 버전이 있으면 그 태그', () => {
+      const e = start()
+      const base = versionOf(1730000000000, 1731000000000)
+      e.beginFromDraft({ draftId: 'd1', savedAt: '2026-11-07T05:23:51.000Z', base: { crtime: 1730000000000, fileId: 'F1730000000000' }, headCrtime: 1730000000000, propertyRev: 'r',
+        target: { model: 'M', name: 'N' }, scenario: base.edited, imageUrls: {}, process: 'P', model: 'M', name: 'N' }, base)
+      const w = mountBar()
+      expect(find(w, 'se-bar-version').text()).toContain(t('SEW_BAR_DRAFT_BASE'))
+      expect(find(w, 'se-bar-draft-stale').text()).toBe(t('SEW_BAR_DRAFT_STALE'))
+      expect(find(w, 'se-bar-draft').exists()).toBe(true)
+    })
+    it('지워진 시나리오: "지워짐"·"읽기 전용" 태그, [저장]·바 칸 입력이 없다', async () => {
+      const e = start()
+      const sk = versionOf(1731000000000, 1731000000000)
+      useEditorStore().skeleton = sk
+      e.begin(sk, useEditorStore().me)
+      const w = mountBar()
+      expect(find(w, 'se-save').exists()).toBe(true)
+      e.markDeleted(); await w.vm.$nextTick()
+      expect(find(w, 'se-bar-deleted').text()).toContain(t('SEW_BAR_DELETED'))
+      expect(find(w, 'se-save').exists()).toBe(false)
+      expect(find(w, 'se-bar-fields').exists()).toBe(false)
     })
   })
 })

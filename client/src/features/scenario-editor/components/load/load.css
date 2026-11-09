@@ -1,0 +1,31 @@
+/* 불러오기 창 쓰기 동작(목업 2026-11-08-load-write-v1 .sw·.dchip·.vd·.vtag·.btn-dl·.spin, 표 이름 칸 has-d). 색은 WebManager 디자인 시스템 값. */
+.se-load-sw { position: relative; width: 40px; height: 22px; border-radius: 9999px; background: #d1d5db; border: 0; padding: 0; flex: none; cursor: pointer; transition: background .15s; }
+.se-load-sw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .3); transition: transform .15s; }
+.se-load-sw[aria-checked='true'] { background: #3b82f6; }
+.se-load-sw[aria-checked='true']::after { transform: translateX(18px); }
+.se-load-sw[disabled] { opacity: .5; cursor: default; }
+.se-load-sw:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }
+.se-load-spin { width: 12px; height: 12px; border: 2px solid #d1d5db; border-top-color: #3b82f6; border-radius: 50%; animation: se-load-sp .8s linear infinite; flex: none; }
+@keyframes se-load-sp { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .se-load-sw, .se-load-sw::after { transition: none; } .se-load-spin { animation: none; } }
+.se-load-vtag { padding: 0 6px; border-radius: 4px; font-size: 10px; line-height: 16px; background: #dbeafe; color: #1d4ed8; white-space: nowrap; flex: none; }
+.se-load-vd { border: 1px dashed #3b82f6; background: #eff6ff; }
+.se-load-vd[aria-selected='true'] { background: #dbeafe; }
+.se-load-btn-del { height: 30px; padding: 0 12px; border-radius: 6px; border: 1px solid #d1d5db; background: #fff; color: #991b1b; font-size: 12px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+.se-load-btn-del:hover:not([disabled]) { background: #fee2e2; }
+.se-load-btn-del[disabled] { opacity: .5; cursor: default; }
+/* 표: 초안 있는 행의 이름 칸 왼쪽 파란 줄, "내 초안" 칸의 저장 시각 칩(시작 뒤 새 버전이 있으면 주황) */
+.se-load-has-draft { box-shadow: inset 3px 0 0 #3b82f6; }
+.se-load-dchip { display: inline-block; padding: 1px 7px; border-radius: 9999px; background: #dbeafe; color: #1d4ed8; font-size: 11px; font-weight: 500; line-height: 18px; }
+.se-load-dchip.am { background: #fef3c7; color: #92400e; }
+.se-load-dim { color: #9ca3af; }
+
+.dark .se-load-sw { background: #475569; }
+.dark .se-load-sw[aria-checked='true'] { background: #3b82f6; }
+.dark .se-load-vtag, .dark .se-load-dchip { background: rgba(59, 130, 246, .25); color: #93c5fd; }
+.dark .se-load-dchip.am { background: rgba(146, 64, 14, .35); color: #fcd34d; }
+.dark .se-load-vd { background: rgba(59, 130, 246, .14); }
+.dark .se-load-vd[aria-selected='true'] { background: rgba(59, 130, 246, .25); }
+.dark .se-load-btn-del { background: #1e293b; border-color: #475569; color: #fca5a5; }
+.dark .se-load-btn-del:hover:not([disabled]) { background: rgba(153, 27, 27, .35); }
+.dark .se-load-dim { color: #64748b; }

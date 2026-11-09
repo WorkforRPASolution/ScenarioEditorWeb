@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, onMounted, onBeforeUnmount, onActivated, onDeactivated } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, onActivated, onDeactivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useEditorStore } from './stores/editorStore'
 import { useEditStore } from './stores/editStore'
@@ -38,20 +38,34 @@ const queryTarget = () => {
   return q.p && q.m && q.n ? { process: String(q.p), model: String(q.m), name: String(q.n), crtime: String(q.v || 'current') } : null
 }
 const queryOf = (sk) => ({ p: sk.process, m: sk.model, n: sk.name, v: sk.version.isCurrent ? 'current' : String(sk.version.crtime) })
-// 새 시나리오(서버에 아직 없음)는 주소에 쓰지 않는다 — 새로고침이 없는 시나리오를 열려 하지 않게 쿼리를 비운다
-const writeQuery = (sk) => router.replace({ name: 'ScenarioEditor', query: sk.isNew ? {} : queryOf(sk) })
+// 새 시나리오(서버에 아직 없음)·원본이 지워진 초안(서버 사본으로만 연 판)은 주소에 쓰지 않는다 — 새로고침이 열 수 없는 시나리오를 열려 하지 않게 쿼리를 비운다
+const addressable = (sk) => !sk.isNew && !sk.sourceGone
+const writeQuery = (sk) => router.replace({ name: 'ScenarioEditor', query: addressable(sk) ? queryOf(sk) : {} })
 
 // 다른 시나리오 열기 — 오른쪽 패널에 적용 안 한 변경이 있으면 먼저 묻는다(guard 'open'). onKeep = [계속 고치기]로 접을 때 할 일.
 // 패널 확인 뒤에 저장 전 작업본 변경(적용한 값)도 한 번 더 묻는다([적용하고 이동]으로 넣은 값도 열기가 버리므로).
-const openGuarded = (target, onKeep = null) => edit.guard(() => edit.askLeave(() => store.openScenario(target), { onKeep }), { action: 'open', onKeep })
+const guardedOpen = (open, onKeep = null) => edit.guard(() => edit.askLeave(open, { onKeep }), { action: 'open', onKeep })
+const openGuarded = (target, onKeep = null) => guardedOpen(() => store.openScenario(target), onKeep)
 
 // [새 시나리오](P2-D Task 6): 패널에 적용 안 한 변경이 있으면 먼저 묻고(guard 'new') 창을 연다. 저장 전 변경(적용한 값)은
 // 창이 [만들기]·[그 시나리오 열기] 때 돌아가기·버리고·초안 저장하고 중에서 묻는다(목업 조작판 "저장 전 변경이 있을 때").
 const openNew = () => edit.guard(() => { newOpen.value = true }, { action: 'new' })
-// 새 시나리오 창의 [초안 이어서 열기]: 초안은 불러오기 창의 내 초안에서 연다(P2-D Task 7) — 그 창을 연다
-function openDraft() {
+// 불러오기 창·새 시나리오 창의 [초안 이어서 열기]({ process, model, name, draftId })와 [이 버전으로 되돌려 열기]({ process, model, name, crtime }) —
+// 다른 시나리오 열기와 같은 확인(패널 → 저장 전 변경)을 거친다(P2-D Task 7)
+function openDraft(d) {
   newOpen.value = false
-  loadOpen.value = true
+  loadOpen.value = false
+  guardedOpen(() => store.openDraft({ process: d.process, model: d.model, name: d.name, draftId: d.draftId }))
+}
+function openRestore(target) {
+  loadOpen.value = false
+  guardedOpen(() => store.openRestore(target))
+}
+// 열기 오류의 [다시 시도] — 실패한 길(시나리오·초안·되돌리기)로 다시
+function reopen(target) {
+  if (target.kind === 'draft') guardedOpen(() => store.openDraft(target))
+  else if (target.kind === 'restore') guardedOpen(() => store.openRestore(target))
+  else openGuarded(target)
 }
 
 // 저장 전 변경이 있으면 브라우저 떠나기·새로고침 앞에서 확인(설계 §4.2). 문구는 브라우저가 정한다.
@@ -78,7 +92,7 @@ onActivated(() => {
   const target = queryTarget()
   if (store.meError || store.opening) return // 열기가 끝나면 아래 감시자가 주소를 맞춘다
   if (!target) { if (sk) writeQuery(sk); return }
-  const q = sk && !sk.isNew && queryOf(sk)
+  const q = sk && addressable(sk) && queryOf(sk)
   // 주소가 다른 시나리오를 가리킨다. 패널에 적용 안 한 변경이 있으면 묻고, [계속 고치기]면 주소를 열린 시나리오로 되돌린다.
   if (!q || q.p !== target.process || q.m !== target.model || q.n !== target.name || q.v !== target.crtime) openGuarded(target, () => { if (store.skeleton && active) writeQuery(store.skeleton) })
 })
@@ -87,7 +101,9 @@ watch(() => store.skeleton, (sk) => {
   if (sk && active) writeQuery(sk)
 })
 
-const retry = () => store.openError && openGuarded(store.openError.target)
+const retry = () => store.openError && reopen(store.openError.target)
+// 불러오기 창이 열린 시나리오를 지웠다 — 편집 화면은 읽기 전용이고 고친 곳은 볼 수만 있다(목업 "열린 시나리오 지우기")
+const deleted = computed(() => edit.session?.readOnly === 'deleted')
 const card = 'bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:border-dark-border'
 </script>
 
@@ -97,6 +113,10 @@ const card = 'bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:
     <StatePanel v-else-if="store.meError" kind="error" :message="store.meError.message" @retry="start" />
     <template v-else>
       <ScenarioBar class="mb-3 shrink-0" @load="loadOpen = true" @new="openNew" />
+      <div v-if="deleted" class="mb-3 shrink-0 rounded-lg px-3 py-2 text-sm flex items-center gap-3 bg-red-50 text-red-800 dark:bg-red-900/30 dark:text-red-300" role="status" data-testid="se-deleted-banner">
+        <span class="flex-1 min-w-0">{{ t('SEW_DELETED_BANNER') }}{{ edit.changeCount ? t('SEW_DELETED_BANNER_CHANGED', { n: edit.changeCount }) : '' }}</span>
+        <button class="h-8 px-3 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-100" @click="loadOpen = true">{{ t('SEW_UI_LOAD') }}</button>
+      </div>
       <div class="flex-1 min-h-0 grid" :style="{ gridTemplateColumns: `36px 12px minmax(0,1fr) 12px ${sizes.rw}px` }">
         <!-- 왼쪽: 스냅샷(P3) — P1 은 접힌 막대 -->
         <aside :class="card" class="flex items-center justify-center" data-testid="se-snapshot-rail">
@@ -137,7 +157,7 @@ const card = 'bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:
         </section>
       </div>
     </template>
-    <LoadDialog v-model="loadOpen" @open="(target) => { loadOpen = false; openGuarded(target) }" />
+    <LoadDialog v-model="loadOpen" @open="(target) => { loadOpen = false; openGuarded(target) }" @open-draft="openDraft" @restore="openRestore" />
     <NewScenarioDialog v-model="newOpen" @open-draft="openDraft" />
     <EditDialogs v-if="edit.editable" />
   </div>

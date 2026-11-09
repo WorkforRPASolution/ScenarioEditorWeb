@@ -6,13 +6,13 @@ import { setActivePinia, createPinia } from 'pinia'
 const replace = vi.fn()
 const route = { query: {} }
 vi.mock('vue-router', () => ({ useRoute: () => route, useRouter: () => ({ replace }) }))
-const api = vi.hoisted(() => ({ me: vi.fn(), scopes: vi.fn(), dataCheck: vi.fn(), open: vi.fn() }))
+const api = vi.hoisted(() => ({ me: vi.fn(), scopes: vi.fn(), dataCheck: vi.fn(), open: vi.fn(), getDraft: vi.fn(), check: vi.fn() }))
 vi.mock('../api', () => ({ scenarioEditorApi: api, imageUrl: (p) => p }))
 import ScenarioEditorView from '../ScenarioEditorView.vue'
 import { useEditorStore } from '../stores/editorStore'
 import { useEditStore } from '../stores/editStore'
 import { MESSAGES } from '../messages'
-import { imageStep } from './panelFixture'
+import { imageStep, noneStep } from './panelFixture'
 
 enableAutoUnmount(afterEach) // 화면이 beforeunload 감시자를 달므로 시험마다 내린다
 const ok = (data) => Promise.resolve({ data: { data } })
@@ -426,12 +426,116 @@ describe('ScenarioEditorView', () => {
       expect(replace).toHaveBeenLastCalledWith({ name: 'ScenarioEditor', query: {} })
       expect(api.open).toHaveBeenCalledTimes(1)
     })
-    it('새 시나리오 창의 [초안 이어서 열기]는 불러오기 창을 연다(초안 열기는 불러오기 창 몫)', async () => {
+    it('새 시나리오 창의 [초안 이어서 열기]는 그 초안을 바로 연다 — 배포한 적 없는 초안은 새 시나리오 세션', async () => {
       api.me.mockReturnValue(ok({ singleid: 'u', canWrite: true }))
+      const scenario = { source: null, headCrtime: null, header: { description: '메일', timeoutLimit: '240' }, steps: [], property: { ID: 'P-M-X', Type: 1, IsEnabled: true } }
+      api.getDraft.mockReturnValue(ok({ draftId: 'd1', savedAt: '2026-11-08T01:37:00.000Z', base: null, headCrtime: null, propertyRev: null, target: { model: 'M', name: 'X' }, scenario, imageUrls: {} }))
       const w = mountView(); await flushPromises()
       newDialog(w).vm.$emit('open-draft', { draftId: 'd1', process: 'P', model: 'M', name: 'X' })
+      await flushPromises()
+      expect(api.getDraft).toHaveBeenCalledWith('d1')
+      expect(api.open).not.toHaveBeenCalled()
+      expect(w.findComponent({ name: 'LoadDialog' }).props('modelValue')).toBe(false)
+      const e = useEditStore()
+      expect(e.session.source).toBe(null)
+      expect(e.session.working).toEqual(scenario)
+      expect(useEditorStore().skeleton).toMatchObject({ name: 'X', isNew: true })
+    })
+  })
+
+  describe('불러오기 창에서 여는 길(P2-D Task 7)', () => {
+    const loadDialog = (w) => w.findComponent({ name: 'LoadDialog' })
+    const stepA = () => imageStep(0, { next: { onTrue: { kind: 'end', value: 'SUCCESS' }, onFalse: { kind: 'end', value: 'FAIL' } } })
+    const versionOf = (crtime, head, steps, over = {}) => {
+      const edited = { source: { process: 'P', model: 'M', name: 'A', crtime, fileId: `F${crtime}` }, headCrtime: head, header: { description: 'm', timeoutLimit: '1' }, steps, property: { IsEnabled: true } }
+      return { process: 'P', model: 'M', name: 'A', id: 'P-M-A', version: { crtime, isCurrent: crtime === head, fileId: `F${crtime}` }, headCrtime: head, propertyRev: `r${head}`, notes: [], header: { description: 'm', timeoutLimit: 1, targetWindow: null },
+        steps: steps.map((x, i) => ({ ...x, no: i + 1, notes: [], baseImage: { state: 'present', url: '/b' } })), edited, ...over }
+    }
+    async function opened(w) {
+      route.query = { p: 'P', m: 'M', n: 'A' }
+      api.open.mockReturnValueOnce(ok(versionOf(9, 9, [stepA()])))
+      const v = w ?? mountView(); await flushPromises()
+      return v
+    }
+    it('[이 버전으로 되돌려 열기]: 저장 전 변경이 있으면 먼저 묻고, [버리고 열기] 뒤 옛 판·현재 판을 읽어 되돌린 작업본을 연다', async () => {
+      api.me.mockReturnValue(ok({ singleid: 'u', canWrite: true }))
+      const w = await opened()
+      const e = useEditStore()
+      e.setHeader('description', '고침')
+      api.open.mockImplementation((p, m, n, v) => ok(v === 'current' ? versionOf(9, 9, [stepA()]) : versionOf(3, 9, [stepA(), noneStep(1)])))
+      loadDialog(w).vm.$emit('restore', { process: 'P', model: 'M', name: 'A', crtime: 3 })
       await nextTick()
-      expect(w.findComponent({ name: 'LoadDialog' }).props('modelValue')).toBe(true)
+      expect(e.dialog).toMatchObject({ kind: 'leave', n: 1 })
+      e.leaveDrop(); await flushPromises()
+      expect(api.open).toHaveBeenCalledWith('P', 'M', 'A', '3')
+      expect(api.open).toHaveBeenCalledWith('P', 'M', 'A', 'current')
+      expect(e.session.restoredFrom).toBe(3)
+      expect(e.session.source.crtime).toBe(3)
+      expect(e.session.headCrtime).toBe(9)
+      expect(e.toast.text).toContain('되돌린 작업본을 열었습니다')
+      expect(replace).toHaveBeenLastCalledWith({ name: 'ScenarioEditor', query: { p: 'P', m: 'M', n: 'A', v: 'current' } })
+    })
+    it('불러오기 창의 [초안 이어서 열기]: 초안과 그 기준 판을 읽어 초안 세션 — 초안 시작 뒤 새 버전이 있으면 알린다', async () => {
+      api.me.mockReturnValue(ok({ singleid: 'u', canWrite: true }))
+      const w = await opened()
+      const base = versionOf(5, 9, [stepA()])
+      api.open.mockReturnValueOnce(ok(base))
+      api.getDraft.mockReturnValue(ok({ draftId: 'd7', savedAt: '2026-11-07T05:23:51.000Z', base: { crtime: 5, fileId: 'F5' }, headCrtime: 5, propertyRev: 'r5', target: { model: 'M', name: 'A' },
+        scenario: { ...base.edited, headCrtime: 5, header: { description: '초안', timeoutLimit: '1' } }, imageUrls: {} }))
+      loadDialog(w).vm.$emit('open-draft', { process: 'P', model: 'M', name: 'A', draftId: 'd7' })
+      await flushPromises()
+      expect(api.open).toHaveBeenLastCalledWith('P', 'M', 'A', '5')
+      const e = useEditStore()
+      expect(e.session.working.header.description).toBe('초안')
+      expect(e.session.fromDraft.stale).toBe(true)
+      expect(e.draftId).toBe('d7')
+      expect(e.toast.text).toContain('초안을 시작한 뒤 새 버전이 배포됐습니다')
+    })
+    it('원본이 지워진 초안: 기준 판이 없으면(404) 서버 사본을 force 검사로 보고, 있으면 초안 그대로 열고 없으면 열기 오류', async () => {
+      api.me.mockReturnValue(ok({ singleid: 'u', canWrite: true }))
+      const w = mountView(); await flushPromises()
+      const gone = versionOf(5, 5, [stepA()])
+      api.getDraft.mockReturnValue(ok({ draftId: 'd8', savedAt: '2026-11-07T05:23:51.000Z', base: { crtime: 5, fileId: 'F5' }, headCrtime: 5, propertyRev: 'r5', target: { model: 'M', name: 'A' }, scenario: gone.edited, imageUrls: {} }))
+      api.open.mockRejectedValue({ response: { status: 404, data: { code: 'NOT_FOUND' } } })
+      api.check.mockReturnValueOnce(ok({ blocks: [], warns: [], conflict: { kind: 'deleted' }, target: { exists: false, eqpCount: 1 }, targetExists: null }))
+      loadDialog(w).vm.$emit('open-draft', { process: 'P', model: 'M', name: 'A', draftId: 'd8' })
+      await flushPromises()
+      expect(api.check.mock.calls[0][0].force).toBe(true)
+      const e = useEditStore()
+      expect(e.session.fromDraft.gone).toBe(true)
+      expect(useEditorStore().skeleton.sourceGone).toBe(true)
+      expect(replace).toHaveBeenLastCalledWith({ name: 'ScenarioEditor', query: {} }) // 지워진 판을 주소에 쓰지 않는다
+      api.check.mockReturnValueOnce(ok({ blocks: [{ code: 'SOURCE_GONE' }], warns: [], conflict: { kind: 'deleted' }, target: { exists: false, eqpCount: 1 }, targetExists: null }))
+      loadDialog(w).vm.$emit('open-draft', { process: 'P', model: 'M', name: 'A', draftId: 'd8' })
+      await flushPromises()
+      expect(w.find('[data-testid="se-open-error"]').text()).toContain('열 수 없습니다')
+    })
+    it('초안 열기가 실패하면 열기 오류의 [다시 시도]는 초안을 다시 연다(시나리오 열기가 아니다)', async () => {
+      api.me.mockReturnValue(ok({ singleid: 'u', canWrite: true }))
+      const w = mountView(); await flushPromises()
+      api.getDraft.mockRejectedValueOnce({ response: { status: 503, data: { code: 'UPSTREAM_DOWN' } } })
+      loadDialog(w).vm.$emit('open-draft', { process: 'P', model: 'M', name: 'X', draftId: 'd9' })
+      await flushPromises()
+      expect(w.find('[data-testid="se-open-error"]').exists()).toBe(true)
+      api.getDraft.mockReturnValue(ok({ draftId: 'd9', savedAt: '2026-11-08T01:37:00.000Z', base: null, headCrtime: null, propertyRev: null, target: { model: 'M', name: 'X' },
+        scenario: { source: null, headCrtime: null, header: { description: 'm', timeoutLimit: '240' }, steps: [], property: { ID: 'P-M-X', Type: 1 } }, imageUrls: {} }))
+      await w.find('[data-testid="se-open-error"] button').trigger('click'); await flushPromises()
+      expect(api.getDraft).toHaveBeenCalledTimes(2)
+      expect(api.open).not.toHaveBeenCalled()
+      expect(useEditStore().draftId).toBe('d9')
+    })
+    it('지워진 시나리오의 편집 화면: 지워짐 띠(저장 전 고친 곳은 볼 수만)와 [불러오기]', async () => {
+      api.me.mockReturnValue(ok({ singleid: 'u', canWrite: true }))
+      const w = await opened()
+      const e = useEditStore()
+      e.setHeader('description', '고침')
+      expect(w.find('[data-testid="se-deleted-banner"]').exists()).toBe(false)
+      e.markDeleted(); await nextTick()
+      const band = w.find('[data-testid="se-deleted-banner"]')
+      expect(band.text()).toContain('이 시나리오는 지워졌습니다')
+      expect(band.text()).toContain('1곳')
+      await band.find('button').trigger('click')
+      expect(loadDialog(w).props('modelValue')).toBe(true)
     })
   })
 })
