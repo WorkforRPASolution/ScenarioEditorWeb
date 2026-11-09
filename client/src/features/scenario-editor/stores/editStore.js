@@ -223,11 +223,11 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   }
   // ── 바 칸(메일 제목·제한 시간)과 떠날 때 확인(P2-D Task 3) ──
   // 바 칸은 작업본 header 에 두고 되돌리기 목록에 넣지 않는다(저장 창을 닫거나 초안을 저장해도 값이 남는다).
-  // 제한 시간은 정수로 읽히면 숫자로, 아니면 친 글자 그대로 둔다(검사가 막는다).
+  // 제한 시간은 서버 작업본·검사가 문자열을 요구하므로(parseEditedScenario·TIMEOUT_INVALID) 친 글자 그대로 문자열로 둔다.
   function setHeader(field, value) {
     if (!editable.value || (field !== 'description' && field !== 'timeoutLimit')) return false
     const w = session.value.working
-    const v = field === 'timeoutLimit' && /^[1-9][0-9]*$/.test(String(value)) ? Number(value) : value
+    const v = String(value ?? '')
     session.value = { ...session.value, working: { ...w, header: { ...w.header, [field]: v } } }
     return true
   }

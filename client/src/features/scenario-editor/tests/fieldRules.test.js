@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { checkStepFields } from '../editor/fieldRules'
+import { checkStepFields, barFieldErrors } from '../editor/fieldRules'
 
 const img = { from: 'source', id: 's0-train-0' }
 function imageStep(over = {}) {
@@ -154,5 +154,19 @@ describe('checkStepFields', () => {
     it('다른 칸 오류는 항상 error', () => {
       expect(check(imageStep({ descriptionToEmail: '' })).desc.level).toBe('error')
     })
+  })
+})
+
+describe('barFieldErrors — 서버 header 규칙과 같다', () => {
+  const h = (description, timeoutLimit) => barFieldErrors({ description, timeoutLimit })
+  it('제목 비움·콜론', () => {
+    expect(h('', '1').description).toBe('MAIL_TITLE_EMPTY')
+    expect(h('a:b', '1').description).toBe('MAIL_TITLE_COLON')
+    expect(h('ok', '1')).toEqual({})
+  })
+  it('제한 시간: 1 이상 정수 문자열, 상한 2147483647, 숫자 타입은 거절', () => {
+    for (const bad of ['', '0', '01', '1.5', 'x', '2147483648', '99999999999']) expect(h('a', bad).timeoutLimit).toBe('TIMEOUT_INVALID')
+    expect(h('a', 15).timeoutLimit).toBe('TIMEOUT_INVALID')
+    expect(h('a', '2147483647')).toEqual({})
   })
 })

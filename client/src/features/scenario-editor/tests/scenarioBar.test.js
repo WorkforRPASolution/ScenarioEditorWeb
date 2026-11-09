@@ -13,7 +13,7 @@ import { panelFixture, noneStep } from './panelFixture'
 const ModalStub = { name: 'ModalShell', props: ['modelValue', 'title'], template: '<div v-if="modelValue" :data-title="title"><slot /></div>' }
 const skeleton = (over = {}) => ({
   process: 'SEWCVD', model: 'SEWMODELA', name: 'X', id: 'SEWCVD-SEWMODELA-X', version: { crtime: 1730000000000, isCurrent: true },
-  header: { description: '메일 제목', timeoutLimit: 240, targetWindow: { agentFinds: false, matchMode: null, reasonCode: 'TEXT_EMPTY', inHouseShowsSet: true, raw: { Text: null, ClassName: null } } },
+  header: { description: '메일 제목', timeoutLimit: '240', targetWindow: { agentFinds: false, matchMode: null, reasonCode: 'TEXT_EMPTY', inHouseShowsSet: true, raw: { Text: null, ClassName: null } } },
   property: { IsEnabled: true, Type: 1, Priority: 3, Owners: ['a@2026-11-01 10:00:00'], ScenarioTriggerType: 0, StartDelay: 0, RetryCnt: 0, RetryInterval: 10,
     NextScenarioIfSuccess: null, NextScenarioIfFail: { Name: 'NEXT_SC', Text: 't' }, DetailedDescriptionTitle: '', DetailedDescription: '', DescriptionFromConductor: '심의 메모', EDMLink: '',
     ExecutingLevel: 0, IsShowDialog: true, LcncType: 0, LowcodeExtension: '', DoNotSendEmailWhenSuccess: false, DoNotSendEmailWhenStop: false, DoNotSendEmailWhenFail: false, ID: 'X' },
@@ -164,9 +164,9 @@ describe('ScenarioBar', () => {
     const setup = (opts = {}) => {
       const f = panelFixture([noneStep(0), noneStep(1)], opts)
       f.edit = f.e
-      f.e.session = { ...f.e.session, working: { ...f.e.session.working, header: { description: '메일 제목', timeoutLimit: 240 } } }
+      f.e.session = { ...f.e.session, working: { ...f.e.session.working, header: { description: '메일 제목', timeoutLimit: '240' } } }
       f.e.session = { ...f.e.session, saveBase: f.e.session.working }
-      f.s.skeleton = { ...f.s.skeleton, id: 'P-M-N', header: { description: '메일 제목', timeoutLimit: 240, targetWindow: null }, property: null, performance: null }
+      f.s.skeleton = { ...f.s.skeleton, id: 'P-M-N', header: { description: '메일 제목', timeoutLimit: '240', targetWindow: null }, property: null, performance: null }
       return { ...f, w: mount(ScenarioBar, { global: { stubs: { ModalShell: ModalStub } } }) }
     }
     const type = async (w, id, v) => { const el = find(w, id); el.element.value = v; await el.trigger('input') }
@@ -197,6 +197,15 @@ describe('ScenarioBar', () => {
       await type(w, 'se-bar-timeout', '15')
       expect(find(w, 'se-bar-error-timeout').exists()).toBe(false)
     })
+    it('제한 시간 상한(서버 TIMEOUT_MAX 2147483647) 넘으면 오류, 상한 값은 통과, 큰 수도 글자 그대로 둔다', async () => {
+      const { w, e } = setup()
+      await type(w, 'se-bar-timeout', '2147483648')
+      expect(find(w, 'se-bar-error-timeout').text()).toBe(MESSAGES.RULE_TIMEOUT_INVALID)
+      await type(w, 'se-bar-timeout', '99999999999999999999')
+      expect(e.session.working.header.timeoutLimit).toBe('99999999999999999999')
+      await type(w, 'se-bar-timeout', '2147483647')
+      expect(find(w, 'se-bar-error-timeout').exists()).toBe(false)
+    })
     it('입력하는 동안 입력칸을 다시 그리지 않는다(같은 요소)', async () => {
       const { w } = setup()
       const el = find(w, 'se-bar-description').element
@@ -217,7 +226,8 @@ describe('ScenarioBar', () => {
       await type(w, 'se-bar-timeout', '15')
       expect(e.undo.length).toBe(0)
       const { meta } = buildMeta(e.session)
-      expect(meta.scenario.header).toEqual({ description: '새 제목', timeoutLimit: 15 })
+      expect(meta.scenario.header).toEqual({ description: '새 제목', timeoutLimit: '15' })
+      expect(typeof meta.scenario.header.timeoutLimit).toBe('string') // 서버 규칙은 문자열만 받는다
     })
     it('저장 창을 열었다 닫아도 값이 남는다', async () => {
       const { w, e } = setup()

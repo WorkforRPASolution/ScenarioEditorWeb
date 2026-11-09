@@ -125,11 +125,13 @@ export function checkStepFields(step, { working, isNew, base, user } = {}) {
 }
 
 // 바 칸(메일 제목·제한 시간) 검사 — 서버 검사(MAIL_TITLE_EMPTY·MAIL_TITLE_COLON·TIMEOUT_INVALID)와 같은 code 를 돌려준다. 문구는 messages 의 RULE_<code>.
+const TIMEOUT_MAX = 2147483647 // 서버 scenarioRules.TIMEOUT_MAX 와 같다
 export function barFieldErrors(header) {
   const e = {}
   const d = header?.description
   if (d === null || d === undefined || String(d) === '') e.description = 'MAIL_TITLE_EMPTY'
   else if (String(d).includes(':')) e.description = 'MAIL_TITLE_COLON'
-  if (!/^[1-9][0-9]*$/.test(String(header?.timeoutLimit ?? ''))) e.timeoutLimit = 'TIMEOUT_INVALID'
+  const t = header?.timeoutLimit
+  if (typeof t !== 'string' || !/^[1-9][0-9]*$/.test(t) || Number(t) > TIMEOUT_MAX) e.timeoutLimit = 'TIMEOUT_INVALID'
   return e
 }
