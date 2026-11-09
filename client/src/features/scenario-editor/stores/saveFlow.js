@@ -197,10 +197,11 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
     if (!hasFieldErrors.value) timer = setTimeout(runCheck, CHECK_DELAY_MS)
   }
   function setOverwrite(v) { confirm.value = { ...confirm.value, overwrite: !!v } }
-  // 확인 표시가 바뀌면 그 값으로 다시 검사한다 — 기준 판 파일이 지워졌으면 force 일 때만 서버 캐시로 읽는다(Task 2a)
+  // 확인 표시가 바뀌면 그 값으로 다시 검사한다 — 기준 판 파일이 지워졌으면 force 일 때만 서버 캐시로 읽는다(Task 2a).
+  // 검사가 도는 중이면 그 검사는 앞 값으로 보냈을 수 있다 — 늘 새로 보내 마지막 값의 검사가 이기게 한다(앞 응답은 seq 로 버린다).
   function setForce(v) {
     confirm.value = { ...confirm.value, force: !!v }
-    if (stage.value === 'form' && checkedFor.value && checkedFor.value.force !== sendForce()) runCheck()
+    if (stage.value === 'form' && (checking.value || checkedFor.value?.force !== sendForce())) runCheck()
   }
   function requestFocus(field) { focusReq.value = { field, n: (focusReq.value?.n ?? 0) + 1 } }
 
@@ -237,21 +238,25 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
     stage.value = 'unknown'
     setPending({ requestId: id, target: sentTarget.value, at: Date.now() })
   }
+  // 실패·저장 창 복귀는 결과를 안다 — 보내기 직전에 적어 둔 requestId 를 지운다(거절도 결과 모름 화면으로 되살리지 않는다)
   function toFail(kind, e, upstreamText = null) {
+    setPending(null)
     error.value = { kind, code: errorCode(e), cause: kind === 'local' ? t('SEW_SAVE_CAUSE_LOCAL') : causeText(e), upstreamText }
     stage.value = 'fail'
   }
   function backToForm(key) {
+    setPending(null)
     notice.value = { key, tone: 'error' }
     stage.value = 'form'
   }
 
   // 배포(설계 §6.2). requestId 는 매번 새로. 결과가 정해질 때까지 run(닫을 수 없음).
+  // requestId 는 보내기 직전에 세션 저장소에 적는다 — 배포 중 새로고침(떠나기 확인을 받아들임)으로 응답을 못 받아도 결과 모름으로 이어 확인한다
+  // (내 기록 목록 API 가 없어 이것이 유일한 길이다). 결과를 알면 지우고, 결과 모름이면 남긴다.
   async function deploy() {
     if (stage.value !== 'confirm' || deployBlock.value) return
     const s = session()
     const id = newRequestId()
-    setPending(null)
     requestId.value = id
     sentTarget.value = fullTarget()
     restored.value = false
@@ -261,7 +266,9 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
     let data
     try {
       const { meta, uploadsUsed } = buildMeta(s, { target: sentTarget.value, extra: { requestId: id, overwrite: confirm.value.overwrite, force: sendForce(), restoredFrom: s.restoredFrom ?? null } })
-      data = (await api.deploy(buildFormData(meta, edit.uploads, uploadsUsed))).data.data
+      const body = buildFormData(meta, edit.uploads, uploadsUsed)
+      setPending({ requestId: id, target: sentTarget.value, at: Date.now() })
+      data = (await api.deploy(body)).data.data
     } catch (e) {
       deployFailed(e, id)
       return

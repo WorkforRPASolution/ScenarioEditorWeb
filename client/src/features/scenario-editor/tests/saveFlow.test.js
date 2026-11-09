@@ -321,6 +321,7 @@ describe('saveFlow', () => {
     await flow.deploy()
     expect(flow.stage).toBe('form')
     expect(flow.check.blocks).toEqual([{ code: 'BODY_TOO_LARGE', params: { bytes: 20, max: 15 } }])
+    expect(sessionStorage.getItem(PENDING_KEY)).toBe(null) // 저장 창으로 돌아오면 보내기 전에 적어 둔 requestId 를 지운다
     expect(flow.deployBlock.key).toBe('SEW_SAVE_WHY_BLOCKS')
     // 막힘이 풀린 다음 배포에서 그 사이 다른 사람이 저장했다
     flow.check = clean()
@@ -446,6 +447,75 @@ describe('saveFlow', () => {
     expect(flow.stage).toBe('form')
     expect(flow.notice).toMatchObject({ key: 'SEW_SAVE_DRAFT_FAILED', tone: 'error' })
     expect(flow.notice.params.cause).not.toContain('잠시 뒤')
+  })
+
+  it('배포 중에 새로고침해도(요청이 끊겨 결과를 못 받음) 보내기 직전에 적어 둔 requestId 로 결과 모름을 이어 확인한다', async () => {
+    const { flow } = setup()
+    flow.open(); await flushPromises()
+    flow.toConfirm()
+    api.deploy.mockReturnValueOnce(new Promise(() => {})) // 응답이 오기 전에 화면이 사라진다
+    flow.deploy()
+    await flushPromises()
+    expect(flow.stage).toBe('run')
+    const id = metaOf(api.deploy.mock.calls[0]).requestId
+    expect(JSON.parse(sessionStorage.getItem(PENDING_KEY))).toMatchObject({ requestId: id, target: { process: 'P', model: 'M', name: 'N' } })
+    setActivePinia(createPinia()) // 새로고침
+    const again = setup()
+    again.flow.open()
+    expect(again.flow.stage).toBe('unknown')
+    expect(again.flow.requestId).toBe(id)
+    expect(again.flow.restored).toBe(true)
+    api.verifyDeploy.mockReturnValue(ok({ found: 'mine', crtime: 99, result: 'partial', partialFailed: ['finish'] }))
+    await again.flow.verify()
+    expect(api.verifyDeploy).toHaveBeenCalledWith(id)
+    expect(again.flow.stage).toBe('partial') // 새 시나리오의 마무리 실패도 [다시 쓰기]로 이어 갈 수 있다
+    expect(sessionStorage.getItem(PENDING_KEY)).toBe(null)
+  })
+
+  it('요청을 만들지 못하면(올릴 그림 Blob 이 없음) 보내지 않음 — 적어 둔 requestId 를 지운다', async () => {
+    const { flow, e } = setup()
+    e.session = { ...e.session, working: { ...e.session.working, steps: e.session.working.steps.map((st, i) => (i === 0 ? { ...st, images: { ...st.images, train: { 0: { from: 'upload', tempId: 'gone' } } } } : st)) } }
+    flow.open(); await flushPromises()
+    flow.toConfirm()
+    await flow.deploy()
+    expect(api.deploy).not.toHaveBeenCalled()
+    expect(flow.stage).toBe('fail')
+    expect(flow.error.kind).toBe('local')
+    expect(sessionStorage.getItem(PENDING_KEY)).toBe(null)
+  })
+
+  it('확인 표시를 켰다 끄는 사이 앞 검사가 늦게 와도 — 마지막 force 값의 검사가 이긴다(배포가 "검사 중" 에 갇히지 않는다)', async () => {
+    const gone = clean({ blocks: [{ code: 'SOURCE_GONE' }], conflict: { kind: 'deleted' }, target: { exists: false, eqpCount: 3 } })
+    const { flow } = setup(gone)
+    flow.open(); await flushPromises()
+    const a = defer()
+    const b = defer()
+    api.check.mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise)
+    flow.setForce(true) // 검사 A(force true) 시작
+    flow.setForce(false) // A 가 오기 전에 끔 — 검사 B(force false)
+    expect(api.check).toHaveBeenCalledTimes(3)
+    expect(api.check.mock.calls[1][0].force).toBe(true)
+    expect(api.check.mock.calls[2][0].force).toBe(false)
+    a.resolve({ data: { data: clean({ conflict: { kind: 'deleted' }, target: { exists: false, eqpCount: 3 } }) } }) // 늦게 온 A 는 버린다
+    await flushPromises()
+    expect(flow.deployBlock.key).toBe('SEW_SAVE_WHY_CHECKING')
+    b.resolve({ data: { data: gone } })
+    await flushPromises()
+    expect(flow.checkedFor.force).toBe(false)
+    expect(flow.deployBlock.key).toBe('SEW_SAVE_WHY_RECREATE')
+    // 반대 순서(B 가 먼저, A 가 나중)도 A 는 버린다
+    const c = defer()
+    const d = defer()
+    api.check.mockReturnValueOnce(c.promise).mockReturnValueOnce(d.promise)
+    flow.setForce(true)
+    flow.setForce(false)
+    d.resolve({ data: { data: gone } })
+    await flushPromises()
+    c.resolve({ data: { data: clean({ conflict: { kind: 'deleted' }, target: { exists: false, eqpCount: 3 } }) } })
+    await flushPromises()
+    expect(flow.checkedFor.force).toBe(false)
+    expect(flow.check.blocks).toEqual([{ code: 'SOURCE_GONE' }])
+    expect(flow.deployBlock.key).toBe('SEW_SAVE_WHY_RECREATE')
   })
 
   it('배포 중에는 닫을 수 없고 초안도 저장할 수 없다', async () => {
