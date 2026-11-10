@@ -330,13 +330,16 @@ describe('PUT /enabled·DELETE /scenarios/:process/:model/:name', () => {
   })
   it('DELETE 는 WRITE 가 아니면 403, confirmName 이 없으면 400, 아니면 서비스 결과', async () => {
     const seen = []
-    fake.versionAdmin = { remove: async (u, k, c) => { seen.push([k, c]); return { deleted: true } } }
+    fake.versionAdmin = { remove: async (u, k, c, o) => { seen.push([k, c, o]); return { deleted: true } } }
     const u = `${base}/scenarios/P/M/N`
     expect((await fetch(u, { method: 'DELETE', headers: { ...J, 'X-SE-User': 'sew_reader' }, body: '{"confirmName":"N"}' })).status).toBe(403)
     expect((await fetch(u, { method: 'DELETE', headers: J, body: '{}' })).status).toBe(400)
     const res = await fetch(u, { method: 'DELETE', headers: J, body: '{"confirmName":"N"}' })
     expect((await res.json()).data).toEqual({ deleted: true })
-    expect(seen).toEqual([[{ process: 'P', model: 'M', name: 'N' }, 'N']])
+    // withDraft(내 초안도 함께 지우기)는 참거짓만 — 없으면 false
+    expect((await fetch(u, { method: 'DELETE', headers: J, body: '{"confirmName":"N","withDraft":"yes"}' })).status).toBe(400)
+    await fetch(u, { method: 'DELETE', headers: J, body: '{"confirmName":"N","withDraft":true}' })
+    expect(seen).toEqual([[{ process: 'P', model: 'M', name: 'N' }, 'N', { withDraft: false }], [{ process: 'P', model: 'M', name: 'N' }, 'N', { withDraft: true }]])
   })
 })
 

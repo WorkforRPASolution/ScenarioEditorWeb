@@ -52,7 +52,7 @@ function build(env = process.env) {
   const { createDeployService } = require('./service/deployService')
   out.deploy = createDeployService({ check: out.check, opener: out.opener, web, repo, hash, scopes, interfaceClient: require('./clients/interfaceClient'), log })
   const { createVersionAdminService } = require('./service/versionAdminService')
-  out.versionAdmin = createVersionAdminService({ repo, scopes, interfaceClient: require('./clients/interfaceClient'), now })
+  out.versionAdmin = createVersionAdminService({ repo, scopes, interfaceClient: require('./clients/interfaceClient'), web, now })
   const { createPerformanceService } = require('./service/performanceService')
   out.performance = createPerformanceService({ repo, scopes, now })
   return out

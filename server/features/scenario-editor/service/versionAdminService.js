@@ -4,7 +4,7 @@ const { toggleLine, ownersWithLine } = require('../domain/owners')
 const { propertyRev } = require('../domain/deployIdentity')
 const { seError } = require('../errors')
 
-function createVersionAdminService({ repo, scopes, interfaceClient, now = () => Date.now() }) {
+function createVersionAdminService({ repo, scopes, interfaceClient, web = null, now = () => Date.now() }) {
   // 권한 → 운영 속성 문서 하나. 0건 404, 2건 이상 422(열기·검사와 같은 판정).
   async function propertyDoc(user, key) {
     await scopes.assertAllowed(user, key.process, key.model)
@@ -28,11 +28,21 @@ function createVersionAdminService({ repo, scopes, interfaceClient, now = () => 
   }
 
   // delscenario 는 0건에도 성공이라 먼저 본다.
-  async function remove(user, { process, model, name }, confirmName) {
+  // withDraft(2026-11-10): 시나리오를 지운 뒤 요청한 사용자의 초안(웹 전용 DB)도 지운다 — 남의 초안은 건드리지 않는다.
+  // 시나리오 지우기가 실패하거나 결과를 모르면 초안은 그대로다. 초안 지우기가 실패해도 시나리오 지우기는 성공이고 draftDeleted false 로 알린다
+  // (초안은 목록의 "초안만" 행에서 다시 지울 수 있다).
+  async function remove(user, { process, model, name }, confirmName, { withDraft = false } = {}) {
     if (confirmName !== name) throw seError(400, 'BAD_REQUEST', '확인 이름이 시나리오 이름과 다릅니다', { path: 'confirmName', reason: '시나리오 이름과 같아야 합니다' })
     await propertyDoc(user, { process, model, name })
     await interfaceClient.delScenario({ process, model, name })
-    return { deleted: true }
+    if (!withDraft) return { deleted: true }
+    let draftDeleted = false
+    try {
+      const r = web ? await web.deleteDraftFor(user.singleid, process, model, name) : { deleted: false, gridIds: [] }
+      draftDeleted = r.deleted
+      if (r.gridIds.length) { try { await web.deleteDraftImages(r.gridIds) } catch { /* 초안은 이미 지웠다 — 고아 그림만 남는다 */ } }
+    } catch { /* 시나리오는 이미 지웠다 */ }
+    return { deleted: true, draftDeleted }
   }
 
   return { setEnabled, remove }

@@ -35,7 +35,8 @@ export const scenarioEditorApi = {
   deleteDraft: (id) => api.delete(`/scenario-editor/drafts/${enc(id)}`),
   // 판 관리(불러오기 창): 켜기·끄기 → { isEnabled, propertyRev }, 지우기(본문 확인 이름) → { deleted: true }
   setEnabled: (p, m, n, enabled) => api.put(`/scenario-editor/scenarios/${enc(p)}/${enc(m)}/${enc(n)}/enabled`, { enabled }),
-  removeScenario: (p, m, n, confirmName) => api.delete(`/scenario-editor/scenarios/${enc(p)}/${enc(m)}/${enc(n)}`, { data: { confirmName }, timeout: ADMIN_TIMEOUT_MS }),
+  // withDraft: 시나리오를 지운 뒤 내 초안도 지운다 → { deleted, draftDeleted }
+  removeScenario: (p, m, n, confirmName, withDraft = false) => api.delete(`/scenario-editor/scenarios/${enc(p)}/${enc(m)}/${enc(n)}`, { data: withDraft ? { confirmName, withDraft: true } : { confirmName }, timeout: ADMIN_TIMEOUT_MS }),
   // 심의 저장(운영 속성 창, 관리 등급 1·2): 본문 { grade, comment } → { performance }(서버가 다시 읽은 값)
   saveReview: (p, m, n, body) => api.put(`/scenario-editor/scenarios/${enc(p)}/${enc(m)}/${enc(n)}/review`, body),
   // 성과 저장(성과 입력 창, 관리 등급 1·2): 본문 { fields, citizenDevelopers?, alsoModels } → { performance, applied }

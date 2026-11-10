@@ -15,6 +15,7 @@ import BaseToast from '@/shared/components/BaseToast.vue'
 import ModalShell from './ModalShell.vue'
 import LoadPane from './load/LoadPane.vue'
 import LoadDelete from './load/LoadDelete.vue'
+import LoadDraftCleanup from './load/LoadDraftCleanup.vue'
 import LoadDraftChoice from './load/LoadDraftChoice.vue'
 import './load/load.css'
 
@@ -43,7 +44,7 @@ const selectedName = ref(null)
 const pick = ref(null) // 고른 버전 crtime, 내 초안 줄은 'draft'
 const versions = ref([])
 const versionsError = ref('')
-const sub = ref(null) // 창 위 작은 창 'delete' | 'choice'
+const sub = ref(null) // 창 위 작은 창 'delete' | 'choice' | 'cleanup'
 // 원본이 지워진 초안(초안만 · 원본 지워짐 행)의 서버 사본 확인: draftId → 'checking' | 'kept' | 'gone' | { failed: 문구 }
 const sourceChecks = ref(new Map())
 // 지금 rows 를 받아 온 { process, model } — 열기 요청은 화면의 선택값이 아니라 이 쌍으로 보낸다
@@ -61,6 +62,8 @@ const scopesNotice = computed(() => {
 })
 const rows = computed(() => (loadedFor.value ? mergeDrafts(listRows.value, writer.value ? drafts.value : [], loadedFor.value) : []))
 const draftCount = computed(() => rows.value.filter((r) => r.draft).length)
+// 배포된 시나리오 없이 내 초안만 남은 행(새 시나리오·원본 지워짐) — [초안만 남은 것 정리] 로 골라 한꺼번에 지운다
+const draftOnlyRows = computed(() => rows.value.filter((r) => r.draftOnly))
 const filtered = computed(() => {
   const q = search.value.trim().toLowerCase()
   return rows.value.filter((r) => (!enabledOnly.value || r.isEnabled !== false) && (!draftOnly.value || r.draft) && r.name.toLowerCase().includes(q))
@@ -252,16 +255,34 @@ function onDraftDeleted(id) {
   if (!selected.value) clearSelection()
   showToast('success', t('SEW_LOAD_DRAFT_DELETED'))
 }
-function onDeleted() {
+// draftDeleted: 내 초안도 함께 지우라고 했을 때만 true(지움)·false(못 지움), 아니면 null
+function onDeleted({ draftDeleted = null } = {}) {
   const r = selected.value
   const wasOpen = !!openInfo.value
   sub.value = null
   if (wasOpen) edit.markDeleted()
   listRows.value = listRows.value.filter((x) => x.name !== r.name)
-  // 초안이 있으면 그 행은 "초안만 · 원본 지워짐" 으로 남는다
+  if (draftDeleted && r.draft) {
+    drafts.value = drafts.value.filter((d) => d.draftId !== r.draft.draftId)
+    edit.forgetDraft(r.draft.draftId)
+  }
+  // 초안이 남았으면 그 행은 "초안만 · 원본 지워짐" 으로 남는다
   if (selected.value) selectRow(selected.value)
   else clearSelection()
-  showToast('success', t(wasOpen ? 'SEW_LOAD_DELETED_OPEN' : 'SEW_LOAD_DELETED'))
+  if (draftDeleted === false) showToast('info', t('SEW_LOAD_DELETED_DRAFT_KEPT'))
+  else if (draftDeleted) showToast('success', t(wasOpen ? 'SEW_LOAD_DELETED_WITH_DRAFT_OPEN' : 'SEW_LOAD_DELETED_WITH_DRAFT'))
+  else showToast('success', t(wasOpen ? 'SEW_LOAD_DELETED_OPEN' : 'SEW_LOAD_DELETED'))
+}
+// 초안만 남은 것 정리 결과: 지운 것만 목록에서 빼고, 못 지운 수를 알린다
+function onCleaned({ deleted, failed }) {
+  sub.value = null
+  const gone = new Set(deleted)
+  drafts.value = drafts.value.filter((d) => !gone.has(d.draftId))
+  for (const id of deleted) edit.forgetDraft(id)
+  if (pick.value === 'draft') pick.value = null
+  if (!selected.value) clearSelection()
+  if (!deleted.length) showToast('error', t('SEW_LOAD_CLEAN_FAILED'))
+  else showToast(failed ? 'info' : 'success', t(failed ? 'SEW_LOAD_CLEAN_PARTIAL' : 'SEW_LOAD_CLEAN_DONE', { n: deleted.length, failed }))
 }
 async function relist() {
   sub.value = null
@@ -352,6 +373,8 @@ const btnS = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hove
         <label v-if="writer" class="text-xs text-gray-600 dark:text-gray-300 flex items-center gap-1 whitespace-nowrap" data-testid="se-load-draft-only">
           <input v-model="draftOnly" type="checkbox" /> {{ t('SEW_LOAD_DRAFT_ONLY') }}
           <span class="min-w-[18px] px-1.5 rounded-full text-[11px] font-semibold text-center bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-300" data-testid="se-load-draft-count">{{ draftCount }}</span></label>
+        <button v-if="writer && draftOnlyRows.length" type="button" class="h-[30px] px-2.5 rounded-md border border-gray-300 dark:border-dark-border text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 whitespace-nowrap"
+          data-testid="se-load-cleanup" @click="sub = 'cleanup'">{{ t('SEW_LOAD_CLEAN_OPEN_BTN', { n: draftOnlyRows.length }) }}</button>
         <span class="text-xs text-gray-500 ml-1">{{ t('SEW_UI_LOAD_SCOPE_HINT') }}</span>
         <button class="ml-auto h-[38px] px-3 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm" data-testid="se-load-refresh" @click="refresh">{{ t('SEW_UI_REFRESH_SCOPES') }}</button>
       </div>
@@ -387,6 +410,8 @@ const btnS = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hove
       </div>
       <LoadDelete v-if="sub === 'delete' && selected && loadedFor" :process="loadedFor.process" :model="loadedFor.model" :row="selected" :version-count="versions.length"
         :eqp-count="eqpCount" :open="openInfo" @deleted="onDeleted" @relist="relistAfterDelete" @close="sub = null" />
+      <LoadDraftCleanup v-if="sub === 'cleanup' && loadedFor" :process="loadedFor.process" :model="loadedFor.model" :rows="draftOnlyRows" :open-draft-id="edit.draftId"
+        @done="onCleaned" @close="sub = null" />
       <LoadDraftChoice v-if="sub === 'choice' && selected?.draft" :row="selected" :model="loadedFor.model"
         @draft="openDraft" @current="sub = null; openRow(selected.name)" @close="sub = null" />
       <BaseToast :toast="toast" />

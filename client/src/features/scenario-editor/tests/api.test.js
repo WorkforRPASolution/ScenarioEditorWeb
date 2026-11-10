@@ -49,6 +49,8 @@ describe('scenarioEditorApi', () => {
     expect(put).toHaveBeenLastCalledWith('/scenario-editor/scenarios/P%201/M/N%2F2/enabled', { enabled: false })
     await api.removeScenario('P', 'M', 'N', 'N')
     expect(del).toHaveBeenLastCalledWith('/scenario-editor/scenarios/P/M/N', { data: { confirmName: 'N' }, timeout: ADMIN_TIMEOUT_MS })
+    await api.removeScenario('P', 'M', 'N', 'N', true) // 내 초안도 함께 지우기
+    expect(del).toHaveBeenLastCalledWith('/scenario-editor/scenarios/P/M/N', { data: { confirmName: 'N', withDraft: true }, timeout: ADMIN_TIMEOUT_MS })
     expect(ADMIN_TIMEOUT_MS).toBeGreaterThan(15000)
   })
   it('초안 하나 읽기(큰 시나리오일 수 있어 열기와 같은 시간)·지우기', async () => {

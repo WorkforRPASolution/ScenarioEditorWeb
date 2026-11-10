@@ -24,8 +24,15 @@ function setup(o = {}) {
     }
   }
   const scopes = { assertAllowed: async (u, p, m) => { calls.allowed.push([p, m]); if (o.deny) throw seError(403, 'PROCESS_FORBIDDEN', 'x') } }
-  const interfaceClient = { delScenario: async (k) => { calls.del.push(k); return {} } }
-  const svc = createVersionAdminService({ repo, scopes, interfaceClient, now: () => NOW.getTime() })
+  const interfaceClient = { delScenario: async (k) => { calls.del.push(k); if (o.delFails) throw seError(504, 'UPSTREAM_TIMEOUT', 't'); return {} } }
+  calls.draft = []
+  calls.images = []
+  // 웹 전용 DB(내 초안): deleteDraftFor(owner, process, model, name) → { deleted, gridIds }
+  const web = {
+    deleteDraftFor: async (...a) => { calls.draft.push(a); if (o.draftFails) throw seError(503, 'UPSTREAM_DOWN', 'web'); return o.draft === undefined ? { deleted: true, gridIds: ['g1', 'g2'] } : o.draft },
+    deleteDraftImages: async (ids) => { calls.images.push(ids); if (o.imagesFail) throw new Error('grid') }
+  }
+  const svc = createVersionAdminService({ repo, scopes, interfaceClient, web, now: () => NOW.getTime() })
   return { svc, calls, getDocs: () => docs }
 }
 
@@ -86,5 +93,39 @@ describe('remove', () => {
   it('InterfaceServer 오류는 그대로 올린다', async () => {
     const s = createVersionAdminService({ repo: { findScenarioKeyDocs: async () => [{ property: prop }] }, scopes: { assertAllowed: async () => {} }, interfaceClient: { delScenario: async () => { throw seError(504, 'UPSTREAM_TIMEOUT', 't') } } })
     expect((await fail(s.remove(user, key, 'N'))).code).toBe('UPSTREAM_TIMEOUT')
+  })
+
+  // 내 초안도 함께 지우기(2026-11-10 사용자 결정): 시나리오를 지운 뒤에만, 요청한 사용자의 초안만 지운다
+  it('withDraft 가 없으면 초안을 건드리지 않는다', async () => {
+    const { svc, calls } = setup()
+    expect(await svc.remove(user, key, 'N')).toEqual({ deleted: true })
+    expect(calls.draft).toEqual([])
+  })
+  it('withDraft: 시나리오를 지운 뒤 내 초안(사용자·공정·모델·이름)과 그 그림을 지운다', async () => {
+    const { svc, calls } = setup()
+    expect(await svc.remove(user, key, 'N', { withDraft: true })).toEqual({ deleted: true, draftDeleted: true })
+    expect(calls.del).toEqual([key])
+    expect(calls.draft).toEqual([['sew_x', 'P', 'M', 'N']])
+    expect(calls.images).toEqual([['g1', 'g2']])
+  })
+  it('withDraft: 내 초안이 없으면 draftDeleted false, 그림 정리가 실패해도 초안은 지운 것이다', async () => {
+    const none = setup({ draft: { deleted: false, gridIds: [] } })
+    expect(await none.svc.remove(user, key, 'N', { withDraft: true })).toEqual({ deleted: true, draftDeleted: false })
+    expect(none.calls.images).toEqual([])
+    const grid = setup({ imagesFail: true })
+    expect(await grid.svc.remove(user, key, 'N', { withDraft: true })).toEqual({ deleted: true, draftDeleted: true })
+  })
+  it('withDraft: 초안 지우기가 실패해도 시나리오 지우기는 성공이다(draftDeleted false) — 초안은 목록에서 다시 지울 수 있다', async () => {
+    const { svc, calls } = setup({ draftFails: true })
+    expect(await svc.remove(user, key, 'N', { withDraft: true })).toEqual({ deleted: true, draftDeleted: false })
+    expect(calls.del).toEqual([key])
+  })
+  it('withDraft: 시나리오 지우기가 실패하거나 결과를 모르면 초안을 지우지 않는다', async () => {
+    const { svc, calls } = setup({ delFails: true })
+    expect((await fail(svc.remove(user, key, 'N', { withDraft: true }))).code).toBe('UPSTREAM_TIMEOUT')
+    expect(calls.draft).toEqual([])
+    const bad = setup()
+    expect((await fail(bad.svc.remove(user, key, 'X', { withDraft: true }))).code).toBe('BAD_REQUEST')
+    expect(bad.calls.draft).toEqual([])
   })
 })

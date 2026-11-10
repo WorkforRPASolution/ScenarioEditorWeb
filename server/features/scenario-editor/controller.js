@@ -162,8 +162,11 @@ async function setEnabled(req, res) {
 async function removeScenario(req, res) {
   const confirmName = req.body && req.body.confirmName
   if (typeof confirmName !== 'string') throw badBody('confirmName', '문자열이어야 합니다')
+  // withDraft(선택): true 면 시나리오를 지운 뒤 내 초안도 지운다
+  const withDraft = req.body.withDraft
+  if (withDraft !== undefined && typeof withDraft !== 'boolean') throw badBody('withDraft', 'true 또는 false 여야 합니다')
   const { process, model, name } = req.params
-  ok(res, await getDeps().versionAdmin.remove(req.seUser, { process, model, name }, confirmName))
+  ok(res, await getDeps().versionAdmin.remove(req.seUser, { process, model, name }, confirmName, { withDraft: withDraft === true }))
 }
 
 async function reviewScenario(req, res) {

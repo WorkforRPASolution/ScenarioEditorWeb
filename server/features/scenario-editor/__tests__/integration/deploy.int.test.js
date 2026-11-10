@@ -781,6 +781,36 @@ describe('초안 (설계 §6.1)', () => {
   })
 })
 
+describe('시나리오 지우기 + 내 초안도 함께(2026-11-10)', () => {
+  it('withDraft 면 시나리오를 지운 뒤 요청한 사용자의 초안과 그 그림만 지운다 — 다른 사용자의 초안은 남는다', async () => {
+    const T = (await copyTo(SOURCE, NAME('DELDRAFT'))).target
+    const sk = await open(T)
+    const idx = sk.edited.steps.findIndex((s) => s.images.base && s.images.base.from === 'source')
+    sk.edited.steps[idx].images.base = { from: 'upload', tempId: 't1' }
+    const png = readFileSync(join(ROOT, 'tools/scenario-gen/fixtures/start.png'))
+    const meta = { target: T, propertyRev: sk.propertyRev, scenario: sk.edited }
+    const mine = await call('POST', '/drafts', { form: formOf(meta, { t1: png }) })
+    expect(mine.status, show(mine)).toBe(200)
+    const other = await call('POST', '/drafts', { user: 'sew_multi', form: formOf(meta, { t1: png }) })
+    expect(other.status, show(other)).toBe(200)
+    const draftsOf = async (user) => (await call('GET', `/drafts?process=${T.process}&model=${T.model}`, { user })).body.data.filter((d) => d.name === T.name)
+    const images = () => webDb.collection('seDraftImages.files').countDocuments({ 'metadata.owner': { $in: ['sew_master', 'sew_multi'] }, 'metadata.tempId': 't1' })
+    expect(await draftsOf('sew_master')).toHaveLength(1)
+    const imagesBefore = await images()
+
+    const del = await call('DELETE', pathOf(T), { json: { confirmName: T.name, withDraft: true } })
+    expect(del.status, show(del)).toBe(200)
+    expect(del.body.data).toEqual({ deleted: true, draftDeleted: true })
+    expect(await propertyDocs(T)).toEqual([])
+    expect(await draftsOf('sew_master')).toEqual([])
+    expect(await draftsOf('sew_multi')).toHaveLength(1) // 남의 초안은 그대로
+    expect(await images()).toBe(imagesBefore - 1)
+    // 남은 초안 치우기(시험 정리는 시험 사용자의 초안을 모두 지우지만 여기서도 지운다)
+    const rest = await draftsOf('sew_multi')
+    expect((await call('DELETE', `/drafts/${rest[0].draftId}`, { user: 'sew_multi' })).status).toBe(200)
+  })
+})
+
 describe('성과·심의 (설계 §7, 완료 조건 5)', () => {
   it('성과를 저장하고 다시 읽으면 같은 값, 원개발자(Int64)·EqpPerfornmanceLoss 는 그대로, 심의 저장은 Supervisor 를 쓴다', async () => {
     const PF = (await copyTo(SOURCE, NAME('PERF'))).target

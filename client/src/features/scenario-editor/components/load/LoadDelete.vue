@@ -18,6 +18,9 @@ const props = defineProps({
 const emit = defineEmits(['deleted', 'relist', 'close'])
 
 const typed = ref('')
+// 내 초안도 함께 지우기(2026-11-10): 내 초안이 있는 시나리오에만 체크 칸이 나온다. 서버가 시나리오를 지운 뒤 요청한 사용자의 초안만 지운다
+const withDraft = ref(false)
+const draftTime = computed(() => (props.row.draft ? formatCrtime(Date.parse(props.row.draft.savedAt)).slice(5, 16) : ''))
 const stage = ref('form') // form | busy | unknown
 const failure = ref(null) // { text, relist }
 const nameEl = ref(null)
@@ -32,7 +35,7 @@ function syncScroll() { if (alongEl.value && nameEl.value) alongEl.value.scrollL
 const hint = computed(() => (!typed.value ? t('SEW_LOAD_DEL_NAME_EMPTY') : same.value ? t('SEW_LOAD_DEL_NAME_OK') : t('SEW_LOAD_DEL_NAME_DIFF')))
 const what = computed(() => (props.versionCount ? t('SEW_LOAD_DEL_WHAT_BODY', { n: props.versionCount }) : t('SEW_LOAD_DEL_WHAT_BODY_ALL')))
 const eqp = computed(() => t(props.row.isEnabled === false ? 'SEW_LOAD_DEL_EQP_OFF' : 'SEW_LOAD_DEL_EQP_ON', { model: props.model, n: props.eqpCount }))
-const keep = computed(() => t('SEW_LOAD_DEL_KEEP_BODY') + (props.row.draft ? t('SEW_LOAD_DEL_KEEP_DRAFT', { time: formatCrtime(Date.parse(props.row.draft.savedAt)).slice(5, 16) }) : ''))
+const keep = computed(() => t('SEW_LOAD_DEL_KEEP_BODY') + (props.row.draft && !withDraft.value ? t('SEW_LOAD_DEL_KEEP_DRAFT', { time: draftTime.value }) : ''))
 const unknownBody = computed(() => (props.versionCount ? t('SEW_LOAD_DEL_UNKNOWN_BODY', { n: props.versionCount }) : t('SEW_LOAD_DEL_UNKNOWN_BODY_ALL')))
 const CAUSES = new Set(['NOT_FOUND', 'UPSTREAM_DOWN', 'UPSTREAM_FAILED'])
 
@@ -43,8 +46,9 @@ async function go() {
   stage.value = 'busy'
   failure.value = null
   try {
-    await api.removeScenario(props.process, props.model, props.row.name, typed.value)
-    emit('deleted')
+    const res = await api.removeScenario(props.process, props.model, props.row.name, typed.value, !!props.row.draft && withDraft.value)
+    // draftDeleted: 초안도 지우라고 했을 때만 true·false, 아니면 null
+    emit('deleted', { draftDeleted: props.row.draft && withDraft.value ? res?.data?.data?.draftDeleted === true : null })
   } catch (e) {
     const code = errorCode(e)
     if (['UPSTREAM_TIMEOUT', 'TIMEOUT', 'NETWORK'].includes(code) || (code === 'UNKNOWN' && e?.response?.status >= 500)) { stage.value = 'unknown'; return }
@@ -81,6 +85,10 @@ const btn = 'h-9 px-4 rounded-lg text-sm font-medium disabled:opacity-50'
           </dl>
           <div v-if="open" class="rounded-lg px-3 py-2 text-[13px] leading-relaxed bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
             <b>{{ t('SEW_LOAD_DEL_OPEN') }}</b>{{ t('SEW_LOAD_DEL_OPEN_BODY') }}{{ open.changes ? t('SEW_LOAD_DEL_OPEN_CHANGED', { n: open.changes }) : '' }}</div>
+          <label v-if="row.draft" class="flex items-start gap-2 text-[13px] cursor-pointer">
+            <input v-model="withDraft" type="checkbox" class="mt-0.5" :disabled="stage === 'busy'" data-testid="se-load-del-with-draft" />
+            <span>{{ t('SEW_LOAD_DEL_WITH_DRAFT', { time: draftTime }) }} <small class="text-xs text-gray-500">{{ t('SEW_LOAD_DEL_WITH_DRAFT_HINT') }}</small></span>
+          </label>
           <div>
             <label for="se-load-del-name" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('SEW_LOAD_DEL_NAME_LABEL') }}</label>
             <div class="relative">
