@@ -51,9 +51,15 @@ const DIFF_TEXT = {
   NextScenarioIfFail: followText,
   ExecutingLevel: (v) => (v === 1 ? P.on : v === 0 ? P.off : t('SEW_PROP_STORED', { value: v })),
   DetailedDescriptionTitle: (v) => v || P.none,
-  EDMLink: (v) => v || P.none
+  EDMLink: (v) => v || P.none,
+  // 웹에서 고치지 않는 칸 — 운영 속성 창 "그 밖의 값" 과 같은 글(초안·다른 판과 달라졌을 때만 보인다)
+  ScenarioTriggerType: (v) => (v == null ? P.none : P.triggerTypes[v] ?? t('SEW_PROP_STORED', { value: v })),
+  IsShowDialog: (v) => (v ? P.yes : P.no)
 }
 const ORDER = Object.keys(DIFF_TEXT)
+const FOLLOW_KEYS = new Set(['NextScenarioIfSuccess', 'NextScenarioIfFail'])
+const followDesc = (v) => (v && typeof v.Text === 'string' && v.Text !== '' ? v.Text : P.none)
+const plain = (v) => (v == null || v === '' ? P.none : typeof v === 'object' ? JSON.stringify(v) : String(v))
 
 export function propertyDiffs(before, after) {
   const a = before || {}
@@ -61,7 +67,9 @@ export function propertyDiffs(before, after) {
   const keys = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => k !== 'Owners' && canonicalJson(a[k]) !== canonicalJson(b[k]))
   keys.sort((x, y) => (ORDER.indexOf(x) + 1 || 99) - (ORDER.indexOf(y) + 1 || 99))
   return keys.map((key) => {
-    const text = DIFF_TEXT[key] ?? ((v) => (v == null ? P.none : typeof v === 'object' ? JSON.stringify(v) : String(v)))
+    // 후속 이름은 그대로고 설명만 바뀌면 "A → A" 가 된다 — 설명을 보인다
+    if (FOLLOW_KEYS.has(key) && followText(a[key]) === followText(b[key])) return { key, label: P.errorFields[`${key}.Text`], from: followDesc(a[key]), to: followDesc(b[key]) }
+    const text = DIFF_TEXT[key] ?? plain
     return { key, label: P.keys[key] ?? LABELS.propertyKey[key] ?? key, from: text(a[key]), to: text(b[key]) }
   })
 }

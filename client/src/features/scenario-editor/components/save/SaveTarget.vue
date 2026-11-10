@@ -6,7 +6,8 @@ import { useSaveFlow, overwriteDiff, followName } from '../../stores/saveFlow'
 import { useEditStore } from '../../stores/editStore'
 import { useEditorStore } from '../../stores/editorStore'
 import { t, LABELS, fieldMessage } from '../../messages'
-import { enabledLabel, scenarioTypeLabel } from '../../format'
+import { enabledLabel } from '../../format'
+import { typeName } from '../../editor/propertyView'
 import SaveNamePanel from './SaveNamePanel.vue'
 import '../panel/panel.css'
 
@@ -29,10 +30,12 @@ const id = computed(() => `${process.value}-${flow.target.model || '?'}-${flow.t
 const nameOpen = ref(false)
 const canMakeName = computed(() => !!flow.nameRule && !locked.value)
 
+// 대상의 지금 값을 서버가 풀지 못하면 null 이 온다 — "null"·빈 글이 아니라 켜짐·꺼짐의 모름과 같은 "?" 로 보인다
+const unknown = LABELS.enabled.unknown
 const KEY_TEXT = {
   IsEnabled: (v) => enabledLabel(v),
-  Type: (v) => scenarioTypeLabel(v),
-  StartDelay: (v) => (typeof v === 'number' ? t('SEW_SAVE_SECONDS', { n: v }) : String(v ?? '')),
+  Type: (v) => (v === null || v === undefined ? unknown : typeName(v)),
+  StartDelay: (v) => (typeof v === 'number' ? t('SEW_SAVE_SECONDS', { n: v }) : v === null || v === undefined ? unknown : String(v)),
   NextScenarioIfSuccess: (v) => followName(v) ?? t('SEW_SAVE_FOLLOW_NONE'),
   NextScenarioIfFail: (v) => followName(v) ?? t('SEW_SAVE_FOLLOW_NONE')
 }

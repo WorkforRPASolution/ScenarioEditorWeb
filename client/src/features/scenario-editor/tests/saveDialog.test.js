@@ -347,6 +347,13 @@ describe('저장 창(SaveDialog)', () => {
     expect(text).not.toMatch(/켜짐\s*,|^운영 속성\s*켜짐$/) // 칸 이름만 늘어놓지 않는다
     bar.unmount()
   })
+  it('덮어쓰기 차이 — 대상의 지금 값을 모르면(null) "null"·빈 글이 아니라 "?", 표에 없는 유형은 "저장 값 N"', async () => {
+    const diff = [{ key: 'IsEnabled', from: null, to: true }, { key: 'Type', from: null, to: 99 }, { key: 'StartDelay', from: null, to: 0 }, { key: 'NextScenarioIfFail', from: null, to: { Name: 'A', Text: '' } }]
+    const { bar } = setup(clean({ targetExists: { diff } }))
+    await openSave(bar)
+    expect(bar.findAll('[data-testid="se-save-diff"]').map((r) => r.text())).toEqual(['상태: ? → 켜짐', '유형: ? → 저장 값 99', '시작 지연: ? → 0초', '실패하면 후속: 없음 → A'])
+    bar.unmount()
+  })
   it('덮어쓰기 차이의 켜짐·꺼짐 줄 이름은 값처럼 읽히지 않게 "상태" 다', async () => {
     const { bar } = setup(clean({ targetExists: { diff: [{ key: 'IsEnabled', from: true, to: false }] } }))
     await openSave(bar)

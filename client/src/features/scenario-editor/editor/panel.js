@@ -143,7 +143,8 @@ export const actionName = (a) => LABELS.action[typeNameOf(a?.type) ?? a?.typeNam
 export function ocrText(o) {
   if (!o) return none()
   const op = LABELS.ocrOp[o.opName] ?? String(o.op ?? '')
-  const v = o.op >= 1 && o.op <= 4 ? o.text : o.op === 7 || o.op === 8 ? `${o.min ?? ''} ~ ${o.max ?? ''}` : o.number
+  // 비교를 고르지 않았거나(0) 모르는 비교면 값을 붙이지 않는다 — 저장된 숫자 0 이 "선택 안 함 0" 으로 보인다
+  const v = o.op >= 1 && o.op <= 4 ? o.text : o.op === 7 || o.op === 8 ? `${o.min ?? ''} ~ ${o.max ?? ''}` : o.op >= 5 && o.op <= 10 ? o.number : ''
   return `${op} ${v ?? ''}`.trim()
 }
 export function actionText(a) {
