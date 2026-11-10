@@ -130,19 +130,17 @@ P2(편집·저장)를 사내 PC 에서 운영 EARS·InterfaceServer 에 붙여 �
 
 쓰던 운영 계정을 그대로 쓴다. 이 계정은 EARS 전체에 쓸 수 있어서 DB 권한이 잘못된 쓰기를 막아 주지 않고, 웹 서버에도 "시험 대상만 쓴다" 는 장치가 없다. **7 의 "하지 말 것" 을 지키는 것이 유일한 막이다.** 계정 정보는 `server\.env` 에만 둔다.
 
-웹 전용 임시 DB `SE_WEB_TEST` 에도 쓸 수 있는 계정이어야 한다. 그 계정으로 `mongo` 셸(운영 4.2)에 접속해 본다.
+초안·초안 그림·배포 기록은 사내 WebManager DB 에 임시 컬렉션 네 개로 둔다: `SCENARIO_EDITOR_DRAFTS`·`SCENARIO_EDITOR_DEPLOYS`·`seDraftImages.files`·`seDraftImages.chunks`. WebManager 가 쓰지 않는 이름이고 첫 쓰기 때 저절로 생긴다. 편입 뒤에도 같은 이름을 쓰므로 시험이 끝나면 꼭 지운다(6-12).
+
+DB 이름은 사내 WebManager 의 `WEBMANAGER_DB_URI` 에 적힌 그대로 쓴다. 기본값은 `WEB_MANAGER` 이고 대소문자를 구분한다. 틀리면 오류 없이 새 DB 가 생긴다. 아래 명령의 `WEB_MANAGER` 는 실제 이름으로 바꿔 친다.
+
+`SE_WEB_DB_URI` 에 `WEBMANAGER_DB_URI` 값을 그대로 넣으면(3) 권한이 이미 맞으니 다음으로 넘어간다. `MONGODB_URI` 의 계정을 쓸 때만 그 계정으로 `mongo` 셸(운영 4.2)에 접속해 권한을 본다.
 
 ```js
 db.runCommand({ connectionStatus: 1 }).authInfo.authenticatedUserRoles
 ```
 
-`root`·`readWriteAnyDatabase`, 또는 db 가 `SE_WEB_TEST` 인 `readWrite`·`dbOwner` 가 보이면 된다. 운영 Mongo 에 계정 인증이 꺼져 있으면 빈 목록이 나오고 그대로 쓸 수 있다.
-
-둘 다 아니면 기존 계정의 권한은 바꾸지 않고, DBA 에게 웹 전용 DB 만 쓰는 계정을 하나 부탁해 `SE_WEB_DB_URI` 에만 쓴다.
-
-```js
-db.getSiblingDB('admin').createUser({ user: 'sew_test', pwd: passwordPrompt(), roles: [{ role: 'readWrite', db: 'SE_WEB_TEST' }] })
-```
+`root`·`readWriteAnyDatabase`, 또는 db 가 WebManager DB 인 `readWrite`·`dbOwner` 가 보이면 된다. 운영 Mongo 에 계정 인증이 꺼져 있으면 빈 목록이 나오고 그대로 쓸 수 있다. 둘 다 아니면 기존 계정의 권한은 바꾸지 않고 `WEBMANAGER_DB_URI` 값을 쓴다.
 
 ### 3. 설정
 
@@ -155,7 +153,7 @@ notepad server\.env
 | 변수 | 넣을 값 |
 |---|---|
 | `MONGODB_URI` | 운영 EARS, 기존 계정(사내 WebManager 의 `MONGODB_URI` 와 같은 형식): `mongodb://<계정>:<비밀번호>@<호스트>:<포트>/EARS`. 원래 주소에 `?authSource=…` 가 있으면 그대로 둔다 |
-| `SE_WEB_DB_URI` | 웹 전용 임시 DB: `MONGODB_URI` 에서 DB 이름만 `SE_WEB_TEST` 로 바꾼다. **`MONGODB_URI` 에 `authSource` 가 없으면 끝에 `?authSource=EARS` 를 붙인다**(안 붙이면 `SE_WEB_TEST` 에서 계정을 찾다가 인증에 실패해 서버가 뜨지 않는다). 2 에서 전용 계정을 받았으면 그 계정과 `?authSource=admin` 을 쓴다. EARS 와 같은 이름이면 서버가 뜨지 않는다 |
+| `SE_WEB_DB_URI` | 사내 WebManager 의 `WEBMANAGER_DB_URI` 값을 **그대로** 넣는다(DB 이름·계정·`authSource` 가 이미 맞다). `WEBMANAGER_DB_URI` 라는 변수를 새로 만들지 않고 이 변수에 넣는다. `MONGODB_URI` 의 계정을 쓰려면 DB 이름만 WebManager DB 이름으로 바꾸고, **`authSource` 가 없으면 끝에 `?authSource=EARS` 를 붙인다**(안 붙이면 인증에 실패해 서버가 뜨지 않는다) |
 | `EARS_INTERFACE_URL` | 사내 InterfaceServer 주소(사내 WebManager 설정과 같은 값) |
 | `EARS_INTERFACE_MAX_REQUEST_MB` | 사내 InterfaceServer 의 `max-content-length`(MB). 모르면 `100` 그대로 |
 | `SE_USER_SINGLEID` | WRITE 권한이 있는 본인 SingleID |
@@ -223,9 +221,9 @@ npm run dev
 9. **고쳐 배포**: 웹에서 이미지 스텝 하나를 골라 기준 화면에서 찾을 그림을 [다시 잡기]로 새로 자르고 배포한다. 확인 창은 6번과 같은 조건일 때만 [배포].
 10. **데스크톱으로 다시 열기**: 새로 자른 찾을 그림이 데스크톱에 보이는지 본다.
 11. **지우기**: 웹 불러오기 창에서 `SEW_TEST_<날짜>` 행을 고르고, 오른쪽 칸 맨 위 이름이 그 이름인지 본 뒤 [시나리오 지우기…] → 시나리오 이름을 그대로 입력 → [지우기]. 끝나면 4 의 조회 두 줄을 다시 돌려 둘 다 `0` 인지 본다. Redis 에 남은 판 기록은 지우지 않고 적기만 한다.
-12. **정리**: 서버를 끄고 웹 전용 임시 DB 를 지운다. 지우기 전에 `SCENARIO_EDITOR_DEPLOYS` 의 배포 기록을 결과와 함께 적어 둔다. 아래처럼 DB 이름이 들어간 한 줄로만 지운다(`use` 뒤에 `db.dropDatabase()` 를 치면 현재 DB 를 잘못 보았을 때 운영 EARS 가 지워진다). 권한 오류가 나면 이 줄을 DBA 에게 부탁한다. 2 에서 `sew_test` 를 받았으면 `db.getSiblingDB('admin').dropUser('sew_test')` 도 부탁한다.
+12. **정리**: 서버를 끄고 임시 컬렉션 네 개를 지운다. 지우기 전에 `SCENARIO_EDITOR_DEPLOYS` 의 배포 기록을 결과와 함께 적어 둔다. **`dropDatabase` 는 절대 쓰지 않는다 — WebManager DB 전체가 지워진다.** 아래 한 줄만 친다(`WEB_MANAGER` 는 실제 이름으로). 줄마다 `true` 면 지운 것이고, `false` 는 그 컬렉션이 없었다는 뜻이다.
     ```js
-    db.getSiblingDB('SE_WEB_TEST').dropDatabase()
+    var w = db.getSiblingDB('WEB_MANAGER'); ['SCENARIO_EDITOR_DRAFTS', 'SCENARIO_EDITOR_DEPLOYS', 'seDraftImages.files', 'seDraftImages.chunks'].forEach(function (c) { print(c, w.getCollection(c).drop()) })
     ```
 
 ### 7. 하지 말 것
@@ -234,7 +232,8 @@ npm run dev
 - [시나리오 지우기…]는 `SEW_TEST_<날짜>` 행에서만 쓴다. 그 이름의 문서와 모든 판이 지워지고 되살릴 수 없다.
 - 켜지 않는다(운영 속성 켜짐, 불러오기 창 켜기). 켜면 설비에서 실행될 수 있다.
 - 불러오기 창의 켜짐 스위치를 누르지 않고, 그 창에서 키보드(Tab·Space·Enter)를 쓰지 않는다. 심의·성과 저장도 하지 않는다. 모두 운영 EARS 에 바로 쓴다.
-- 운영 Mongo 셸에는 이 절차에 적힌 줄만 친다. 기존 계정은 EARS 를 고치거나 지울 수 있다.
+- 운영 Mongo 셸에는 이 절차에 적힌 줄만 친다. 기존 계정은 EARS 와 WebManager DB 를 고치거나 지울 수 있다.
+- `SE_WEBMANAGER_DB` 를 1 로 바꾸지 않는다. 오류 기록이 운영 WebManager DB 에 쌓인다.
 - 큰 시나리오를 복사해 배포하지 않는다.
 - 위 읽기 시험 "하지 말 것"(시험 데이터·통합 시험·E2E·측정 도구)도 그대로다.
 

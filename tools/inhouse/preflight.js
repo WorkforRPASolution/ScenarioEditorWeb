@@ -25,9 +25,9 @@ function checkEnv(env) {
   if (!isLoopbackHost(host)) out.push(stop('HOST_NOT_LOOPBACK', `HOST=${host} — 인증 없는 서버라 이 PC 안에서만 받아야 한다. HOST 를 127.0.0.1 로 둔다(이대로 띄우면 쓰기 API 가 403 WRITE_DISABLED)`))
   if (env.SE_WEBMANAGER_DB !== '0') out.push(stop('WEBMANAGER_DB_ON', 'SE_WEBMANAGER_DB 가 0 이 아니다 — 운영 Mongo 에 WebManager 기록을 쓴다. SE_WEBMANAGER_DB=0 으로 둔다'))
   if (blank(env.SE_WEB_DB_URI)) {
-    out.push(stop('WEB_DB_MISSING', 'SE_WEB_DB_URI 가 비었다 — 초안·배포 기록을 둘 웹 전용 DB 가 없어 저장·배포가 503 이다. 운영 EARS 가 아닌 DB 이름으로 채운다(예: …/SE_WEB_TEST)'))
+    out.push(stop('WEB_DB_MISSING', 'SE_WEB_DB_URI 가 비었다 — 초안·배포 기록을 둘 웹 전용 DB 가 없어 저장·배포가 503 이다. 사내 WebManager 의 WEBMANAGER_DB_URI 값을 넣는다(README "사내 쓰기 시험" 3)'))
   } else if (mongoDbName(env.SE_WEB_DB_URI) === '') {
-    out.push(stop('WEB_DB_NAME_MISSING', 'SE_WEB_DB_URI 에 DB 이름이 없다 — 드라이버가 test DB 에 쓴다. 주소 끝에 /SE_WEB_TEST 처럼 DB 이름을 넣는다'))
+    out.push(stop('WEB_DB_NAME_MISSING', 'SE_WEB_DB_URI 에 DB 이름이 없다 — 드라이버가 test DB 에 쓴다. 주소 끝에 /WEB_MANAGER 처럼 DB 이름을 넣는다'))
   } else if (sameDbName(env.SE_WEB_DB_URI, env.MONGODB_URI || DEFAULT_EARS_URI)) {
     out.push(stop('WEB_DB_SAME_AS_EARS', `SE_WEB_DB_URI 의 DB 이름(${mongoDbName(env.SE_WEB_DB_URI)})이 운영 EARS(MONGODB_URI)와 같다 — 초안·배포 기록이 운영 EARS 에 생긴다. 다른 DB 이름을 쓴다(서버도 이대로는 뜨지 않는다)`))
   }
