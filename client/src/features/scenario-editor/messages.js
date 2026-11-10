@@ -98,6 +98,7 @@ export const MESSAGES = {
   SEW_UI_TW_REASON_TEXT_STAR: '창 제목이 * 하나',
   SEW_UI_TW_REASON_CLASS_EMPTY: '창 클래스가 비어 있음',
   SEW_UI_LOAD_SCOPE_HINT: '공정 권한 안의 공정·모델만 보입니다',
+  SEW_LOAD_SCOPE_HINT_DRAFTS: '[내 초안만] — 내 초안이 있는 공정·모델만 보입니다',
   SEW_LOAD_COUNT_HINT: '괄호 = 시나리오 수',
   SEW_LOAD_COUNT_HINT_DRAFT: '괄호 = 시나리오 수, 내 초안이 있는 곳은 (내 초안 | 시나리오)',
   SEW_LOAD_COUNT_TIP: '괄호 안은 등록된 시나리오 수입니다(목록에 나오는 줄 수 — 내 초안만 있는 줄은 세지 않습니다). 공정의 수는 공정 권한 안 모델들의 합입니다.',

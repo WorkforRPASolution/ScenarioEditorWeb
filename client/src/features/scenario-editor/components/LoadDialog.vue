@@ -77,6 +77,21 @@ function syncCounts() {
   const next = { scenarios: listRows.value.length, drafts: writer.value && draftsCounted.value && !draftsError.value ? drafts.value.length : was.drafts }
   if (next.scenarios !== was.scenarios || next.drafts !== was.drafts) counts.value = new Map(counts.value).set(countKey(pair.process, pair.model), next)
 }
+// [내 초안만] 을 켜면 선택 목록도 내 초안이 있는 공정·모델만 보인다(2026-11-11 사용자 요청). 내 초안이 어디에도 없거나 수를 못 읽었으면
+// 좁히지 않는다(빈 선택 칸이 되지 않게). 지금 고른 곳은 초안이 없어도 남긴다 — 마지막 초안을 지우자마자 다른 곳으로 튀지 않게.
+const hasDraft = (p, m) => countOf(p, m).drafts > 0
+const draftPlaces = (p) => p.models.filter((m) => hasDraft(p.process, m.model))
+const narrowing = computed(() => writer.value && draftOnly.value && !!counts.value && draftsCounted.value && processes.value.some((p) => draftPlaces(p).length > 0))
+const shownProcesses = computed(() => (narrowing.value ? processes.value.filter((p) => p.process === process.value || draftPlaces(p).length > 0) : processes.value))
+const shownModels = computed(() => (narrowing.value ? models.value.filter((m) => m.model === model.value || hasDraft(process.value, m.model)) : models.value))
+// 켜는 순간 지금 고른 곳에 내 초안이 없으면 초안이 있는 곳으로 옮긴다(같은 공정의 다른 모델 먼저, 없으면 목록 순서로 첫 공정)
+watch(draftOnly, (on) => {
+  if (!on || !narrowing.value || hasDraft(process.value, model.value)) return
+  const here = processes.value.find((p) => p.process === process.value)
+  const to = here && draftPlaces(here).length ? here : processes.value.find((p) => draftPlaces(p).length > 0)
+  process.value = to.process
+  model.value = draftPlaces(to)[0].model
+})
 let countSeq = 0
 async function loadCounts() {
   const id = ++countSeq
@@ -400,8 +415,8 @@ const btnS = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hove
   <ModalShell :model-value="modelValue" title="시나리오 불러오기" :width="dialogWidth" :height="600" testid="se-load-dialog" @update:model-value="emit('update:modelValue', $event)">
     <div class="h-full flex flex-col">
       <div class="px-5 py-3 flex flex-wrap gap-2 items-center border-b border-gray-200 dark:border-dark-border">
-        <select v-model="process" :class="select" :title="countHint?.tip" data-testid="se-load-process"><option v-for="p in processes" :key="p.process" :value="p.process">{{ p.process }}{{ countText(processCount(p)) }}</option></select>
-        <select v-model="model" :class="select" :title="countHint?.tip" data-testid="se-load-model"><option v-for="m in models" :key="m.model" :value="m.model">{{ m.model }}{{ countText(countOf(process, m.model)) }}</option></select>
+        <select v-model="process" :class="select" :title="countHint?.tip" data-testid="se-load-process"><option v-for="p in shownProcesses" :key="p.process" :value="p.process">{{ p.process }}{{ countText(processCount(p)) }}</option></select>
+        <select v-model="model" :class="select" :title="countHint?.tip" data-testid="se-load-model"><option v-for="m in shownModels" :key="m.model" :value="m.model">{{ m.model }}{{ countText(countOf(process, m.model)) }}</option></select>
         <input v-model="search" :class="select" class="w-56" :placeholder="t('SEW_UI_SEARCH_NAME')" data-testid="se-load-search" />
         <label class="text-xs text-gray-600 dark:text-gray-300 flex items-center gap-1"><input v-model="enabledOnly" type="checkbox" data-testid="se-load-enabled" /> {{ t('SEW_UI_ENABLED_ONLY') }}</label>
         <label v-if="writer" class="text-xs text-gray-600 dark:text-gray-300 flex items-center gap-1 whitespace-nowrap" data-testid="se-load-draft-only">
@@ -409,7 +424,7 @@ const btnS = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hove
           <span class="min-w-[18px] px-1.5 rounded-full text-[11px] font-semibold text-center bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-300" data-testid="se-load-draft-count">{{ draftCount }}</span></label>
         <button v-if="writer && draftOnlyRows.length" type="button" class="h-[30px] px-2.5 rounded-md border border-gray-300 dark:border-dark-border text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 whitespace-nowrap"
           data-testid="se-load-cleanup" @click="sub = 'cleanup'">{{ t('SEW_LOAD_CLEAN_OPEN_BTN', { n: draftOnlyRows.length }) }}</button>
-        <span class="text-xs text-gray-500 ml-1">{{ t('SEW_UI_LOAD_SCOPE_HINT') }}<template v-if="countHint"> · <span :title="countHint.tip" data-testid="se-load-count-hint">{{ countHint.text }}</span></template></span>
+        <span class="text-xs text-gray-500 ml-1"><span :class="narrowing ? 'font-medium text-primary-700 dark:text-primary-300' : ''" data-testid="se-load-scope-hint">{{ t(narrowing ? 'SEW_LOAD_SCOPE_HINT_DRAFTS' : 'SEW_UI_LOAD_SCOPE_HINT') }}</span><template v-if="countHint"> · <span :title="countHint.tip" data-testid="se-load-count-hint">{{ countHint.text }}</span></template></span>
         <button class="ml-auto h-[38px] px-3 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm" data-testid="se-load-refresh" @click="refresh">{{ t('SEW_UI_REFRESH_SCOPES') }}</button>
       </div>
       <p v-if="scopesNotice" class="px-5 py-2 text-sm border-b border-gray-200 dark:border-dark-border" :class="scopesNotice.error ? 'text-red-600' : 'text-gray-600 dark:text-gray-300'" data-testid="se-load-scopes-notice">{{ scopesNotice.text }}</p>

@@ -314,7 +314,8 @@ describe('LoadDialog — 쓰기 동작과 내 초안', () => {
     store.scopes = DEFAULT_SCOPES
     store.me = { singleid: 'me_eng', canWrite }
     api.list.mockImplementation(() => ok(list.map((r) => ({ ...r }))))
-    api.listDrafts.mockImplementation(() => ok(drafts.map((d) => ({ ...d }))))
+    // drafts 가 함수면 공정·모델마다 다른 초안
+    api.listDrafts.mockImplementation((p, m) => ok((typeof drafts === 'function' ? drafts(p, m) : drafts).map((d) => ({ ...d }))))
     api.versions.mockImplementation((p, m, n) => ok(versionsOf(n)))
     const w = mount(LoadDialog, { props: { modelValue: true }, global: { stubs: { AgGridVue: AgStub, ModalShell: ModalStub } } })
     return { w, store, edit: useEditStore() }
@@ -375,6 +376,75 @@ describe('LoadDialog — 쓰기 동작과 내 초안', () => {
       const { w } = setupW(); await flushPromises()
       expect(opts(w, 'se-load-model')[0]).toBe('SEWMODELA (4)')
       expect(tid(w, 'se-load-count-hint').text()).toBe('괄호 = 시나리오 수')
+    })
+  })
+
+  // 2026-11-11 사용자 요청: "내 초안만 보기를 선택할때 초안만 있는 공정, 모델만 보이도록 필터 리스트를 변경"
+  describe('[내 초안만] 을 켜면 선택 목록도 내 초안이 있는 공정·모델만', () => {
+    const opts = (w, id) => w.findAll(`[data-testid="${id}"] option`).map((o) => o.text())
+    const counts = (pairs, draftsCounted = true) => ok({ draftsCounted, pairs })
+    const check = async (w, on) => { await tid(w, 'se-load-draft-only').find('input').setValue(on); await flushPromises() }
+    it('지금 고른 곳에 내 초안이 없으면 초안이 있는 곳으로 옮기고(같은 공정 먼저), 끄면 목록이 돌아온다 — 고른 곳은 그대로', async () => {
+      api.counts.mockReturnValue(counts([
+        { process: 'SEWCVD', model: 'SEWMODELA', scenarios: 4, drafts: 0 }, { process: 'SEWCVD', model: 'SEWMODELB', scenarios: 10, drafts: 2 },
+        { process: 'SEWETCH', model: 'SEWMODELA', scenarios: 3, drafts: 0 }
+      ]))
+      const { w } = setupW({ drafts: (p, m) => (p === 'SEWCVD' && m === 'SEWMODELB' ? [draftRow(), draftRow({ draftId: 'd2', name: 'PLAIN' })] : []) }); await flushPromises()
+      expect(opts(w, 'se-load-process')).toEqual(['SEWCVD (2 | 14)', 'SEWETCH (3)'])
+      expect(tid(w, 'se-load-scope-hint').text()).toContain('공정 권한 안의 공정·모델만 보입니다')
+      await check(w, true)
+      expect(api.list).toHaveBeenLastCalledWith('SEWCVD', 'SEWMODELB')
+      expect(opts(w, 'se-load-process')).toEqual(['SEWCVD (2 | 8)']) // 목록 4줄씩
+      expect(opts(w, 'se-load-model')).toEqual(['SEWMODELB (2 | 4)'])
+      expect(gridNames(w)).toEqual(['ALL_ACTIONS', 'PLAIN'])
+      expect(tid(w, 'se-load-scope-hint').text()).toContain('내 초안이 있는 공정·모델만 보입니다')
+      await check(w, false)
+      expect(opts(w, 'se-load-process')).toEqual(['SEWCVD (2 | 8)', 'SEWETCH (3)'])
+      expect(opts(w, 'se-load-model')).toEqual(['SEWMODELA (4)', 'SEWMODELB (2 | 4)'])
+      expect(w.find('[data-testid="se-load-model"]').element.value).toBe('SEWMODELB')
+    })
+    it('다른 공정에만 내 초안이 있으면 그 공정으로 옮긴다', async () => {
+      api.counts.mockReturnValue(counts([{ process: 'SEWCVD', model: 'SEWMODELA', scenarios: 4, drafts: 0 }, { process: 'SEWETCH', model: 'SEWMODELA', scenarios: 0, drafts: 1 }]))
+      const { w } = setupW({ drafts: (p) => (p === 'SEWETCH' ? [draftRow({ draftId: 'd3', name: 'NEW_ONE', base: null, headCrtime: null })] : []), list: [] }); await flushPromises()
+      await check(w, true)
+      expect(api.list).toHaveBeenLastCalledWith('SEWETCH', 'SEWMODELA')
+      expect(opts(w, 'se-load-process')).toEqual(['SEWETCH (1 | 0)']) // 배포한 적 없는 새 시나리오의 초안만 있는 곳
+      expect(opts(w, 'se-load-model')).toEqual(['SEWMODELA (1 | 0)'])
+      expect(gridNames(w)).toEqual(['NEW_ONE'])
+    })
+    it('지금 고른 곳에 내 초안이 있으면 옮기지 않는다. 그 초안을 지워도 고른 곳은 목록에 남는다(지우자마자 다른 곳으로 튀지 않게)', async () => {
+      api.counts.mockReturnValue(counts([{ process: 'SEWCVD', model: 'SEWMODELA', scenarios: 4, drafts: 1 }, { process: 'SEWETCH', model: 'SEWMODELA', scenarios: 3, drafts: 1 }]))
+      api.deleteDraft.mockReturnValue(ok({ deleted: true }))
+      const { w } = setupW({ drafts: (p) => (p === 'SEWCVD' ? [draftRow()] : [draftRow({ draftId: 'd9' })]) }); await flushPromises()
+      await check(w, true)
+      expect(api.list).toHaveBeenCalledTimes(1)
+      expect(opts(w, 'se-load-process')).toEqual(['SEWCVD (1 | 4)', 'SEWETCH (1 | 3)'])
+      expect(opts(w, 'se-load-model')).toEqual(['SEWMODELA (1 | 4)']) // SEWMODELB 에는 초안이 없다
+      await pick(w, 'ALL_ACTIONS')
+      await tid(w, 'se-load-draft-line').trigger('click')
+      await tid(w, 'se-load-draft-delete').trigger('click')
+      await tid(w, 'se-load-draft-delete-go').trigger('click'); await flushPromises()
+      expect(opts(w, 'se-load-process')).toEqual(['SEWCVD (4)', 'SEWETCH (1 | 3)'])
+      expect(opts(w, 'se-load-model')).toEqual(['SEWMODELA (4)'])
+      expect(api.list).toHaveBeenCalledTimes(1)
+      // 다른 곳으로 옮기면 초안이 없어진 곳은 목록에서 빠진다
+      await w.find('[data-testid="se-load-process"]').setValue('SEWETCH'); await flushPromises()
+      expect(opts(w, 'se-load-process')).toEqual(['SEWETCH (1 | 4)']) // 옮긴 곳의 수는 목록 4줄을 따른다
+    })
+    it('내 초안이 어디에도 없거나 수를 못 읽었으면 목록을 좁히지 않는다(빈 선택 칸이 되지 않게)', async () => {
+      api.counts.mockReturnValue(counts([{ process: 'SEWCVD', model: 'SEWMODELA', scenarios: 4, drafts: 0 }]))
+      const a = setupW({ drafts: [] }); await flushPromises()
+      await check(a.w, true)
+      expect(opts(a.w, 'se-load-process')).toEqual(['SEWCVD (4)', 'SEWETCH (0)'])
+      expect(opts(a.w, 'se-load-model')).toEqual(['SEWMODELA (4)', 'SEWMODELB (0)'])
+      expect(tid(a.w, 'se-load-scope-hint').text()).toContain('공정 권한 안의 공정·모델만 보입니다')
+      expect(api.list).toHaveBeenCalledTimes(1)
+      a.w.unmount()
+      api.counts.mockReturnValue(Promise.reject(new Error('down')))
+      const b = setupW(); await flushPromises()
+      await check(b.w, true)
+      expect(opts(b.w, 'se-load-process')).toEqual(['SEWCVD', 'SEWETCH'])
+      expect(opts(b.w, 'se-load-model')).toEqual(['SEWMODELA', 'SEWMODELB'])
     })
   })
 

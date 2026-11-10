@@ -273,7 +273,7 @@ test('⑤ 새 스텝의 넣을 자리를 바꾸면 표가 그 줄로 스크롤�
 
 // 2026-11-11 사용자 요청: "프로세스명과 모델명 옆에 등록된 시나리오가 몇개인지 () 안에 표시 … WebManager 의 필터처럼",
 // "내가 만든 초안이 어디어디 있는지 … ( 1 | 10 ) 이런식이면 시나리오는 10개인데 내가 만든 초안은 1개"
-test('⑥ 불러오기 창의 공정·모델 옆 수: 등록된 시나리오 수, 내 초안이 있는 곳은 (내 초안 | 시나리오) — 초안을 지우면 돌아온다', async ({ page }) => {
+test('⑥ 불러오기 창의 공정·모델 옆 수: 등록된 시나리오 수, 내 초안이 있는 곳은 (내 초안 | 시나리오), [내 초안만] 은 선택 목록도 좁힌다 — 초안을 지우면 돌아온다', async ({ page }) => {
   const T = { ...CVD, name: sewName('COUNT') }
   await api.deployFrom(SOURCE, T)
   await asUser(page, 'sew_master')
@@ -311,6 +311,22 @@ test('⑥ 불러오기 창의 공정·모델 옆 수: 등록된 시나리오 수
   const after = await texts(dlg, 'se-load-process')
   expect(after[processes.indexOf(CVD.process)]).toBe(`${CVD.process} (1 | ${sum})`)
   expect(after.filter((_, i) => processes[i] !== CVD.process)).toEqual(others)
+
+  // [내 초안만] 을 켜면 선택 목록도 내 초안이 있는 공정·모델만 — 초안이 없는 곳에서 켜면 초안이 있는 곳으로 옮긴다("내 초안만 보기를 선택할때 초안만 있는 공정, 모델만 보이도록")
+  const elsewhere = processes.find((x) => x !== CVD.process)
+  await dlg.getByTestId('se-load-process').selectOption(elsewhere)
+  await expect(dlg.getByTestId('se-load-scope-hint')).toHaveText('공정 권한 안의 공정·모델만 보입니다')
+  await dlg.getByTestId('se-load-draft-only').locator('input').check()
+  await expect(dlg.getByTestId('se-load-process')).toHaveValue(CVD.process)
+  await expect(dlg.getByTestId('se-load-model')).toHaveValue(CVD.model)
+  await expect.poll(() => texts(dlg, 'se-load-process')).toEqual([`${CVD.process} (1 | ${sum})`])
+  await expect.poll(() => texts(dlg, 'se-load-model')).toEqual([`${CVD.model} (1 | ${n[CVD.model]})`])
+  await expect(dlg.getByTestId('se-load-scope-hint')).toHaveText('[내 초안만] — 내 초안이 있는 공정·모델만 보입니다')
+  await expect(dlg.locator('.ag-center-cols-container .ag-row')).toHaveCount(1) // 표에도 내 초안이 있는 줄만
+  await expect(dlg.getByRole('gridcell', { name: T.name, exact: true })).toBeVisible()
+  await dlg.getByTestId('se-load-draft-only').locator('input').uncheck()
+  await expect.poll(() => texts(dlg, 'se-load-process')).toEqual(after)
+  await expect(dlg.getByTestId('se-load-model')).toHaveValue(CVD.model)
 
   // 그 초안을 지우면 다시 묻지 않고 괄호가 시나리오 수만으로 돌아온다
   await dlg.getByTestId('se-load-search').fill(T.name)
