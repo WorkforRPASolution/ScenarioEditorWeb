@@ -38,6 +38,8 @@ export async function apiAs(user = 'sew_master') {
       expect(data.result).toBe('ok')
       return data
     },
+    // 시나리오 지우기(확인 이름 = 이름). 내 초안은 건드리지 않는다
+    remove: async (k) => json(await ctx.delete(path(k), { data: { confirmName: k.name }, timeout: 60_000 }), `지우기 ${idOf(k)}`),
     // 판 하나를 열어(edit 로 작업본을 고쳐) target 에 배포한다 — 다른 이름이면 복사, 같은 이름이면 새 판
     async deployFrom(from, target, edit = null, crtime = 'current') {
       const sk = await api.open(from, crtime)

@@ -464,3 +464,75 @@ test('⑨ 새 시나리오 → 다른 시나리오에서 붙여넣기 → 첫 �
   expect(back.edited.property).toMatchObject({ Type: 1, IsEnabled: true, ID: idOf(NEW) })
   expect(await api.versions(NEW)).toHaveLength(1)
 })
+
+test('⑩ 위쪽 [시나리오 지우기…] 로 이름을 따라 쳐 지우고 내 초안도 함께, 불러오기 창 [초안만 남은 것 정리] 로 남은 초안을 한꺼번에', async ({ page }) => {
+  const A = { ...CVD, name: sewName('DEL_A') }
+  const B = { ...CVD, name: sewName('DEL_B') }
+  await api.deployFrom(SOURCE, A)
+  await api.deployFrom(SOURCE, B)
+  await asUser(page, 'sew_master')
+  page.on('dialog', (d) => d.accept()) // 초안은 저장 전 변경을 남긴다 — 다른 시나리오로 갈 때 브라우저 떠나기 확인
+  const saveDraft = async (k, title) => {
+    await page.goto(urlOf(k))
+    await expect(page.getByTestId('se-bar-id')).toHaveText(idOf(k))
+    await expect(rows(page)).toHaveCount(4)
+    await page.getByTestId('se-bar-description').fill(title)
+    await openSave(page)
+    await page.getByTestId('se-save-draft').click()
+    await expect(result(page).locator('h4')).toHaveText(/초안을 저장했습니다/)
+    await page.getByTestId('se-save-close').click()
+    await expect(page.getByTestId('se-bar-draft')).toContainText('초안')
+  }
+  const draftNames = async () => (await api.drafts(CVD.process, CVD.model)).map((d) => d.name).filter((n) => n === A.name || n === B.name).sort()
+
+  // B: 초안을 저장한 뒤 원본만 지운다 → 초안만 남은 행(원본 지워짐)
+  await saveDraft(B, 'E2E 남는 초안')
+  await api.remove(B)
+  // A: 초안을 저장하고 위쪽 단추로 지운다 — 불러오기 창을 열지 않는다
+  await saveDraft(A, 'E2E 함께 지울 초안')
+  expect(await draftNames()).toEqual([A.name, B.name].sort())
+  await page.getByTestId('se-delete').click()
+  const del = page.getByTestId('se-load-del')
+  await expect(del).toContainText(idOf(A))
+  await expect(del).toContainText('편집 화면에 열려 있는 시나리오입니다')
+  const name = page.getByTestId('se-load-del-name')
+  // 이름 따라 치기: 맞게 친 뒤의 글자는 회색 안내로 남고, 틀리면 붉은 글씨·안내 없음
+  await name.pressSequentially(A.name.slice(0, 6))
+  await expect(page.getByTestId('se-load-del-ghost')).toHaveText(A.name.slice(6))
+  await name.pressSequentially('!')
+  await expect(page.getByTestId('se-load-del-bad')).toHaveText('!')
+  await expect(page.getByTestId('se-load-del-ghost')).toHaveCount(0)
+  await expect(page.getByTestId('se-load-del-go')).toBeDisabled()
+  await name.press('Backspace')
+  await name.pressSequentially(A.name.slice(6))
+  await page.getByTestId('se-load-del-with-draft').check()
+  await page.getByTestId('se-load-del-go').click()
+  await expect(del).toHaveCount(0)
+  await expect(page.getByTestId('se-bar-deleted')).toBeVisible()
+  await expect(page.locator('[data-test="toast"]')).toContainText('시나리오와 내 초안을 지웠습니다') // 읽기 전용이 된 화면에서도 보인다
+  await expect(page.getByTestId('se-delete')).toHaveCount(0) // 지워진 화면에는 단추가 없다
+  expect(await draftNames()).toEqual([B.name]) // A 의 초안도 지워졌고 B 의 초안은 남았다
+  await expect.poll(async () => (await api.versions(A).catch(() => null))).toBeNull()
+
+  // 불러오기 창: B 는 "초안만 · 원본 지워짐" 행으로 남아 있다 → [초안만 남은 것 정리]
+  await page.getByTestId('se-load').click()
+  const dlg = page.getByTestId('se-load-dialog')
+  await dlg.getByTestId('se-load-process').selectOption(CVD.process)
+  await dlg.getByTestId('se-load-model').selectOption(CVD.model)
+  await dlg.getByTestId('se-load-search').fill('SEW_W_')
+  await expect(dlg.getByRole('gridcell', { name: B.name, exact: true })).toBeVisible()
+  await expect(dlg.getByRole('gridcell', { name: A.name, exact: true })).toHaveCount(0)
+  await dlg.getByTestId('se-load-cleanup').click()
+  const clean = page.getByTestId('se-load-clean')
+  await expect(clean.getByTestId('se-load-clean-row')).toHaveText([new RegExp(`${B.name}.*원본이 지워짐`)])
+  await expect(clean.getByTestId('se-load-clean-go')).toBeDisabled() // 처음엔 아무것도 고르지 않았다
+  await clean.getByTestId('se-load-clean-all').check()
+  await expect(clean.getByTestId('se-load-clean-go')).toHaveText('1개 지우기')
+  await clean.getByTestId('se-load-clean-go').click()
+  await expect(clean).toHaveCount(0)
+  await expect(dlg.locator('[data-test="toast"]')).toContainText('초안 1개를 지웠습니다')
+  await expect(dlg.getByRole('gridcell', { name: B.name, exact: true })).toHaveCount(0)
+  await expect(dlg.getByTestId('se-load-cleanup')).toHaveCount(0)
+  expect(await draftNames()).toEqual([])
+})
+

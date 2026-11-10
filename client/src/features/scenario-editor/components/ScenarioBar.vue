@@ -10,6 +10,7 @@ import PropertyDialog from './PropertyDialog.vue'
 import PerformanceDialog from './PerformanceDialog.vue'
 import DataCheckDialog from './DataCheckDialog.vue'
 import SaveDialog from './SaveDialog.vue'
+import ScenarioDeleteDialog from './ScenarioDeleteDialog.vue'
 
 defineOptions({ name: 'ScenarioBar' })
 // load = [불러오기], new = [새 시나리오](창은 화면이 연다 — 패널 확인을 먼저 거친다)
@@ -18,6 +19,13 @@ const store = useEditorStore()
 const edit = useEditStore()
 const flow = useSaveFlow()
 const showProperty = ref(false)
+// [시나리오 지우기…](2026-11-10): 쓸 수 있는 사용자가 서버에 있는 시나리오를 열었을 때만 — 새 시나리오(아직 배포 전)·원본이 지워진 초안·
+// 이미 지워진 화면에는 없다. 누르면 불러오기 창의 지우기 확인 창이 그대로 뜬다(이름을 그대로 쳐야 지워진다).
+const showDelete = ref(false)
+const canDelete = computed(() => {
+  const s = edit.session
+  return !!store.me?.canWrite && !!store.skeleton && !store.skeleton.isNew && !!s?.source && s.readOnly !== 'deleted' && !s.fromDraft?.gone
+})
 // 운영 속성 창 초점({ field, n }) — 저장 창의 운영 속성 막힌 줄이 그 칸을 알려 준다. [운영 속성 전체]는 초점 없이 보기로 연다.
 const propertyFocus = ref(null)
 function openProperty(field) {
@@ -166,6 +174,8 @@ const btn = 'h-8 px-3 rounded-lg text-sm'
       <button v-if="store.dataCheckCount" :class="btn" class="bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200" data-testid="se-data-check" @click="showDataCheck = true">
         {{ t('SEW_UI_DATA_CHECK') }} ⚠{{ store.dataCheckCount }}</button>
       <button v-if="sk" :class="btn" class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300" data-testid="se-property" @click="openProperty()">{{ t('SEW_UI_PROPERTY_ALL') }}</button>
+      <!-- 지우기는 다른 단추와 떨어진 맨 끝에, 채우지 않은 붉은 테두리로 둔다(잘못 누르지 않게) -->
+      <button v-if="canDelete" :class="btn" class="ml-2 border border-red-300 dark:border-red-800 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30" data-testid="se-delete" @click="showDelete = true">{{ t('SEW_LOAD_DELETE_OPEN') }}</button>
     </div>
     <!-- 시나리오 단위 경고·알림 줄(바 아래 칸 전체). 본문이 깨져 스텝이 0개일 때도 여기서 원인이 보인다. -->
     <div v-if="sk && scenarioNotes.length" ref="notesEl" tabindex="-1" class="basis-full flex flex-wrap gap-x-4 gap-y-0.5 text-xs outline-none px-1 -mx-1"
@@ -177,5 +187,6 @@ const btn = 'h-8 px-3 rounded-lg text-sm'
     <PerformanceDialog v-model="showPerformance" />
     <DataCheckDialog v-model="showDataCheck" />
     <SaveDialog @bar="focusBar" @property="openProperty" />
+    <ScenarioDeleteDialog v-model="showDelete" />
   </div>
 </template>
