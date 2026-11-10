@@ -300,6 +300,8 @@ test('⑥ 운영 속성 [적용] 뒤 배포 → 다시 열면 그 값, 다른 �
   await page.getByTestId('se-bar-description').fill('E2E 충돌 뒤 메일 제목')
   await openSave(page)
   await expect(page.getByTestId('se-save-conflict')).toContainText('열어 둔 사이 운영 속성이 바뀌었습니다')
+  // 배포하면 무엇이 바뀌는지 칸마다 보인다(지금 서버 값 → 이 화면 값) — 다른 탭이 끈 것을 이 화면의 켜짐으로 되돌리게 된다
+  await expect(page.getByTestId('se-save-conflict-diff')).toHaveText(['상태 꺼짐 → 켜짐'])
   await expect(page.getByTestId('se-save-deploy')).toBeDisabled()
   await expect(page.getByTestId('se-save-why')).toHaveText('운영 속성을 이 화면의 값으로 바꿀지 확인하세요.')
   await page.getByTestId('se-save-force').check()

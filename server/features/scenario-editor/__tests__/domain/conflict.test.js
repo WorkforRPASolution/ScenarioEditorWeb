@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { createRequire } from 'node:module'
-import { detectConflict, propertyDiff, PROPERTY_DIFF_KEYS } from '../../domain/conflict.js'
+import { detectConflict, propertyDiff, PROPERTY_DIFF_KEYS, PROPERTY_ALL_KEYS } from '../../domain/conflict.js'
 const require = createRequire(import.meta.url)
 
 describe('conflict', () => {
@@ -29,6 +29,28 @@ describe('conflict', () => {
     expect(PROPERTY_DIFF_KEYS).toEqual(['IsEnabled', 'NextScenarioIfSuccess', 'NextScenarioIfFail', 'Type', 'StartDelay'])
     expect(propertyDiff({ IsEnabled: true, Type: 1, StartDelay: 0 }, { IsEnabled: false, Type: 1, StartDelay: 0 }))
       .toEqual([{ key: 'IsEnabled', from: true, to: false }])
+  })
+})
+
+// 운영 속성 충돌 확인에 보일 차이(2026-11-10 사내 시험: 안내만으로는 배포하면 무엇이 어떻게 바뀌는지 알 수 없었다).
+// 배포는 운영 속성을 통째로 바꾸므로(InterfaceServer $set property) 다섯 칸이 아니라 전부를 본다. ID 는 대상이 정하고 Owners 는 배포가 잇는다.
+describe('propertyDiff — 전체 키(PROPERTY_ALL_KEYS)', () => {
+  it('ID·Owners 를 뺀 운영 속성 전부', () => {
+    expect(PROPERTY_ALL_KEYS).toEqual(['ScenarioTriggerType', 'DoNotSendEmailWhenSuccess', 'DoNotSendEmailWhenStop', 'DoNotSendEmailWhenFail', 'StartDelay', 'RetryCnt', 'RetryInterval',
+      'NextScenarioIfSuccess', 'NextScenarioIfFail', 'Type', 'DetailedDescriptionTitle', 'DetailedDescription', 'DescriptionFromConductor', 'EDMLink', 'IsEnabled', 'ExecutingLevel',
+      'IsShowDialog', 'Priority', 'LcncType', 'LowcodeExtension'])
+  })
+  it('다섯 칸 밖의 값(재시도·메일·우선순위)도 차이로 낸다, ID·Owners 는 내지 않는다', () => {
+    const cur = { ID: 'P-M-N', Owners: ['a@2026-11-10 10:00:00'], IsEnabled: false, RetryCnt: 2, DoNotSendEmailWhenFail: true, Priority: 5 }
+    const mine = { ID: 'P-M-N2', Owners: [], IsEnabled: true, RetryCnt: 0, DoNotSendEmailWhenFail: false, Priority: 10 }
+    expect(propertyDiff(cur, mine, PROPERTY_ALL_KEYS)).toEqual([
+      { key: 'DoNotSendEmailWhenFail', from: true, to: false }, { key: 'RetryCnt', from: 2, to: 0 }, { key: 'IsEnabled', from: false, to: true }, { key: 'Priority', from: 5, to: 10 }
+    ])
+    expect(propertyDiff(cur, mine)).toEqual([{ key: 'IsEnabled', from: false, to: true }]) // 기본은 덮어쓰기 차이의 다섯 칸
+  })
+  it('값이 같으면(Owners 줄만 늘었으면) 빈 목록', () => {
+    const cur = { Owners: ['a@1', 'b@2'], IsEnabled: true, Type: 1, RetryInterval: 10, Priority: 10, IsShowDialog: true }
+    expect(propertyDiff(cur, { ...cur, Owners: ['a@1'] }, PROPERTY_ALL_KEYS)).toEqual([])
   })
 })
 

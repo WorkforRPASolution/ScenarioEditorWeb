@@ -62,7 +62,19 @@ describe('checkService.check', () => {
   })
   it('운영 속성이 바뀌었으면(propertyRev 다름) property 충돌', async () => {
     const { svc, meta } = setup()
-    expect((await svc.check(user, meta({ propertyRev: 'x' }))).conflict).toEqual({ kind: 'property' })
+    const c = (await svc.check(user, meta({ propertyRev: 'x' }))).conflict
+    expect(c.kind).toBe('property')
+    expect(c.diff.some((d) => d.key === 'IsEnabled')).toBe(false) // 서버도 화면도 켜짐 — 차이 줄이 아니다
+  })
+  it('property 충돌에는 배포하면 바뀌는 값(지금 서버 값 → 이 화면 값)을 전체 키로 싣는다', async () => {
+    const base = (await setup().svc.check(user, setup().meta({ propertyRev: 'x' }))).conflict.diff // 시험 뼈대의 화면 값과 저장 문서가 원래 다른 칸
+    const stored = { ...propertyDoc, IsEnabled: false, RetryCnt: 3, Owners: [...propertyDoc.Owners, 'lee@2026-11-10 09:00:00@Scenario Deactivated'] }
+    const { svc, meta } = setup({ keyDocs: async (p, m, n) => [{ scname: n, property: stored }] })
+    const r = await svc.check(user, meta()) // 화면은 켜짐·재시도 0 을 아는 판, 지문은 옛 문서의 것
+    expect(r.conflict.kind).toBe('property')
+    const added = r.conflict.diff.filter((d) => !base.some((x) => x.key === d.key))
+    expect(added).toEqual([{ key: 'RetryCnt', from: 3, to: 0 }, { key: 'IsEnabled', from: false, to: true }]) // 다섯 칸 밖(RetryCnt)도, 속성 선언 순서로
+    expect(r.conflict.diff.some((d) => d.key === 'Owners' || d.key === 'ID')).toBe(false)
   })
   it('운영 문서가 없으면 deleted', async () => {
     const { svc, meta } = setup({ keyDocs: async () => [] })

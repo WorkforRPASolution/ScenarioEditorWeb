@@ -537,7 +537,7 @@ describe('충돌 (설계 §6.5)', () => {
     const r = await deploy(metaOf(mine, CF))
     expect(r.status, show(r)).toBe(409)
     expect(r.body.code).toBe('SAVE_CONFLICT')
-    expect(r.body.details.conflict).toEqual({ kind: 'property' })
+    expect(r.body.details.conflict).toEqual({ kind: 'property', diff: [{ key: 'IsEnabled', from: false, to: true }] })
     expectOk(await deploy(metaOf(mine, CF, { force: true })))
     expect((await propertyDoc(CF)).property.IsEnabled).toBe(true)
   })

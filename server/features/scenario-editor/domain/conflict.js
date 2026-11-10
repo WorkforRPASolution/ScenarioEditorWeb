@@ -2,6 +2,7 @@
 // 저장 직전 충돌 판단(설계 §6.3·§6.6). 같은 시나리오를 덮어쓸 때만 본다.
 const { lastOwner, propertyFromBson } = require('./propertyModel')
 const { withCsDefaults } = require('./csDefaults')
+const { SCHEMAS } = require('./csharpJson')
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k)
@@ -20,6 +21,9 @@ function detectConflict({ sameScenario, docExists, headCrtime, currentCrtime, pr
 }
 
 const PROPERTY_DIFF_KEYS = ['IsEnabled', 'NextScenarioIfSuccess', 'NextScenarioIfFail', 'Type', 'StartDelay']
+// 운영 속성 충돌 확인에 보일 차이는 전부를 본다 — 배포는 운영 속성을 통째로 바꾼다(InterfaceServer $set property).
+// ID 는 대상이 정하고 Owners 는 배포가 지금 문서의 것에 한 줄을 잇는다.
+const PROPERTY_ALL_KEYS = SCHEMAS.ScenarioProperty.map(([key]) => key).filter((key) => key !== 'ID' && key !== 'Owners')
 
 const FOLLOW_KEYS = new Set(['NextScenarioIfSuccess', 'NextScenarioIfFail'])
 
@@ -48,10 +52,10 @@ const same = (a, b) => {
 
 // 이미 있는 대상을 덮을 때 바뀌는 운영 속성(§6.6). 보낼 값은 조립과 같은 채움(withCsDefaults — 빠진 키는 C# 기본값)으로,
 // 지금 값은 열기와 같은 해석으로 맞춘 뒤 값으로 비교한다. from·to 도 맞춘 값이고 undefined 가 없다(JSON 에서 사라지지 않게).
-function propertyDiff(current, working) {
+function propertyDiff(current, working, keys = PROPERTY_DIFF_KEYS) {
   const w = withCsDefaults('ScenarioProperty', isObject(working) ? working : {})
   const out = []
-  for (const key of PROPERTY_DIFF_KEYS) {
+  for (const key of keys) {
     const from = comparable(key, currentValue(current, key)) ?? null
     const to = comparable(key, w[key]) ?? null
     if (!same(from, to)) out.push({ key, from, to })
@@ -59,4 +63,4 @@ function propertyDiff(current, working) {
   return out
 }
 
-module.exports = { detectConflict, PROPERTY_DIFF_KEYS, propertyDiff }
+module.exports = { detectConflict, PROPERTY_DIFF_KEYS, PROPERTY_ALL_KEYS, propertyDiff }

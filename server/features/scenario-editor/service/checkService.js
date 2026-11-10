@@ -2,7 +2,7 @@
 // 검사·배포가 함께 쓰는 준비 단계(prepare)와 POST /check(check). 편집 시나리오 해석 → 권한 → 기준 판·다른 판 그림 → 대상 상태·충돌.
 const { parseEditedScenario, EditedScenarioError } = require('../domain/editedScenario')
 const { checkScenario } = require('../domain/rules')
-const { detectConflict, propertyDiff } = require('../domain/conflict')
+const { detectConflict, propertyDiff, PROPERTY_ALL_KEYS } = require('../domain/conflict')
 const { propertyRev } = require('../domain/deployIdentity')
 const { pickCurrent } = require('../domain/versionPick')
 const { seError } = require('../errors')
@@ -115,6 +115,8 @@ function createCheckService({ repo, hash, scopes, opener, env = process.env }) {
         propertyRev: metaRev ?? null, currentPropertyRev: propertyRev(doc ? doc.property : undefined), owners: doc && doc.property ? doc.property.Owners : undefined
       })
     }
+    // 운영 속성 충돌에는 배포하면 바뀌는 값(지금 서버 값 → 이 화면 값)을 함께 싣는다 — 안내만으로는 무엇이 바뀌는지 알 수 없다(2026-11-10)
+    if (conflict && conflict.kind === 'property') conflict = { ...conflict, diff: propertyDiff(doc.property, edited.property, PROPERTY_ALL_KEYS) }
     const targetExists = !sameScenario && exists ? { diff: propertyDiff(doc.property, edited.property) } : null
     return { edited, sourceSkeleton, ctx, target: { process: t.process, model: t.model, name: t.name, exists, eqpCount, doc }, conflict, targetExists, extraBlocks }
   }
