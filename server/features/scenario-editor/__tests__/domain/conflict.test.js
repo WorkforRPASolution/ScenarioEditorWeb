@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { createRequire } from 'node:module'
-import { detectConflict, propertyDiff, PROPERTY_DIFF_KEYS, PROPERTY_ALL_KEYS } from '../../domain/conflict.js'
+import { detectConflict, propertyDiff, valueDiff, PROPERTY_DIFF_KEYS, PROPERTY_ALL_KEYS } from '../../domain/conflict.js'
 const require = createRequire(import.meta.url)
 
 describe('conflict', () => {
@@ -51,6 +51,22 @@ describe('propertyDiff — 전체 키(PROPERTY_ALL_KEYS)', () => {
   it('값이 같으면(Owners 줄만 늘었으면) 빈 목록', () => {
     const cur = { Owners: ['a@1', 'b@2'], IsEnabled: true, Type: 1, RetryInterval: 10, Priority: 10, IsShowDialog: true }
     expect(propertyDiff(cur, { ...cur, Owners: ['a@1'] }, PROPERTY_ALL_KEYS)).toEqual([])
+  })
+})
+
+// 값 차이가 없으면 충돌로 묻지 않는다(2026-11-10 사용자 결정) — 그 판단에 쓰는 "뜻이 다른 차이" 만 남긴다
+describe('valueDiff — 뜻이 같은 차이는 뺀다', () => {
+  it('이름 없는 후속({Name:""})과 없음(null)은 둘 다 "후속 없음" 이다 — 설명이 달라도', () => {
+    const diff = propertyDiff({ NextScenarioIfSuccess: { Name: '', Text: 'x' }, NextScenarioIfFail: null, IsEnabled: false },
+      { NextScenarioIfSuccess: null, NextScenarioIfFail: { Name: '', Text: '' }, IsEnabled: true }, PROPERTY_ALL_KEYS)
+    expect(diff.map((d) => d.key)).toEqual(['NextScenarioIfSuccess', 'NextScenarioIfFail', 'IsEnabled'])
+    expect(valueDiff(diff)).toEqual([{ key: 'IsEnabled', from: false, to: true }])
+  })
+  it('후속 이름이 있으면 차이로 남는다(이름·설명 어느 쪽이 달라도)', () => {
+    const diff = propertyDiff({ NextScenarioIfSuccess: { Name: 'A', Text: 'x' }, NextScenarioIfFail: { Name: 'B', Text: 'x' } },
+      { NextScenarioIfSuccess: null, NextScenarioIfFail: { Name: 'B', Text: 'y' } }, PROPERTY_ALL_KEYS)
+    expect(valueDiff(diff)).toEqual(diff)
+    expect(diff).toHaveLength(2)
   })
 })
 

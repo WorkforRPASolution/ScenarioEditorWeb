@@ -60,21 +60,27 @@ describe('checkService.check', () => {
     const r = await svc.check(user, meta())
     expect(r.conflict).toMatchObject({ kind: 'newVersion', by: 'kim' })
   })
-  it('운영 속성이 바뀌었으면(propertyRev 다름) property 충돌', async () => {
-    const { svc, meta } = setup()
+  // 지문(propertyRev)은 문서가 조금만 달라도 바뀐다(수정 이력 줄, 숫자 저장 형). 배포가 쓸 값과 지금 서버 값이 모든 칸에서 같으면
+  // 덮어써도 잃는 것이 없으므로 묻지 않는다(2026-11-10 사용자 결정).
+  it('지문이 달라도 값 차이가 없으면 충돌이 아니다 — 껐다 켠 뒤(수정 이력만 늘어남)·이름 없는 후속과 없음', async () => {
+    const screen = setup().edited().property // 이 화면이 배포할 값
+    const again = { ...screen, Owners: ['kim@2026-11-01 10:00:00', 'lee@2026-11-10 09:00:00@Scenario Deactivated', 'lee@2026-11-10 09:01:00@Scenario Activated'], NextScenarioIfFail: { Name: '', Text: '' } }
+    const { svc, meta } = setup({ keyDocs: async (p, m, n) => [{ scname: n, property: again }] })
+    expect((await svc.check(user, meta({ propertyRev: 'x' }))).conflict).toBeNull()
+  })
+  it('지문이 다르고 값도 다르면 property 충돌', async () => {
+    const screen = setup().edited().property
+    const { svc, meta } = setup({ keyDocs: async (p, m, n) => [{ scname: n, property: { ...screen, IsEnabled: screen.IsEnabled === false } }] })
     const c = (await svc.check(user, meta({ propertyRev: 'x' }))).conflict
-    expect(c.kind).toBe('property')
-    expect(c.diff.some((d) => d.key === 'IsEnabled')).toBe(false) // 서버도 화면도 켜짐 — 차이 줄이 아니다
+    expect(c).toEqual({ kind: 'property', diff: [{ key: 'IsEnabled', from: screen.IsEnabled === false, to: screen.IsEnabled !== false }] })
   })
   it('property 충돌에는 배포하면 바뀌는 값(지금 서버 값 → 이 화면 값)을 전체 키로 싣는다', async () => {
-    const base = (await setup().svc.check(user, setup().meta({ propertyRev: 'x' }))).conflict.diff // 시험 뼈대의 화면 값과 저장 문서가 원래 다른 칸
-    const stored = { ...propertyDoc, IsEnabled: false, RetryCnt: 3, Owners: [...propertyDoc.Owners, 'lee@2026-11-10 09:00:00@Scenario Deactivated'] }
+    const screen = setup().edited().property
+    const stored = { ...screen, IsEnabled: false, RetryCnt: 3, ID: 'OTHER-ID', Owners: ['kim@2026-11-01 10:00:00', 'lee@2026-11-10 09:00:00@Scenario Deactivated'] }
     const { svc, meta } = setup({ keyDocs: async (p, m, n) => [{ scname: n, property: stored }] })
     const r = await svc.check(user, meta()) // 화면은 켜짐·재시도 0 을 아는 판, 지문은 옛 문서의 것
-    expect(r.conflict.kind).toBe('property')
-    const added = r.conflict.diff.filter((d) => !base.some((x) => x.key === d.key))
-    expect(added).toEqual([{ key: 'RetryCnt', from: 3, to: 0 }, { key: 'IsEnabled', from: false, to: true }]) // 다섯 칸 밖(RetryCnt)도, 속성 선언 순서로
-    expect(r.conflict.diff.some((d) => d.key === 'Owners' || d.key === 'ID')).toBe(false)
+    // 다섯 칸 밖(RetryCnt)도 속성 선언 순서로, ID·Owners 는 내지 않는다
+    expect(r.conflict).toEqual({ kind: 'property', diff: [{ key: 'RetryCnt', from: 3, to: 0 }, { key: 'IsEnabled', from: false, to: true }] })
   })
   it('운영 문서가 없으면 deleted', async () => {
     const { svc, meta } = setup({ keyDocs: async () => [] })

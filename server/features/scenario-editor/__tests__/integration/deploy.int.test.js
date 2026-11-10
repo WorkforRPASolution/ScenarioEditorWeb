@@ -542,6 +542,26 @@ describe('충돌 (설계 §6.5)', () => {
     expect((await propertyDoc(CF)).property.IsEnabled).toBe(true)
   })
 
+  it('껐다가 다시 켠 뒤에는(값은 같고 수정 이력만 늘어남) 충돌 없이 배포된다 — 수정 이력은 그대로 잇는다', async () => {
+    const mine = await open(CF)
+    expect(mine.edited.property.IsEnabled).toBe(true)
+    for (const enabled of [false, true]) {
+      const t = await call('PUT', `${pathOf(CF)}/enabled`, { user: 'sew_multi', json: { enabled } })
+      expect(t.status, show(t)).toBe(200)
+    }
+    const toggled = await propertyDoc(CF)
+    expect(toggled.property.IsEnabled).toBe(true)
+    const c = await call('POST', '/check', { json: { ...metaOf(mine, CF) } })
+    expect(c.status, show(c)).toBe(200)
+    expect(c.body.data.conflict).toBeNull()
+    expectOk(await deploy(metaOf(mine, CF)))
+    const after = await propertyDoc(CF)
+    expect(after.property.IsEnabled).toBe(true)
+    // 수정 이력은 서버 문서의 것을 그대로 잇는다(같은 초의 같은 줄은 사내처럼 다시 넣지 않는다)
+    expect(after.property.Owners.slice(0, toggled.property.Owners.length)).toEqual(toggled.property.Owners)
+    expect(after.property.Owners.some((l) => /^sew_master@\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(l))).toBe(true)
+  })
+
   // delscenario 는 기준 판 파일까지 지운다. [다시 만듭니다](force)는 연 판의 디스크 캐시가 남아 있으면 그것을 기준 판으로 쓴다(2026-11-07 결정 (a)).
   const checkOf = (sk, target, extra = {}) => call('POST', '/check', { json: { target, propertyRev: sk.propertyRev, scenario: sk.edited, ...extra } })
   async function deleteScenario(k) {

@@ -63,4 +63,10 @@ function propertyDiff(current, working, keys = PROPERTY_DIFF_KEYS) {
   return out
 }
 
-module.exports = { detectConflict, PROPERTY_DIFF_KEYS, PROPERTY_ALL_KEYS, propertyDiff }
+// 뜻이 다른 차이만 남긴다 — 이름 없는 후속({Name:''})과 없음(null)은 둘 다 "후속 없음" 이다(화면 덮어쓰기 차이 overwriteDiff 와 같은 규칙).
+const followName = (v) => (isObject(v) && typeof v.Name === 'string' && v.Name !== '' ? v.Name : null)
+function valueDiff(diff) {
+  return diff.filter((d) => !(FOLLOW_KEYS.has(d.key) && followName(d.from) === null && followName(d.to) === null))
+}
+
+module.exports = { detectConflict, PROPERTY_DIFF_KEYS, PROPERTY_ALL_KEYS, propertyDiff, valueDiff }
