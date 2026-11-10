@@ -722,12 +722,13 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   }
 
   // ── 새 스텝(목업 startNew·addNew·newcancel, 조작판 7) ──
-  // 넣을 자리의 기준 줄: 고른 스텝, 새 스텝을 만드는 중이면 그 초안이 기억한 줄.
+  // 넣을 자리의 기준 줄: 고른 스텝, 새 스텝을 만드는 중이면 그 초안이 기억한 줄(고른 자리, 없으면 시작할 때 고른 줄).
   function insertAnchor() {
     const a = selection.value.anchor
     if (a && workingStep(a)) return a
     const p = panel.value
-    return p.isNew && p.insertBefore && workingStep(p.insertBefore) ? p.insertBefore : null
+    if (!p.isNew) return null
+    return [p.insertBefore, p.origin].find((uid) => uid && workingStep(uid)) ?? null
   }
   // 종류를 고르면 패널이 새 스텝 초안을 연다. 이미지·OCR 은 고른 스텝(없으면 기준 화면이 있는 첫 스텝)의 기준 화면에서 잡기를 시작한다.
   // 패널에 적용 안 한 변경이 있으면 먼저 묻는다(다른 스텝으로 가는 것과 같은 이동).
@@ -747,15 +748,24 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     session.value = next
     const draft = newStepDraft(kind, { uid, base })
     capture.value = null
-    panel.value = { uid, isNew: true, draft, base: draft, insertBefore: anchor, tried: false }
+    // insertBefore = 넣을 자리(그 줄 앞, null 이면 맨 끝 — 만드는 중에 바꿀 수 있다). origin = 시작할 때 고른 줄(기준 화면을 빌린 줄, 취소·되돌리기가 돌아갈 곳).
+    panel.value = { uid, isNew: true, draft, base: draft, insertBefore: anchor, origin: anchor, tried: false }
     // 표에서 고른 줄을 비운다(새 스텝은 아직 표에 없다). 패널을 먼저 바꿔 두어 초점 감시가 초안을 지우지 않는다.
     selection.value = emptySelection()
     useEditorStore().selectedUid = null
     if (CAP_FLOWS[kind]) startCapture(CAP_FLOWS[kind])
     return true
   }
-  // [N번 앞에 넣기](where 'before')·[맨 끝에 추가]('end'): 칸 검사를 통과해야 넣는다. 200개면 막고 알린다.
-  function addNew(where) {
+  // 넣을 자리 바꾸기(2026-11-10): 다 만든 뒤 자리를 정할 수 있게 — 넣고 나서 옮기지 않아도 된다. uid = 그 줄 앞, null = 맨 끝.
+  // 기준 화면·잡은 영역·넣은 값은 그대로다(자리와 기준 화면은 별개).
+  function setInsertBefore(uid) {
+    const p = panel.value
+    if (!p.isNew || (uid !== null && !workingStep(uid))) return false
+    panel.value = { ...p, insertBefore: uid }
+    return true
+  }
+  // [넣기]: 고른 자리(insertBefore — 그 줄 앞, 없으면 맨 끝)에 넣는다. where 'end' 면 자리와 상관없이 맨 끝. 칸 검사를 통과해야 넣는다. 200개면 막고 알린다.
+  function addNew(where = 'before') {
     const p = panel.value
     if (!editable.value || !p.isNew || !p.draft) return false
     const bad = firstError(panelErrors())
@@ -767,8 +777,8 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     const label = before ? t('SEW_CMD_INSERTED', { no: noOf(before) }) : t('SEW_CMD_ADDED_END')
     capture.value = null
     panel.value = emptyPanel()
-    // 되돌리면 넣기 전의 고른 줄로 돌아가게 스냅샷 전에 선택을 그 줄로 둔다
-    if (p.insertBefore && workingStep(p.insertBefore)) selection.value = { uids: [p.insertBefore], anchor: p.insertBefore }
+    // 되돌리면 넣기 전의 고른 줄(시작할 때 고른 줄)로 돌아가게 스냅샷 전에 선택을 그 줄로 둔다
+    if (p.origin && workingStep(p.origin)) selection.value = { uids: [p.origin], anchor: p.origin }
     run(label, () => ({ working: r.working, selection: { uids: [p.uid], anchor: p.uid } }))
     return true
   }
@@ -778,7 +788,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     if (!p.isNew) return false
     capture.value = null
     panel.value = emptyPanel()
-    const a = p.insertBefore && workingStep(p.insertBefore) ? p.insertBefore : null
+    const a = p.origin && workingStep(p.origin) ? p.origin : null
     if (a) setSelection({ uids: [a], anchor: a })
     syncPanel(a ?? focusUid())
     return true
@@ -791,6 +801,6 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     openPanel, syncPanel, updateDraft, panelErrors, applyPanel, discardPanel, requestFocus,
     guard, guardKeep, guardDrop, guardApply, setHeader, applyProperty, changeCount, unsavedCount, askLeave, leaveKeep, leaveDrop,
     undoCommand, redoCommand, copySelection, pasteClip, deleteSelection, moveSelected, editCell,
-    setUpload, requestView, startCapture, captureNext, cancelCapture, finishCapture, repick, findSpot, setAreaDrag, startNew, addNew, cancelNew
+    setUpload, requestView, startCapture, captureNext, cancelCapture, finishCapture, repick, findSpot, setAreaDrag, startNew, addNew, setInsertBefore, cancelNew
   }
 })

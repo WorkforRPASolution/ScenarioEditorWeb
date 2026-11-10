@@ -4,8 +4,11 @@ import { t, fieldMessage } from './messages'
 const finite = (v) => typeof v === 'number' && Number.isFinite(v)
 const fixed2 = (v) => (v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v).toFixed(2) : '')
 
-// edit(편집 중일 때만): marks = uid → 'nw'|'ch'|'pending'(바뀐 줄 표시), moved = 번호가 바뀐 갈 곳 `${uid}:${key}`, cut = 잘라 둔 uid.
+// edit(편집 중일 때만): marks = uid → 'nw'|'ch'|'pending'(바뀐 줄 표시), moved = 번호가 바뀐 갈 곳 `${uid}:${key}`, cut = 잘라 둔 uid,
+// insert = 만드는 새 스텝을 넣을 자리 { before: uid | null } — 그 줄에 ins 'before', null(맨 끝)이면 마지막 줄에 ins 'after'.
 export function toRows(steps, edit = null) {
+  const insertUid = edit?.insert ? (steps.some((s) => s.uid === edit.insert.before) ? edit.insert.before : null) : undefined
+  const lastUid = steps.length ? steps[steps.length - 1].uid : null
   return steps.map((s) => {
     const warn = s.notes.some((n) => n.level === 'warning')
     const row = {
@@ -22,7 +25,8 @@ export function toRows(steps, edit = null) {
     return {
       ...row, kind: s.condition.kind, mark: edit.marks?.get(s.uid) ?? '',
       onTrueMoved: !!edit.moved?.has(`${s.uid}:onTrue`), onFalseMoved: !!edit.moved?.has(`${s.uid}:onFalse`),
-      cut: !!edit.cut?.has(s.uid)
+      cut: !!edit.cut?.has(s.uid),
+      ins: insertUid === undefined ? '' : insertUid === s.uid ? 'before' : insertUid === null && s.uid === lastUid ? 'after' : ''
     }
   })
 }

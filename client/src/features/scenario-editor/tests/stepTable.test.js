@@ -12,6 +12,12 @@ const step = (over = {}) => ({ uid: 's0', no: 1, notes: [], condition: { kind: '
   descriptionToEmail: '<b>누르기</b>', ...over })
 
 describe('toRows', () => {
+  it('새 스텝을 넣을 자리 표시: 그 줄 앞이면 ins before, 맨 끝이면 마지막 줄에 ins after, 없으면 빈 값', () => {
+    const steps = [step(), step({ uid: 's1', no: 2 }), step({ uid: 's2', no: 3 })]
+    expect(toRows(steps, { insert: { before: 's1' } }).map((r) => r.ins)).toEqual(['', 'before', ''])
+    expect(toRows(steps, { insert: { before: null } }).map((r) => r.ins)).toEqual(['', '', 'after'])
+    expect(toRows(steps, {}).map((r) => r.ins)).toEqual(['', '', ''])
+  })
   it('사내 표 열 값', () => {
     expect(toRows([step()])[0]).toMatchObject({ uid: 's0', no: 1, warn: false, info: false, condition: '이미지', accept: '0.85', retry: 3, interval: 2, skip: false,
       onTrue: 'NEXT', onFalse: 'FAIL', action: '마우스 클릭', desc: '<b>누르기</b>' })

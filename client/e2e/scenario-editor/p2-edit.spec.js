@@ -61,8 +61,19 @@ test('① 잡아 넣기·삭제 막힘·다른 시나리오 붙여넣기·잘라
   const panel = page.getByTestId('se-detail')
   await expect(panel.locator('[data-station="find"] img')).toHaveCount(1) // 잘라 낸 찾을 그림(blob URL)이 패널에 보인다
   await panel.locator('[data-field="desc"]').fill('새 이미지 스텝')
-  await expect(page.getByTestId('se-new-before')).toHaveText('3번 앞에 넣기')
-  await page.getByTestId('se-new-before').click()
+  // 넣을 자리: 기본은 [+ 새 스텝]을 누를 때 고른 3번 앞. 다 만든 뒤에도 바꿀 수 있고(맨 끝 → 다시 3번 앞) 표에 초록 줄로 보인다
+  const where = page.getByTestId('se-new-where')
+  await expect(where).toHaveValue('s2')
+  await expect(where.locator('option:checked')).toContainText('3번 앞')
+  await expect(rowOf(page, 's2')).toHaveClass(/se-row-ins-before/)
+  await where.selectOption('')
+  await expect(rowOf(page, 's4')).toHaveClass(/se-row-ins-after/)
+  await expect(rowOf(page, 's2')).not.toHaveClass(/se-row-ins-before/)
+  await where.selectOption('s2')
+  await expect(rowOf(page, 's2')).toHaveClass(/se-row-ins-before/)
+  await expect(rowOf(page, 's4')).not.toHaveClass(/se-row-ins-after/)
+  await expect(panel.locator('[data-field="desc"]')).toHaveValue('새 이미지 스텝') // 만들던 값은 그대로
+  await page.getByTestId('se-new-add').click()
   await expect(rows(page)).toHaveCount(6)
   const added = await rowAt(page, 2).getAttribute('row-id')
   expect(['s0', 's1', 's2', 's3', 's4']).not.toContain(added)

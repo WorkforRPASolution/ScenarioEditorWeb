@@ -2,7 +2,7 @@
 // 오른쪽 편집 패널(목업 renderPanel·footHtml, 조작판 1·2·8·9·17): 머리(번호·설명·위아래)·읽어 주는 문장·설명 칸·안내 줄,
 // 실행 순서 레일(보는 곳 → 찾는 것 → 찾으면 하는 일 → 갈 곳)·선택, 아래 적용 줄([되돌리기]·[적용]). 쓸 수 있는 세션에서만 보인다.
 // 값은 [적용]을 눌러야 작업본(표)에 들어간다. 다른 줄로 가는 길은 editStore.guard 가 먼저 묻는다.
-// 새 스텝(목업 조작판 7, footHtml isNew): 머리 "+"·아래 [취소]·[N번 앞에 넣기]·[맨 끝에 추가]. 칸 오류는 [넣기]를 한 번 누른 뒤에 보인다(목업 S.bad).
+// 새 스텝(목업 조작판 7, footHtml isNew): 머리 "+"·아래 넣을 자리 고르기·[취소]·[넣기](목업의 [N번 앞에 넣기]·[맨 끝에 추가]를 2026-11-10 에 바꿨다). 칸 오류는 [넣기]를 한 번 누른 뒤에 보인다(목업 S.bad).
 import { ref, computed, watch, nextTick } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
 import { useEditStore } from '../stores/editStore'
@@ -91,7 +91,9 @@ async function focusField(field) {
 watch(() => edit.focusReq, (r) => { if (r) focusField(r.field) })
 const apply = () => edit.applyPanel()
 // 새 스텝: 넣을 자리(고른 스텝)의 지금 번호, [넣기]가 막힌 이유(칸마다 하나, 같은 문구는 한 번)
-const insertNo = computed(() => { const a = p.value.isNew ? p.value.insertBefore : null; const i = a ? steps.value.findIndex((s) => s.uid === a) : -1; return i >= 0 ? i + 1 : null })
+// 넣을 자리(2026-11-10): 스텝마다 "N번 앞 — 설명" 과 맨 끝(값 ''). 기본은 [+ 새 스텝]을 누를 때 고른 줄이고 만드는 중에 바꿀 수 있다.
+const whereOptions = computed(() => steps.value.map((s, i) => ({ value: s.uid, label: t('SEW_PANEL_NEW_WHERE_BEFORE', { no: i + 1 }) + (s.descriptionToEmail ? ` — ${s.descriptionToEmail}` : '') })))
+const whereValue = computed(() => (p.value.isNew && steps.value.some((s) => s.uid === p.value.insertBefore) ? p.value.insertBefore : ''))
 const newErrors = computed(() => [...new Set(Object.values(errs.value).filter((e) => e.level === 'error').map(fieldMessage))])
 
 const head = 'shrink-0 px-3 pt-2.5 pb-2 border-b border-gray-200 dark:border-dark-border'
@@ -151,11 +153,17 @@ const btnS = 'h-8 px-3 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray
         <div v-if="newErrors.length" class="mb-1.5 max-h-[62px] overflow-auto text-xs leading-normal text-red-700 dark:text-red-300" data-testid="se-new-errors">
           <div v-for="m in newErrors" :key="m">{{ m }}</div>
         </div>
+        <div class="mb-1.5 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+          <span class="shrink-0">{{ t('SEW_PANEL_NEW_WHERE') }}</span>
+          <select class="se-inp flex-1 min-w-0" data-testid="se-new-where" :value="whereValue" :aria-label="t('SEW_PANEL_NEW_WHERE')" @change="edit.setInsertBefore($event.target.value || null)">
+            <option v-for="o in whereOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+            <option value="">{{ t('SEW_PANEL_NEW_WHERE_END') }}</option>
+          </select>
+        </div>
         <div class="flex items-center gap-1.5">
           <button type="button" :class="btnS" data-testid="se-new-cancel" @click="edit.cancelNew()">{{ t('SEW_PANEL_NEW_CANCEL') }}</button>
           <span class="flex-1" />
-          <button v-if="insertNo" type="button" :class="btnS" data-testid="se-new-before" @click="edit.addNew('before')">{{ t('SEW_PANEL_NEW_BEFORE', { no: insertNo }) }}</button>
-          <button type="button" class="h-8 px-3 rounded-lg text-sm font-medium text-white bg-primary-500 hover:bg-primary-600" data-testid="se-new-end" @click="edit.addNew('end')">{{ t('SEW_PANEL_NEW_END') }}</button>
+          <button type="button" class="h-8 px-3 rounded-lg text-sm font-medium text-white bg-primary-500 hover:bg-primary-600" data-testid="se-new-add" @click="edit.addNew()">{{ t('SEW_PANEL_NEW_ADD') }}</button>
         </div>
       </div>
       <div v-else-if="changed.length" class="shrink-0 border-t border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 py-2" data-testid="se-panel-foot">

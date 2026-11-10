@@ -41,7 +41,9 @@ const sameRow = (a, b) => Object.keys(b).every((k) => (k.endsWith('Target') ? sa
 let prevRows = new Map()
 const rows = computed(() => {
   const c = edit.clip
-  const next = toRows(store.steps, editable.value ? { marks: marks.value, moved: edit.moved, cut: c?.cut ? new Set(c.uids) : null } : null)
+  // 새 스텝을 만드는 중이면 넣을 자리를 표에 가는 줄로 보인다(그 줄 위, 맨 끝이면 마지막 줄 아래)
+  const insert = edit.panel.isNew ? { before: edit.panel.insertBefore ?? null } : null
+  const next = toRows(store.steps, editable.value ? { marks: marks.value, moved: edit.moved, cut: c?.cut ? new Set(c.uids) : null, insert } : null)
   const out = next.map((r) => { const p = prevRows.get(r.uid); return p && sameRow(p, r) ? p : r })
   prevRows = new Map(out.map((r) => [r.uid, r]))
   return out
@@ -54,7 +56,7 @@ const defaultColDef = { sortable: false }
 const rowSelection = computed(() => (editable.value
   ? { mode: 'multiRow', checkboxes: false, headerCheckbox: false, enableClickSelection: false }
   : { mode: 'singleRow', checkboxes: false, enableClickSelection: 'enableSelection' }))
-const rowClassRules = { 'se-row-cut': (p) => !!p.data?.cut }
+const rowClassRules = { 'se-row-cut': (p) => !!p.data?.cut, 'se-row-ins-before': (p) => p.data?.ins === 'before', 'se-row-ins-after': (p) => p.data?.ins === 'after' }
 
 const baseColumns = [
   { field: 'no', headerName: 'NO', width: 72, cellRenderer: renderNo },

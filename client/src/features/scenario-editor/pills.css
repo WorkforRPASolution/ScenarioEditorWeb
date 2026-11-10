@@ -20,6 +20,9 @@ button.se-pill:hover { box-shadow: 0 0 0 2px #cbd5e1; }
 .se-cellnum-bad, .se-cellnum-bad:hover, .se-cellnum-bad:focus { border-color: #ef4444; }
 .se-cellcheck { width: 14px; height: 14px; vertical-align: middle; accent-color: #3b82f6; }
 .ag-row.se-row-cut { opacity: .45; }
+/* 만드는 새 스텝을 넣을 자리(패널 바닥 "넣을 자리") — 그 줄 위·마지막 줄 아래의 초록 줄. 줄 높이를 바꾸지 않게 안쪽 그림자로 긋는다. */
+.ag-row.se-row-ins-before { box-shadow: inset 0 3px 0 #22c55e; }
+.ag-row.se-row-ins-after { box-shadow: inset 0 -3px 0 #22c55e; }
 .dark .se-pill-next { background: #374151; color: #d1d5db; }
 .dark .se-pill-end-success { background: rgba(22, 101, 52, .35); color: #86efac; }
 .dark .se-pill-end-fail { background: rgba(153, 27, 27, .35); color: #fca5a5; }
