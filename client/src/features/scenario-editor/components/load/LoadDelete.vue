@@ -5,6 +5,7 @@ import { ref, computed, onMounted, nextTick } from 'vue'
 import { scenarioEditorApi as api } from '../../api'
 import { t, errorCode, errorMessage } from '../../messages'
 import { formatCrtime } from '../../format'
+import { typeAlong } from '../../editor/loadRows'
 
 const props = defineProps({
   process: { type: String, required: true },
@@ -21,6 +22,13 @@ const stage = ref('form') // form | busy | unknown
 const failure = ref(null) // { text, relist }
 const nameEl = ref(null)
 const same = computed(() => typed.value === props.row.name)
+// 이름 따라 치기(2026-11-10): placeholder 는 한 글자만 쳐도 통째로 사라져 긴 이름을 따라 칠 수 없다. 입력칸 글자는 투명하게 두고
+// 같은 자리·같은 글꼴의 층에 맞게 친 부분·틀린 부분(붉은 글씨)·아직 안 친 부분(회색 안내)을 그린다. 커서·선택은 입력칸 것이 보인다.
+// 테두리는 초점이 있을 때도 상태 색이 보이게 브라우저 기본 초점 테두리 대신 같은 색의 링을 쓴다(다 맞음 초록 · 틀린 글자 있음 빨강 · 치는 중 파랑).
+const along = computed(() => typeAlong(props.row.name, typed.value))
+const alongEl = ref(null)
+// 이름이 입력칸보다 길어 글이 옆으로 밀리면 층도 같이 민다
+function syncScroll() { if (alongEl.value && nameEl.value) alongEl.value.scrollLeft = nameEl.value.scrollLeft }
 const hint = computed(() => (!typed.value ? t('SEW_LOAD_DEL_NAME_EMPTY') : same.value ? t('SEW_LOAD_DEL_NAME_OK') : t('SEW_LOAD_DEL_NAME_DIFF')))
 const what = computed(() => (props.versionCount ? t('SEW_LOAD_DEL_WHAT_BODY', { n: props.versionCount }) : t('SEW_LOAD_DEL_WHAT_BODY_ALL')))
 const eqp = computed(() => t(props.row.isEnabled === false ? 'SEW_LOAD_DEL_EQP_OFF' : 'SEW_LOAD_DEL_EQP_ON', { model: props.model, n: props.eqpCount }))
@@ -75,9 +83,14 @@ const btn = 'h-9 px-4 rounded-lg text-sm font-medium disabled:opacity-50'
             <b>{{ t('SEW_LOAD_DEL_OPEN') }}</b>{{ t('SEW_LOAD_DEL_OPEN_BODY') }}{{ open.changes ? t('SEW_LOAD_DEL_OPEN_CHANGED', { n: open.changes }) : '' }}</div>
           <div>
             <label for="se-load-del-name" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('SEW_LOAD_DEL_NAME_LABEL') }}</label>
-            <input id="se-load-del-name" ref="nameEl" v-model="typed" class="w-full h-[34px] rounded-md border px-2.5 font-mono text-sm bg-white dark:bg-dark-bg text-gray-900 dark:text-gray-100"
-              :class="same ? 'border-green-500' : 'border-gray-300 dark:border-dark-border'" :placeholder="row.name" autocomplete="off" spellcheck="false" :disabled="stage === 'busy'"
-              data-testid="se-load-del-name" @keydown.enter.prevent="go" />
+            <div class="relative">
+              <input id="se-load-del-name" ref="nameEl" v-model="typed" class="block w-full h-[34px] rounded-md border px-2.5 font-mono text-sm bg-white dark:bg-dark-bg text-transparent caret-gray-900 dark:caret-gray-100 focus:outline-none focus:ring-2"
+                :class="same ? 'border-green-500 focus:ring-green-200 dark:focus:ring-green-900/60' : along.bad ? 'border-red-500 focus:ring-red-200 dark:focus:ring-red-900/60' : 'border-gray-300 dark:border-dark-border focus:border-primary-500 focus:ring-primary-100 dark:focus:ring-primary-900/50'" autocomplete="off" spellcheck="false" :disabled="stage === 'busy'"
+                data-testid="se-load-del-name" @keydown.enter.prevent="go" @input="syncScroll" @keyup="syncScroll" @click="syncScroll" @scroll="syncScroll" />
+              <div ref="alongEl" class="pointer-events-none absolute inset-0 flex items-center overflow-hidden rounded-md border border-transparent px-2.5 font-mono text-sm whitespace-pre" aria-hidden="true" data-testid="se-load-del-along">
+                <span v-if="along.ok" class="shrink-0 text-gray-900 dark:text-gray-100" data-testid="se-load-del-ok">{{ along.ok }}</span><span v-if="along.bad" class="shrink-0 text-red-600 dark:text-red-400" data-testid="se-load-del-bad">{{ along.bad }}</span><span v-if="along.ghost" class="shrink-0 text-gray-400 dark:text-gray-500" data-testid="se-load-del-ghost">{{ along.ghost }}</span>
+              </div>
+            </div>
             <div class="text-xs mt-1 min-h-[17px]" :class="same ? 'text-green-700 dark:text-green-400' : 'text-gray-500'" aria-live="polite">{{ hint }}</div>
           </div>
           <div v-if="failure" class="rounded-lg px-3 py-2 text-[13px] bg-red-50 text-red-800 dark:bg-red-900/30 dark:text-red-300" role="alert" data-testid="se-load-del-error">

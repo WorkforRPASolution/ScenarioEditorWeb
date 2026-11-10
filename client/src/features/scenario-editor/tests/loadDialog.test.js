@@ -393,6 +393,33 @@ describe('LoadDialog — 쓰기 동작과 내 초안', () => {
     expect(tid(w, 'se-load-delete').attributes('disabled')).toBeDefined()
   })
 
+  it('지우기 확인 창의 이름 따라 치기: 맞게 친 뒤의 남은 글자는 회색 안내로 남고, 틀린 글자부터 붉은 글씨이며 안내가 사라진다', async () => {
+    const { w } = setupW(); await flushPromises()
+    await pick(w, 'ALL_ACTIONS')
+    await tid(w, 'se-load-delete').trigger('click'); await flushPromises()
+    const name = tid(w, 'se-load-del-name')
+    const part = (k) => { const el = tid(w, `se-load-del-${k}`); return el.exists() ? el.element.textContent : '' }
+    const parts = () => [part('ok'), part('bad'), part('ghost')]
+    expect(name.attributes('placeholder')).toBeUndefined() // 한 글자 치면 통째로 사라지는 placeholder 대신 안내 층
+    expect(parts()).toEqual(['', '', 'ALL_ACTIONS'])
+    await name.setValue('ALL_')
+    expect(parts()).toEqual(['ALL_', '', 'ACTIONS'])
+    expect(name.classes()).not.toContain('border-red-500')
+    await name.setValue('ALL_X')
+    expect(parts()).toEqual(['ALL_', 'X', ''])
+    expect(name.classes()).toContain('border-red-500')
+    expect(tid(w, 'se-load-del-go').attributes('disabled')).toBeDefined()
+    await name.setValue('ALL_XCT')
+    expect(parts()).toEqual(['ALL_', 'XCT', ''])
+    await name.setValue('ALL_') // 틀린 글자를 지우면 안내가 다시 나온다
+    expect(parts()).toEqual(['ALL_', '', 'ACTIONS'])
+    await name.setValue('ALL_ACTIONS')
+    expect(parts()).toEqual(['ALL_ACTIONS', '', ''])
+    expect(name.classes()).toContain('border-green-500')
+    expect(tid(w, 'se-load-del-go').attributes('disabled')).toBeUndefined()
+    // 안내 층은 보이기만 한다 — 읽어 주는 프로그램에는 입력칸과 아래 문구만
+    expect(tid(w, 'se-load-del-along').attributes('aria-hidden')).toBe('true')
+  })
   it('지우기: 확인 창(버전 수·모델별 설비 수·남는 것), 이름이 대소문자까지 같아야 [지우기]가 켜지고, 지우면 행이 빠진다(초안이 있으면 "원본 지워짐" 행)', async () => {
     const { w } = setupW(); await flushPromises()
     await pick(w, 'ALL_ACTIONS')

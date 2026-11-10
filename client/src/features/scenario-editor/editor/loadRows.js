@@ -39,3 +39,14 @@ export function draftTarget(row, model) {
   if (!t || (t.model === model && t.name === row.name)) return null
   return t.model === model ? t.name : `${t.model} · ${t.name}`
 }
+
+// 지우기 확인 창의 이름 따라 치기(2026-11-10): 친 글(typed)을 이름(name)과 앞에서부터 글자(코드 포인트) 단위로 견준다.
+// ok = 맞게 친 앞부분, bad = 처음 다른 글자부터 끝까지(이름보다 길게 친 글자 포함), ghost = 아직 안 친 뒷부분(틀린 글자가 있으면 없음).
+export function typeAlong(name, typed) {
+  const want = Array.from(String(name ?? ''))
+  const got = Array.from(String(typed ?? ''))
+  let n = 0
+  while (n < got.length && n < want.length && got[n] === want[n]) n++
+  const bad = got.slice(n).join('')
+  return { ok: got.slice(0, n).join(''), bad, ghost: bad === '' ? want.slice(n).join('') : '' }
+}
