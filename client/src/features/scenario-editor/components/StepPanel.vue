@@ -94,6 +94,12 @@ const apply = () => edit.applyPanel()
 // 넣을 자리(2026-11-10): 스텝마다 "N번 앞 — 설명" 과 맨 끝(값 ''). 기본은 [+ 새 스텝]을 누를 때 고른 줄이고 만드는 중에 바꿀 수 있다.
 const whereOptions = computed(() => steps.value.map((s, i) => ({ value: s.uid, label: t('SEW_PANEL_NEW_WHERE_BEFORE', { no: i + 1 }) + (s.descriptionToEmail ? ` — ${s.descriptionToEmail}` : '') })))
 const whereValue = computed(() => (p.value.isNew && steps.value.some((s) => s.uid === p.value.insertBefore) ? p.value.insertBefore : ''))
+// 메일에 나올 번호: 새 스텝은 넣을 자리의 번호(그 줄 앞이면 그 줄 번호, 맨 끝이면 마지막 다음)
+const mailNo = computed(() => {
+  if (!p.value.isNew) return no.value
+  const at = steps.value.findIndex((s) => s.uid === whereValue.value)
+  return (at < 0 ? steps.value.length : at) + 1
+})
 const newErrors = computed(() => [...new Set(Object.values(errs.value).filter((e) => e.level === 'error').map(fieldMessage))])
 
 const head = 'shrink-0 px-3 pt-2.5 pb-2 border-b border-gray-200 dark:border-dark-border'
@@ -126,7 +132,7 @@ const btnS = 'h-8 px-3 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray
       <div class="flex-1 min-h-0 overflow-auto px-3 pt-2.5 pb-3.5">
         <div class="flex justify-between gap-2 mb-0.5 text-xs text-gray-500 dark:text-gray-400">
           <span>{{ t('SEW_PANEL_DESC') }}</span>
-          <em class="not-italic text-gray-400 truncate">{{ t('SEW_PANEL_DESC_MAIL', { n: p.isNew ? steps.length + 1 : no, desc: d.descriptionToEmail || '…' }) }}</em>
+          <em class="not-italic text-gray-400 truncate">{{ t('SEW_PANEL_DESC_MAIL', { n: mailNo, desc: d.descriptionToEmail || '…' }) }}</em>
         </div>
         <input class="se-inp" :class="{ 'se-inp-bad': errs.desc?.level === 'error', 'se-inp-ch': errs.desc?.level !== 'error' && changed.includes('desc') }" data-field="desc"
           :value="d.descriptionToEmail ?? ''" :placeholder="t('SEW_PANEL_DESC_PH')" :aria-label="t('SEW_PANEL_DESC_LABEL')" @input="setDesc($event.target.value)">
