@@ -37,8 +37,11 @@ function failure(fn, statusCode, code, message, status, text) {
 async function post(fn, body, timeoutMs, extra = {}) {
   let status = 0
   let text
+  const base = process.env.EARS_INTERFACE_URL || DEFAULT_URL
+  // http:// 없이 이름:포트만 적으면 fetch 가 이름을 scheme 으로 읽어 "unknown scheme" 으로 던진다 — 보낸 적이 없으니 결과 모름(504)이 아니라 503 이다
+  if (!/^https?:\/\//i.test(base)) throw failure(fn, 503, 'UPSTREAM_DOWN', 'InterfaceServer 에 연결하지 못했습니다', status, 'EARS_INTERFACE_URL 이 http:// 나 https:// 로 시작하지 않습니다')
   try {
-    const res = await _fetch(`${process.env.EARS_INTERFACE_URL || DEFAULT_URL}/EARS/Interface`, {
+    const res = await _fetch(`${base}/EARS/Interface`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', category: 'scenario', function: fn, ...extra.headers },
       body,

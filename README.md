@@ -154,7 +154,7 @@ notepad server\.env
 |---|---|
 | `MONGODB_URI` | 운영 EARS, 기존 계정(사내 WebManager 의 `MONGODB_URI` 와 같은 형식): `mongodb://<계정>:<비밀번호>@<호스트>:<포트>/EARS`. 원래 주소에 `?authSource=…` 가 있으면 그대로 둔다 |
 | `SE_WEB_DB_URI` | 사내 WebManager 의 `WEBMANAGER_DB_URI` 값을 **그대로** 넣는다(DB 이름·계정·`authSource` 가 이미 맞다). `WEBMANAGER_DB_URI` 라는 변수를 새로 만들지 않고 이 변수에 넣는다. `MONGODB_URI` 의 계정을 쓰려면 DB 이름만 WebManager DB 이름으로 바꾸고, **`authSource` 가 없으면 끝에 `?authSource=EARS` 를 붙인다**(안 붙이면 인증에 실패해 서버가 뜨지 않는다) |
-| `EARS_INTERFACE_URL` | 사내 InterfaceServer 주소(사내 WebManager 설정과 같은 값) |
+| `EARS_INTERFACE_URL` | 사내 InterfaceServer 주소. **`http://<호스트>:<포트>` 까지만** 적는다 — 앞의 `http://` 를 빼거나 뒤에 `/EARS/Interface`·`/` 를 붙이지 않는다(서버가 붙인다). 사내 WebManager 설정과 같은 값을 쓰되, 그 값이 이 PC 에서 닿지 않으면(쿠버네티스 안쪽 이름 등) 이 PC 의 데스크톱 편집기가 쓰는 주소를 쓴다: 데스크톱 편집기 로그의 `EARSInterfaceSrv: <호스트>:<포트>` 줄(시작할 때 찍는다) 앞에 `http://` 를 붙인다 |
 | `EARS_INTERFACE_MAX_REQUEST_MB` | 사내 InterfaceServer 의 `max-content-length`(MB). 모르면 `100` 그대로 |
 | `SE_USER_SINGLEID` | WRITE 권한이 있는 본인 SingleID |
 | 그대로 둘 것 | `HOST=127.0.0.1` · `SE_WEBMANAGER_DB=0` · `SE_DEV_USER_OVERRIDE=0` |
@@ -165,7 +165,9 @@ notepad server\.env
 node tools\inhouse\preflight.js
 ```
 
-`멈춤` 줄이 하나라도 있으면 그 줄의 안내대로 고치고 다시 돌린다. 멈춤이 있는 채로 시험하지 않는다. 보는 것: `HOST` 가 이 PC 인지, `SE_WEBMANAGER_DB=0`, 웹 전용 DB 주소가 있고 EARS 와 다른 DB 인지, InterfaceServer 주소·사용자, 다른 사용자로 바꾸기가 꺼졌는지. `tools` 설치 없이 된다.
+`멈춤` 줄이 하나라도 있으면 그 줄의 안내대로 고치고 다시 돌린다. 멈춤이 있는 채로 시험하지 않는다. 보는 것: `HOST` 가 이 PC 인지, `SE_WEBMANAGER_DB=0`, 웹 전용 DB 주소가 있고 EARS 와 다른 DB 인지, InterfaceServer 주소의 꼴과 이 PC 에서 그 주소에 연결되는지, 사용자, 다른 사용자로 바꾸기가 꺼졌는지. `tools` 설치 없이 된다.
+
+InterfaceServer 는 연결만 열었다 닫는다(요청은 보내지 않는다). `멈춤 INTERFACE_UNREACHABLE` 이면 배포가 "저장 서버에 연결하지 못했습니다" 로 끝난다 — 괄호 안 글자로 가린다: `ENOTFOUND` 는 이 PC 에서 모르는 이름, `ECONNREFUSED` 는 호스트·포트가 틀림, `TIMEOUT` 은 주소가 틀렸거나 방화벽. 3 의 `EARS_INTERFACE_URL` 안내대로 주소를 고친다.
 
 첫 실행에서는 서버를 아직 띄우지 않았으므로 `경고 SERVER_DOWN` 이 나오는 것이 맞다.
 
@@ -211,7 +213,7 @@ npm run dev
 3. **붙여넣기**: 빈 화면의 [붙여넣기]. 마지막 스텝의 갈 곳이 `NEXT` 면 `SUCCESS` 로 바꾼다.
 4. **끄기**: 바 [운영 속성 전체] → [수정] → 켜짐을 끈다 → [적용]. 새 시나리오는 사내처럼 켜진 채 만들어지므로 **꼭 끈다**. 바에 꺼짐이 보이는지 본다.
 5. **초안 저장**: [저장] → [초안 저장]. 새로고침해도 불러오기 창 [초안 이어서 열기]로 같은 스텝이 열리는지 본다. 초안을 저장한 뒤에는 저장할 이름을 바꾸지 않는다(배포한 적 없는 새 시나리오 초안을 다른 이름으로 배포하면 아직 막힌다 — SEW-017).
-6. **배포**: [저장] → [설비에 배포…] → "설비에 배포할까요?" 확인 창에서 **ID 가 `<공정>-<모델>-SEW_TEST_<날짜>` 이고 "꺼져 있어 실행 요청은 만들어지지 않습니다." 가 보일 때만** [배포]. 둘 중 하나라도 아니면 [돌아가기]. 새 버전 시각을 적는다. "배포됐는지 알 수 없습니다" 가 나오면 [버전 목록 확인]부터 누른다(바로 다시 배포하지 않는다). [버전 목록 확인]·[다시 쓰기]는 배포 때 적어 둔 값을 그대로 쓰므로, 데스크톱에서 그 시나리오를 저장한 뒤에는 누르지 않는다.
+6. **배포**: [저장] → [설비에 배포…] → "설비에 배포할까요?" 확인 창에서 **ID 가 `<공정>-<모델>-SEW_TEST_<날짜>` 이고 "꺼져 있어 실행 요청은 만들어지지 않습니다." 가 보일 때만** [배포]. 둘 중 하나라도 아니면 [돌아가기]. 새 버전 시각을 적는다. "배포됐는지 알 수 없습니다" 가 나오면 [버전 목록 확인]부터 누른다(바로 다시 배포하지 않는다). "배포하지 못했습니다 — 저장 서버에 연결하지 못했습니다" 면 아무것도 나가지 않은 것이다: `[server]` 창(또는 `server\logs` 의 그날 로그)의 `UPSTREAM_DOWN` 줄을 적고 사전 점검(4)을 다시 돌린다 — `interface setscenario UPSTREAM_DOWN … (ECONNREFUSED)` 처럼 `interface` 로 시작하면 InterfaceServer 주소 문제다. [버전 목록 확인]·[다시 쓰기]는 배포 때 적어 둔 값을 그대로 쓰므로, 데스크톱에서 그 시나리오를 저장한 뒤에는 누르지 않는다.
    - 배포가 끝나면 `mongo` 셸에서 본다(조회만 한다). **1건이고 `IsEnabled` 가 `false` 여야 한다.** 아니면 7번으로 가지 않고 바로 11번으로 지운다. 지우기가 막히면 데스크톱 편집기로 끄고 멈춘다.
      ```js
      db.getSiblingDB('EARS').SC_PROPERTY.find({ scname: NAME }, { _id: 0, process: 1, eqpModel: 1, scname: 1, scCategory: 1, trCategory: 1, 'property.IsEnabled': 1 }).toArray()

@@ -2,8 +2,10 @@
 // 사내 쓰기 시험(P2-E) 사전 점검 — 단독판을 사내 운영 EARS 에 붙여 저장·배포하기 전에 server/.env 를 본다(설계 §12, README "사내 쓰기 시험").
 // 쓰기: node tools/inhouse/preflight.js [--env server/.env] [--name SEW_TEST_yyyyMMdd --process <공정> --model <모델>]
 // 멈춤이 하나라도 있으면 종료 코드 1. 서버가 떠 있으면 쓰기 권한(/me)을, --name 을 주면 이름 규칙(/name-rule)과 그 이름이 이미 있는지(/scenarios)도 본다.
+// InterfaceServer 는 이 PC 에서 연결되는지만 본다(TCP 연결을 열었다 닫는다 — 요청은 보내지 않는다).
 // tools 의 패키지를 쓰지 않는다 — 사내 PC 는 tools 를 설치하지 않으므로 Node 내장과 server 의 dotenv·순수 모듈만 부른다.
 const { readFileSync, existsSync } = require('node:fs')
+const net = require('node:net')
 const { join, resolve } = require('node:path')
 const { createRequire } = require('node:module')
 const { isLoopbackHost, resolveListenAddress } = require('../../server/listen')
@@ -13,6 +15,8 @@ const ROOT = join(__dirname, '../..')
 const DEFAULT_EARS_URI = 'mongodb://localhost:27017/EARS' // 서버 연결 코드의 기본값
 const DEFAULT_IMAGE_CACHE_DIRS = new Set(['', './.cache/images', '.cache/images'])
 const TEST_NAME = /^SEW_TEST_\d{8}(_\d+)?$/
+// 서버가 이 값 뒤에 /EARS/Interface 를 붙여 부른다 — http(s)://호스트[:포트] 까지만이어야 한다
+const INTERFACE_URL = /^https?:\/\/[^/?#\s]+$/i
 
 const blank = (v) => typeof v !== 'string' || v.trim() === ''
 const stop = (code, message) => ({ level: 'stop', code, message })
@@ -32,12 +36,51 @@ function checkEnv(env) {
     out.push(stop('WEB_DB_SAME_AS_EARS', `SE_WEB_DB_URI 의 DB 이름(${mongoDbName(env.SE_WEB_DB_URI)})이 운영 EARS(MONGODB_URI)와 같다 — 초안·배포 기록이 운영 EARS 에 생긴다. 다른 DB 이름을 쓴다(서버도 이대로는 뜨지 않는다)`))
   }
   if (blank(env.EARS_INTERFACE_URL)) out.push(stop('INTERFACE_URL_MISSING', 'EARS_INTERFACE_URL 이 비었다 — 배포할 곳이 없다. 사내 InterfaceServer 주소를 넣는다'))
+  else if (!interfaceTarget(env)) out.push(stop('INTERFACE_URL_FORMAT', 'EARS_INTERFACE_URL 은 http://<호스트>:<포트> 꼴이어야 한다 — 앞에 http:// 가 없거나, 뒤에 경로(/EARS/Interface)나 / 가 붙었다. 서버가 뒤에 /EARS/Interface 를 붙여 부른다. 이대로면 배포가 "저장 서버에 연결하지 못했습니다" 나 거절로 끝난다'))
   if (blank(env.SE_USER_SINGLEID)) out.push(stop('USER_MISSING', 'SE_USER_SINGLEID 가 비었다 — 본인 SingleID(WRITE 권한)를 넣는다'))
   if (env.SE_DEV_USER_OVERRIDE === '1') out.push(stop('DEV_USER_OVERRIDE_ON', 'SE_DEV_USER_OVERRIDE=1 — 브라우저에서 다른 사용자로 바꿔 저장할 수 있다. 0 으로 둔다'))
   if (DEFAULT_IMAGE_CACHE_DIRS.has(String(env.IMAGE_CACHE_DIR ?? '').trim())) {
     out.push(warn('IMAGE_CACHE_DEFAULT', 'IMAGE_CACHE_DIR 이 기본값(server\\.cache\\images) — 운영 시나리오의 기준 화면이 저장소 폴더 안에 쌓인다(상한 IMAGE_CACHE_MAX_MB). 디스크 여유를 보고, 다른 곳에 두려면 경로를 넣는다'))
   }
   return out
+}
+
+// EARS_INTERFACE_URL 의 호스트·포트. 꼴이 틀리면 null.
+function interfaceTarget(env) {
+  const raw = String(env.EARS_INTERFACE_URL ?? '').trim()
+  if (!INTERFACE_URL.test(raw)) return null
+  let url
+  try { url = new URL(raw) } catch { return null }
+  return { host: url.hostname, port: Number(url.port) || (url.protocol === 'https:' ? 443 : 80) }
+}
+
+const CONNECT_TIMEOUT_MS = 3000
+
+// TCP 연결을 열었다 바로 닫는다. 되면 null, 안 되면 오류 코드(ENOTFOUND·ECONNREFUSED·TIMEOUT …).
+function tcpConnect(host, port, timeoutMs) {
+  return new Promise((done) => {
+    const socket = net.connect({ host, port })
+    const end = (result) => { socket.destroy(); done(result) }
+    socket.setTimeout(timeoutMs, () => end('TIMEOUT'))
+    socket.once('connect', () => end(null))
+    socket.once('error', (e) => end((e && e.code) || 'ERROR'))
+  })
+}
+
+const UNREACHABLE_WHY = {
+  ENOTFOUND: '이 PC 에서 그 이름을 찾지 못한다(쿠버네티스 안쪽 이름이면 PC 에서는 닿지 않는다)',
+  EAI_AGAIN: '이 PC 에서 그 이름을 찾지 못한다(쿠버네티스 안쪽 이름이면 PC 에서는 닿지 않는다)',
+  ECONNREFUSED: '그 포트에서 받는 서버가 없다(호스트·포트를 본다)'
+}
+
+// InterfaceServer 에 이 PC 에서 연결되는가. 주소가 없거나 꼴이 틀리면 보지 않는다(checkEnv 가 이미 멈춘다).
+async function interfaceCheck({ env, connect = tcpConnect }) {
+  const target = interfaceTarget(env)
+  if (!target) return []
+  const code = await connect(target.host, target.port, CONNECT_TIMEOUT_MS)
+  if (code === null) return []
+  const why = UNREACHABLE_WHY[code] ?? '응답이 없다(주소가 틀렸거나 방화벽에 막혔다)'
+  return [stop('INTERFACE_UNREACHABLE', `InterfaceServer ${target.host}:${target.port} 에 연결하지 못했다(${code}) — ${why}. 이대로면 배포가 "저장 서버에 연결하지 못했습니다" 로 끝난다. 이 PC 의 데스크톱 편집기가 쓰는 주소로 바꾼다(README "사내 쓰기 시험" 3)`)]
 }
 
 // 시험 시나리오 이름. 다른 시나리오에 쓰지 않게 SEW_TEST_yyyyMMdd(_n) 만 받는다(계획 Global Constraints).
@@ -119,14 +162,14 @@ function readEnvFile(path) {
 
 const LABEL = { stop: '멈춤', warn: '경고' }
 
-async function run({ argv, readEnv = readEnvFile, fetch = globalThis.fetch, log = console.log }) {
+async function run({ argv, readEnv = readEnvFile, fetch = globalThis.fetch, connect = tcpConnect, log = console.log }) {
   const args = parseArgs(argv)
   const env = readEnv(args.env)
   if (!env) {
     log(`멈춤  ENV_FILE_MISSING  ${args.env} 이 없다 — server\\.env.inhouse.example 을 server\\.env 로 복사해 채운다`)
     return 1
   }
-  const findings = [...checkEnv(env), ...checkName(args), ...(await remoteChecks({ api: apiBase(env), fetch, ...args }))]
+  const findings = [...checkEnv(env), ...(await interfaceCheck({ env, connect })), ...checkName(args), ...(await remoteChecks({ api: apiBase(env), fetch, ...args }))]
   for (const f of findings) log(`${LABEL[f.level]}  ${f.code}  ${f.message}`)
   const stops = findings.filter((f) => f.level === 'stop').length
   const warns = findings.length - stops
@@ -134,7 +177,7 @@ async function run({ argv, readEnv = readEnvFile, fetch = globalThis.fetch, log 
   return stops ? 1 : 0
 }
 
-module.exports = { checkEnv, checkName, remoteChecks, parseArgs, apiBase, run }
+module.exports = { checkEnv, checkName, remoteChecks, interfaceCheck, parseArgs, apiBase, run }
 
 if (require.main === module) {
   run({ argv: process.argv.slice(2) }).then((code) => { process.exitCode = code }, (err) => { console.error(err.message); process.exitCode = 1 })

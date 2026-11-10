@@ -112,6 +112,11 @@ describe('끊김: 503 은 요청이 가지 않았을 때만이다 (저장 = 배�
     process.env.EARS_INTERFACE_URL = 'not a url'
     await expect(setScenario(scenario)).rejects.toMatchObject({ statusCode: 503, code: 'UPSTREAM_DOWN' })
   })
+  // http:// 없이 이름:포트만 적으면 fetch 가 이름을 scheme 으로 읽어 "unknown scheme" 으로 던진다 — 보낸 적이 없으니 결과 모름(504)이 아니다
+  it.each(['is-host:8080', 'localhost:8080', 'ftp://is-host:8080'])('http(s) 로 시작하지 않는 주소(%s)는 보내지 않았으니 503 이다', async (url) => {
+    process.env.EARS_INTERFACE_URL = url
+    await expect(setScenario(scenario)).rejects.toMatchObject({ statusCode: 503, code: 'UPSTREAM_DOWN' })
+  })
   it.each(['ENOTFOUND', 'EHOSTUNREACH', 'ENETUNREACH', 'EAI_AGAIN', 'UND_ERR_CONNECT_TIMEOUT'])('연결 단계 오류 %s 는 503 이다', async (code) => {
     _setDeps({ fetch: async () => { throw Object.assign(new TypeError('fetch failed'), { cause: { code } }) } })
     await expect(setScenario(scenario)).rejects.toMatchObject({ statusCode: 503, code: 'UPSTREAM_DOWN' })

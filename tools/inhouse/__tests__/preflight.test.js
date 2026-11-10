@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
-const { checkEnv, checkName, remoteChecks, parseArgs, apiBase, run } = require('../preflight')
+const { checkEnv, checkName, remoteChecks, interfaceCheck, parseArgs, apiBase, run } = require('../preflight')
 
 // 사내 쓰기 시험 프로필(server/.env.inhouse.example 을 채운 꼴) — 멈춤도 경고도 없다
 const GOOD = {
@@ -26,6 +26,10 @@ describe('checkEnv — 사내 쓰기 시험 설정 점검', () => {
     ['SE_WEB_DB_URI 가 운영 EARS 와 같은 DB(쿼리 무시)', { SE_WEB_DB_URI: 'mongodb://rw:pw@prod-mongo:27017/EARS' }, 'stop:WEB_DB_SAME_AS_EARS'],
     ['대소문자만 다른 같은 DB', { SE_WEB_DB_URI: 'mongodb://rw:pw@other:27017/ears?x=1' }, 'stop:WEB_DB_SAME_AS_EARS'],
     ['EARS_INTERFACE_URL 없음', { EARS_INTERFACE_URL: ' ' }, 'stop:INTERFACE_URL_MISSING'],
+    ['EARS_INTERFACE_URL 에 http:// 가 없음(IP)', { EARS_INTERFACE_URL: '10.1.2.3:8080' }, 'stop:INTERFACE_URL_FORMAT'],
+    ['EARS_INTERFACE_URL 에 http:// 가 없음(이름)', { EARS_INTERFACE_URL: 'prod-is:8080' }, 'stop:INTERFACE_URL_FORMAT'],
+    ['EARS_INTERFACE_URL 뒤에 경로', { EARS_INTERFACE_URL: 'http://prod-is:8080/EARS/Interface' }, 'stop:INTERFACE_URL_FORMAT'],
+    ['EARS_INTERFACE_URL 끝에 /', { EARS_INTERFACE_URL: 'http://prod-is:8080/' }, 'stop:INTERFACE_URL_FORMAT'],
     ['SE_USER_SINGLEID 없음', { SE_USER_SINGLEID: '' }, 'stop:USER_MISSING'],
     ['SE_DEV_USER_OVERRIDE 가 1', { SE_DEV_USER_OVERRIDE: '1' }, 'stop:DEV_USER_OVERRIDE_ON'],
     ['IMAGE_CACHE_DIR 이 기본값', { IMAGE_CACHE_DIR: './.cache/images' }, 'warn:IMAGE_CACHE_DEFAULT'],
@@ -81,6 +85,40 @@ const API = 'http://127.0.0.1:3100/api/scenario-editor'
 const ME_OK = ['/me', [200, { success: true, data: { singleid: 'hong.gildong', canWrite: true } }]]
 const LIST = '/scenarios?process=CVD&model=MODEL_A'
 const NO_RULE = ['/name-rule', [200, { success: true, data: { exists: false, rules: [] } }]]
+describe('interfaceCheck — InterfaceServer 에 연결되는지(TCP 연결만, 요청은 보내지 않는다)', () => {
+  const calls = []
+  const connectAs = (result) => async (host, port, ms) => { calls.push([host, port, ms]); return result }
+  it('연결되면 통과 — 주소의 호스트·포트로 붙어 본다(포트가 없으면 http 80·https 443)', async () => {
+    calls.length = 0
+    expect(await interfaceCheck({ env: GOOD, connect: connectAs(null) })).toEqual([])
+    expect(await interfaceCheck({ env: { ...GOOD, EARS_INTERFACE_URL: ' http://10.1.2.3 ' }, connect: connectAs(null) })).toEqual([])
+    expect(await interfaceCheck({ env: { ...GOOD, EARS_INTERFACE_URL: 'https://is.example' }, connect: connectAs(null) })).toEqual([])
+    expect(calls.map((c) => c.slice(0, 2))).toEqual([['prod-is', 8080], ['10.1.2.3', 80], ['is.example', 443]])
+    for (const c of calls) expect(c[2]).toBeGreaterThan(0)
+  })
+  it.each([
+    ['ENOTFOUND', '이름을 찾지 못한다'],
+    ['ECONNREFUSED', '받는 서버가 없다'],
+    ['TIMEOUT', '응답이 없다'],
+    ['EHOSTUNREACH', '응답이 없다']
+  ])('연결하지 못하면 멈춤 — %s', async (code, phrase) => {
+    const out = await interfaceCheck({ env: GOOD, connect: connectAs(code) })
+    expect(codes(out)).toEqual(['stop:INTERFACE_UNREACHABLE'])
+    expect(out[0].message).toContain('prod-is:8080')
+    expect(out[0].message).toContain(code)
+    expect(out[0].message).toContain(phrase)
+  })
+  it('주소가 없거나 꼴이 틀리면 붙어 보지 않는다(설정 점검이 이미 멈춘다), 문구에 계정을 싣지 않는다', async () => {
+    calls.length = 0
+    for (const v of ['', '10.1.2.3:8080', 'http://prod-is:8080/EARS/Interface']) {
+      expect(await interfaceCheck({ env: { ...GOOD, EARS_INTERFACE_URL: v }, connect: connectAs('ECONNREFUSED') })).toEqual([])
+    }
+    expect(calls).toEqual([])
+    const out = await interfaceCheck({ env: { ...GOOD, EARS_INTERFACE_URL: 'http://user:secretpw@prod-is:8080' }, connect: connectAs('ECONNREFUSED') })
+    expect(JSON.stringify(out)).not.toContain('secretpw')
+  })
+})
+
 const RULES = [{ groupLevel: '1', name: 'ALARM' }, { groupLevel: '2', name: 'RECOVERY' }]
 
 describe('remoteChecks — 떠 있는 서버에 묻기', () => {
@@ -149,11 +187,18 @@ describe('명령 줄', () => {
   it('멈춤이 하나라도 있으면 종료 코드 1, 경고만이면 0 — 결과를 줄마다 찍는다', async () => {
     const lines = []
     const { fetch } = fakeFetch(Object.fromEntries([ME_OK]))
-    expect(await run({ argv: [], readEnv: () => ({ ...GOOD, IMAGE_CACHE_DIR: '' }), fetch, log: (l) => lines.push(l) })).toBe(0)
+    const connect = async () => null
+    expect(await run({ argv: [], readEnv: () => ({ ...GOOD, IMAGE_CACHE_DIR: '' }), fetch, connect, log: (l) => lines.push(l) })).toBe(0)
     expect(lines.join('\n')).toContain('IMAGE_CACHE_DEFAULT')
     lines.length = 0
-    expect(await run({ argv: [], readEnv: () => ({ ...GOOD, HOST: '0.0.0.0' }), fetch, log: (l) => lines.push(l) })).toBe(1)
+    expect(await run({ argv: [], readEnv: () => ({ ...GOOD, HOST: '0.0.0.0' }), fetch, connect, log: (l) => lines.push(l) })).toBe(1)
     expect(lines.join('\n')).toContain('HOST_NOT_LOOPBACK')
+  })
+  it('InterfaceServer 에 연결하지 못하면 멈춤(종료 코드 1)', async () => {
+    const lines = []
+    const { fetch } = fakeFetch(Object.fromEntries([ME_OK]))
+    expect(await run({ argv: [], readEnv: () => GOOD, fetch, connect: async () => 'ECONNREFUSED', log: (l) => lines.push(l) })).toBe(1)
+    expect(lines.join('\n')).toContain('INTERFACE_UNREACHABLE')
   })
   it('설정 파일이 없으면 멈춤(종료 코드 1)', async () => {
     const lines = []
