@@ -88,6 +88,14 @@ describe('전 종류 열기 (완료 조건 1·3)', () => {
     }
     expect(res.status).toBe(200)
     const sk = (await res.json()).data
+    // 불러오기 목록의 스텝 수·용량(2026-11-10): 열어 본 스텝 수와 같고, 용량은 그 판 GridFS 파일의 길이다(운영과 같은 Mongo 4.2.6 에서 도는 집계).
+    if (row) {
+      const { earsConnection } = require('../../../../shared/db/connection')
+      const files = await earsConnection.db.collection('fs.files').find({ 'metadata.process': meta.process, 'metadata.model': meta.model, 'metadata.name': meta.name, 'metadata.crtime': sk.version.crtime },
+        { projection: { length: 1, uploadDate: 1 } }).sort({ uploadDate: -1 }).limit(1).toArray()
+      expect(row.stepCount ?? 0).toBe(sk.steps.length)
+      expect(row.sizeBytes).toBe(files[0].length)
+    }
     if (exp.header) expect(sk.header.targetWindow).toMatchObject(exp.header.targetWindow)
     if (exp.scenarioNotes) expect(sk.notes.map((n) => n.code).sort()).toEqual([...exp.scenarioNotes].sort())
     if (exp.performance) expect(sk.performance).toMatchObject(exp.performance)

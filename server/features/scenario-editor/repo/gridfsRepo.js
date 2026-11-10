@@ -45,6 +45,26 @@ function createGridfsRepository(getDb, mongo) {
     },
     async findFile(fileId) {
       return files().findOne({ _id: fileId }, { maxTimeMS: MAX })
+    },
+    // 불러오기 목록의 스텝 수·용량(2026-11-10 사용자 요청). versions = [{ name, crtime }](현재 판) → Map 이름 → { stepCount, sizeBytes }.
+    // 파일 이름으로 찾아 기본 인덱스를 탄다(이름이 규칙과 다른 파일은 빠진다 — 목록에서는 빈칸). 본문(metadata.body, 최대 16MB)은 가져오지 않고
+    // Mongo 안에서 스텝 수만 센다. 용량은 파일 길이(기준 화면 묶음 BI)다 — 본문 크기를 재는 $bsonSize 는 4.4 부터라 운영(4.2.6)에서 못 쓴다.
+    // 같은 판이 다시 올라와 파일이 둘이면 열기와 같이 가장 늦게 올린 파일을 본다.
+    async findVersionStats(process, model, versions) {
+      const out = new Map()
+      if (!versions.length) return out
+      const nameOf = new Map(versions.map((v) => [`${process}.${model}.${v.name}.${v.crtime}`, v.name]))
+      const docs = await files().aggregate([
+        { $match: { filename: { $in: [...nameOf.keys()] }, 'metadata.process': process, 'metadata.model': model } },
+        { $project: { _id: 0, filename: 1, uploadDate: 1, length: 1, steps: { $cond: [{ $isArray: ['$metadata.body.Step'] }, { $size: '$metadata.body.Step' }, null] } } }
+      ], { maxTimeMS: MAX }).toArray()
+      const latest = new Map()
+      for (const d of docs) if (!latest.has(d.filename) || d.uploadDate > latest.get(d.filename).uploadDate) latest.set(d.filename, d)
+      for (const [filename, name] of nameOf) {
+        const d = latest.get(filename)
+        if (d) out.set(name, { stepCount: Number.isInteger(d.steps) ? d.steps : null, sizeBytes: typeof d.length === 'number' ? d.length : null })
+      }
+      return out
     }
   })
   return { ...queries, streamContent }

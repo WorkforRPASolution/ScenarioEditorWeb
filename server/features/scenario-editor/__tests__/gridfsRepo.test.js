@@ -83,3 +83,33 @@ describe('streamContent', () => {
     await expect(read(repoReading(body).repo.streamContent({ _id: 'f', length: 9 }))).rejects.toMatchObject({ statusCode: 504, code: 'UPSTREAM_TIMEOUT' })
   })
 })
+
+// 불러오기 목록의 스텝 수·용량(2026-11-10). 운영 Mongo 는 4.2.6 — $bsonSize(4.4~)를 쓰지 않는다.
+describe('findVersionStats', () => {
+  function fakeAggregate(docs) {
+    const calls = []
+    const db = { collection: (name) => ({ aggregate: (pipeline, options) => { calls.push({ name, pipeline, options }); return { toArray: async () => docs } } }) }
+    return { calls, repo: createGridfsRepository(() => db, {}) }
+  }
+  it('현재 판 파일을 파일 이름으로 찾고(기본 인덱스), 본문은 가져오지 않고 Mongo 안에서 스텝 수만 센다', async () => {
+    const { repo, calls } = fakeAggregate([{ filename: 'P.M.A.200', uploadDate: new Date(1), length: 1000, steps: 18 }, { filename: 'P.M.B.50', uploadDate: new Date(1), length: 0, steps: null }])
+    const out = await repo.findVersionStats('P', 'M', [{ name: 'A', crtime: 200 }, { name: 'B', crtime: 50 }, { name: 'C', crtime: 7 }])
+    expect([...out]).toEqual([['A', { stepCount: 18, sizeBytes: 1000 }], ['B', { stepCount: null, sizeBytes: 0 }]])
+    expect(calls).toHaveLength(1)
+    expect(calls[0].name).toBe('fs.files')
+    expect(calls[0].options.maxTimeMS).toBeGreaterThan(0)
+    const [match, project] = calls[0].pipeline
+    expect(match).toEqual({ $match: { filename: { $in: ['P.M.A.200', 'P.M.B.50', 'P.M.C.7'] }, 'metadata.process': 'P', 'metadata.model': 'M' } })
+    expect(project).toEqual({ $project: { _id: 0, filename: 1, uploadDate: 1, length: 1, steps: { $cond: [{ $isArray: ['$metadata.body.Step'] }, { $size: '$metadata.body.Step' }, null] } } })
+    expect(JSON.stringify(calls[0].pipeline)).not.toContain('$bsonSize')
+  })
+  it('같은 판이 다시 올라와 파일이 둘이면 가장 늦게 올린 파일의 값이다(열기와 같다)', async () => {
+    const { repo } = fakeAggregate([{ filename: 'P.M.A.200', uploadDate: new Date(5), length: 10, steps: 2 }, { filename: 'P.M.A.200', uploadDate: new Date(9), length: 30, steps: 3 }, { filename: 'P.M.A.200', uploadDate: new Date(7), length: 20, steps: 1 }])
+    expect((await repo.findVersionStats('P', 'M', [{ name: 'A', crtime: 200 }])).get('A')).toEqual({ stepCount: 3, sizeBytes: 30 })
+  })
+  it('물을 판이 없으면 질의하지 않는다', async () => {
+    const { repo, calls } = fakeAggregate([])
+    expect((await repo.findVersionStats('P', 'M', [])).size).toBe(0)
+    expect(calls).toHaveLength(0)
+  })
+})

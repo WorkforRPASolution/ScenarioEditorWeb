@@ -6,7 +6,7 @@ const { propertyFromBson, lastOwner } = require('../domain/propertyModel')
 const { performanceFromBson } = require('../domain/performanceModel')
 const { SCENARIO_TYPE_NAMES, nameOf } = require('../domain/enums')
 
-function createListService({ repo, hash, scopes }) {
+function createListService({ repo, hash, scopes, gridfs = null, log = null }) {
   return {
     async list(user, process, model) {
       await scopes.assertAllowed(user, process, model)
@@ -16,6 +16,12 @@ function createListService({ repo, hash, scopes }) {
       for (const d of docs) countByName.set(d.scname, (countByName.get(d.scname) || 0) + 1)
       const first = new Map()
       for (const d of docs) if (typeof d.scname === 'string' && 'property' in d && !first.has(d.scname)) first.set(d.scname, d)
+      // 스텝 수·용량(2026-11-10): 목록에 나오는 시나리오의 현재 판 파일에서만 읽는다. 곁들이는 값이라 못 읽어도 목록은 낸다(값만 null).
+      const asks = [...first.keys()].filter((n) => current.has(n)).map((n) => ({ name: n, crtime: current.get(n) }))
+      let stats = new Map()
+      if (gridfs) {
+        try { stats = await gridfs.findVersionStats(process, model, asks) } catch (e) { log?.warn(`list ${process}-${model} 스텝 수·용량을 읽지 못했다: ${e.code || e.message}`) }
+      }
       const rows = [...first.values()].map((d) => {
         const prop = propertyFromBson(d.property)
         const perf = performanceFromBson(d.performance)
@@ -36,6 +42,7 @@ function createListService({ repo, hash, scopes }) {
           triggerInfo: perf ? perf.triggerInfo : null,
           lastOwner: p ? lastOwner(p.Owners) : null,
           currentCrtime: current.get(d.scname) ?? null,
+          stepCount: stats.get(d.scname)?.stepCount ?? null, sizeBytes: stats.get(d.scname)?.sizeBytes ?? null,
           status
         }
       })

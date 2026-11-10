@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { t } from '../messages'
-import { targetLabel, targetKind, multiLabel, formatCrtime, intervalSec, actionLabel, conditionLabel, scenarioTypeLabel, enabledLabel, scenarioTypeOptions, SCENARIO_TYPE_KEYS } from '../format'
+import { targetLabel, targetKind, multiLabel, formatCrtime, intervalSec, actionLabel, conditionLabel, scenarioTypeLabel, enabledLabel, scenarioTypeOptions, SCENARIO_TYPE_KEYS, sizeText } from '../format'
 import { LABELS } from '../messages'
 import { typeName } from '../editor/propertyView'
 
@@ -52,6 +52,16 @@ describe('format', () => {
 
 import { stepExtraRows } from '../format'
 import { MESSAGES as M } from '../messages'
+describe('sizeText — 바이트를 B·KB·MB·GB 로', () => {
+  it('1024 미만은 바이트 그대로, 그 위는 소수 한 자리 — 반올림해 1024 가 되면 다음 단위로', () => {
+    expect([0, 86, 1023, 1024, 1536, 178413, 1048575, 1048576, 114881881, 3 * 1024 ** 3].map(sizeText))
+      .toEqual(['0 B', '86 B', '1023 B', '1.0 KB', '1.5 KB', '174.2 KB', '1.0 MB', '1.0 MB', '109.6 MB', '3.0 GB'])
+  })
+  it('값이 없거나 숫자가 아니면 빈칸', () => {
+    expect([null, undefined, NaN, -1, '12'].map(sizeText)).toEqual(['', '', '', '', ''])
+  })
+})
+
 describe('stepExtraRows', () => {
   it('찾을 그림 키·Type 줄 이름은 messages.js 에서 온다(P1 상세와 같은 글자)', () => {
     const rows = stepExtraRows({ condition: { image: { trainImages: [{ key: 0, type: true }] } }, descriptionToDialog: '', isShowDialog: true, raw: {} })

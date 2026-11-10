@@ -5,8 +5,7 @@ import { useEditorStore } from '../stores/editorStore'
 import { useEditStore } from '../stores/editStore'
 import { scenarioEditorApi as api } from '../api'
 import { t, LABELS, errorMessage } from '../messages'
-import { formatCrtime, enabledLabel } from '../format'
-import { human } from '../editor/propertyView'
+import { formatCrtime, enabledLabel, sizeText } from '../format'
 import { safeStorage } from '../composables/useSafeStorage'
 import { registerGrid, useGridTheme } from '../gridTheme'
 import { mergeDrafts, draftStale, isDup } from '../editor/loadRows'
@@ -328,12 +327,9 @@ function renderDraft(p) {
   return el
 }
 const draftOnlyText = (r) => t(r.draftOnly === 'new' ? 'SEW_LOAD_ROW_DRAFT_NEW' : 'SEW_LOAD_ROW_DRAFT_GONE')
-// 열 순서는 데스크톱 불러오기 목록(NAME·TRIGGER·SCENARIO_TYPE·DESCRIPTION·ACTIVATED·EMAIL_SKIP·DELAY·RETRY·TRIGGERINFO)을 따르고
-// 웹 전용 열(내 초안·등급·최근 수정자·현재 버전·확인 필요)을 뒤에 둔다(2026-11-10). 값은 한글로 — 없는 값(지연 0·재시도 0·메일 모두 보냄)은 빈칸.
-const MAIL = { success: LABELS.prop.success, fail: LABELS.prop.fail, stop: LABELS.prop.stop }
-const emailSkipText = (v) => (Array.isArray(v) ? v.map((k) => MAIL[k] ?? k).join('·') : '')
-const delayText = (v) => (typeof v === 'number' && v !== 0 ? human(v) : '')
-const retryText = (r) => (typeof r?.retryCnt === 'number' && r.retryCnt !== 0 ? t('SEW_LOAD_RETRY', { n: r.retryCnt, gap: human(r.retryInterval) }) : '')
+// 열 순서: 데스크톱 불러오기 목록의 NAME·TRIGGER·SCENARIO_TYPE·DESCRIPTION·ACTIVATED·TRIGGERINFO 순서에 스텝 수·용량을 켜짐 뒤에 넣고
+// 웹 전용 열(내 초안·최근 수정자·현재 버전·확인 필요)을 둔다. 스텝 수·용량(2026-11-10 사용자 요청)을 넣으면서 폭이 모자라
+// 메일 생략·시작 지연·재시도(대부분 빈칸)·등급 열은 뺐다("불필요하다고 판단되는 칼럼은 빼도 되") — 값은 연 뒤 운영 속성 창·위쪽 바에 있고, 서버 응답에는 그대로 있다.
 const columnDefs = computed(() => [
   { field: 'name', headerName: '이름', minWidth: 220, flex: 1, cellClass: (p) => (p.data?.draft ? 'se-load-has-draft' : '') },
   ...(writer.value ? [{ field: 'draft', headerName: t('SEW_LOAD_COL_DRAFT'), width: 104, cellRenderer: renderDraft }] : []),
@@ -342,11 +338,10 @@ const columnDefs = computed(() => [
   { field: 'description', headerName: '설명', minWidth: 180, flex: 1 },
   // cellDataType: false — AG Grid 가 참거짓 열을 체크 칸으로 그리면 문구(켜짐·꺼짐·초안만 —·같은 키 ?)가 나오지 않는다(목업은 글자)
   { field: 'isEnabled', headerName: '켜짐', width: 66, cellDataType: false, valueFormatter: (p) => (p.data?.draftOnly ? '—' : writer.value && isDup(p.data) ? '?' : enabledLabel(p.value)), cellClass: (p) => (p.data?.draftOnly ? 'se-load-dim' : '') },
-  { field: 'emailSkip', headerName: t('SEW_LOAD_COL_EMAIL_SKIP'), width: 104, cellDataType: false, valueFormatter: (p) => emailSkipText(p.value) },
-  { field: 'startDelay', headerName: t('SEW_LOAD_COL_DELAY'), width: 98, cellDataType: false, valueFormatter: (p) => delayText(p.value) },
-  { field: 'retryCnt', headerName: t('SEW_LOAD_COL_RETRY'), width: 128, cellDataType: false, valueFormatter: (p) => retryText(p.data) },
-  { field: 'triggerInfo', headerName: t('SEW_LOAD_COL_TRIGGER_INFO'), width: 170, tooltipField: 'triggerInfo' },
-  { field: 'gradeName', headerName: '등급', width: 62 },
+  // 현재 버전 파일에서 읽는다 — 현재 버전이 없거나 초안만 있는 줄은 빈칸. 용량은 기준 화면 묶음(GridFS 파일)의 크기다(머리글 풍선말)
+  { field: 'stepCount', headerName: t('SEW_LOAD_COL_STEPS'), width: 72, type: 'rightAligned', cellDataType: false, valueFormatter: (p) => (typeof p.value === 'number' ? String(p.value) : '') },
+  { field: 'sizeBytes', headerName: t('SEW_LOAD_COL_SIZE'), headerTooltip: t('SEW_LOAD_COL_SIZE_TIP'), width: 88, type: 'rightAligned', cellDataType: false, valueFormatter: (p) => sizeText(p.value) },
+  { field: 'triggerInfo', headerName: t('SEW_LOAD_COL_TRIGGER_INFO'), width: 160, tooltipField: 'triggerInfo' },
   { headerName: '최근 수정자', width: 112, valueGetter: (p) => p.data.lastOwner?.singleid ?? '' },
   { field: 'currentCrtime', headerName: '현재 버전', width: 156, valueFormatter: (p) => (p.data?.draftOnly ? t('SEW_LOAD_NONE') : p.value ? formatCrtime(p.value) : ''), cellClass: (p) => (p.data?.draftOnly ? 'se-load-dim' : '') },
   // 열 합계가 창의 표 영역보다 넓다 — 열 수 없는 원인(완료 조건 3)이 가로 스크롤 뒤로 숨지 않게 오른쪽에 고정한다.
@@ -355,8 +350,9 @@ const columnDefs = computed(() => [
   { field: 'status', headerName: '확인 필요', width: 132, pinned: 'right', valueFormatter: (p) => (p.data?.draftOnly ? draftOnlyText(p.data) : p.value.map((s) => LABELS.listStatus[s] ?? s).join(', ')),
     cellClass: (p) => (!p.data?.draftOnly && p.data?.status?.length ? 'se-load-bad' : '') }
 ])
-// 창 너비: 열이 늘어 넓힌다 — 화면의 94%, 가장 넓어도 1640(1920 화면에서 데스크톱과 같은 열이 가로 스크롤 없이 다 보인다)
-const dialogWidth = Math.max(720, Math.min(1640, Math.round(window.innerWidth * 0.94)))
+// 창 너비: 화면의 94%, 가장 넓어도 1800 — 1920 화면에서 표 영역(창 − 버전 칸 280)이 1520 이라 열(합계 1494)이 가로로 밀지 않고 다 보인다.
+// 1600 화면(표 영역 1224)에서는 최근 수정자·현재 버전을 보려면 가로로 민다(확인 필요는 오른쪽 고정).
+const dialogWidth = Math.max(720, Math.min(1800, Math.round(window.innerWidth * 0.94)))
 const select = 'h-[38px] rounded-lg border border-gray-300 dark:border-dark-border bg-white dark:bg-dark-bg px-2 text-sm text-gray-900 dark:text-gray-100'
 const btnP = 'px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-lg transition text-sm disabled:opacity-50 whitespace-nowrap'
 const btnS = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg transition text-sm disabled:opacity-50 whitespace-nowrap'

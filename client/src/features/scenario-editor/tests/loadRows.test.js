@@ -10,7 +10,7 @@ describe('loadRows', () => {
     const rows = mergeDrafts([row('B'), row('A')], [draft('A', { target: { model: 'M', name: 'A_COPY' } }), draft('C', { base: null, headCrtime: null }), draft('AA', { base: { crtime: 5, fileId: 'g' } })], KEY)
     expect(rows.map((r) => [r.name, r.draftOnly, r.draft?.draftId ?? null])).toEqual([['A', null, 'd-A'], ['AA', 'gone', 'd-AA'], ['B', null, null], ['C', 'new', 'd-C']])
     expect(rows.find((r) => r.name === 'C')).toMatchObject({ id: 'P-M-C', isEnabled: null, currentCrtime: null, status: [], lastOwner: null })
-    expect(rows.find((r) => r.name === 'C')).toMatchObject({ emailSkip: null, startDelay: null, retryCnt: null, retryInterval: null, triggerInfo: null }) // 초안만 행은 서버 값이 없다
+    expect(rows.find((r) => r.name === 'C')).toMatchObject({ emailSkip: null, startDelay: null, retryCnt: null, retryInterval: null, triggerInfo: null, stepCount: null, sizeBytes: null }) // 초안만 행은 서버 값이 없다
   })
   it('초안 시작 뒤 새 버전: 초안 headCrtime(없으면 기준 판) ≠ 지금 현재 버전 — 되돌려 연 작업본의 초안(기준 판은 옛 판, headCrtime 은 그때 현재)은 옛것이 아니다', () => {
     expect(draftStale(row('A', { draft: draft('A') }))).toBe(false)

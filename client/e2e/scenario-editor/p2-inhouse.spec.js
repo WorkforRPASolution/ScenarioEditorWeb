@@ -190,27 +190,40 @@ test('④ 불러오기 목록: 데스크톱 순서의 열·한글 값·넓은 �
   await asUser(page, 'sew_master')
   await page.goto('/scenario-editor')
   const dlg = await openLoadAt(page, L)
-  // 창 너비: 화면의 94%(최대 1640)
+  // 창 너비: 화면의 94%(최대 1800)
   const box = await dlg.locator('> div').nth(1).boundingBox()
-  expect(Math.round(box.width)).toBe(Math.min(1640, Math.round(page.viewportSize().width * 0.94)))
-  // 열 순서: 데스크톱 목록의 순서(이름·트리거·유형·설명·켜짐·메일 생략·시작 지연·재시도·트리거 정보) + 웹 전용 열. 표는 보이는 열만 그려 왼쪽·오른쪽 끝에서 한 번씩 읽는다
+  const vw = page.viewportSize().width
+  expect(Math.round(box.width)).toBe(Math.min(1800, Math.round(vw * 0.94)))
+  // 열 순서: 이름·내 초안·트리거·유형·설명·켜짐·스텝 수·용량·트리거 정보·최근 수정자·현재 버전·확인 필요(메일 생략·시작 지연·재시도·등급은 뺐다).
+  // 1920 화면에서는 가로로 밀지 않고 다 보인다. 1600 에서는 표가 보이는 열만 그려 왼쪽·오른쪽 끝에서 한 번씩 읽는다
+  const ALL = ['이름', '내 초안', '트리거', '유형', '설명', '켜짐', '스텝 수', '용량', '트리거 정보', '최근 수정자', '현재 버전', '확인 필요']
   const heads = () => dlg.locator('.ag-header-cell-text').allInnerTexts()
-  expect((await heads()).slice(0, 10)).toEqual(['이름', '내 초안', '트리거', '유형', '설명', '켜짐', '메일 생략', '시작 지연', '재시도', '트리거 정보'])
-  await dlg.locator('.ag-center-cols-viewport').evaluate((el) => { el.scrollLeft = el.scrollWidth })
-  await expect.poll(async () => (await heads()).slice(-4)).toEqual(['등급', '최근 수정자', '현재 버전', '확인 필요'])
-  await dlg.locator('.ag-center-cols-viewport').evaluate((el) => { el.scrollLeft = 0 })
+  const center = dlg.locator('.ag-center-cols-viewport')
+  if (vw >= 1920) {
+    expect(await heads()).toEqual(ALL)
+    expect(await center.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
+  } else {
+    expect((await heads()).slice(0, 8)).toEqual(ALL.slice(0, 8))
+    await center.evaluate((el) => { el.scrollLeft = el.scrollWidth })
+    await expect.poll(async () => (await heads()).slice(-3)).toEqual(ALL.slice(-3))
+    await center.evaluate((el) => { el.scrollLeft = 0 })
+  }
 
+  // 스텝 수·용량: 현재 버전 파일에서 온다 — 용량은 그 판 GridFS 파일(기준 화면 묶음)의 길이
+  const file = await ears.db().collection('fs.files').findOne({ 'metadata.process': L.process, 'metadata.model': L.model, 'metadata.name': L.name }, { projection: { length: 1 } })
+  expect(file.length).toBeGreaterThan(1024)
   await dlg.getByTestId('se-load-search').fill(L.name)
   await expect.poll(() => loadRow(dlg, L.name)).toMatchObject({
     triggerName: 'Log', typeName: '알람자동조치', description: '조건 4종', isEnabled: '꺼짐',
-    emailSkip: '성공·중지', startDelay: '2분', retryCnt: '2회 · 30초 간격', triggerInfo: 'ALARM 1234 / E2E 트리거 정보', status: ''
+    stepCount: '4', sizeBytes: `${(file.length / 1024).toFixed(1)} KB`, triggerInfo: 'ALARM 1234 / E2E 트리거 정보', status: ''
   })
+  await expect(dlg.locator('.ag-cell[col-id="stepCount"]').first()).toHaveClass(/ag-right-aligned-cell/)
 
-  // 열 수 없는 원인(같은 키 2건·현재 버전 없음)은 확인 필요 열에 붉은 글씨, 값이 없는 칸은 빈칸
+  // 열 수 없는 원인(같은 키 2건·현재 버전 없음)은 확인 필요 열에 붉은 글씨, 값이 없는 칸은 빈칸(현재 버전이 없으면 스텝 수·용량도 빈칸)
   await dlg.getByTestId('se-load-search').fill('')
   await dlg.getByTestId('se-load-model').selectOption('SEWMODELB')
-  await expect.poll(() => loadRow(dlg, 'DUP_PROPERTY')).toMatchObject({ status: '같은 키 2건', isEnabled: '?', emailSkip: '', startDelay: '', retryCnt: '', triggerInfo: '' })
-  expect(await loadRow(dlg, 'NO_REDIS_FIELD')).toMatchObject({ status: '현재 버전 없음' })
+  await expect.poll(() => loadRow(dlg, 'DUP_PROPERTY')).toMatchObject({ status: '같은 키 2건', isEnabled: '?', triggerInfo: '' })
+  expect(await loadRow(dlg, 'NO_REDIS_FIELD')).toMatchObject({ status: '현재 버전 없음', stepCount: '', sizeBytes: '' })
   const bad = dlg.locator('.ag-cell.se-load-bad')
   await expect(bad).toHaveText(['같은 키 2건', '현재 버전 없음'])
   expect(isReddish(await color(bad.first()))).toBe(true)

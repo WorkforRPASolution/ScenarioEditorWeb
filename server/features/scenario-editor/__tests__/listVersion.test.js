@@ -47,6 +47,30 @@ describe('listService', () => {
   })
 })
 
+// 불러오기 목록의 스텝 수·용량(2026-11-10 사용자 요청). 현재 판 파일에서만 읽는다.
+describe('listService — 스텝 수·용량', () => {
+  const repo = { findScenarioDocs: async () => [{ scname: 'A', property: prop() }, { scname: 'B', property: prop() }, { scname: 'NOREDIS', property: prop() }, { scname: 'NOPROP' }] }
+  const hash = { hkeys: async () => ['A.100', 'A.200', 'B.50', 'NOPROP.1', 'GONE.1'] }
+  it('목록에 나오는 시나리오의 현재 판만 묻고, 스텝 수와 용량을 행에 싣는다 — 현재 판이 없거나 파일을 못 찾으면 null', async () => {
+    const asked = []
+    const gridfs = { findVersionStats: async (...a) => { asked.push(a); return new Map([['A', { stepCount: 18, sizeBytes: 123456 }]]) } }
+    const rows = await createListService({ repo, hash, scopes, gridfs }).list(user, 'P', 'M')
+    expect(asked).toEqual([['P', 'M', [{ name: 'A', crtime: 200 }, { name: 'B', crtime: 50 }]]])
+    const by = Object.fromEntries(rows.map((r) => [r.name, r]))
+    expect(by.A).toMatchObject({ stepCount: 18, sizeBytes: 123456 })
+    expect(by.B).toMatchObject({ stepCount: null, sizeBytes: null })
+    expect(by.NOREDIS).toMatchObject({ stepCount: null, sizeBytes: null })
+  })
+  it('스텝 수·용량을 읽지 못해도 목록은 나온다(값만 null) — 경고를 남긴다', async () => {
+    const warned = []
+    const gridfs = { findVersionStats: async () => { throw new Error('boom') } }
+    const rows = await createListService({ repo, hash, scopes, gridfs, log: { warn: (m) => warned.push(m) } }).list(user, 'P', 'M')
+    expect(rows.map((r) => [r.name, r.stepCount, r.sizeBytes])).toEqual([['A', null, null], ['B', null, null], ['NOREDIS', null, null]])
+    expect(warned).toHaveLength(1)
+    expect(warned[0]).toContain('P-M')
+  })
+})
+
 describe('listService — 문서가 아닌 운영 속성', () => {
   it('property 가 null·문자열이면 기본값("켜짐")으로 꾸미지 않고 PARSE_FAILED 행', async () => {
     const repo = { findScenarioDocs: async () => [{ scname: 'NUL', property: null }, { scname: 'STR', property: 'x' }] }

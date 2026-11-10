@@ -8,7 +8,7 @@ function draftOnlyRow(process, model, d) {
   return {
     name: d.name, id: `${process}-${model}-${d.name}`, isEnabled: null, type: null, typeName: null, trigger: null, triggerName: null,
     grade: null, gradeName: null, description: '', emailSkip: null, startDelay: null, retryCnt: null, retryInterval: null, triggerInfo: null,
-    lastOwner: null, currentCrtime: null, status: [],
+    lastOwner: null, currentCrtime: null, stepCount: null, sizeBytes: null, status: [],
     draftOnly: d.base ? 'gone' : 'new', draft: d
   }
 }

@@ -27,6 +27,17 @@ export function formatCrtime(ms) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
+// 바이트 → B·KB·MB·GB(1024 단위, 소수 한 자리). 반올림해 1024 가 되면 다음 단위로 올린다. 값이 없으면 빈칸.
+export function sizeText(bytes) {
+  if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes < 0) return ''
+  if (bytes < 1024) return `${bytes} B`
+  const units = ['KB', 'MB', 'GB']
+  let v = bytes / 1024
+  let i = 0
+  while (i < units.length - 1 && Number(v.toFixed(1)) >= 1024) { v /= 1024; i++ }
+  return `${v.toFixed(1)} ${units[i]}`
+}
+
 export const intervalSec = (ms) => Math.trunc(ms / 1000)
 export const actionLabel = (typeName) => (typeName ? LABELS.action[typeName] ?? typeName : '알 수 없는 동작')
 export const conditionLabel = (kind) => LABELS.condition[kind] ?? kind
