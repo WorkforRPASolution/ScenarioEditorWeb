@@ -573,6 +573,7 @@ export const MESSAGES = {
   SEW_PANEL_DIFF_OTHER: '그 밖의 값',
   SEW_PANEL_ACT_TEXT_WHEEL: '{name} {dir} {n}칸',
   SEW_PANEL_ACT_TEXT_WAIT: '{name} {s}초',
+  SEW_PANEL_ACT_TEXT_FW_POS: '위치 ({x}, {y})',
   SEW_PANEL_SAY_NEED_AREA: '큰 화면에서 영역을 잡으면 이 스텝이 하는 일이 여기에 나옵니다.',
   SEW_PANEL_SAY_IMAGE: '검색 영역에서 찾을 그림이 보이면 {act}{ok}으로. 안 보이면 {again}{fail}.',
   SEW_PANEL_SAY_OCR: 'OCR 영역 글자가 {cmp} 이면 {act}{ok}으로. 아니면 {again}{fail}.',

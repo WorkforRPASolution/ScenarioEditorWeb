@@ -347,6 +347,40 @@ describe('저장 창(SaveDialog)', () => {
     expect(text).not.toMatch(/켜짐\s*,|^운영 속성\s*켜짐$/) // 칸 이름만 늘어놓지 않는다
     bar.unmount()
   })
+  it('바뀐 것 — 글의 일부만 바뀌면 그 부분만 색으로(이전 del·지금 ins), 줄 글은 그대로다', async () => {
+    const { bar, e, s } = setup()
+    s.select('s1')
+    e.updateDraft((d) => ({ ...d, action: { ...d.action, command: 'restart2.bat -x' } }))
+    expect(e.applyPanel()).toBeTruthy()
+    await openSave(bar)
+    const rows = bar.findAll('[data-testid="se-save-change"]')
+    expect(rows).toHaveLength(1)
+    expect(rows[0].find('small').text()).toBe('동작 명령 실행 restart.bat → 명령 실행 restart2.bat -x')
+    expect(rows[0].findAll('del').map((x) => x.text())).toEqual([])
+    expect(rows[0].findAll('ins').map((x) => x.element.textContent)).toEqual(['2', ' -x'])
+    bar.unmount()
+  })
+  it('바뀐 것 — 운영 속성 줄도 글 일부만 바뀌면 그 부분만 색, 고른 값(켜짐 → 꺼짐)은 색 없음', async () => {
+    const s = useEditorStore()
+    s.me = { singleid: 'u', canWrite: true, authorityManager: 3 }
+    s.scopes = { processes: [{ process: 'P', models: [{ model: 'M', eqpCount: 3 }] }] }
+    const e = useEditStore()
+    e.beginNew({ process: 'P', model: 'M', name: 'NEW_ONE', type: 1, description: '새 메일', timeoutLimit: '240' })
+    const made = e.session.working.property
+    expect(e.applyProperty({ ...made, EDMLink: 'http://edm/doc/12' })).toBe(true)
+    e.session.saveBase = { ...e.session.saveBase, property: { ...made, EDMLink: 'http://edm/doc/7' } }
+    expect(e.applyProperty({ ...e.session.working.property, IsEnabled: false })).toBe(true)
+    api.check.mockImplementation(() => ok(clean({ target: { exists: false, eqpCount: 3 } })))
+    api.nameRule.mockReturnValue(ok({ exists: false, rules: [] }))
+    api.list.mockReturnValue(ok([]))
+    const bar = mount(ScenarioBar, { attachTo: document.body })
+    await openSave(bar)
+    const row = bar.findAll('[data-testid="se-save-change"]')[0]
+    expect(row.find('small').text()).toBe('상태 켜짐 → 꺼짐 · 데스크탑 링크 http://edm/doc/7 → http://edm/doc/12')
+    expect(row.findAll('del').map((x) => x.text())).toEqual(['7'])
+    expect(row.findAll('ins').map((x) => x.text())).toEqual(['12'])
+    bar.unmount()
+  })
   it('덮어쓰기 차이 — 대상의 지금 값을 모르면(null) "null"·빈 글이 아니라 "?", 표에 없는 유형은 "저장 값 N"', async () => {
     const diff = [{ key: 'IsEnabled', from: null, to: true }, { key: 'Type', from: null, to: 99 }, { key: 'StartDelay', from: null, to: 0 }, { key: 'NextScenarioIfFail', from: null, to: { Name: 'A', Text: '' } }]
     const { bar } = setup(clean({ targetExists: { diff } }))

@@ -104,6 +104,25 @@ describe('스텝 바뀐 값 글(diffLines)', () => {
     expect(lines(o, oc(x))).toEqual([text])
   })
 
+  // 동작 글에 빠진 하위 칸이 있으면 그 칸만 바꿨을 때 이전·지금이 같은 글이 된다("스크립트 S → 스크립트 S")
+  const cs = (x) => ({ ...b, action: { type: 12, customScript: { name: 'S', args: ['a', 'b'], timeout: null, email: [], legacy: false, ...x } } })
+  const fw = (x) => ({ ...b, action: { type: 9, findWindow: { title: '창', className: '', x: null, y: null, ...x } } })
+  const wheel = (x) => ({ ...b, action: { type: 4, wheel: { notches: 3, delaySec: 1, ...x } } })
+  it.each([
+    ['스크립트 인자', cs({}), cs({ args: ['a', 'c'] }), '동작 스크립트 S · 인자 a, b → 스크립트 S · 인자 a, c'],
+    ['스크립트 인자 빼기', cs({}), cs({ args: [] }), '동작 스크립트 S · 인자 a, b → 스크립트 S'],
+    ['스크립트 빈 인자', cs({ args: [] }), cs({ args: [''] }), '동작 스크립트 S → 스크립트 S · 인자 없음'],
+    ['스크립트 시간 제한', cs({ args: [] }), cs({ args: [], timeout: { value: 2, unit: 'minutes' } }), '동작 스크립트 S → 스크립트 S · 시간 제한 2분'],
+    ['스크립트 시간 단위', cs({ args: [], timeout: { value: 2, unit: 'minutes' } }), cs({ args: [], timeout: { value: 2, unit: 'hours' } }), '동작 스크립트 S · 시간 제한 2분 → 스크립트 S · 시간 제한 2시간'],
+    ['스크립트 결과 메일', cs({ args: [] }), cs({ args: [], email: ['success', 'fail'] }), '동작 스크립트 S → 스크립트 S · 결과 메일 성공하면, 실패하면'],
+    ['창 찾기 클래스', fw({}), fw({ className: 'Cls' }), '동작 창 찾기 창 → 창 찾기 창 · 클래스 Cls'],
+    ['창 찾기 위치', fw({}), fw({ x: 10, y: 20 }), '동작 창 찾기 창 → 창 찾기 창 · 위치 (10, 20)'],
+    ['창 찾기 위치 한 칸', fw({ x: 10, y: 20 }), fw({ x: 10, y: null }), '동작 창 찾기 창 · 위치 (10, 20) → 창 찾기 창 · 위치 (10, ?)'],
+    ['휠 쉼', wheel({}), wheel({ delaySec: 2 }), '동작 휠 아래로 3칸 · 1초 쉼 → 휠 아래로 3칸 · 2초 쉼']
+  ])('동작의 하위 칸만 바꿔도 이전·지금 글이 다르다 — %s', (_n, from, to, text) => {
+    expect(lines(from, to)).toEqual([text])
+  })
+
   it('비교를 고르지 않은 OCR 은 저장된 숫자 0 을 붙이지 않는다', () => {
     expect(ocrText({ op: 0, opName: 'None', number: 0, text: '' })).toBe('선택 안 함')
   })

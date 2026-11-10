@@ -1,0 +1,6 @@
+/* 바뀐 값 글에서 실제로 바뀐 부분(ChangeText). 이전 = 붉은 바탕, 지금 = 초록 바탕. 공백만 바뀐 곳도 보이게 pre-wrap. */
+.se-df del, .se-df ins { text-decoration: none; white-space: pre-wrap; border-radius: 3px; padding: 0 1px; font-weight: 600; }
+.se-df del { background: #fee2e2; color: #991b1b; }
+.se-df ins { background: #dcfce7; color: #166534; }
+.dark .se-df del { background: rgba(153, 27, 27, .5); color: #fecaca; }
+.dark .se-df ins { background: rgba(22, 101, 52, .5); color: #bbf7d0; }

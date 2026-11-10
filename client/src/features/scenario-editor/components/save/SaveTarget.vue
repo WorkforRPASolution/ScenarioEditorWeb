@@ -9,6 +9,7 @@ import { t, LABELS, fieldMessage } from '../../messages'
 import { enabledLabel } from '../../format'
 import { typeName } from '../../editor/propertyView'
 import SaveNamePanel from './SaveNamePanel.vue'
+import ChangeText from '../ChangeText.vue'
 import '../panel/panel.css'
 
 defineOptions({ name: 'SaveTarget' })
@@ -41,7 +42,7 @@ const KEY_TEXT = {
 }
 const valueText = (key, v) => (KEY_TEXT[key] ? KEY_TEXT[key](v) : v === null || v === undefined ? t('SEW_SAVE_FOLLOW_NONE') : String(v))
 const diffRows = computed(() => overwriteDiff(flow.check?.targetExists?.diff).map((d) => ({
-  key: d.key, label: LABELS.propertyKey[d.key] ?? d.key, text: t('SEW_SAVE_DIFF_ARROW', { from: valueText(d.key, d.from), to: valueText(d.key, d.to) })
+  key: d.key, label: LABELS.propertyKey[d.key] ?? d.key, from: valueText(d.key, d.from), to: valueText(d.key, d.to)
 })))
 
 const header = computed(() => edit.session?.working?.header ?? {})
@@ -98,7 +99,7 @@ function useName(name) {
         <span>{{ t('SEW_SAVE_OVERWRITE', { name: flow.target.name }) }}</span></label>
       <div class="mt-1.5 font-medium">{{ t('SEW_SAVE_DIFF_TITLE') }}</div>
       <ul v-if="diffRows.length">
-        <li v-for="r in diffRows" :key="r.key" data-testid="se-save-diff">{{ r.label }}: {{ r.text }}</li>
+        <li v-for="r in diffRows" :key="r.key" data-testid="se-save-diff">{{ `${r.label}: ` }}<ChangeText :before="r.from" :after="r.to" /></li>
       </ul>
       <div v-else>{{ t('SEW_SAVE_DIFF_NONE') }}</div>
     </div>

@@ -6,6 +6,7 @@ import { useEditStore } from '../../stores/editStore'
 import { diffLines } from '../../editor/panel'
 import { propertyDiffs } from '../../editor/propertyView'
 import { t } from '../../messages'
+import ChangeText from '../ChangeText.vue'
 
 defineOptions({ name: 'SaveChanges' })
 const emit = defineEmits(['go'])
@@ -13,8 +14,11 @@ const flow = useSaveFlow()
 const edit = useEditStore()
 
 const text = (v) => (v === '' || v === null || v === undefined ? t('SEW_SAVE_EMPTY_VALUE') : String(v))
+const plain = (v) => (v ? [{ text: v }] : [])
 const minutes = (v) => (v === '' || v === null || v === undefined ? t('SEW_SAVE_EMPTY_VALUE') : /^[0-9]+$/.test(String(v)) ? t('SEW_SAVE_MINUTES', { n: v }) : String(v))
-const lineText = (l) => (l.before === '' && l.after === '' ? l.label : `${l.label} ${t('SEW_SAVE_DIFF_ARROW', { from: l.before, to: l.after })}`)
+// 줄 아래 글은 조각 목록이다: { text } 는 글 그대로, { label, before, after } 는 "이름 이전 → 지금"(바뀐 부분만 색 — ChangeText)
+const arrow = (label, before, after) => ({ label, before, after })
+const lineOf = (l) => (l.before === '' && l.after === '' ? { text: l.label } : arrow(l.label, l.before, l.after))
 
 const rows = computed(() => {
   const s = edit.session
@@ -27,15 +31,14 @@ const rows = computed(() => {
   for (const c of flow.changes) {
     if (c.kind === 'field' && c.key === 'property') {
       // 칸 이름만 늘어놓으면 "켜짐" 같은 이름이 값으로 읽힌다 — 운영 속성 창의 "바뀐 값" 과 같은 글로 이전 → 지금을 보인다(목업 svChanges)
-      const subs = propertyDiffs(s.saveBase?.property, w.property).map((d) => `${d.label} ${t('SEW_SAVE_DIFF_ARROW', { from: d.from, to: d.to })}`)
-      out.push({ label: t('SEW_SAVE_CHANGE_PROPERTY'), sub: subs.join(' · '), goal: { kind: 'property' } })
+      out.push({ label: t('SEW_SAVE_CHANGE_PROPERTY'), subs: propertyDiffs(s.saveBase?.property, w.property).map((d) => arrow(d.label, d.from, d.to)), goal: { kind: 'property' } })
     } else if (c.kind === 'field') {
       const desc = c.key === 'description'
-      out.push({ label: t(desc ? 'SEW_SAVE_MAIL_TITLE' : 'SEW_SAVE_TIMEOUT'), sub: t('SEW_SAVE_DIFF_ARROW', { from: (desc ? text : minutes)(c.before), to: (desc ? text : minutes)(c.after) }), goal: { kind: 'bar', field: c.key } })
+      out.push({ label: t(desc ? 'SEW_SAVE_MAIL_TITLE' : 'SEW_SAVE_TIMEOUT'), subs: [arrow('', (desc ? text : minutes)(c.before), (desc ? text : minutes)(c.after))], goal: { kind: 'bar', field: c.key } })
     } else if (c.kind === 'added') {
-      out.push({ label: t('SEW_SAVE_CHANGE_ADDED', { no: c.no }), sub: now.get(c.uid)?.descriptionToEmail ?? '', goal: { kind: 'step', uid: c.uid } })
+      out.push({ label: t('SEW_SAVE_CHANGE_ADDED', { no: c.no }), subs: plain(now.get(c.uid)?.descriptionToEmail), goal: { kind: 'step', uid: c.uid } })
     } else if (c.kind === 'deleted') {
-      out.push({ label: t('SEW_SAVE_CHANGE_DELETED', { no: c.no }), sub: before.get(c.uid)?.descriptionToEmail ?? '', goal: null })
+      out.push({ label: t('SEW_SAVE_CHANGE_DELETED', { no: c.no }), subs: plain(before.get(c.uid)?.descriptionToEmail), goal: null })
     } else {
       // 고친 스텝과 순서가 바뀐 스텝은 한 줄로 — 바뀐 값들 · 순서 바뀜
       let r = byUid.get(c.uid)
@@ -44,11 +47,11 @@ const rows = computed(() => {
         byUid.set(c.uid, r)
         out.push(r)
       }
-      if (c.kind === 'changed') r.subs.push(...diffLines(before.get(c.uid), now.get(c.uid), w).map(lineText))
-      else r.subs.push(t('SEW_SAVE_CHANGE_MOVED'))
+      if (c.kind === 'changed') r.subs.push(...diffLines(before.get(c.uid), now.get(c.uid), w).map(lineOf))
+      else r.subs.push({ text: t('SEW_SAVE_CHANGE_MOVED') })
     }
   }
-  return out.map((r) => (r.subs ? { ...r, sub: r.subs.join(' · ') } : r))
+  return out
 })
 </script>
 
@@ -57,8 +60,10 @@ const rows = computed(() => {
     <div class="se-sv-t mt-3.5">{{ t('SEW_SAVE_CHANGES') }} <small v-if="rows.length">{{ t('SEW_SAVE_CHANGES_COUNT', { n: rows.length }) }}</small></div>
     <ul v-if="rows.length" class="se-sv-list">
       <li v-for="(r, i) in rows" :key="i">
-        <button v-if="r.goal" type="button" class="se-sv-row" data-testid="se-save-change" @click="emit('go', r.goal)"><b>{{ r.label }}</b><small v-if="r.sub">{{ r.sub }}</small></button>
-        <div v-else class="se-sv-row" data-testid="se-save-change"><b>{{ r.label }}</b><small v-if="r.sub">{{ r.sub }}</small></div>
+        <component :is="r.goal ? 'button' : 'div'" :type="r.goal ? 'button' : undefined" class="se-sv-row" data-testid="se-save-change" @click="r.goal && emit('go', r.goal)">
+          <b>{{ r.label }}</b>
+          <small v-if="r.subs.length"><template v-for="(x, k) in r.subs" :key="k"><template v-if="k">{{ ' · ' }}</template><template v-if="x.text !== undefined">{{ x.text }}</template><template v-else><template v-if="x.label">{{ `${x.label} ` }}</template><ChangeText :before="x.before" :after="x.after" /></template></template></small>
+        </component>
       </li>
     </ul>
     <div v-else class="se-sv-none">{{ t('SEW_SAVE_CHANGES_NONE') }}</div>

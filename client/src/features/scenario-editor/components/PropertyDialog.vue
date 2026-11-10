@@ -18,6 +18,7 @@ import PropertyPath from './property/PropertyPath.vue'
 import PropertyReview from './property/PropertyReview.vue'
 import PropertyPeople from './property/PropertyPeople.vue'
 import PropertyMore from './property/PropertyMore.vue'
+import ChangeText from './ChangeText.vue'
 import './property/property.css'
 
 defineOptions({ name: 'PropertyDialog' })
@@ -181,7 +182,7 @@ watch(() => props.focus, (f) => { if (props.modelValue && f?.field) goFocus(f.fi
           </template>
           <template v-else-if="diffs.length">
             <div class="se-pp-foot-sum">{{ t('SEW_PROP_CHANGED_N', { n: diffs.length }) }}</div>
-            <div class="se-pp-foot-list" :title="diffList">{{ diffList }}</div>
+            <div class="se-pp-foot-list" :title="diffList"><template v-for="(d, k) in diffs" :key="d.key"><template v-if="k">{{ ', ' }}</template>{{ `${d.label} ` }}<ChangeText :before="d.from" :after="d.to" /></template></div>
           </template>
           <template v-else>
             <div class="se-pp-foot-sum none">{{ t('SEW_PROP_NO_CHANGE') }}</div>

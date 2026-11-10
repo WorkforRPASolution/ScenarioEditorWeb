@@ -51,6 +51,19 @@ describe('StepPanel — 레일과 [적용]', () => {
     w.unmount()
   })
 
+  it('바뀐 값 줄 — 글의 일부만 바뀌면 그 부분만 색으로(이전 del·지금 ins), 고른 값은 색 없음', async () => {
+    panelFixture([noneStep(0), noneStep(1)])
+    const w = mountPanel()
+    await input(w, '[data-field="desc"]', '스텝0 다시 확인')
+    await input(w, '[data-station="action"] input', 'restart.bat /f')
+    const foot = w.find('[data-testid="se-panel-foot"]')
+    expect(foot.text()).toContain('설명 스텝0 → 스텝0 다시 확인')
+    expect(foot.text()).toContain('동작 명령 실행 restart.bat → 명령 실행 restart.bat /f')
+    expect(foot.findAll('del')).toHaveLength(0)
+    expect(foot.findAll('ins').map((x) => x.element.textContent)).toEqual([' 다시 확인', ' /f'])
+    w.unmount()
+  })
+
   it('정확도를 고치면 적용 줄이 생기고 [적용] 으로 작업본에 들어간다', async () => {
     const { e, edited } = panelFixture([imageStep(0), imageStep(1)])
     const w = mountPanel()

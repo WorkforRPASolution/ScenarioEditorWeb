@@ -147,16 +147,37 @@ export function ocrText(o) {
   const v = o.op >= 1 && o.op <= 4 ? o.text : o.op === 7 || o.op === 8 ? `${o.min ?? ''} ~ ${o.max ?? ''}` : o.op >= 5 && o.op <= 10 ? o.number : ''
   return `${op} ${v ?? ''}`.trim()
 }
+// 바뀐 값 줄의 동작 글. 패널에서 고칠 수 있는 하위 칸을 모두 싣는다 — 빠진 칸만 바꾸면 이전·지금이 같은 글이 된다("스크립트 S → 스크립트 S").
+const has = (v) => v !== null && v !== undefined && v !== ''
+function wheelText(name, w) {
+  const head = t('SEW_PANEL_ACT_TEXT_WHEEL', { name, dir: t(typeof w?.notches === 'number' && w.notches < 0 ? 'SEW_PANEL_WHEEL_UP' : 'SEW_PANEL_WHEEL_DOWN'), n: Math.abs(Number(w?.notches)) || w?.notches })
+  return has(w?.delaySec) ? `${head} · ${w.delaySec}${t('SEW_PANEL_WHEEL_DELAY_UNIT')}` : head
+}
+function findWindowText(name, fw) {
+  const out = [`${name} ${fw?.title || none()}`]
+  if (has(fw?.className)) out.push(`${t('SEW_PANEL_FW_CLASS')} ${fw.className}`)
+  if (has(fw?.x) || has(fw?.y)) out.push(t('SEW_PANEL_ACT_TEXT_FW_POS', { x: has(fw.x) ? fw.x : '?', y: has(fw.y) ? fw.y : '?' }))
+  return out.join(' · ')
+}
+function customScriptText(name, cs) {
+  const out = [`${name} ${cs?.name || none()}`]
+  const args = Array.isArray(cs?.args) ? cs.args : []
+  if (args.length) out.push(`${t('SEW_PANEL_CS_ARGS')} ${args.map((x) => (has(x) ? x : none())).join(', ')}`)
+  if (cs?.timeout) out.push(`${t('SEW_PANEL_CS_TIMEOUT')} ${cs.timeout.value ?? '?'}${TIMEOUT_UNITS.includes(cs.timeout.unit) ? t(`SEW_PANEL_CS_UNIT_${cs.timeout.unit}`) : ` ${cs.timeout.unit ?? '?'}`}`)
+  const email = (Array.isArray(cs?.email) ? cs.email : []).map((e) => (e === 'success' || e === 'fail' ? t(`SEW_PANEL_CS_EMAIL_${e}`) : String(e)))
+  if (email.length) out.push(`${t('SEW_PANEL_CS_EMAIL')} ${email.join(', ')}`)
+  return out.join(' · ')
+}
 export function actionText(a) {
   const name = actionName(a)
   switch (a?.type) {
     case 1: case 2: case 3: return `${name} (${a.click?.x ?? '?'}, ${a.click?.y ?? '?'})`
-    case 4: return t('SEW_PANEL_ACT_TEXT_WHEEL', { name, dir: t(typeof a.wheel?.notches === 'number' && a.wheel.notches < 0 ? 'SEW_PANEL_WHEEL_UP' : 'SEW_PANEL_WHEEL_DOWN'), n: Math.abs(Number(a.wheel?.notches)) || a.wheel?.notches })
+    case 4: return wheelText(name, a.wheel)
     case 5: return `${name} ${[a.keyboard?.text, ...keyboardCodesOf(a.keyboard).map(keyName)].filter(Boolean).join(' + ') || none()}`
     case 6: return t('SEW_PANEL_ACT_TEXT_WAIT', { name, s: a.waitSec ?? '?' })
-    case 9: return `${name} ${a.findWindow?.title || none()}`
+    case 9: return findWindowText(name, a.findWindow)
     case 11: return `${name} ${a.command || none()}`
-    case 12: return `${name} ${a.customScript?.name || none()}`
+    case 12: return customScriptText(name, a.customScript)
     default: return name
   }
 }

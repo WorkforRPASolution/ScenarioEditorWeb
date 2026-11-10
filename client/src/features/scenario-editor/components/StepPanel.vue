@@ -17,6 +17,7 @@ import FindStation from './panel/FindStation.vue'
 import ActionStation from './panel/ActionStation.vue'
 import FlowStation from './panel/FlowStation.vue'
 import OptionStation from './panel/OptionStation.vue'
+import ChangeText from './ChangeText.vue'
 import './panel/panel.css'
 
 defineOptions({ name: 'StepPanel' })
@@ -163,7 +164,7 @@ const btnS = 'h-8 px-3 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray
           — {{ fieldMessage(errs[firstBad]) }}
         </div>
         <div v-else class="mb-1.5 max-h-[62px] overflow-auto text-xs leading-normal text-gray-700 dark:text-gray-200">
-          <div v-for="l in diffs" :key="l.field"><b class="font-medium text-gray-500 dark:text-gray-400">{{ l.label }}</b> {{ l.before }}<template v-if="l.before || l.after"> → </template>{{ l.after }}</div>
+          <div v-for="l in diffs" :key="l.field"><b class="font-medium text-gray-500 dark:text-gray-400">{{ l.label }}</b><template v-if="l.before || l.after">{{ ' ' }}<ChangeText :before="l.before" :after="l.after" /></template></div>
         </div>
         <div class="flex items-center gap-1.5">
           <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('SEW_PANEL_CHANGED_N', { n: changed.length }) }}</span>

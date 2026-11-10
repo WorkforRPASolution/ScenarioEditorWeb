@@ -167,6 +167,18 @@ describe('운영 속성 창(PropertyDialog)', () => {
     expect(find(w, 'se-prop-pending').exists()).toBe(false)
   })
 
+  it('바닥 줄 바뀐 값 — 후속 설명의 일부만 바꾸면 그 부분만 색으로(이전 del·지금 ins), 고른 값은 색 없음', async () => {
+    setup({ property: { ...PROP, NextScenarioIfFail: null } }) // 저장된 빈 실패 후속은 한쪽을 바꾸면 함께 막힌다
+    await flushPromises()
+    await startEdit()
+    await find(w, 'se-prop-onoff').trigger('click')
+    await field(w, 'NextScenarioIfSuccess.Text').setValue('조치 뒤 누설 다시 확인')
+    const foot = find(w, 'se-prop-foot')
+    expect(foot.text()).toContain('상태 켜짐 → 꺼짐, 성공 후속 설명 조치 뒤 누설 확인 → 조치 뒤 누설 다시 확인')
+    expect(foot.findAll('del')).toHaveLength(0)
+    expect(foot.findAll('ins').map((x) => x.element.textContent)).toEqual(['다시 '])
+  })
+
   it('후속 고르기는 같은 모델 이름 목록(자기 자신 빼고) — 잇고 설명을 넣어 적용, 빼면 null', async () => {
     const { e } = setup()
     await flushPromises()
