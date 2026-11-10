@@ -126,29 +126,23 @@ P2(편집·저장)를 사내 PC 에서 운영 EARS·InterfaceServer 에 붙여 �
 
 그래서 쓰기 시험의 `MONGODB_URI` 는 `SC_PROPERTY` 에 쓸 수 있는 계정이어야 한다(데스크톱 편집기가 저장할 때 쓰는 것과 같은 권한). 읽기 전용 계정이면 설비에는 배포되고 마무리만 실패한다("배포는 됐지만 마무리가 남았습니다" 화면) — 그러면 시험을 멈추고 결과를 적는다.
 
-### 2. 운영 Mongo 계정 (DBA 에게 부탁)
+### 2. 운영 Mongo 계정 (기존 계정)
 
-웹이 운영 Mongo 에 쓰는 것은 둘뿐이다: EARS `SC_PROPERTY` 의 update(배포 마무리 — 문서를 새로 만들거나 지우지 않는다)와 웹 전용 DB(초안·배포 기록, 시험 뒤 지우는 임시 DB `SE_WEB_TEST`). 그래서 이 두 권한만 가진 시험 계정을 하나 만든다. 데스크톱 편집기나 사내 WebManager 가 쓰는 계정도 이 권한이 있지만, EARS 의 다른 컬렉션까지 쓸 수 있으므로 시험 계정을 권한다. 사용자 관리 권한이 있는 계정으로 `mongo` 셸(운영 4.2)에서 primary 에 접속해 친다.
+쓰던 운영 계정을 그대로 쓴다. 이 계정은 EARS 전체에 쓸 수 있어서 DB 권한이 잘못된 쓰기를 막아 주지 않고, 웹 서버에도 "시험 대상만 쓴다" 는 장치가 없다. **7 의 "하지 말 것" 을 지키는 것이 유일한 막이다.** 계정 정보는 `server\.env` 에만 둔다.
+
+웹 전용 임시 DB `SE_WEB_TEST` 에도 쓸 수 있는 계정이어야 한다. 그 계정으로 `mongo` 셸(운영 4.2)에 접속해 본다.
 
 ```js
-use admin
-db.createRole({
-  role: 'sewScPropertyUpdate',
-  privileges: [{ resource: { db: 'EARS', collection: 'SC_PROPERTY' }, actions: ['update'] }],
-  roles: []
-})
-db.createUser({
-  user: 'sew_test',
-  pwd: passwordPrompt(),
-  roles: [
-    { role: 'read', db: 'EARS' },
-    { role: 'sewScPropertyUpdate', db: 'admin' },
-    { role: 'readWrite', db: 'SE_WEB_TEST' }
-  ]
-})
+db.runCommand({ connectionStatus: 1 }).authInfo.authenticatedUserRoles
 ```
 
-확인: 그 계정으로 접속해 `db.runCommand({ connectionStatus: 1, showPrivileges: true })` — `EARS.SC_PROPERTY` 의 `update` 와 `SE_WEB_TEST` 의 쓰기 권한이 보이면 된다. 계정을 `admin` 에 만들었으므로 주소 끝에 `authSource=admin` 을 붙인다. 운영 Mongo 에 계정 인증이 꺼져 있으면 이 절은 건너뛴다.
+`root`·`readWriteAnyDatabase`, 또는 db 가 `SE_WEB_TEST` 인 `readWrite`·`dbOwner` 가 보이면 된다. 운영 Mongo 에 계정 인증이 꺼져 있으면 빈 목록이 나오고 그대로 쓸 수 있다.
+
+둘 다 아니면 기존 계정의 권한은 바꾸지 않고, DBA 에게 웹 전용 DB 만 쓰는 계정을 하나 부탁해 `SE_WEB_DB_URI` 에만 쓴다.
+
+```js
+db.getSiblingDB('admin').createUser({ user: 'sew_test', pwd: passwordPrompt(), roles: [{ role: 'readWrite', db: 'SE_WEB_TEST' }] })
+```
 
 ### 3. 설정
 
@@ -160,8 +154,8 @@ notepad server\.env
 
 | 변수 | 넣을 값 |
 |---|---|
-| `MONGODB_URI` | 운영 EARS, 2 의 시험 계정: `mongodb://sew_test:<비밀번호>@<호스트>:<포트>/EARS?authSource=admin` |
-| `SE_WEB_DB_URI` | 웹 전용 임시 DB, 같은 계정: `mongodb://sew_test:<비밀번호>@<호스트>:<포트>/SE_WEB_TEST?authSource=admin`. EARS 와 같은 이름이면 서버가 뜨지 않는다 |
+| `MONGODB_URI` | 운영 EARS, 기존 계정(사내 WebManager 의 `MONGODB_URI` 와 같은 형식): `mongodb://<계정>:<비밀번호>@<호스트>:<포트>/EARS`. 원래 주소에 `?authSource=…` 가 있으면 그대로 둔다 |
+| `SE_WEB_DB_URI` | 웹 전용 임시 DB: `MONGODB_URI` 에서 DB 이름만 `SE_WEB_TEST` 로 바꾼다. **`MONGODB_URI` 에 `authSource` 가 없으면 끝에 `?authSource=EARS` 를 붙인다**(안 붙이면 `SE_WEB_TEST` 에서 계정을 찾다가 인증에 실패해 서버가 뜨지 않는다). 2 에서 전용 계정을 받았으면 그 계정과 `?authSource=admin` 을 쓴다. EARS 와 같은 이름이면 서버가 뜨지 않는다 |
 | `EARS_INTERFACE_URL` | 사내 InterfaceServer 주소(사내 WebManager 설정과 같은 값) |
 | `EARS_INTERFACE_MAX_REQUEST_MB` | 사내 InterfaceServer 의 `max-content-length`(MB). 모르면 `100` 그대로 |
 | `SE_USER_SINGLEID` | WRITE 권한이 있는 본인 SingleID |
@@ -185,6 +179,16 @@ node tools\inhouse\preflight.js --name SEW_TEST_20261110 --process <공정> --mo
 
 이름이 이미 있으면 `SEW_TEST_20261110_2` 처럼 접미사를 바꾼다. `경고 NAME_RULE` 이 나오면 6단계 2번의 "이름 규칙이 있을 때" 를 따른다.
 
+마지막으로 `mongo` 셸에서 그 이름이 운영 EARS 에 정말 없는지 본다(조회만 한다). 사전 점검은 운영 속성이 있는 문서만 보는데, 운영 속성 없는 문서가 남아 있으면 배포가 그 문서에 붙어 기존 성과를 덮는다.
+
+```js
+var NAME = 'SEW_TEST_20261110'
+db.getSiblingDB('EARS').SC_PROPERTY.countDocuments({ scname: NAME })
+db.getSiblingDB('EARS').getCollection('fs.files').countDocuments({ 'metadata.name': NAME })
+```
+
+둘 다 `0` 이어야 한다. 아니면 그 이름을 쓰지 않고 접미사를 바꿔 다시 돌린다.
+
 ### 5. 실행·확인
 
 ```bat
@@ -201,24 +205,40 @@ npm run dev
 
 단계마다 적을 것: 시각, 판 시각(저장 결과 화면의 새 버전·불러오기 창 버전 목록), 화면 사진, 데스크톱 편집기가 연 결과. 실패하면 화면 문구와 `server\logs` 의 그날 로그를 함께 적는다.
 
-1. **스텝 복사**: 불러오기 창에서 시험할 공정·모델의 시나리오 하나를 열고, 이미지·OCR·대기 스텝 몇 개를 골라 [복사]. (설비 상태 조건 스텝은 새로 만들 수 없는 조건이라 빼고 고른다.)
+**불러오기 창은 마우스로만 쓰고, 오른쪽 칸의 켜짐 스위치는 누르지 않는다.** 스위치는 누르는 순간 확인 없이 운영 EARS 에 쓰고, 누른 뒤 초점이 남아 Space·Enter 로도 바뀐다.
+
+1. **스텝 복사**: 불러오기 창에서 시험할 공정·모델의 시나리오 행을 **두 번 눌러** 연다. 이미지·OCR·대기 스텝 몇 개를 골라 [복사]. (설비 상태 조건 스텝은 새로 만들 수 없는 조건이라 빼고 고른다.) 이 시나리오는 운영 시나리오다. 열려 있는 동안 [복사] 말고는 누르지 않는다.
 2. **새 시나리오**: 바 [새 시나리오] → 같은 공정·모델, 이름 `SEW_TEST_<오늘 날짜>`, 메일 제목 → [만들기].
    - **이름 규칙이 있을 때**(새 시나리오 창에 이름 칸이 없고 대·중분류만 고른다): 아무 분류로 만든다. 5번 초안 저장 때 저장 창의 이름 칸을 `SEW_TEST_<오늘 날짜>` 로 바꾸고, 확인 창·저장 창에 보이는 ID 가 그 이름인지 본다.
 3. **붙여넣기**: 빈 화면의 [붙여넣기]. 마지막 스텝의 갈 곳이 `NEXT` 면 `SUCCESS` 로 바꾼다.
 4. **끄기**: 바 [운영 속성 전체] → [수정] → 켜짐을 끈다 → [적용]. 새 시나리오는 사내처럼 켜진 채 만들어지므로 **꼭 끈다**. 바에 꺼짐이 보이는지 본다.
 5. **초안 저장**: [저장] → [초안 저장]. 새로고침해도 불러오기 창 [초안 이어서 열기]로 같은 스텝이 열리는지 본다. 초안을 저장한 뒤에는 저장할 이름을 바꾸지 않는다(배포한 적 없는 새 시나리오 초안을 다른 이름으로 배포하면 아직 막힌다 — SEW-017).
-6. **배포**: [저장] → [설비에 배포…] → "설비에 배포할까요?" 확인 창에서 **ID 가 `<공정>-<모델>-SEW_TEST_<날짜>` 이고 "꺼져 있어 실행 요청은 만들어지지 않습니다." 가 보일 때만** [배포]. 둘 중 하나라도 아니면 [돌아가기]. 새 버전 시각을 적는다. "배포됐는지 알 수 없습니다" 가 나오면 [버전 목록 확인]부터 누른다(바로 다시 배포하지 않는다).
+6. **배포**: [저장] → [설비에 배포…] → "설비에 배포할까요?" 확인 창에서 **ID 가 `<공정>-<모델>-SEW_TEST_<날짜>` 이고 "꺼져 있어 실행 요청은 만들어지지 않습니다." 가 보일 때만** [배포]. 둘 중 하나라도 아니면 [돌아가기]. 새 버전 시각을 적는다. "배포됐는지 알 수 없습니다" 가 나오면 [버전 목록 확인]부터 누른다(바로 다시 배포하지 않는다). [버전 목록 확인]·[다시 쓰기]는 배포 때 적어 둔 값을 그대로 쓰므로, 데스크톱에서 그 시나리오를 저장한 뒤에는 누르지 않는다.
+   - 배포가 끝나면 `mongo` 셸에서 본다(조회만 한다). **1건이고 `IsEnabled` 가 `false` 여야 한다.** 아니면 7번으로 가지 않고 바로 11번으로 지운다. 지우기가 막히면 데스크톱 편집기로 끄고 멈춘다.
+     ```js
+     db.getSiblingDB('EARS').SC_PROPERTY.find({ scname: NAME }, { _id: 0, process: 1, eqpModel: 1, scname: 1, scCategory: 1, trCategory: 1, 'property.IsEnabled': 1 }).toArray()
+     ```
 7. **데스크톱으로 열기**: 사내 ScenarioEditor 로 같은 시나리오를 연다 — 스텝·기준 화면·찾을 그림·운영 속성(사용 꺼짐)이 웹과 같은지 본다.
 8. **데스크톱 판을 웹으로**: 데스크톱에서 스텝 설명 하나만 바꿔 서버에 저장한다(사용 꺼짐 그대로). 웹에서 그 시나리오를 다시 열어(불러오기 창 → 현재 버전) 바뀐 설명과 그림이 보이는지 본다.
 9. **고쳐 배포**: 웹에서 이미지 스텝 하나를 골라 기준 화면에서 찾을 그림을 [다시 잡기]로 새로 자르고 배포한다. 확인 창은 6번과 같은 조건일 때만 [배포].
 10. **데스크톱으로 다시 열기**: 새로 자른 찾을 그림이 데스크톱에 보이는지 본다.
-11. **지우기**: 웹 불러오기 창에서 `SEW_TEST_<날짜>` 행을 고르고 오른쪽 [시나리오 지우기…] → 시나리오 이름을 그대로 입력 → [지우기]. Redis 에 남은 판 기록은 지우지 않고 적기만 한다.
-12. **정리**: 서버를 끄고, DBA 에게 웹 전용 임시 DB 와 시험 계정을 지워 달라고 한다 — `use SE_WEB_TEST` → `db.dropDatabase()`, `use admin` → `db.dropUser('sew_test')` → `db.dropRole('sewScPropertyUpdate')`. 지우기 전에 `SCENARIO_EDITOR_DEPLOYS` 의 배포 기록을 결과와 함께 적어 두면 좋다.
+11. **지우기**: 웹 불러오기 창에서 `SEW_TEST_<날짜>` 행을 고르고, 오른쪽 칸 맨 위 이름이 그 이름인지 본 뒤 [시나리오 지우기…] → 시나리오 이름을 그대로 입력 → [지우기]. 끝나면 4 의 조회 두 줄을 다시 돌려 둘 다 `0` 인지 본다. Redis 에 남은 판 기록은 지우지 않고 적기만 한다.
+12. **정리**: 서버를 끄고 웹 전용 임시 DB 를 지운다. 지우기 전에 `SCENARIO_EDITOR_DEPLOYS` 의 배포 기록을 결과와 함께 적어 둔다. 아래처럼 DB 이름이 들어간 한 줄로만 지운다(`use` 뒤에 `db.dropDatabase()` 를 치면 현재 DB 를 잘못 보았을 때 운영 EARS 가 지워진다). 권한 오류가 나면 이 줄을 DBA 에게 부탁한다. 2 에서 `sew_test` 를 받았으면 `db.getSiblingDB('admin').dropUser('sew_test')` 도 부탁한다.
+    ```js
+    db.getSiblingDB('SE_WEB_TEST').dropDatabase()
+    ```
 
 ### 7. 하지 말 것
 
 - `SEW_TEST_<날짜>` 말고 다른 시나리오에 배포하지 않는다. 확인 창의 ID 가 다르거나 "덮어씁니다"·"켜져 있는 시나리오입니다." 가 보이면 [돌아가기]. 1번에서 연 운영 시나리오에서는 [저장]을 누르지 않는다.
+- [시나리오 지우기…]는 `SEW_TEST_<날짜>` 행에서만 쓴다. 그 이름의 문서와 모든 판이 지워지고 되살릴 수 없다.
 - 켜지 않는다(운영 속성 켜짐, 불러오기 창 켜기). 켜면 설비에서 실행될 수 있다.
-- 불러오기 창의 켜기·끄기, 심의·성과 저장을 하지 않는다(운영 EARS 에 직접 쓴다).
+- 불러오기 창의 켜짐 스위치를 누르지 않고, 그 창에서 키보드(Tab·Space·Enter)를 쓰지 않는다. 심의·성과 저장도 하지 않는다. 모두 운영 EARS 에 바로 쓴다.
+- 운영 Mongo 셸에는 이 절차에 적힌 줄만 친다. 기존 계정은 EARS 를 고치거나 지울 수 있다.
 - 큰 시나리오를 복사해 배포하지 않는다.
 - 위 읽기 시험 "하지 말 것"(시험 데이터·통합 시험·E2E·측정 도구)도 그대로다.
+
+### 8. 잘못 눌렀을 때
+
+- **운영 시나리오의 켜짐 스위치를 눌렀다**: 한 번만 더 눌러 되돌리고, 스위치 옆 글자가 원래 상태인지 본다. 수정 이력(`Owners`)에 두 줄이 남으므로 시나리오 이름과 시각을 적어 그 시나리오 담당자에게 알린다.
+- **운영 시나리오에 배포·삭제·심의·성과 저장을 했다**: 웹으로 더 고치지 않는다. 서버를 끄고 화면 사진과 시각을 적어 바로 담당자에게 알린다. 배포했다면 설비에 이미 나간 것이다. 되돌리는 방법은 담당자와 정한다.
