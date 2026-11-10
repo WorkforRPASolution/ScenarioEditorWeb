@@ -40,6 +40,10 @@ describe('scenarioEditorApi', () => {
     await api.nameRule()
     expect(get).toHaveBeenLastCalledWith('/scenario-editor/name-rule')
   })
+  it('공정·모델 옆 수(시나리오 수·내 초안 수)는 쿼리 없이 GET', async () => {
+    await api.counts()
+    expect(get).toHaveBeenLastCalledWith('/scenario-editor/scenario-counts')
+  })
   it('내 초안 목록은 공정·모델 쿼리', async () => {
     await api.listDrafts('P', 'M')
     expect(get).toHaveBeenLastCalledWith('/scenario-editor/drafts', { params: { process: 'P', model: 'M' } })

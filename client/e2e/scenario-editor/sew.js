@@ -32,6 +32,7 @@ export async function apiAs(user = 'sew_master') {
   const api = {
     open: async (k, crtime = 'current') => json(await ctx.get(`${path(k)}/versions/${crtime}`), `열기 ${idOf(k)}`),
     versions: async (k) => json(await ctx.get(`${path(k)}/versions`), `버전 ${idOf(k)}`),
+    list: async (process, model) => json(await ctx.get('scenarios', { params: { process, model } }), `목록 ${process}-${model}`),
     drafts: async (process, model) => json(await ctx.get('drafts', { params: { process, model } }), '내 초안'),
     async deploy(meta) {
       const data = await json(await ctx.post('deploy', { multipart: { meta: JSON.stringify(meta) }, timeout: 120_000 }), `배포 ${idOf(meta.target)}`)

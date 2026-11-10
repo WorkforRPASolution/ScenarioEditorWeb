@@ -29,6 +29,7 @@ router.get('/scenarios/:process/same-name/:name', asyncHandler(c.sameName))
 router.get('/users', c.requireReviewer, asyncHandler(c.searchUsers)) // 원개발자 찾기(?q=)·등록 여부(?ids=) — 성과 입력 창(등급 1·2) 몫(설계 §8 403)
 router.get('/name-rule', asyncHandler(c.nameRule))
 router.get('/scenarios', asyncHandler(c.list))
+router.get('/scenario-counts', asyncHandler(c.counts)) // 불러오기 창의 공정·모델 옆 (내 초안 | 시나리오) 수
 router.get('/scenarios/:process/:model/:name/versions', asyncHandler(c.versions))
 router.get('/scenarios/:process/:model/:name/versions/:crtime', asyncHandler(c.open))
 router.get('/scenarios/:process/:model/:name/versions/:crtime/files/:fileId/images/:imageId', asyncHandler(c.image))

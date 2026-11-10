@@ -18,7 +18,8 @@ function fakeDb({ rows = [], collections = [], matched = 1 } = {}) {
       updateOne: async (filter, update, options) => { calls.push({ name, op: 'updateOne', filter, update, options }); return { matchedCount: matched } },
       countDocuments: async (filter, options) => { calls.push({ name, op: 'countDocuments', filter, options }); return 3 },
       find: (filter, options) => { const op = { name, op: 'find', filter, options }; calls.push(op); return cursor(op) },
-      distinct: async (field, filter, options) => { calls.push({ name, op: 'distinct', field, filter, options }); return rows }
+      distinct: async (field, filter, options) => { calls.push({ name, op: 'distinct', field, filter, options }); return rows },
+      aggregate: (pipeline, options) => { calls.push({ name, op: 'aggregate', pipeline, options }); return { toArray: async () => rows } }
     }),
     listCollections: (filter, options) => ({ toArray: async () => { calls.push({ op: 'listCollections', filter, options }); return collections } })
   }
@@ -127,5 +128,27 @@ describe('earsRepository 읽기', () => {
     const f = fakeDb({ rows: [{ a: 1 }, { a: 2 }] })
     expect(await repoOf(f).findNameRule()).toEqual([{ a: 1 }, { a: 2 }])
     expect(f.calls[0].name).toBe('SC_NAME_RULE')
+  })
+})
+
+// 불러오기 창의 공정·모델 옆 시나리오 수(2026-11-11 사용자 요청). 세는 기준은 목록과 같다 — 운영 속성(property)이 있는 문서, 같은 이름은 한 번.
+describe('earsRepository countScenarios', () => {
+  it('공정들의 SC_PROPERTY 를 공정·모델·이름으로 한 번 묶고 공정·모델별로 센다 — 문서는 가져오지 않는다', async () => {
+    const f = fakeDb({ rows: [{ _id: { process: 'SEWCVD', model: 'M1' }, count: 3 }, { _id: { process: 'SEWETCH', model: 'M2' }, count: 1 }] })
+    const out = await repoOf(f).countScenarios(['SEWCVD', 'SEWETCH'])
+    expect(out).toEqual([{ process: 'SEWCVD', model: 'M1', count: 3 }, { process: 'SEWETCH', model: 'M2', count: 1 }])
+    const c = f.calls[0]
+    expect(c).toMatchObject({ name: 'SC_PROPERTY', op: 'aggregate' })
+    expect(c.pipeline).toEqual([
+      { $match: { process: { $in: ['SEWCVD', 'SEWETCH'] }, property: { $exists: true }, scname: { $type: 'string' } } },
+      { $group: { _id: { process: '$process', model: '$eqpModel', name: '$scname' } } },
+      { $group: { _id: { process: '$_id.process', model: '$_id.model' }, count: { $sum: 1 } } }
+    ])
+    expect(c.options.maxTimeMS).toBeGreaterThan(0)
+  })
+  it('공정이 없으면 묻지 않는다', async () => {
+    const f = fakeDb()
+    expect(await repoOf(f).countScenarios([])).toEqual([])
+    expect(f.calls).toEqual([])
   })
 })

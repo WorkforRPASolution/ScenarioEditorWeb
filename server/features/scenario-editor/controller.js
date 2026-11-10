@@ -45,6 +45,11 @@ async function list(req, res) {
   ok(res, await getDeps().list.list(req.seUser, need(req.query.process, 'process'), need(req.query.model, 'model')))
 }
 
+// 불러오기 창의 공정·모델 옆 수: 공정 권한 안의 등록된 시나리오 수·내 초안 수
+async function counts(req, res) {
+  ok(res, await getDeps().counts.counts(req.seUser))
+}
+
 async function versions(req, res) {
   const { process, model, name } = req.params
   ok(res, await getDeps().versions.versions(req.seUser, process, model, name))
@@ -195,4 +200,4 @@ async function nameRule(req, res) {
   ok(res, await getDeps().performance.nameRule(req.seUser))
 }
 
-module.exports = { reviewScenario, savePerformance, sameName, searchUsers, nameRule, setEnabled, removeScenario, deploy, deployVerify, deployFinish, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, versions, open, dataCheck, image }
+module.exports = { reviewScenario, savePerformance, sameName, searchUsers, nameRule, setEnabled, removeScenario, deploy, deployVerify, deployFinish, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, counts, versions, open, dataCheck, image }

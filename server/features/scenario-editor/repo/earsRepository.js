@@ -28,6 +28,17 @@ function createEarsRepository(getDb, mongo) {
     findEquipment: () => col('EQP_INFO').find({ webmanagerUse: 1 }, { projection: { _id: 0 } }).maxTimeMS(MAX).toArray(),
     findScenarioDocs: (process, model) => col('SC_PROPERTY')
       .find({ process, eqpModel: model }, { projection: { _id: 0, scname: 1, property: 1, performance: 1 } }).maxTimeMS(MAX).toArray(),
+    // 불러오기 창의 공정·모델 옆 시나리오 수(2026-11-11). 세는 기준은 목록(listService)과 같다 — property 있는 문서, 같은 이름은 한 번.
+    // 문서를 가져오지 않고 DB 안에서 센다 → [{ process, model, count }]
+    countScenarios: async (processes) => {
+      if (!processes.length) return []
+      const rows = await col('SC_PROPERTY').aggregate([
+        { $match: { process: { $in: processes }, property: { $exists: true }, scname: { $type: 'string' } } },
+        { $group: { _id: { process: '$process', model: '$eqpModel', name: '$scname' } } },
+        { $group: { _id: { process: '$_id.process', model: '$_id.model' }, count: { $sum: 1 } } }
+      ], { maxTimeMS: MAX }).toArray()
+      return rows.map((r) => ({ process: r._id.process, model: r._id.model, count: r.count }))
+    },
     findScenarioKeyDocs: (process, model, name) => col('SC_PROPERTY')
       .find({ process, eqpModel: model, scname: name }, { projection: { _id: 0 } }).maxTimeMS(MAX).toArray(),
     // Int64(Long)를 숫자로 올리지 않고 읽는다 — 읽은 값을 그대로 다시 쓸 때 Int64 가 Int32·Double 로 바뀌지 않게(성과 복사·기여자 형 유지).

@@ -46,6 +46,20 @@ describe('공정 권한 (완료 조건 2)', () => {
     expect(res.status).toBe(exp.status)
     if (exp.status === 200) expect((await res.json()).data).toEqual({ processes: exp.processes, excludedEqpCount: exp.excludedEqpCount })
   })
+  // 불러오기 창의 공정·모델 옆 수(2026-11-11 사용자 요청)
+  it.each(Object.entries(expectedScopes).filter(([, exp]) => exp.status === 200))('%s: 공정·모델별 시나리오 수는 그 쌍의 목록 줄 수와 같고, 공정 권한 밖의 쌍은 없다', async (user, exp) => {
+    const res = await get('/scenario-counts', user)
+    expect(res.status).toBe(200)
+    const { pairs } = (await res.json()).data
+    const allowed = exp.processes.flatMap((p) => p.models.map((m) => ({ process: p.process, model: m.model })))
+    const of = (k) => pairs.find((c) => c.process === k.process && c.model === k.model)?.scenarios ?? 0
+    for (const c of pairs) expect(allowed.some((k) => k.process === c.process && k.model === c.model), `${c.process}/${c.model}`).toBe(true)
+    for (const k of allowed) {
+      const rows = (await (await get(`/scenarios?process=${enc(k.process)}&model=${enc(k.model)}`, user)).json()).data
+      expect(of(k), `${k.process}/${k.model}`).toBe(rows.length)
+    }
+    if (allowed.length) expect(pairs.reduce((n, c) => n + c.scenarios, 0)).toBeGreaterThan(0)
+  })
   it('권한 밖 공정을 직접 부르면 403', async () => {
     const res = await get('/scenarios?process=SEWETCH&model=SEWMODELA', 'sew_cvd')
     expect(res.status).toBe(403)

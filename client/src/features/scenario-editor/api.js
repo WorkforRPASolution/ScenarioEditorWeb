@@ -16,6 +16,8 @@ export const scenarioEditorApi = {
   refreshCache: () => api.post('/scenario-editor/cache/refresh'),
   dataCheck: () => api.get('/scenario-editor/data-check'),
   list: (process, model) => api.get('/scenario-editor/scenarios', { params: { process, model } }),
+  // 불러오기 창의 공정·모델 옆 수 → { draftsCounted, pairs: [{ process, model, scenarios, drafts }] }(공정 권한 안, 둘 다 0 인 쌍은 없다)
+  counts: () => api.get('/scenario-editor/scenario-counts'),
   versions: (p, m, n) => api.get(`/scenario-editor/scenarios/${enc(p)}/${enc(m)}/${enc(n)}/versions`),
   open: (p, m, n, crtime = 'current') => api.get(`/scenario-editor/scenarios/${enc(p)}/${enc(m)}/${enc(n)}/versions/${crtime}`, { timeout: OPEN_TIMEOUT_MS }),
   // 저장 전 검사(meta = editor/request buildMeta). 서버가 기준 판·다른 판을 열 수 있어(차가운 큰 시나리오) 열기와 같은 시간을 준다.

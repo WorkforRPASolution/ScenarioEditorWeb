@@ -270,3 +270,54 @@ test('⑤ 새 스텝의 넣을 자리를 바꾸면 표가 그 줄로 스크롤�
   await expect(cellOf(page, 's16', 'no')).toContainText('18') // 17번 자리에 새 스텝이 들어가 한 칸 밀렸다
   await expect(page.getByTestId('se-step-table').locator('.ag-row[row-index="16"] [col-id="desc"]')).toHaveText('E2E 넣을 자리')
 })
+
+// 2026-11-11 사용자 요청: "프로세스명과 모델명 옆에 등록된 시나리오가 몇개인지 () 안에 표시 … WebManager 의 필터처럼",
+// "내가 만든 초안이 어디어디 있는지 … ( 1 | 10 ) 이런식이면 시나리오는 10개인데 내가 만든 초안은 1개"
+test('⑥ 불러오기 창의 공정·모델 옆 수: 등록된 시나리오 수, 내 초안이 있는 곳은 (내 초안 | 시나리오) — 초안을 지우면 돌아온다', async ({ page }) => {
+  const T = { ...CVD, name: sewName('COUNT') }
+  await api.deployFrom(SOURCE, T)
+  await asUser(page, 'sew_master')
+  await page.goto(urlOf(T))
+  await expect(rows(page)).toHaveCount(4)
+
+  const texts = (dlg, id) => dlg.getByTestId(id).locator('option').allTextContents().then((a) => a.map((x) => x.trim()))
+  const values = (dlg, id) => dlg.getByTestId(id).locator('option').evaluateAll((os) => os.map((o) => o.value))
+  let dlg = await openLoadAt(page, CVD)
+  // 기대값: 모델마다 목록의 줄 수(서버 API), 공정은 그 합
+  const models = await values(dlg, 'se-load-model')
+  expect(models).toContain(CVD.model)
+  const n = {}
+  for (const m of models) n[m] = (await api.list(CVD.process, m)).length
+  const sum = models.reduce((x, m) => x + n[m], 0)
+  expect(n[CVD.model]).toBeGreaterThan(1)
+  await expect.poll(() => texts(dlg, 'se-load-model')).toEqual(models.map((m) => `${m} (${n[m]})`))
+  const processes = await values(dlg, 'se-load-process')
+  const others = (await texts(dlg, 'se-load-process')).filter((_, i) => processes[i] !== CVD.process)
+  expect((await texts(dlg, 'se-load-process'))[processes.indexOf(CVD.process)]).toBe(`${CVD.process} (${sum})`)
+  for (const x of others) expect(x).toMatch(/^\S+ \(\d+\)$/) // 내 초안이 없는 공정은 시나리오 수만
+  await expect(dlg.getByTestId('se-load-count-hint')).toHaveText('괄호 = 시나리오 수, 내 초안이 있는 곳은 (내 초안 | 시나리오)')
+  // 고른 값은 이름 그대로다(수가 섞이지 않는다)
+  await expect(dlg.getByTestId('se-load-model')).toHaveValue(CVD.model)
+  await dlg.locator('[aria-label="닫기"]').click()
+
+  // 바 칸을 고쳐 초안 저장 → 다시 열면 그 공정·모델에만 (1 | N)
+  await page.getByTestId('se-bar-description').fill('E2E 수 시험')
+  await openSave(page)
+  await page.getByTestId('se-save-draft').click()
+  await expect(page.getByTestId('se-save-result').locator('h4')).toHaveText(/초안을 저장했습니다/)
+  await page.getByTestId('se-save-close').click()
+  dlg = await openLoadAt(page, CVD)
+  await expect.poll(() => texts(dlg, 'se-load-model')).toEqual(models.map((m) => (m === CVD.model ? `${m} (1 | ${n[m]})` : `${m} (${n[m]})`)))
+  const after = await texts(dlg, 'se-load-process')
+  expect(after[processes.indexOf(CVD.process)]).toBe(`${CVD.process} (1 | ${sum})`)
+  expect(after.filter((_, i) => processes[i] !== CVD.process)).toEqual(others)
+
+  // 그 초안을 지우면 다시 묻지 않고 괄호가 시나리오 수만으로 돌아온다
+  await dlg.getByTestId('se-load-search').fill(T.name)
+  await dlg.getByRole('gridcell', { name: T.name, exact: true }).click()
+  await dlg.getByTestId('se-load-draft-line').click()
+  await dlg.getByTestId('se-load-draft-delete').click()
+  await dlg.getByTestId('se-load-draft-delete-go').click()
+  await expect.poll(() => texts(dlg, 'se-load-model')).toEqual(models.map((m) => `${m} (${n[m]})`))
+  expect((await texts(dlg, 'se-load-process'))[processes.indexOf(CVD.process)]).toBe(`${CVD.process} (${sum})`)
+})

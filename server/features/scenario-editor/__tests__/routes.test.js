@@ -87,6 +87,14 @@ describe('/scenarios·/scenarios/:process/:model/:name/versions', () => {
     expect(body).toEqual({ success: true, data: [{ name: 'A' }] })
     expect(calls).toEqual([[expect.objectContaining({ singleid: 'sew_multi' }), 'CVD', 'M1']])
   })
+  it('공정·모델별 시나리오 수·내 초안 수(/scenario-counts)는 사용자를 서비스에 넘기고 data 로 감싼다', async () => {
+    const calls = []
+    const data = { draftsCounted: true, pairs: [{ process: 'CVD', model: 'M1', scenarios: 3, drafts: 1 }] }
+    Object.assign(fake, { counts: { counts: async (...a) => { calls.push(a); return data } } })
+    const body = await (await fetch(`${base}/scenario-counts`)).json()
+    expect(body).toEqual({ success: true, data })
+    expect(calls).toEqual([[expect.objectContaining({ singleid: 'sew_multi' })]])
+  })
   it('버전 목록은 경로 값을 문자열 그대로(하이픈 포함) 넘긴다', async () => {
     const calls = []
     Object.assign(fake, { versions: { versions: async (...a) => { calls.push(a); return [{ crtime: 1, isCurrent: true }] } } })

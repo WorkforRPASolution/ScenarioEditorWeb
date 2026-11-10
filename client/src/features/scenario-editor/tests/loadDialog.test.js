@@ -3,7 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 
 const api = vi.hoisted(() => ({ list: vi.fn(), versions: vi.fn(), refreshCache: vi.fn(), me: vi.fn(), scopes: vi.fn(), dataCheck: vi.fn(),
-  listDrafts: vi.fn(), getDraft: vi.fn(), deleteDraft: vi.fn(), setEnabled: vi.fn(), removeScenario: vi.fn(), check: vi.fn(), open: vi.fn() }))
+  listDrafts: vi.fn(), counts: vi.fn(), getDraft: vi.fn(), deleteDraft: vi.fn(), setEnabled: vi.fn(), removeScenario: vi.fn(), check: vi.fn(), open: vi.fn() }))
 vi.mock('../api', () => ({ scenarioEditorApi: api, imageUrl: (p) => p }))
 vi.mock('../gridTheme', () => ({ registerGrid: () => {}, useGridTheme: () => ({ value: {} }) }))
 import LoadDialog from '../components/LoadDialog.vue'
@@ -72,6 +72,50 @@ describe('LoadDialog', () => {
     const { w } = setup(); await flushPromises()
     expect(w.findAll('[data-testid="se-load-process"] option').map((o) => o.text())).toEqual(['SEWCVD', 'SEWETCH'])
     expect(api.list).toHaveBeenCalledWith('SEWCVD', 'SEWMODELA')
+  })
+  // 2026-11-11 사용자 요청: "프로세스명과 모델명 옆에 등록된 시나리오가 몇개인지 () 안에 표시 … WebManager 의 필터처럼"
+  describe('공정·모델 옆 시나리오 수', () => {
+    const opts = (w, id) => w.findAll(`[data-testid="${id}"] option`).map((o) => o.text())
+    const counts = (pairs, draftsCounted = false) => ok({ draftsCounted, pairs })
+    it('공정은 권한 안 모델의 합, 모델은 고른 공정 안의 수 — 시나리오가 없는 곳은 (0)', async () => {
+      api.counts.mockReturnValue(counts([{ process: 'SEWCVD', model: 'SEWMODELA', scenarios: 3, drafts: 0 }, { process: 'SEWCVD', model: 'SEWMODELB', scenarios: 10, drafts: 0 }]))
+      const { w } = setup(); await flushPromises()
+      expect(opts(w, 'se-load-process')).toEqual(['SEWCVD (13)', 'SEWETCH (0)'])
+      expect(opts(w, 'se-load-model')).toEqual(['SEWMODELA (3)', 'SEWMODELB (10)'])
+      // 값은 이름 그대로 — 고르기·기억·목록 요청이 수에 물들지 않는다
+      expect(w.findAll('[data-testid="se-load-process"] option').map((o) => o.element.value)).toEqual(['SEWCVD', 'SEWETCH'])
+      expect(api.list).toHaveBeenCalledWith('SEWCVD', 'SEWMODELA')
+      expect(w.find('[data-testid="se-load-count-hint"]').text()).toBe('괄호 = 시나리오 수')
+    })
+    it('수를 못 읽으면 이름만 보이고 목록은 그대로 뜬다', async () => {
+      api.counts.mockReturnValue(Promise.reject({ response: { status: 503, data: { code: 'UPSTREAM_DOWN' } } }))
+      const { w } = setup(); await flushPromises()
+      expect(opts(w, 'se-load-process')).toEqual(['SEWCVD', 'SEWETCH'])
+      expect(opts(w, 'se-load-model')).toEqual(['SEWMODELA', 'SEWMODELB'])
+      expect(w.findComponent({ name: 'AgGridVue' }).props('rowData')).toHaveLength(3)
+      expect(w.find('[data-testid="se-load-count-hint"]').exists()).toBe(false)
+    })
+    it('지금 보는 공정·모델의 수는 목록의 줄 수를 따른다 — 수를 읽은 뒤 누가 배포했거나 지웠어도 괄호와 목록이 어긋나지 않는다', async () => {
+      api.counts.mockReturnValue(counts([{ process: 'SEWCVD', model: 'SEWMODELA', scenarios: 99, drafts: 0 }, { process: 'SEWCVD', model: 'SEWMODELB', scenarios: 10, drafts: 0 }]))
+      const { w } = setup(); await flushPromises()
+      expect(opts(w, 'se-load-model')).toEqual(['SEWMODELA (3)', 'SEWMODELB (10)']) // 목록 3줄
+      expect(opts(w, 'se-load-process')).toEqual(['SEWCVD (13)', 'SEWETCH (0)'])
+      // 다른 모델로 옮겨도 앞 모델의 수는 고친 값으로 남는다
+      await w.find('[data-testid="se-load-model"]').setValue('SEWMODELB'); await flushPromises()
+      expect(opts(w, 'se-load-model')).toEqual(['SEWMODELA (3)', 'SEWMODELB (3)'])
+    })
+    it('창을 다시 열 때와 [권한·설비 다시 읽기] 때 수를 다시 읽는다 — 공정·모델을 바꿀 때는 다시 읽지 않는다', async () => {
+      api.counts.mockReturnValue(counts([]))
+      const { w, store } = setup(); await flushPromises()
+      expect(api.counts).toHaveBeenCalledTimes(1)
+      await w.find('[data-testid="se-load-model"]').setValue('SEWMODELB'); await flushPromises()
+      expect(api.counts).toHaveBeenCalledTimes(1)
+      await w.setProps({ modelValue: false }); await w.setProps({ modelValue: true }); await flushPromises()
+      expect(api.counts).toHaveBeenCalledTimes(2)
+      store.refreshCaches = vi.fn().mockResolvedValue()
+      await w.find('[data-testid="se-load-refresh"]').trigger('click'); await flushPromises()
+      expect(api.counts).toHaveBeenCalledTimes(3)
+    })
   })
   it('마지막 선택을 기억한다(허용 범위 안일 때만)', async () => {
     localStorage.setItem('se-last-scope', JSON.stringify({ process: 'SEWETCH', model: 'SEWMODELA' }))
@@ -298,6 +342,40 @@ describe('LoadDialog — 쓰기 동작과 내 초안', () => {
     await pick(w, 'ALL_ACTIONS')
     expect(tid(w, 'se-load-switch').exists()).toBe(false)
     expect(tid(w, 'se-load-delete').exists()).toBe(false)
+  })
+
+  // 2026-11-11 사용자 요청: "내가 만든 초안이 어디어디 있는지 파악하려면 괄호안의 숫자를 … ( 1 | 10 ) 이런식이면 시나리오는 10개인데 내가 만든 초안은 1개"
+  describe('공정·모델 옆 (내 초안 | 시나리오)', () => {
+    const opts = (w, id) => w.findAll(`[data-testid="${id}"] option`).map((o) => o.text())
+    const counts = (pairs, draftsCounted = true) => ok({ draftsCounted, pairs })
+    it('내 초안이 있는 공정·모델만 (내 초안 | 시나리오) — 없는 곳은 시나리오 수만 보여 초안 있는 곳이 눈에 띈다', async () => {
+      api.counts.mockReturnValue(counts([
+        { process: 'SEWCVD', model: 'SEWMODELA', scenarios: 4, drafts: 0 }, { process: 'SEWCVD', model: 'SEWMODELB', scenarios: 10, drafts: 2 },
+        { process: 'SEWETCH', model: 'SEWMODELA', scenarios: 0, drafts: 1 } // 배포한 적 없는 새 시나리오의 초안만
+      ]))
+      const { w } = setupW({ drafts: [] }); await flushPromises()
+      expect(opts(w, 'se-load-process')).toEqual(['SEWCVD (2 | 14)', 'SEWETCH (1 | 0)'])
+      expect(opts(w, 'se-load-model')).toEqual(['SEWMODELA (4)', 'SEWMODELB (2 | 10)'])
+      expect(tid(w, 'se-load-count-hint').text()).toBe('괄호 = 시나리오 수, 내 초안이 있는 곳은 (내 초안 | 시나리오)')
+    })
+    it('지금 보는 공정·모델은 목록의 내 초안 수를 따른다 — 초안만 남은 것을 정리하면 괄호의 초안 수도 준다', async () => {
+      api.counts.mockReturnValue(counts([{ process: 'SEWCVD', model: 'SEWMODELA', scenarios: 4, drafts: 3 }]))
+      api.deleteDraft.mockReturnValue(ok({ deleted: true }))
+      const { w } = setupW({ drafts: [draftRow(), draftRow({ draftId: 'd2', name: 'NEW_ONE', base: null, headCrtime: null })] }); await flushPromises()
+      expect(opts(w, 'se-load-model')[0]).toBe('SEWMODELA (2 | 4)') // 목록의 초안 2건(원본에 붙은 것 1 + 초안만 1)
+      await tid(w, 'se-load-cleanup').trigger('click')
+      await tid(w, 'se-load-clean-all').setValue(true)
+      await tid(w, 'se-load-clean-go').trigger('click'); await flushPromises()
+      expect(opts(w, 'se-load-model')[0]).toBe('SEWMODELA (1 | 4)')
+      expect(opts(w, 'se-load-process')[0]).toBe('SEWCVD (1 | 4)')
+      expect(api.counts).toHaveBeenCalledTimes(1) // 다시 묻지 않고 목록에서 고친다
+    })
+    it('서버가 초안을 세지 못했으면(웹 전용 DB) 시나리오 수만 보인다', async () => {
+      api.counts.mockReturnValue(counts([{ process: 'SEWCVD', model: 'SEWMODELA', scenarios: 4, drafts: 0 }], false))
+      const { w } = setupW(); await flushPromises()
+      expect(opts(w, 'se-load-model')[0]).toBe('SEWMODELA (4)')
+      expect(tid(w, 'se-load-count-hint').text()).toBe('괄호 = 시나리오 수')
+    })
   })
 
   it('창을 열 때마다 목록·내 초안을 다시 읽는다 — 화면이 처음 뜰 때(내 정보를 읽기 전) 만들어진 창에도 그 뒤 저장한 초안이 보인다', async () => {

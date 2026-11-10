@@ -13,7 +13,8 @@ function fake() {
     find: vi.fn(() => ({ project: vi.fn().mockReturnThis(), sort: vi.fn().mockReturnThis(), maxTimeMS: vi.fn().mockReturnThis(), toArray: vi.fn(async () => []) })),
     findOneAndDelete: vi.fn(async () => null),
     insertOne: vi.fn(async () => ({})),
-    updateOne: vi.fn(async () => ({}))
+    updateOne: vi.fn(async () => ({})),
+    aggregate: vi.fn(() => ({ toArray: vi.fn(async () => []) }))
   })
   const db = { collection: vi.fn(col) }
   const repo = createWebRepository(() => db, { GridFSBucket: vi.fn(), ObjectId })
@@ -85,6 +86,21 @@ describe('webRepository', () => {
     expect(d.find.mock.calls[0][0]).toEqual({ owner: 'me', process: 'P', model: 'M' })
     expect(cursor.project.mock.calls[0][0]).toEqual({ name: 1, target: 1, base: 1, headCrtime: 1, savedAt: 1, revision: 1 })
     expect(list).toEqual([{ draftId: String(_id), name: 'N', target: { model: 'M', name: 'N' }, base: { crtime: 5, fileId: 'f' }, headCrtime: 7, savedAt: new Date(1), revision: 3 }])
+  })
+
+  // 불러오기 창의 공정·모델 옆 내 초안 수(2026-11-11 사용자 요청: "같은 시나리오 명에 초안이 여러개 이더라도 하나로 산정")
+  it('countDrafts 는 내 초안만 공정·모델·이름으로 한 번 묶고 공정·모델별로 센다 — 본문은 가져오지 않는다', async () => {
+    const { col, repo } = fake()
+    const d = col('SCENARIO_EDITOR_DRAFTS')
+    d.aggregate.mockReturnValue({ toArray: async () => [{ _id: { process: 'P', model: 'M' }, count: 2 }] })
+    expect(await repo.countDrafts('me')).toEqual([{ process: 'P', model: 'M', count: 2 }])
+    const [pipeline, options] = d.aggregate.mock.calls[0]
+    expect(pipeline).toEqual([
+      { $match: { owner: 'me' } },
+      { $group: { _id: { process: '$process', model: '$model', name: '$name' } } },
+      { $group: { _id: { process: '$_id.process', model: '$_id.model' }, count: { $sum: 1 } } }
+    ])
+    expect(options.maxTimeMS).toBeGreaterThan(0)
   })
 
   it('getDeploy 는 requestId 로 찾고 없으면 null', async () => {

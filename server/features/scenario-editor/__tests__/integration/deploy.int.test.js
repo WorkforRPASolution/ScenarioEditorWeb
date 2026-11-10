@@ -781,6 +781,37 @@ describe('초안 (설계 §6.1)', () => {
   })
 })
 
+describe('공정·모델 옆 수(2026-11-11)', () => {
+  it('배포하면 그 쌍의 시나리오 수가, 초안을 저장하면 내 초안 수가 하나 는다 — 같은 이름을 다시 저장해도 하나, 다른 사용자의 수는 그대로', async () => {
+    const of = async (k, user = 'sew_master') => {
+      const r = await call('GET', '/scenario-counts', { user })
+      expect(r.status, show(r)).toBe(200)
+      const c = r.body.data.pairs.find((x) => x.process === k.process && x.model === k.model) ?? { scenarios: 0, drafts: 0 }
+      return { scenarios: c.scenarios, drafts: c.drafts, draftsCounted: r.body.data.draftsCounted }
+    }
+    const before = await of(SOURCE)
+    const other = await of(SOURCE, 'sew_multi')
+    expect(before.draftsCounted).toBe(true)
+    const T = (await copyTo(SOURCE, NAME('COUNT'))).target
+    expect(T).toMatchObject({ process: SOURCE.process, model: SOURCE.model })
+    expect(await of(T)).toEqual({ ...before, scenarios: before.scenarios + 1 })
+    const sk = await open(T)
+    sk.edited.steps[0].descriptionToEmail = '수 시험'
+    const meta = { target: T, propertyRev: sk.propertyRev, scenario: sk.edited }
+    for (const rev of [1, 2]) {
+      const d = await call('POST', '/drafts', { form: formOf(meta) })
+      expect(d.status, show(d)).toBe(200)
+      expect(d.body.data.revision).toBe(rev)
+    }
+    expect(await of(T)).toEqual({ ...before, scenarios: before.scenarios + 1, drafts: before.drafts + 1 })
+    expect(await of(T, 'sew_multi')).toEqual({ ...other, scenarios: other.scenarios + 1 }) // 남의 초안은 세지 않는다
+    // 읽기만 하는 사용자는 초안을 세지 않는다
+    expect(await of(T, 'sew_cvd')).toMatchObject({ scenarios: before.scenarios + 1, drafts: 0, draftsCounted: false })
+    const list = await call('GET', `/scenarios?process=${T.process}&model=${T.model}`)
+    expect(list.body.data.length).toBe(before.scenarios + 1)
+  })
+})
+
 describe('시나리오 지우기 + 내 초안도 함께(2026-11-10)', () => {
   it('withDraft 면 시나리오를 지운 뒤 요청한 사용자의 초안과 그 그림만 지운다 — 다른 사용자의 초안은 남는다', async () => {
     const T = (await copyTo(SOURCE, NAME('DELDRAFT'))).target

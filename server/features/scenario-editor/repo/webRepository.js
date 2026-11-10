@@ -55,6 +55,16 @@ function createWebRepository(getWebDb, mongo) {
       // headCrtime = 초안을 시작할 때의 현재 버전 — 불러오기 창이 지금 현재 버전과 비교해 "초안 시작 뒤 새 버전" 을 가른다(옛 문서는 없을 수 있다)
       return rows.map((r) => ({ draftId: String(r._id), name: r.name, target: r.target, base: r.base, headCrtime: r.headCrtime ?? null, savedAt: r.savedAt, revision: r.revision }))
     },
+    // 불러오기 창의 공정·모델 옆 내 초안 수(2026-11-11) → [{ process, model, count }]. 초안은 사용자·공정·모델·이름마다 하나(고유 색인)지만
+    // 색인이 아직 없는 DB 에서도 같은 이름을 한 번만 세게 이름으로 먼저 묶는다.
+    async countDrafts(owner) {
+      const rows = await drafts().aggregate([
+        { $match: { owner } },
+        { $group: { _id: { process: '$process', model: '$model', name: '$name' } } },
+        { $group: { _id: { process: '$_id.process', model: '$_id.model' }, count: { $sum: 1 } } }
+      ], { maxTimeMS: MAX }).toArray()
+      return rows.map((r) => ({ process: r._id.process, model: r._id.model, count: r.count }))
+    },
     async getDraft(owner, draftId) {
       const _id = toId(draftId)
       return _id ? drafts().findOne({ _id, owner }, { maxTimeMS: MAX }) : null

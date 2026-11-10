@@ -59,6 +59,39 @@ const scopesNotice = computed(() => {
   if (processes.value.length === 0) return { text: t('SEW_UI_LOAD_NO_SCOPES'), error: false }
   return null
 })
+// ── 공정·모델 옆 수(2026-11-11 사용자 요청 — WebManager 필터의 "(건수)" 처럼): 등록된 시나리오 수, 내 초안이 있는 곳은 (내 초안 | 시나리오) ──
+// 서버가 공정 권한 안의 쌍만 세어 준다(둘 다 0 인 쌍은 없다 → 0). 못 읽으면(null) 이름만 보인다.
+const counts = ref(null) // Map '공정 모델' → { scenarios, drafts }
+const draftsCounted = ref(false) // 서버가 내 초안을 셌는가(쓰기 사용자이고 웹 전용 DB 를 읽었다)
+const NONE = Object.freeze({ scenarios: 0, drafts: 0 })
+const countKey = (p, m) => JSON.stringify([p, m])
+const countOf = (p, m) => counts.value?.get(countKey(p, m)) ?? NONE
+const processCount = (p) => p.models.reduce((n, m) => { const c = countOf(p.process, m.model); return { scenarios: n.scenarios + c.scenarios, drafts: n.drafts + c.drafts } }, NONE)
+const countText = (c) => (!counts.value ? '' : draftsCounted.value && c.drafts > 0 ? ` (${c.drafts} | ${c.scenarios})` : ` (${c.scenarios})`)
+const countHint = computed(() => (counts.value ? { text: t(draftsCounted.value ? 'SEW_LOAD_COUNT_HINT_DRAFT' : 'SEW_LOAD_COUNT_HINT'), tip: t(draftsCounted.value ? 'SEW_LOAD_COUNT_TIP_DRAFT' : 'SEW_LOAD_COUNT_TIP') } : null))
+// 지금 보는 공정·모델의 수는 목록을 따른다 — 수를 읽은 뒤의 배포·지우기·초안 정리로 괄호와 목록이 어긋나지 않게(다시 묻지 않는다)
+function syncCounts() {
+  const pair = loadedFor.value
+  if (!counts.value || !pair) return
+  const was = countOf(pair.process, pair.model)
+  const next = { scenarios: listRows.value.length, drafts: writer.value && draftsCounted.value && !draftsError.value ? drafts.value.length : was.drafts }
+  if (next.scenarios !== was.scenarios || next.drafts !== was.drafts) counts.value = new Map(counts.value).set(countKey(pair.process, pair.model), next)
+}
+let countSeq = 0
+async function loadCounts() {
+  const id = ++countSeq
+  let next = null
+  let counted = false
+  try {
+    const d = (await api.counts()).data.data
+    next = new Map(d.pairs.map((c) => [countKey(c.process, c.model), { scenarios: c.scenarios, drafts: c.drafts }]))
+    counted = !!d.draftsCounted
+  } catch { next = null } // 곁들이는 값이라 못 읽어도 알리지 않는다 — 이름만 보인다
+  if (id !== countSeq) return
+  counts.value = next; draftsCounted.value = counted
+  syncCounts()
+}
+
 const rows = computed(() => (loadedFor.value ? mergeDrafts(listRows.value, writer.value ? drafts.value : [], loadedFor.value) : []))
 const draftCount = computed(() => rows.value.filter((r) => r.draft).length)
 // 배포된 시나리오 없이 내 초안만 남은 행(새 시나리오·원본 지워짐) — [초안만 남은 것 정리] 로 골라 한꺼번에 지운다
@@ -116,12 +149,14 @@ async function loadList() {
 // 창은 화면과 함께 한 번 만들어진다 — 열 때마다 목록·내 초안을 다시 읽는다(그 사이 저장한 초안·켜기·끄기·배포, 처음엔 내 정보가 늦게 와 쓰기 권한을 몰랐을 수 있다)
 watch(() => props.modelValue, (open, was) => {
   if (!open) return
+  loadCounts()
   if (!process.value) pickInitial()
   else if (was === false) loadList()
 }, { immediate: true })
 watch(processes, () => { if (props.modelValue && !process.value) pickInitial() })
 watch(process, () => { if (!models.value.some((m) => m.model === model.value)) model.value = models.value[0]?.model ?? '' })
 watch([process, model], loadList, { immediate: true })
+watch([listRows, drafts, loadedFor], syncCounts)
 
 // 행 고르기. "초안만" 행은 버전이 없어 내 초안 줄이 늘 골라져 있고, 원본이 지워진 초안이면 서버 사본이 있는지 본다.
 async function selectRow(row) {
@@ -285,6 +320,7 @@ function onCleaned({ deleted, failed }) {
 }
 async function relist() {
   sub.value = null
+  loadCounts()
   await loadList()
   showToast('success', t('SEW_LOAD_RELISTED'))
 }
@@ -292,6 +328,7 @@ async function relist() {
 async function relistAfterDelete() {
   const name = selected.value?.name
   sub.value = null
+  loadCounts()
   await loadList()
   const still = rows.value.find((r) => r.name === name && !r.draftOnly)
   if (still) selectRow(still)
@@ -302,6 +339,7 @@ async function relistAfterDelete() {
 async function refresh() {
   try {
     await store.refreshCaches()
+    loadCounts()
     const before = `${process.value}/${model.value}`
     if (!processes.value.some((p) => p.process === process.value && p.models.some((m) => m.model === model.value))) pickInitial()
     if (`${process.value}/${model.value}` === before) await loadList()
@@ -362,8 +400,8 @@ const btnS = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hove
   <ModalShell :model-value="modelValue" title="시나리오 불러오기" :width="dialogWidth" :height="600" testid="se-load-dialog" @update:model-value="emit('update:modelValue', $event)">
     <div class="h-full flex flex-col">
       <div class="px-5 py-3 flex flex-wrap gap-2 items-center border-b border-gray-200 dark:border-dark-border">
-        <select v-model="process" :class="select" data-testid="se-load-process"><option v-for="p in processes" :key="p.process" :value="p.process">{{ p.process }}</option></select>
-        <select v-model="model" :class="select" data-testid="se-load-model"><option v-for="m in models" :key="m.model" :value="m.model">{{ m.model }}</option></select>
+        <select v-model="process" :class="select" :title="countHint?.tip" data-testid="se-load-process"><option v-for="p in processes" :key="p.process" :value="p.process">{{ p.process }}{{ countText(processCount(p)) }}</option></select>
+        <select v-model="model" :class="select" :title="countHint?.tip" data-testid="se-load-model"><option v-for="m in models" :key="m.model" :value="m.model">{{ m.model }}{{ countText(countOf(process, m.model)) }}</option></select>
         <input v-model="search" :class="select" class="w-56" :placeholder="t('SEW_UI_SEARCH_NAME')" data-testid="se-load-search" />
         <label class="text-xs text-gray-600 dark:text-gray-300 flex items-center gap-1"><input v-model="enabledOnly" type="checkbox" data-testid="se-load-enabled" /> {{ t('SEW_UI_ENABLED_ONLY') }}</label>
         <label v-if="writer" class="text-xs text-gray-600 dark:text-gray-300 flex items-center gap-1 whitespace-nowrap" data-testid="se-load-draft-only">
@@ -371,7 +409,7 @@ const btnS = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hove
           <span class="min-w-[18px] px-1.5 rounded-full text-[11px] font-semibold text-center bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-300" data-testid="se-load-draft-count">{{ draftCount }}</span></label>
         <button v-if="writer && draftOnlyRows.length" type="button" class="h-[30px] px-2.5 rounded-md border border-gray-300 dark:border-dark-border text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 whitespace-nowrap"
           data-testid="se-load-cleanup" @click="sub = 'cleanup'">{{ t('SEW_LOAD_CLEAN_OPEN_BTN', { n: draftOnlyRows.length }) }}</button>
-        <span class="text-xs text-gray-500 ml-1">{{ t('SEW_UI_LOAD_SCOPE_HINT') }}</span>
+        <span class="text-xs text-gray-500 ml-1">{{ t('SEW_UI_LOAD_SCOPE_HINT') }}<template v-if="countHint"> · <span :title="countHint.tip" data-testid="se-load-count-hint">{{ countHint.text }}</span></template></span>
         <button class="ml-auto h-[38px] px-3 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm" data-testid="se-load-refresh" @click="refresh">{{ t('SEW_UI_REFRESH_SCOPES') }}</button>
       </div>
       <p v-if="scopesNotice" class="px-5 py-2 text-sm border-b border-gray-200 dark:border-dark-border" :class="scopesNotice.error ? 'text-red-600' : 'text-gray-600 dark:text-gray-300'" data-testid="se-load-scopes-notice">{{ scopesNotice.text }}</p>
