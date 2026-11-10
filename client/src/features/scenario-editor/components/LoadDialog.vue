@@ -318,7 +318,10 @@ const columnDefs = computed(() => [
   { headerName: '최근 수정자', width: 120, valueGetter: (p) => p.data.lastOwner?.singleid ?? '' },
   { field: 'currentCrtime', headerName: '현재 버전', width: 160, valueFormatter: (p) => (p.data?.draftOnly ? t('SEW_LOAD_NONE') : p.value ? formatCrtime(p.value) : ''), cellClass: (p) => (p.data?.draftOnly ? 'se-load-dim' : '') },
   // 열 합계(약 1170px)가 창의 표 영역(약 760px)보다 넓다 — 열 수 없는 원인(완료 조건 3)이 가로 스크롤 뒤로 숨지 않게 오른쪽에 고정한다
-  { field: 'status', headerName: '상태', width: 140, pinned: 'right', valueFormatter: (p) => (p.data?.draftOnly ? draftOnlyText(p.data) : p.value.map((s) => LABELS.listStatus[s] ?? s).join(', ')) }
+  // 칼럼 이름은 "확인 필요"(2026-11-10) — 정상인 줄은 빈칸이고, 목록이 보는 것은 세 가지뿐이라 "정상" 이라고 쓰지 않는다.
+  // 열 수 없는 원인(현재 버전 없음·같은 키·해석 실패)은 붉은 글씨, 초안만 있는 줄의 안내는 보통 글씨다.
+  { field: 'status', headerName: '확인 필요', width: 140, pinned: 'right', valueFormatter: (p) => (p.data?.draftOnly ? draftOnlyText(p.data) : p.value.map((s) => LABELS.listStatus[s] ?? s).join(', ')),
+    cellClass: (p) => (!p.data?.draftOnly && p.data?.status?.length ? 'se-load-bad' : '') }
 ])
 const select = 'h-[38px] rounded-lg border border-gray-300 dark:border-dark-border bg-white dark:bg-dark-bg px-2 text-sm text-gray-900 dark:text-gray-100'
 const btnP = 'px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-lg transition text-sm disabled:opacity-50 whitespace-nowrap'

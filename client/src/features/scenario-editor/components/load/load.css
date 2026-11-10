@@ -19,6 +19,8 @@
 .se-load-dchip { display: inline-block; padding: 1px 7px; border-radius: 9999px; background: #dbeafe; color: #1d4ed8; font-size: 11px; font-weight: 500; line-height: 18px; }
 .se-load-dchip.am { background: #fef3c7; color: #92400e; }
 .se-load-dim { color: #9ca3af; }
+/* 확인 필요 열 — 열 수 없는 원인 */
+.se-load-bad { color: #b91c1c; font-weight: 500; }
 
 .dark .se-load-sw { background: #475569; }
 .dark .se-load-sw[aria-checked='true'] { background: #3b82f6; }
@@ -29,3 +31,4 @@
 .dark .se-load-btn-del { background: #1e293b; border-color: #475569; color: #fca5a5; }
 .dark .se-load-btn-del:hover:not([disabled]) { background: rgba(153, 27, 27, .35); }
 .dark .se-load-dim { color: #64748b; }
+.dark .se-load-bad { color: #fca5a5; }

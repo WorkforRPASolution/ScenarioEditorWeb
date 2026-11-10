@@ -182,14 +182,18 @@ describe('LoadDialog', () => {
     })
   })
 
-  it('상태 열은 오른쪽에 고정한다 — 열 합계가 창보다 넓어 가로로 밀려도 열 수 없는 원인이 보인다(완료 조건 3)', async () => {
+  it('확인 필요 열(열 수 없는 원인·초안만 안내)은 오른쪽에 고정한다 — 열 합계가 창보다 넓어 가로로 밀려도 열 수 없는 원인이 보인다(완료 조건 3)', async () => {
     const { w } = setup(); await flushPromises()
     const cols = w.findComponent({ name: 'AgGridVue' }).props('columnDefs')
     const status = cols.find((c) => c.field === 'status')
     expect(status.pinned).toBe('right')
     expect(status.valueFormatter({ value: ['NO_CURRENT_VERSION', 'DUPLICATE_PROPERTY'] })).toBe('현재 버전 없음, 같은 키 2건')
+    // 정상인 줄은 빈칸이다 — 칼럼 이름이 "확인 필요" 라 빈칸이면 볼 것이 없다(2026-11-10). 열 수 없는 원인은 붉은 글씨
+    expect(status.valueFormatter({ value: [] })).toBe('')
+    expect(status.cellClass({ data: { status: ['NO_CURRENT_VERSION'] } })).toBe('se-load-bad')
+    expect(status.cellClass({ data: { status: [] } })).toBe('')
     // 나머지 열 순서는 설계 §6.2 그대로
-    expect(cols.map((c) => c.headerName)).toEqual(['이름', '켜짐', '유형', '트리거', '등급', '설명', '최근 수정자', '현재 버전', '상태'])
+    expect(cols.map((c) => c.headerName)).toEqual(['이름', '켜짐', '유형', '트리거', '등급', '설명', '최근 수정자', '현재 버전', '확인 필요'])
   })
 
   it('버전 줄을 한 번 누르면 고른 표시, 열기는 고른 버전으로(없으면 현재)', async () => {
@@ -257,7 +261,7 @@ describe('LoadDialog — 쓰기 동작과 내 초안', () => {
   it('읽기만 하는 사용자는 P1 그대로 — 내 초안 열·초안만 행·[내 초안만]·스위치가 없고 초안 목록을 부르지 않는다', async () => {
     const { w } = setupW({ canWrite: false, drafts: [draftRow({ name: 'NEW_ONE', base: null, headCrtime: null })] }); await flushPromises()
     expect(api.listDrafts).not.toHaveBeenCalled()
-    expect(grid(w).props('columnDefs').map((c) => c.headerName)).toEqual(['이름', '켜짐', '유형', '트리거', '등급', '설명', '최근 수정자', '현재 버전', '상태'])
+    expect(grid(w).props('columnDefs').map((c) => c.headerName)).toEqual(['이름', '켜짐', '유형', '트리거', '등급', '설명', '최근 수정자', '현재 버전', '확인 필요'])
     expect(tid(w, 'se-load-draft-only').exists()).toBe(false)
     await pick(w, 'ALL_ACTIONS')
     expect(tid(w, 'se-load-switch').exists()).toBe(false)
@@ -287,7 +291,7 @@ describe('LoadDialog — 쓰기 동작과 내 초안', () => {
     const { w } = setupW({ drafts }); await flushPromises()
     expect(api.listDrafts).toHaveBeenCalledWith('SEWCVD', 'SEWMODELA')
     const cols = grid(w).props('columnDefs')
-    expect(cols.map((c) => c.headerName)).toEqual(['이름', '내 초안', '켜짐', '유형', '트리거', '등급', '설명', '최근 수정자', '현재 버전', '상태'])
+    expect(cols.map((c) => c.headerName)).toEqual(['이름', '내 초안', '켜짐', '유형', '트리거', '등급', '설명', '최근 수정자', '현재 버전', '확인 필요'])
     expect(gridNames(w)).toEqual(['ALL_ACTIONS', 'DUP', 'GONE_ONE', 'NEW_ONE', 'NO_REDIS', 'PLAIN'])
     const rowsNow = grid(w).props('rowData')
     const byName = (n) => rowsNow.find((r) => r.name === n)
@@ -298,6 +302,10 @@ describe('LoadDialog — 쓰기 동작과 내 초안', () => {
     const status = cols.find((c) => c.field === 'status')
     expect(status.valueFormatter({ data: byName('NEW_ONE'), value: byName('NEW_ONE').status })).toBe('초안만 있음')
     expect(status.valueFormatter({ data: byName('GONE_ONE'), value: byName('GONE_ONE').status })).toBe('초안만 · 원본 지워짐')
+    // 초안만 있는 줄은 열 수 없는 원인이 아니라 안내다 — 붉은 글씨가 아니다
+    expect(status.cellClass({ data: byName('NEW_ONE') })).toBe('')
+    expect(status.cellClass({ data: byName('GONE_ONE') })).toBe('')
+    expect(status.cellClass({ data: byName('DUP') })).toBe('se-load-bad')
     expect(cols.find((c) => c.field === 'isEnabled').valueFormatter({ data: byName('NEW_ONE'), value: null })).toBe('—')
     expect(cols.find((c) => c.field === 'isEnabled').cellDataType).toBe(false) // 체크 칸이 아니라 글자로
     expect(cols.find((c) => c.field === 'isEnabled').valueFormatter({ data: byName('DUP'), value: true })).toBe('?')
