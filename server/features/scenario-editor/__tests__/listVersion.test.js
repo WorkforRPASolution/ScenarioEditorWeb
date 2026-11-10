@@ -30,6 +30,21 @@ describe('listService', () => {
     expect(by.BAD.status).toEqual(['PARSE_FAILED'])
     expect(by.BAD.isEnabled).toBe(null)
   })
+  // 데스크톱 불러오기 목록의 EMAIL_SKIP·DELAY·RETRY·TRIGGERINFO(2026-11-10 사용자 결정 — 웹 목록에 없었다). 글은 화면이 만든다.
+  it('메일 생략(성공·실패·중지 순)·시작 지연·재시도 횟수와 간격·트리거 정보를 행에 싣는다, 운영 속성을 못 풀면 null', async () => {
+    const repo2 = {
+      findScenarioDocs: async () => [
+        { scname: 'FULL', property: prop({ StartDelay: 30, RetryCnt: 3, RetryInterval: 60, DoNotSendEmailWhenStop: true, DoNotSendEmailWhenSuccess: true }), performance: { Trigger: 1, TriggerInfo: 'ALARM E1234' } },
+        { scname: 'PLAIN', property: prop() },
+        { scname: 'BAD', property: { Priority: null } }
+      ]
+    }
+    const rows = await createListService({ repo: repo2, hash: { hkeys: async () => ['FULL.1', 'PLAIN.1', 'BAD.1'] }, scopes }).list(user, 'P', 'M')
+    const by = Object.fromEntries(rows.map((r) => [r.name, r]))
+    expect(by.FULL).toMatchObject({ emailSkip: ['success', 'stop'], startDelay: 30, retryCnt: 3, retryInterval: 60, triggerInfo: 'ALARM E1234' })
+    expect(by.PLAIN).toMatchObject({ emailSkip: [], startDelay: 0, retryCnt: 0, triggerInfo: null })
+    expect(by.BAD).toMatchObject({ emailSkip: null, startDelay: null, retryCnt: null, retryInterval: null, triggerInfo: null })
+  })
 })
 
 describe('listService — 문서가 아닌 운영 속성', () => {

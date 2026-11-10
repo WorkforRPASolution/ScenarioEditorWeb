@@ -12,7 +12,7 @@ import { useEditStore } from '../stores/editStore'
 import { formatCrtime } from '../format'
 
 const AgStub = { name: 'AgGridVue', props: ['rowData', 'columnDefs'], template: '<div data-testid="ag" />' }
-const ModalStub = { name: 'ModalShell', props: ['modelValue'], template: '<div v-if="modelValue"><slot /><slot name="footer" /></div>' }
+const ModalStub = { name: 'ModalShell', props: ['modelValue', 'width'], template: '<div v-if="modelValue"><slot /><slot name="footer" /></div>' }
 const ok = (data) => Promise.resolve({ data: { data } })
 const rows = [
   { name: 'ALL_ACTIONS', isEnabled: true, typeName: 'ALARM_RECOVERY', status: [], currentCrtime: 1730000000000 },
@@ -36,6 +36,34 @@ function setup(opts = {}) {
 
 describe('LoadDialog', () => {
   beforeEach(() => { Object.values(api).forEach((f) => f.mockReset()); localStorage.clear() })
+  it('메일 생략·시작 지연·재시도·트리거 정보 열은 한글로 보인다 — 없는 값(지연 0·재시도 0·모두 보냄)은 빈칸', async () => {
+    const { w } = setup(); await flushPromises()
+    const cols = w.findComponent({ name: 'AgGridVue' }).props('columnDefs')
+    const fmt = (field, data) => cols.find((c) => c.field === field).valueFormatter({ data, value: data[field] })
+    const full = { emailSkip: ['success', 'stop'], startDelay: 5400, retryCnt: 3, retryInterval: 60, triggerInfo: 'ALARM E1234' }
+    expect(fmt('emailSkip', full)).toBe('성공·중지')
+    expect(fmt('emailSkip', { emailSkip: ['success', 'fail', 'stop'] })).toBe('성공·실패·중지')
+    expect(fmt('startDelay', full)).toBe('1시간 30분')
+    expect(fmt('startDelay', { startDelay: 30 })).toBe('30초')
+    expect(fmt('retryCnt', full)).toBe('3회 · 1분 간격')
+    expect(fmt('retryCnt', { retryCnt: 1, retryInterval: 10 })).toBe('1회 · 10초 간격')
+    expect(cols.find((c) => c.field === 'triggerInfo').valueFormatter).toBeUndefined() // 글 그대로
+    const plain = { emailSkip: [], startDelay: 0, retryCnt: 0, retryInterval: 10, triggerInfo: null }
+    expect(['emailSkip', 'startDelay', 'retryCnt'].map((f) => fmt(f, plain))).toEqual(['', '', ''])
+    const unknown = { emailSkip: null, startDelay: null, retryCnt: null, retryInterval: null, triggerInfo: null } // 운영 속성을 못 푼 줄·초안만 줄
+    expect(['emailSkip', 'startDelay', 'retryCnt'].map((f) => fmt(f, unknown))).toEqual(['', '', ''])
+    expect(cols.find((c) => c.field === 'status').pinned).toBe('right')
+  })
+  it('창 너비는 열이 늘어난 만큼 넓다 — 화면의 94%, 가장 넓어도 1640', async () => {
+    const was = window.innerWidth
+    for (const [vw, want] of [[1920, 1640], [1600, 1504], [1100, 1034]]) {
+      window.innerWidth = vw
+      const { w } = setup(); await flushPromises()
+      expect(w.findComponent({ name: 'ModalShell' }).props('width')).toBe(want)
+      w.unmount()
+    }
+    window.innerWidth = was
+  })
   it('허용 공정·모델만, 처음엔 첫 쌍으로 목록', async () => {
     const { w } = setup(); await flushPromises()
     expect(w.findAll('[data-testid="se-load-process"] option').map((o) => o.text())).toEqual(['SEWCVD', 'SEWETCH'])
@@ -192,8 +220,8 @@ describe('LoadDialog', () => {
     expect(status.valueFormatter({ value: [] })).toBe('')
     expect(status.cellClass({ data: { status: ['NO_CURRENT_VERSION'] } })).toBe('se-load-bad')
     expect(status.cellClass({ data: { status: [] } })).toBe('')
-    // 나머지 열 순서는 설계 §6.2 그대로
-    expect(cols.map((c) => c.headerName)).toEqual(['이름', '켜짐', '유형', '트리거', '등급', '설명', '최근 수정자', '현재 버전', '확인 필요'])
+    // 열 순서는 데스크톱 불러오기 목록(NAME·TRIGGER·SCENARIO_TYPE·DESCRIPTION·ACTIVATED·EMAIL_SKIP·DELAY·RETRY·TRIGGERINFO)을 따르고 웹 전용 열을 뒤에 둔다(2026-11-10)
+    expect(cols.map((c) => c.headerName)).toEqual(['이름', '트리거', '유형', '설명', '켜짐', '메일 생략', '시작 지연', '재시도', '트리거 정보', '등급', '최근 수정자', '현재 버전', '확인 필요'])
   })
 
   it('버전 줄을 한 번 누르면 고른 표시, 열기는 고른 버전으로(없으면 현재)', async () => {
@@ -261,7 +289,7 @@ describe('LoadDialog — 쓰기 동작과 내 초안', () => {
   it('읽기만 하는 사용자는 P1 그대로 — 내 초안 열·초안만 행·[내 초안만]·스위치가 없고 초안 목록을 부르지 않는다', async () => {
     const { w } = setupW({ canWrite: false, drafts: [draftRow({ name: 'NEW_ONE', base: null, headCrtime: null })] }); await flushPromises()
     expect(api.listDrafts).not.toHaveBeenCalled()
-    expect(grid(w).props('columnDefs').map((c) => c.headerName)).toEqual(['이름', '켜짐', '유형', '트리거', '등급', '설명', '최근 수정자', '현재 버전', '확인 필요'])
+    expect(grid(w).props('columnDefs').map((c) => c.headerName)).toEqual(['이름', '트리거', '유형', '설명', '켜짐', '메일 생략', '시작 지연', '재시도', '트리거 정보', '등급', '최근 수정자', '현재 버전', '확인 필요'])
     expect(tid(w, 'se-load-draft-only').exists()).toBe(false)
     await pick(w, 'ALL_ACTIONS')
     expect(tid(w, 'se-load-switch').exists()).toBe(false)
@@ -291,7 +319,7 @@ describe('LoadDialog — 쓰기 동작과 내 초안', () => {
     const { w } = setupW({ drafts }); await flushPromises()
     expect(api.listDrafts).toHaveBeenCalledWith('SEWCVD', 'SEWMODELA')
     const cols = grid(w).props('columnDefs')
-    expect(cols.map((c) => c.headerName)).toEqual(['이름', '내 초안', '켜짐', '유형', '트리거', '등급', '설명', '최근 수정자', '현재 버전', '확인 필요'])
+    expect(cols.map((c) => c.headerName)).toEqual(['이름', '내 초안', '트리거', '유형', '설명', '켜짐', '메일 생략', '시작 지연', '재시도', '트리거 정보', '등급', '최근 수정자', '현재 버전', '확인 필요'])
     expect(gridNames(w)).toEqual(['ALL_ACTIONS', 'DUP', 'GONE_ONE', 'NEW_ONE', 'NO_REDIS', 'PLAIN'])
     const rowsNow = grid(w).props('rowData')
     const byName = (n) => rowsNow.find((r) => r.name === n)

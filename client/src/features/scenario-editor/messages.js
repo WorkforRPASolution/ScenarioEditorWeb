@@ -848,6 +848,11 @@ export const MESSAGES = {
   SEW_BAR_NEVER_SAVED_TITLE: '서버와 설비에는 아직 없습니다. 저장 창에서 배포하면 처음 저장됩니다.',
   // 불러오기 창 쓰기 동작과 내 초안(P2-D Task 7, 목업 2026-11-08-load-write-v1). 화면은 "버전", 초안의 기준 판은 "시작한 버전".
   SEW_LOAD_COL_DRAFT: '내 초안',
+  SEW_LOAD_COL_EMAIL_SKIP: '메일 생략',
+  SEW_LOAD_COL_DELAY: '시작 지연',
+  SEW_LOAD_COL_RETRY: '재시도',
+  SEW_LOAD_COL_TRIGGER_INFO: '트리거 정보',
+  SEW_LOAD_RETRY: '{n}회 · {gap} 간격',
   SEW_LOAD_DRAFT_ONLY: '내 초안만',
   SEW_LOAD_DRAFT_CHIP_TITLE: '{at} 저장',
   SEW_LOAD_DRAFT_CHIP_TITLE_STALE: '{at} 저장 · 시작한 뒤 새 버전이 배포됨',

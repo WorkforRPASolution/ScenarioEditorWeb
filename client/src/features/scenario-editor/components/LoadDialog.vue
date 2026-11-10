@@ -6,6 +6,7 @@ import { useEditStore } from '../stores/editStore'
 import { scenarioEditorApi as api } from '../api'
 import { t, LABELS, errorMessage } from '../messages'
 import { formatCrtime, enabledLabel } from '../format'
+import { human } from '../editor/propertyView'
 import { safeStorage } from '../composables/useSafeStorage'
 import { registerGrid, useGridTheme } from '../gridTheme'
 import { mergeDrafts, draftStale, isDup } from '../editor/loadRows'
@@ -306,30 +307,42 @@ function renderDraft(p) {
   return el
 }
 const draftOnlyText = (r) => t(r.draftOnly === 'new' ? 'SEW_LOAD_ROW_DRAFT_NEW' : 'SEW_LOAD_ROW_DRAFT_GONE')
+// 열 순서는 데스크톱 불러오기 목록(NAME·TRIGGER·SCENARIO_TYPE·DESCRIPTION·ACTIVATED·EMAIL_SKIP·DELAY·RETRY·TRIGGERINFO)을 따르고
+// 웹 전용 열(내 초안·등급·최근 수정자·현재 버전·확인 필요)을 뒤에 둔다(2026-11-10). 값은 한글로 — 없는 값(지연 0·재시도 0·메일 모두 보냄)은 빈칸.
+const MAIL = { success: LABELS.prop.success, fail: LABELS.prop.fail, stop: LABELS.prop.stop }
+const emailSkipText = (v) => (Array.isArray(v) ? v.map((k) => MAIL[k] ?? k).join('·') : '')
+const delayText = (v) => (typeof v === 'number' && v !== 0 ? human(v) : '')
+const retryText = (r) => (typeof r?.retryCnt === 'number' && r.retryCnt !== 0 ? t('SEW_LOAD_RETRY', { n: r.retryCnt, gap: human(r.retryInterval) }) : '')
 const columnDefs = computed(() => [
   { field: 'name', headerName: '이름', minWidth: 220, flex: 1, cellClass: (p) => (p.data?.draft ? 'se-load-has-draft' : '') },
-  ...(writer.value ? [{ field: 'draft', headerName: t('SEW_LOAD_COL_DRAFT'), width: 112, cellRenderer: renderDraft }] : []),
-  // cellDataType: false — AG Grid 가 참거짓 열을 체크 칸으로 그리면 문구(켜짐·꺼짐·초안만 —·같은 키 ?)가 나오지 않는다(목업은 글자)
-  { field: 'isEnabled', headerName: '켜짐', width: 70, cellDataType: false, valueFormatter: (p) => (p.data?.draftOnly ? '—' : writer.value && isDup(p.data) ? '?' : enabledLabel(p.value)), cellClass: (p) => (p.data?.draftOnly ? 'se-load-dim' : '') },
+  ...(writer.value ? [{ field: 'draft', headerName: t('SEW_LOAD_COL_DRAFT'), width: 104, cellRenderer: renderDraft }] : []),
+  { field: 'triggerName', headerName: '트리거', width: 84 },
   { field: 'typeName', headerName: '유형', width: 120, valueFormatter: (p) => LABELS.scenarioType[p.value] ?? p.value ?? '' },
-  { field: 'triggerName', headerName: '트리거', width: 90 },
-  { field: 'gradeName', headerName: '등급', width: 70 },
   { field: 'description', headerName: '설명', minWidth: 180, flex: 1 },
-  { headerName: '최근 수정자', width: 120, valueGetter: (p) => p.data.lastOwner?.singleid ?? '' },
-  { field: 'currentCrtime', headerName: '현재 버전', width: 160, valueFormatter: (p) => (p.data?.draftOnly ? t('SEW_LOAD_NONE') : p.value ? formatCrtime(p.value) : ''), cellClass: (p) => (p.data?.draftOnly ? 'se-load-dim' : '') },
-  // 열 합계(약 1170px)가 창의 표 영역(약 760px)보다 넓다 — 열 수 없는 원인(완료 조건 3)이 가로 스크롤 뒤로 숨지 않게 오른쪽에 고정한다
+  // cellDataType: false — AG Grid 가 참거짓 열을 체크 칸으로 그리면 문구(켜짐·꺼짐·초안만 —·같은 키 ?)가 나오지 않는다(목업은 글자)
+  { field: 'isEnabled', headerName: '켜짐', width: 66, cellDataType: false, valueFormatter: (p) => (p.data?.draftOnly ? '—' : writer.value && isDup(p.data) ? '?' : enabledLabel(p.value)), cellClass: (p) => (p.data?.draftOnly ? 'se-load-dim' : '') },
+  { field: 'emailSkip', headerName: t('SEW_LOAD_COL_EMAIL_SKIP'), width: 104, cellDataType: false, valueFormatter: (p) => emailSkipText(p.value) },
+  { field: 'startDelay', headerName: t('SEW_LOAD_COL_DELAY'), width: 98, cellDataType: false, valueFormatter: (p) => delayText(p.value) },
+  { field: 'retryCnt', headerName: t('SEW_LOAD_COL_RETRY'), width: 128, cellDataType: false, valueFormatter: (p) => retryText(p.data) },
+  { field: 'triggerInfo', headerName: t('SEW_LOAD_COL_TRIGGER_INFO'), width: 170, tooltipField: 'triggerInfo' },
+  { field: 'gradeName', headerName: '등급', width: 62 },
+  { headerName: '최근 수정자', width: 112, valueGetter: (p) => p.data.lastOwner?.singleid ?? '' },
+  { field: 'currentCrtime', headerName: '현재 버전', width: 156, valueFormatter: (p) => (p.data?.draftOnly ? t('SEW_LOAD_NONE') : p.value ? formatCrtime(p.value) : ''), cellClass: (p) => (p.data?.draftOnly ? 'se-load-dim' : '') },
+  // 열 합계가 창의 표 영역보다 넓다 — 열 수 없는 원인(완료 조건 3)이 가로 스크롤 뒤로 숨지 않게 오른쪽에 고정한다.
   // 칼럼 이름은 "확인 필요"(2026-11-10) — 정상인 줄은 빈칸이고, 목록이 보는 것은 세 가지뿐이라 "정상" 이라고 쓰지 않는다.
   // 열 수 없는 원인(현재 버전 없음·같은 키·해석 실패)은 붉은 글씨, 초안만 있는 줄의 안내는 보통 글씨다.
-  { field: 'status', headerName: '확인 필요', width: 140, pinned: 'right', valueFormatter: (p) => (p.data?.draftOnly ? draftOnlyText(p.data) : p.value.map((s) => LABELS.listStatus[s] ?? s).join(', ')),
+  { field: 'status', headerName: '확인 필요', width: 132, pinned: 'right', valueFormatter: (p) => (p.data?.draftOnly ? draftOnlyText(p.data) : p.value.map((s) => LABELS.listStatus[s] ?? s).join(', ')),
     cellClass: (p) => (!p.data?.draftOnly && p.data?.status?.length ? 'se-load-bad' : '') }
 ])
+// 창 너비: 열이 늘어 넓힌다 — 화면의 94%, 가장 넓어도 1640(1920 화면에서 데스크톱과 같은 열이 가로 스크롤 없이 다 보인다)
+const dialogWidth = Math.max(720, Math.min(1640, Math.round(window.innerWidth * 0.94)))
 const select = 'h-[38px] rounded-lg border border-gray-300 dark:border-dark-border bg-white dark:bg-dark-bg px-2 text-sm text-gray-900 dark:text-gray-100'
 const btnP = 'px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-lg transition text-sm disabled:opacity-50 whitespace-nowrap'
 const btnS = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg transition text-sm disabled:opacity-50 whitespace-nowrap'
 </script>
 
 <template>
-  <ModalShell :model-value="modelValue" title="시나리오 불러오기" :width="1040" :height="600" testid="se-load-dialog" @update:model-value="emit('update:modelValue', $event)">
+  <ModalShell :model-value="modelValue" title="시나리오 불러오기" :width="dialogWidth" :height="600" testid="se-load-dialog" @update:model-value="emit('update:modelValue', $event)">
     <div class="h-full flex flex-col">
       <div class="px-5 py-3 flex flex-wrap gap-2 items-center border-b border-gray-200 dark:border-dark-border">
         <select v-model="process" :class="select" data-testid="se-load-process"><option v-for="p in processes" :key="p.process" :value="p.process">{{ p.process }}</option></select>
