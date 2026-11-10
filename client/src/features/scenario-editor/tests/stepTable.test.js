@@ -210,6 +210,35 @@ describe('StepTable — 편집', () => {
     w.unmount()
   })
 
+  it('새 스텝의 넣을 자리를 바꾸면 표가 그 줄로 스크롤한다(맨 끝이면 마지막 줄) — 스텝이 많아도 초록 줄이 보이게', async () => {
+    const { s, e } = editFixture()
+    const w = mountTable()
+    const nodes = ['s0', 's1', 's2', 's3'].map((id) => ({ id, sel: false, isSelected() { return this.sel }, setSelected(v) { this.sel = v } }))
+    const api = { forEachNode: (f) => nodes.forEach(f), getRowNode: (id) => nodes.find((n) => n.id === id), ensureNodeVisible: vi.fn() }
+    grid(w).vm.$emit('grid-ready', { api })
+    s.select('s1')
+    await flushPromises()
+    e.startNew('none')
+    await flushPromises()
+    api.ensureNodeVisible.mockClear()
+    e.setInsertBefore('s3')
+    await flushPromises()
+    expect(api.ensureNodeVisible).toHaveBeenCalledTimes(1)
+    expect(api.ensureNodeVisible).toHaveBeenLastCalledWith(nodes[3])
+    e.setInsertBefore(null) // 맨 끝 — 초록 줄은 마지막 줄 아래
+    await flushPromises()
+    expect(api.ensureNodeVisible).toHaveBeenLastCalledWith(nodes[3])
+    e.setInsertBefore('s0')
+    await flushPromises()
+    expect(api.ensureNodeVisible).toHaveBeenLastCalledWith(nodes[0])
+    // 값을 고치는 것(자리는 그대로)·취소는 표를 움직이지 않는다
+    api.ensureNodeVisible.mockClear()
+    e.updateDraft((d) => ({ ...d, descriptionToEmail: '재시작' }))
+    await flushPromises()
+    expect(api.ensureNodeVisible).not.toHaveBeenCalled()
+    w.unmount()
+  })
+
   it('정확도 0.3 → 칸에 오류, 작업본 그대로 / 0.7 → 바로 들어가고 되돌리기로 되돌린다', () => {
     const { e, edited } = editFixture()
     const w = mountTable()

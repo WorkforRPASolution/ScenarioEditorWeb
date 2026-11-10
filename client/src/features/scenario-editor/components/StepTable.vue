@@ -112,6 +112,17 @@ watch(() => store.selectedUid, () => nextTick(syncSelection))
 watch(() => edit.selection, () => nextTick(syncSelection))
 // 같은 줄 객체를 다시 쓰므로 편집 여부가 바뀌면(읽기 전용 판 ↔ 쓸 수 있는 판) 칸을 새로 그린다.
 watch(editable, () => nextTick(() => { gridApi.value?.redrawRows?.(); syncSelection() }))
+// 새 스텝을 만드는 중에 넣을 자리를 바꾸면(패널 바닥 "넣을 자리") 그 줄이 보이게 표를 움직인다 — 스텝이 많으면 초록 줄이 화면 밖일 수 있다.
+// 맨 끝이면 마지막 줄. 시작할 때(고른 줄이 이미 보인다)·값만 고칠 때는 움직이지 않는다.
+watch(() => [edit.panel.isNew ? edit.panel.uid : null, edit.panel.insertBefore ?? null], ([uid, at], [prevUid, prevAt]) => {
+  if (!uid || uid !== prevUid || at === prevAt) return
+  nextTick(() => {
+    const api = gridApi.value
+    const target = at ?? store.steps[store.steps.length - 1]?.uid
+    const node = api && target ? api.getRowNode(target) : null
+    if (node) api.ensureNodeVisible(node)
+  })
+})
 function onReady(e) { gridApi.value = e.api; syncSelection() }
 // 확인 창(적용 안 한 변경 등)이 닫히면 칸을 작업본 값으로 다시 그린다 — 묻는 동안 칸에 친 값·체크가 남지 않게.
 watch(() => edit.dialog, (now, before) => { if (before && !now) nextTick(() => gridApi.value?.refreshCells?.({ force: true })) })
