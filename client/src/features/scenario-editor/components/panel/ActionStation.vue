@@ -10,6 +10,7 @@ import { isRect } from '../../editor/capture'
 import { typeNameOf } from '../../editor/display'
 import { t, LABELS } from '../../messages'
 import FieldError from './FieldError.vue'
+import ActionIcon from './ActionIcon.vue'
 import ClickAction from './actions/ClickAction.vue'
 import WheelAction from './actions/WheelAction.vue'
 import KeyboardAction from './actions/KeyboardAction.vue'
@@ -38,8 +39,10 @@ const kept = computed(() => PRESERVE_ONLY.has(type.value) || typeNameOf(type.val
 const title = computed(() => t(kind.value === 'none' ? 'SEW_PANEL_DO_NONE' : kind.value === 'image' ? 'SEW_PANEL_DO_IMAGE' : 'SEW_PANEL_DO_MATCH'))
 const tiles = computed(() => ACTION_ORDER.map((tp) => {
   const why = actionBlocked(tp, props.draft.condition)
-  return { type: tp, label: LABELS.action[typeNameOf(tp)], why: why ? t(why) : null }
+  return { type: tp, icon: typeNameOf(tp), label: LABELS.action[typeNameOf(tp)], why: why ? t(why) : null }
 }))
+// 지금 동작의 아이콘 — 보존 전용·모르는 동작은 알림 그림(목업 ico(locked ? 'ACS' : t))
+const nowIcon = computed(() => (kept.value ? 'ACS' : typeNameOf(type.value)))
 const clickWhy = computed(() => (kind.value !== 'image' ? t(actionBlocked(1, props.draft.condition)) : null))
 const BODY = { 4: WheelAction, 5: KeyboardAction, 6: WaitAction, 9: FindWindowAction, 11: CommandAction, 12: CustomScriptAction }
 
@@ -59,14 +62,15 @@ const canRepick = computed(() => kind.value === 'image' && isRect(props.draft.co
       class="w-full flex items-center gap-2 h-[34px] px-2.5 border rounded-lg bg-white dark:bg-dark-card text-left text-sm font-medium text-gray-800 dark:text-gray-100 hover:border-primary-500"
       :class="errs.action?.level === 'error' ? 'border-red-500' : changed.includes('action') ? 'se-inp-ch border-primary-500' : 'border-gray-300 dark:border-dark-border'"
       @click="open = !open">
+      <ActionIcon :name="nowIcon" />
       <span class="flex-1 min-w-0 truncate">{{ actionName(action) }}</span>
       <small class="font-normal text-xs text-primary-700 dark:text-primary-300">{{ open ? t('SEW_PANEL_ACT_CLOSE') : t('SEW_PANEL_ACT_CHANGE') }}</small>
     </button>
     <div v-if="open" role="group" :aria-label="t('SEW_PANEL_ACT_PICK')" class="mt-1.5 grid grid-cols-3 gap-1 p-1.5 border border-gray-200 dark:border-dark-border rounded-lg bg-gray-50 dark:bg-dark-bg">
       <button v-for="tl in tiles" :key="tl.type" type="button" :data-act="tl.type" :aria-pressed="tl.type === type ? 'true' : 'false'" :disabled="!!tl.why" :title="tl.why ?? undefined"
-        class="h-10 px-0.5 rounded-md border border-transparent text-[11px] text-gray-700 dark:text-gray-200 disabled:opacity-45 disabled:text-gray-400 hover:enabled:bg-white dark:hover:enabled:bg-dark-card hover:enabled:border-gray-300"
+        class="h-[50px] px-0.5 flex flex-col items-center justify-center gap-0.5 rounded-md border border-transparent text-[11px] text-gray-700 dark:text-gray-200 disabled:opacity-45 disabled:text-gray-400 hover:enabled:bg-white dark:hover:enabled:bg-dark-card hover:enabled:border-gray-300"
         :class="tl.type === type ? 'bg-primary-100 dark:bg-primary-900/40 text-primary-800 dark:text-primary-200 font-semibold' : ''"
-        @click="pick(tl.type)">{{ tl.label }}</button>
+        @click="pick(tl.type)"><ActionIcon :name="tl.icon" :size="17" /><span>{{ tl.label }}</span></button>
       <div v-if="clickWhy" class="col-span-3 px-1 pt-0.5 text-[11px] leading-snug text-gray-500 dark:text-gray-400" data-testid="se-panel-act-why">{{ clickWhy }}</div>
     </div>
     <FieldError :errs="errs" field="action" />

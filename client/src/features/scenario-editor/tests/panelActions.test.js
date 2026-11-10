@@ -227,4 +227,31 @@ describe('ActionStation — 동작 고르기', () => {
     const w = mountStation(e)
     expect(w.find('[data-testid="se-panel-act-body"]').findAll('input, select, textarea').length).toBe(0)
   })
+  // 목업 step-editor-v1 actionStation: 지금 동작 버튼과 고르기 목록의 칸마다 동작 아이콘이 있다
+  it('지금 동작 버튼과 목록의 칸마다 그 동작의 아이콘을 보인다(목업 ico)', async () => {
+    const { e } = panelFixture([imageStep(0)])
+    const w = mountStation(e)
+    const now = w.find('[data-testid="se-panel-act-now"]')
+    expect(now.find('svg[data-icon]').attributes('data-icon')).toBe('MouseLeftClick')
+    expect(now.find('svg').attributes('aria-hidden')).toBe('true')
+    await now.trigger('click')
+    const names = { 0: 'None', 1: 'MouseLeftClick', 2: 'MouseLeftDoubleClick', 3: 'MouseRightClick', 4: 'MouseMove', 5: 'Keyboard', 6: 'Wait', 9: 'FindWindow', 11: 'RunCommand', 12: 'CustomScript', 10: 'SendEmail' }
+    for (const [type, name] of Object.entries(names)) {
+      const svg = tile(w, type).find('svg[data-icon]')
+      expect(svg.attributes('data-icon')).toBe(name)
+      expect(svg.element.childElementCount).toBeGreaterThan(0) // 빈 그림이 아니다
+    }
+    // 종류마다 그림이 다르다
+    expect(new Set(Object.keys(names).map((type) => tile(w, type).find('svg').html())).size).toBe(11)
+    await tile(w, 6).trigger('click')
+    await w.setProps({ draft: e.panel.draft }) // 패널이 초안을 다시 내려 준다
+    expect(w.find('[data-testid="se-panel-act-now"] svg[data-icon]').attributes('data-icon')).toBe('Wait')
+  })
+  it('보존 전용·모르는 동작은 알림 아이콘(목업 ACS)', () => {
+    for (const action of [{ type: 14, typeName: 'ACS', raw: 'CALL PM TEAM' }, { type: 8, typeName: 'OICommand', raw: 'x' }, { type: 99, typeName: null, raw: '' }]) {
+      setActivePinia(createPinia())
+      const { e } = panelFixture([noneStep(0, { action })])
+      expect(mountStation(e).find('[data-testid="se-panel-act-now"] svg[data-icon]').attributes('data-icon')).toBe('ACS')
+    }
+  })
 })
