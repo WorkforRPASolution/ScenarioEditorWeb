@@ -12,6 +12,7 @@ import { panelFixture, imageStep, noneStep } from './panelFixture'
 import { useEditorStore } from '../stores/editorStore'
 import { useEditStore } from '../stores/editStore'
 import { defaultProperty } from '../editor/newScenario'
+import { propertyDiffs } from '../editor/propertyView'
 
 const ok = (data) => Promise.resolve({ data: { success: true, data } })
 const fail = (status, code, details) => Promise.reject({ response: { status, data: { code, details } }, request: {} })
@@ -321,6 +322,35 @@ describe('저장 창(SaveDialog)', () => {
     expect(meta.propertyRev).toBe(null)
     expect(meta.force).toBe(false)
     expect(meta.scenario).toEqual({ source: null, headCrtime: null, header: { description: '새 메일', timeoutLimit: '240' }, steps: [], property: defaultProperty({ id: 'P-M2-NEW_ONE', type: 1 }) })
+    bar.unmount()
+  })
+  it('바뀐 것의 운영 속성 줄은 칸 이름과 이전 → 지금 값을 보인다(목업 svChanges "재시도 횟수 1 → 2") — 새 시나리오를 꺼짐으로 바꾸면 "상태 켜짐 → 꺼짐"', async () => {
+    const s = useEditorStore()
+    s.me = { singleid: 'u', canWrite: true, authorityManager: 3 }
+    s.scopes = { processes: [{ process: 'P', models: [{ model: 'M', eqpCount: 3 }] }] }
+    const e = useEditStore()
+    e.beginNew({ process: 'P', model: 'M', name: 'NEW_ONE', type: 1, description: '새 메일', timeoutLimit: '240' })
+    const made = e.session.working.property
+    expect(made.IsEnabled).toBe(true)
+    expect(e.applyProperty({ ...made, IsEnabled: false, RetryCnt: made.RetryCnt + 1 })).toBe(true)
+    api.check.mockImplementation(() => ok(clean({ target: { exists: false, eqpCount: 3 } })))
+    api.nameRule.mockReturnValue(ok({ exists: false, rules: [] }))
+    api.list.mockReturnValue(ok([]))
+    const bar = mount(ScenarioBar, { attachTo: document.body })
+    await openSave(bar)
+    const rows = bar.findAll('[data-testid="se-save-change"]')
+    expect(rows).toHaveLength(1)
+    const text = rows[0].text()
+    expect(text).toContain(t('SEW_SAVE_CHANGE_PROPERTY'))
+    expect(text).toContain('상태 켜짐 → 꺼짐')
+    expect(text).toContain(`재시도 ${propertyDiffs(made, e.session.working.property).find((d) => d.key === 'RetryCnt').from} → `)
+    expect(text).not.toMatch(/켜짐\s*,|^운영 속성\s*켜짐$/) // 칸 이름만 늘어놓지 않는다
+    bar.unmount()
+  })
+  it('덮어쓰기 차이의 켜짐·꺼짐 줄 이름은 값처럼 읽히지 않게 "상태" 다', async () => {
+    const { bar } = setup(clean({ targetExists: { diff: [{ key: 'IsEnabled', from: true, to: false }] } }))
+    await openSave(bar)
+    expect(bar.findAll('[data-testid="se-save-diff"]')[0].text()).toBe('상태: 켜짐 → 꺼짐')
     bar.unmount()
   })
 })

@@ -1095,9 +1095,10 @@ export const LABELS = {
   skipPreprocessing: { na: '해당 없음', yes: '예 (숨길 창 옮기기 건너뜀)', no: '아니오' },
   flowChip: { lastNext: 'NEXT (다음 없음)', self: '↺ 자기 자신' },
   clickBasis: { trainImage: '학습 이미지 왼쪽 위', screenOrigin: '실행 때 저장 좌표와 상관없이 화면 왼쪽 위(0,0)를 누릅니다', unknown: '이 조건에서는 클릭 기준을 알 수 없습니다' },
-  // 운영 속성 키 → 화면 이름(저장 창의 바뀐 것·덮어쓰기 차이). 없는 키는 키 그대로.
+  // 운영 속성 키 → 화면 이름(저장 창의 덮어쓰기 차이, 운영 속성 창 이름표에 없는 키). 없는 키는 키 그대로.
+  // IsEnabled 는 '상태' — '켜짐' 이면 "켜짐: 켜짐 → 꺼짐" 처럼 이름이 값으로 읽힌다(2026-11-10 사내 시험).
   propertyKey: {
-    Type: '유형', ScenarioTriggerType: '트리거 유형', IsEnabled: '켜짐', Priority: '우선순위', StartDelay: '시작 지연', RetryCnt: '재시도 횟수', RetryInterval: '재시도 간격',
+    Type: '유형', ScenarioTriggerType: '트리거 유형', IsEnabled: '상태', Priority: '우선순위', StartDelay: '시작 지연', RetryCnt: '재시도 횟수', RetryInterval: '재시도 간격',
     ExecutingLevel: '데스크탑 실행', IsShowDialog: '알림 창', NextScenarioIfSuccess: '성공하면 후속', NextScenarioIfFail: '실패하면 후속', DescriptionFromConductor: '심의 의견',
     DoNotSendEmailWhenSuccess: '성공 메일 보내지 않음', DoNotSendEmailWhenStop: '중지 메일 보내지 않음', DoNotSendEmailWhenFail: '실패 메일 보내지 않음',
     DetailedDescriptionTitle: '데스크탑 설명', DetailedDescription: '상세 설명', EDMLink: '데스크탑 링크'

@@ -4,7 +4,8 @@ import { computed } from 'vue'
 import { useSaveFlow } from '../../stores/saveFlow'
 import { useEditStore } from '../../stores/editStore'
 import { diffLines } from '../../editor/panel'
-import { t, LABELS } from '../../messages'
+import { propertyDiffs } from '../../editor/propertyView'
+import { t } from '../../messages'
 
 defineOptions({ name: 'SaveChanges' })
 const emit = defineEmits(['go'])
@@ -25,7 +26,9 @@ const rows = computed(() => {
   const byUid = new Map()
   for (const c of flow.changes) {
     if (c.kind === 'field' && c.key === 'property') {
-      out.push({ label: t('SEW_SAVE_CHANGE_PROPERTY'), sub: c.keys.map((k) => LABELS.propertyKey[k] ?? k).join(', '), goal: { kind: 'property' } })
+      // 칸 이름만 늘어놓으면 "켜짐" 같은 이름이 값으로 읽힌다 — 운영 속성 창의 "바뀐 값" 과 같은 글로 이전 → 지금을 보인다(목업 svChanges)
+      const subs = propertyDiffs(s.saveBase?.property, w.property).map((d) => `${d.label} ${t('SEW_SAVE_DIFF_ARROW', { from: d.from, to: d.to })}`)
+      out.push({ label: t('SEW_SAVE_CHANGE_PROPERTY'), sub: subs.join(' · '), goal: { kind: 'property' } })
     } else if (c.kind === 'field') {
       const desc = c.key === 'description'
       out.push({ label: t(desc ? 'SEW_SAVE_MAIL_TITLE' : 'SEW_SAVE_TIMEOUT'), sub: t('SEW_SAVE_DIFF_ARROW', { from: (desc ? text : minutes)(c.before), to: (desc ? text : minutes)(c.after) }), goal: { kind: 'bar', field: c.key } })
