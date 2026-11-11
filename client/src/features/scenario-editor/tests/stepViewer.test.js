@@ -204,6 +204,15 @@ describe('StepViewer', () => {
     expect(tf(b.w).scale).toBeCloseTo(0.98, 5)
     b.w.unmount()
   })
+  it('[1:1] 은 배율 1 로 — 직접 움직인 것으로 쳐서 상자 크기가 바뀌어도 그대로다 (P3-B)', async () => {
+    const { w, box } = await mountSized()
+    await w.find('[data-testid="se-zoom-actual"]').trigger('click')
+    expect(tf(w).scale).toBe(1)
+    const at = tf(w)
+    box.resize(1000, 500); await w.vm.$nextTick()
+    expect(tf(w)).toEqual(at)
+    w.unmount()
+  })
   it('오른쪽 버튼으로는 끌어 이동하지 않는다', async () => {
     const { w } = await mountSized()
     const before = tf(w)

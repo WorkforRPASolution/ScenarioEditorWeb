@@ -3,7 +3,7 @@
 // 쓸 수 있는 세션은 패널 초안(고른 스텝의 초안 또는 아직 표에 없는 새 스텝)을 그리고, 그 위의 잡기 층(CaptureLayer)이
 // 영역 끌기·손잡이·끌어 잡기·누를 곳 찍기를 맡는다. 잡기 중에는 머리에 단계 띠와 [취소], 아래에 안내 줄(목업 renderViewer).
 // 잡기 밖에서는 기준 화면에서 찾은 찾을 그림 자리와 누를 곳을 늘 그린다(SpotLayer — 한 곳 찾았을 때만, 읽기 전용에서도).
-import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
 import { useEditStore } from '../stores/editStore'
 import { imageSrc } from '../editor/display'
@@ -12,6 +12,7 @@ import { areaView, isRect, isRef } from '../editor/capture'
 import { t } from '../messages'
 import { safeStorage } from '../composables/useSafeStorage'
 import { useTrainSpot } from '../composables/useTrainSpot'
+import { usePanZoom } from '../composables/usePanZoom'
 import CaptureLayer from './CaptureLayer.vue'
 import SpotLayer from './SpotLayer.vue'
 import './capture.css'
@@ -67,46 +68,14 @@ const biUnreadable = computed(() => (store.skeleton?.notes ?? []).some((n) => n.
 const natural = ref(null)
 const failed = ref(false)
 const box = ref(null)
-const view = reactive({ scale: 1, tx: 0, ty: 0 })
+// 확대·이동은 스냅샷 보기와 함께 쓰는 usePanZoom 이 맡는다(맞춤·1:1·직접 움직인 뒤에는 다시 맞추지 않음·크기 관찰)
+const { view, fit, actual, zoomButton, onWheel, onDown, setView } = usePanZoom(box, natural)
 const HINT = 'se-hint-base-image'
 const showHint = ref(safeStorage.get(HINT) !== '1')
 
 watch(src, () => { natural.value = null; failed.value = false })
 
-// 사용자가 이 이미지에서 직접 확대·이동했는지(맞춤·새 이미지에서 해제). 상자 크기가 바뀔 때 다시 맞출지 정한다.
-let userMoved = false
-// 상자가 0×0(숨김)일 때 맞추기를 미뤄 둔 것 — 다음 0 아닌 크기에서 맞춘다.
-let pendingFit = false
-let lastW = 0
-let lastH = 0
-let observer = null
-let stopDrag = null
-
-function fit() {
-  const el = box.value
-  if (!el || !natural.value) return
-  userMoved = false
-  const w = el.clientWidth
-  const h = el.clientHeight
-  if (!(w > 0 && h > 0)) { pendingFit = true; return }
-  pendingFit = false
-  const s = Math.min(w / natural.value.w, h / natural.value.h) * 0.98
-  view.scale = s > 0 ? s : 1
-  view.tx = (w - natural.value.w * view.scale) / 2
-  view.ty = (h - natural.value.h * view.scale) / 2
-}
-function onLoad(e) { natural.value = { w: e.target.naturalWidth, h: e.target.naturalHeight }; userMoved = false; fit() }
-function onResize() {
-  const el = box.value
-  if (!el) return
-  const w = el.clientWidth
-  const h = el.clientHeight
-  const wasZero = !(lastW > 0 && lastH > 0)
-  lastW = w
-  lastH = h
-  if (!(w > 0 && h > 0)) return
-  if (pendingFit || wasZero || !userMoved) fit()
-}
+function onLoad(e) { natural.value = { w: e.target.naturalWidth, h: e.target.naturalHeight }; fit() }
 // Esc: 잡기 취소(잡기가 쓴 칸만 되돌린다). 목업 keydown 순서대로 확인 창·다음 스텝 고르기·펼침 메뉴가 먼저 받고,
 // 입력 칸(글자 칸·고르기·내용 편집) 안의 Esc 는 그 칸 몫이라 듣지 않는다. 확인 창보다 먼저 판단하도록 capture 단계에서 듣는다.
 const POPUPS = '[data-testid="se-picker"], [data-testid="se-tool-menu"]'
@@ -119,53 +88,13 @@ function onEsc(e) {
 }
 onMounted(() => document.addEventListener('keydown', onEsc, true))
 onBeforeUnmount(() => document.removeEventListener('keydown', onEsc, true))
-onMounted(() => {
-  const el = box.value
-  if (!el) return
-  lastW = el.clientWidth
-  lastH = el.clientHeight
-  if (typeof ResizeObserver !== 'undefined') { observer = new ResizeObserver(onResize); observer.observe(el) }
-})
-onBeforeUnmount(() => {
-  if (observer) { observer.disconnect(); observer = null }
-  if (stopDrag) stopDrag()
-})
-function zoomAt(factor, cx, cy) {
-  userMoved = true
-  const ns = Math.min(8, Math.max(0.05, view.scale * factor))
-  view.tx = cx - ((cx - view.tx) * ns) / view.scale
-  view.ty = cy - ((cy - view.ty) * ns) / view.scale
-  view.scale = ns
-}
-function onWheel(e) {
-  const rect = box.value.getBoundingClientRect()
-  zoomAt(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX - rect.left, e.clientY - rect.top)
-}
-const zoomButton = (f) => zoomAt(f, (box.value?.clientWidth || 0) / 2, (box.value?.clientHeight || 0) / 2)
-function onDown(e) {
-  if (e.button !== 0) return
-  if (stopDrag) stopDrag()
-  const sx = e.clientX
-  const sy = e.clientY
-  const tx = view.tx
-  const ty = view.ty
-  const move = (m) => { userMoved = true; view.tx = tx + m.clientX - sx; view.ty = ty + m.clientY - sy }
-  const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); stopDrag = null }
-  stopDrag = up
-  window.addEventListener('mousemove', move)
-  window.addEventListener('mouseup', up)
-}
 const area = computed(() => step.value?.condition.searchArea)
 const adjustHint = computed(() => editLayer.value && !cap.value && isRect(draft.value?.condition?.searchArea))
 // 패널 그림을 누르면 영역에 맞춰 확대·전체(목업 focusArea·viewAll), 잡기를 시작하면 전체(editStore.viewReq)
 function focusArea(a) {
   const el = box.value
   if (!el || !natural.value || !(el.clientWidth > 0 && el.clientHeight > 0)) return
-  const v = areaView(a, { w: el.clientWidth, h: el.clientHeight }, natural.value)
-  userMoved = true
-  view.scale = v.scale
-  view.tx = v.tx
-  view.ty = v.ty
+  setView(areaView(a, { w: el.clientWidth, h: el.clientHeight }, natural.value))
 }
 watch(() => edit.viewReq, (r) => {
   if (!r) return
@@ -204,6 +133,7 @@ defineExpose({ onLoad, fit })
         <button class="w-7 h-7 rounded-lg bg-gray-200 dark:bg-gray-700" title="확대" @click="zoomButton(1.25)">＋</button>
         <button class="w-7 h-7 rounded-lg bg-gray-200 dark:bg-gray-700" title="축소" @click="zoomButton(0.8)">－</button>
         <button class="h-7 px-2 rounded-lg bg-gray-200 dark:bg-gray-700" @click="fit">맞춤</button>
+        <button class="h-7 px-2 rounded-lg bg-gray-200 dark:bg-gray-700" :title="t('SEW_SNAP_ZOOM_ACTUAL_HINT')" data-testid="se-zoom-actual" @click="actual">1:1</button>
       </div>
     </div>
     <div v-if="cap" class="px-3 py-1.5 text-xs bg-primary-50 dark:bg-primary-900/20 text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-dark-border" data-testid="se-cap-hint">{{ capHint }}</div>
