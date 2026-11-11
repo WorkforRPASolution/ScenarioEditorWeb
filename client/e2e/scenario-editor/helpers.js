@@ -51,3 +51,22 @@ export async function pickNext(page, uid, col, to) {
   await cellOf(page, uid, col).locator('[data-pick]').click()
   await page.getByTestId('se-picker').locator(`[data-to="${to}"]`).click()
 }
+
+// 큰 화면 잡기 층 위의 기준 화면 픽셀 → 화면 좌표(층은 확대·이동이 들어간 상자 안에 있다). 기준 화면은 alarm.png(1920×1200).
+export const BASE_IMG = { w: 1920, h: 1200 }
+export async function toScreen(layer, x, y) {
+  const b = await layer.boundingBox()
+  return { x: b.x + (x * b.width) / BASE_IMG.w, y: b.y + (y * b.height) / BASE_IMG.h }
+}
+export async function drag(page, layer, [x, y, w, h]) {
+  const a = await toScreen(layer, x, y)
+  const z = await toScreen(layer, x + w, y + h)
+  await page.mouse.move(a.x, a.y)
+  await page.mouse.down()
+  await page.mouse.move(z.x, z.y, { steps: 6 })
+  await page.mouse.up()
+}
+export async function clickAt(page, layer, x, y) {
+  const p = await toScreen(layer, x, y)
+  await page.mouse.click(p.x, p.y)
+}

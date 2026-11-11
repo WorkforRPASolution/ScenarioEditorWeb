@@ -670,6 +670,92 @@ describe('saveFlow', () => {
     await flow.draftCurrent() // 새 시나리오 창의 [초안 저장하고 만들기]
     expect(metaOf(api.saveDraft.mock.calls[1]).target).toEqual({ process: 'P', model: 'M2', name: 'COPY' })
   })
+  // SEW-017: 배포한 적 없는 새 시나리오의 초안을 이어 열면 새로 자른 그림이 서버 초안(초안 키 = 그 이름)에만 있다.
+  // 다른 이름으로 보내면 서버가 그 이름의 초안에서 그림을 찾지 못한다 — 화면이 초안 그림을 먼저 받아 요청에 싣는다.
+  describe('새 시나리오 초안을 이어 열어 다른 이름으로 보낸다(SEW-017)', () => {
+    const blob = (text) => new Blob([text], { type: 'image/png' })
+    let fetched
+    beforeEach(() => {
+      fetched = []
+      vi.stubGlobal('fetch', vi.fn(async (url) => {
+        fetched.push(String(url))
+        if (String(url).includes('tGone')) return { ok: false, status: 404 }
+        return { ok: true, blob: async () => blob(String(url)) }
+      }))
+    })
+    afterEach(() => vi.unstubAllGlobals())
+    const openNewDraft = (tempId = 'tDraft') => {
+      const f = setup(() => clean({ target: { exists: false, eqpCount: 3 } }))
+      f.s.me = { ...f.s.me, canWrite: true }
+      const st = { ...imageStep(0), uid: 'n1', origin: null, images: { train: { 0: { from: 'upload', tempId } }, base: { from: 'other', process: 'P', model: 'M', name: 'N', crtime: 30, fileId: 'F30', id: 's0-bi' } } }
+      const scenario = { source: null, headCrtime: null, header: { description: '새 메일', timeoutLimit: '240' }, steps: [st], property: {} }
+      f.e.beginFromDraft({ draftId: 'd1', savedAt: '2026-11-07T05:23:51.000Z', revision: 1, base: null, headCrtime: null, propertyRev: null, target: { model: 'M', name: 'NEW_ONE' },
+        scenario, imageUrls: {}, process: 'P', model: 'M', name: 'NEW_ONE' }, null)
+      return { ...f, flow: useSaveFlow() }
+    }
+
+    it('같은 이름으로 보내면 서버 초안 그림을 받지도 올리지도 않는다(지금까지와 같다)', async () => {
+      const { flow } = openNewDraft()
+      flow.open(); await flushPromises()
+      expect(flow.target).toEqual({ model: 'M', name: 'NEW_ONE' })
+      api.saveDraft.mockReturnValue(ok({ draftId: 'd1', savedAt: '2026-11-09T05:23:00.000Z', revision: 2 }))
+      await flow.saveDraft()
+      expect(flow.stage).toBe('draft')
+      expect(fetched).toEqual([])
+      expect(api.saveDraft.mock.calls[0][0].get('img:tDraft')).toBe(null)
+    })
+    it('다른 이름으로 배포: 초안 그림을 먼저 받아 요청에 싣는다', async () => {
+      const { flow, e } = openNewDraft()
+      flow.open(); await flushPromises()
+      flow.setTarget({ name: 'RENAMED' })
+      await flow.runCheck()
+      flow.toConfirm()
+      api.deploy.mockReturnValue(ok({ result: 'ok', crtime: null }))
+      await flow.deploy()
+      expect(fetched).toEqual(['/scenario-editor/drafts/d1/images/tDraft'])
+      const fd = api.deploy.mock.calls[0][0]
+      expect(metaOf(api.deploy.mock.calls[0]).target).toEqual({ process: 'P', model: 'M', name: 'RENAMED' })
+      expect(fd.get('img:tDraft')).toBeInstanceOf(Blob)
+      expect(e.uploads.get('tDraft')).toBeInstanceOf(Blob) // 받은 그림은 이 세션의 올릴 그림이 된다
+    })
+    it('다른 모델로 초안 저장: 초안 그림을 먼저 받아 싣고, 그 뒤 같은 곳으로 다시 저장할 때는 받지 않는다', async () => {
+      const { flow } = openNewDraft()
+      flow.open(); await flushPromises()
+      flow.setTarget({ model: 'M2' })
+      api.saveDraft.mockReturnValue(ok({ draftId: 'd2', savedAt: '2026-11-09T05:23:00.000Z', revision: 1 }))
+      await flow.saveDraft()
+      expect(flow.stage).toBe('draft')
+      expect(fetched).toHaveLength(1)
+      expect(api.saveDraft.mock.calls[0][0].get('img:tDraft')).toBeInstanceOf(Blob)
+      flow.close()
+      await flow.draftCurrent()
+      expect(fetched).toHaveLength(1)
+      expect(metaOf(api.saveDraft.mock.calls[1]).target).toEqual({ process: 'P', model: 'M2', name: 'NEW_ONE' })
+    })
+    it('초안 그림을 받지 못하면 보내지 않는다 — 배포는 "보내지 않았습니다", 초안 저장은 실패 알림', async () => {
+      const { flow } = openNewDraft('tGone')
+      flow.open(); await flushPromises()
+      flow.setTarget({ name: 'RENAMED' })
+      await flow.runCheck()
+      await flow.saveDraft()
+      expect(api.saveDraft).not.toHaveBeenCalled()
+      expect(flow.notice).toMatchObject({ key: 'SEW_SAVE_DRAFT_FAILED', tone: 'error' })
+      flow.toConfirm()
+      await flow.deploy()
+      expect(api.deploy).not.toHaveBeenCalled()
+      expect(flow.stage).toBe('fail')
+      expect(sessionStorage.getItem(PENDING_KEY)).toBe(null) // 보낸 적이 없으니 결과 모름으로 남기지 않는다
+    })
+    it('기준 판이 있는 초안은 다른 이름으로 보내도 받지 않는다(초안 키가 기준 판 이름이라 서버가 찾는다)', async () => {
+      openDraftWithTarget({ model: 'M', name: 'N' })
+      const flow = useSaveFlow()
+      flow.open(); await flushPromises()
+      flow.setTarget({ name: 'COPY2' })
+      api.saveDraft.mockReturnValue(ok({ draftId: 'd1', savedAt: '2026-11-09T05:23:00.000Z', revision: 2 }))
+      await flow.saveDraft()
+      expect(fetched).toEqual([])
+    })
+  })
   it('초안의 저장 대상이 다른 공정이면 쓰지 않는다(열린 시나리오가 기본 대상)', async () => {
     openDraftWithTarget({ model: 'M2', name: 'COPY' }, { process: 'Q' })
     const flow = useSaveFlow()

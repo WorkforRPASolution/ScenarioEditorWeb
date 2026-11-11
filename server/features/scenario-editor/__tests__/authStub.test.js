@@ -46,6 +46,20 @@ describe('authMiddleware 대역', () => {
     expect(run(authenticate, {}, opts).req.user.singleid).toBe('sew_master')
   })
 
+  // SEW-017 을 고치다 찾음(2026-11-11): 초안 그림(<img>·fetch 가 ?seUser= 로 받는다)이 이미지 경로로 치이지 않아, 개발용 사용자 바꾸기를 쓰면
+  // 설정 사용자로 읽혀 남의 초안 = 404 였다. 초안 목록·초안 본문 경로는 그대로 헤더만 받는다.
+  it('초안 그림 경로(/drafts/<id>/images/<tempId>)도 ?seUser= 를 받는다 — 초안 본문·목록 경로는 받지 않는다', () => {
+    process.env.SE_USER_SINGLEID = 'sew_multi'
+    process.env.SE_DEV_USER_OVERRIDE = '1'
+    const as = (url) => run(authenticate, {}, { url: `${url}?seUser=sew_master`, query: { seUser: 'sew_master' } }).req.user.singleid
+    expect(as('/api/scenario-editor/drafts/6af3f767bee74aa62e896b79/images/tmwbnn1vhdumplccf')).toBe('sew_master')
+    expect(as('/api/scenario-editor/drafts/6af3f767bee74aa62e896b79')).toBe('sew_multi')
+    expect(as('/api/scenario-editor/drafts')).toBe('sew_multi')
+    expect(as('/api/scenario-editor/drafts/6af3f767bee74aa62e896b79/images')).toBe('sew_multi')
+    process.env.SE_DEV_USER_OVERRIDE = '0'
+    expect(as('/api/scenario-editor/drafts/6af3f767bee74aa62e896b79/images/tmwbnn1vhdumplccf')).toBe('sew_multi')
+  })
+
   it('?seUser= 는 이미지 경로에서만 받는다(헤더는 모든 경로)', () => {
     process.env.SE_USER_SINGLEID = 'sew_multi'
     process.env.SE_DEV_USER_OVERRIDE = '1'

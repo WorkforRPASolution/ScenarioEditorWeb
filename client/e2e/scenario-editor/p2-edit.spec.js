@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { asUser, openFromDialog, rows, rowAt, rowOf, cellOf, toast, order, selectRow, menu } from './helpers'
+import { asUser, openFromDialog, rows, rowAt, rowOf, cellOf, toast, order, selectRow, menu, drag, clickAt } from './helpers'
 
 // P2-C 편집 명령(설계 §2 완료 조건 2 의 편집 부분). 저장 → 다시 열기는 저장 창이 있는 P2-D E2E 가 맡는다.
 // 시험 데이터: basic NEXT_RULES(1 이미지 · 2 →4/SKIP · 3 도달 불가 · 4 OCR NEXT/→2 · 5 끝), ALL_CONDITIONS(1 이미지 · 2 OCR · 3 대기 · 4 설비 상태).
@@ -7,24 +7,6 @@ import { asUser, openFromDialog, rows, rowAt, rowOf, cellOf, toast, order, selec
 const IMG = { w: 1920, h: 1200 }
 const DIALOG = [560, 320, 880, 520] // 검색 영역(tools/scenario-gen/scenarios/basic.js)
 const RESET = [711, 660, 255, 96] // 찾을 그림
-
-// 큰 화면 잡기 층 위의 기준 화면 픽셀 → 화면 좌표(층은 확대·이동이 들어간 상자 안에 있다)
-async function toScreen(layer, x, y) {
-  const b = await layer.boundingBox()
-  return { x: b.x + (x * b.width) / IMG.w, y: b.y + (y * b.height) / IMG.h }
-}
-async function drag(page, layer, [x, y, w, h]) {
-  const a = await toScreen(layer, x, y)
-  const z = await toScreen(layer, x + w, y + h)
-  await page.mouse.move(a.x, a.y)
-  await page.mouse.down()
-  await page.mouse.move(z.x, z.y, { steps: 6 })
-  await page.mouse.up()
-}
-async function clickAt(page, layer, x, y) {
-  const p = await toScreen(layer, x, y)
-  await page.mouse.click(p.x, p.y)
-}
 
 test('① 잡아 넣기·삭제 막힘·다른 시나리오 붙여넣기·잘라 옮기기·다시 찍기·확인 창·되돌리기 → 검사 막힘 없음', async ({ page }) => {
   await asUser(page, 'sew_master')

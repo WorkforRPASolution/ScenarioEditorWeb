@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { asUser, openFromDialog, rows, rowAt, rowOf, cellOf, toast, column, selectRow, menu, pickNext } from './helpers'
+import { asUser, openFromDialog, rows, rowAt, rowOf, cellOf, toast, column, selectRow, menu, pickNext, drag, clickAt } from './helpers'
 import { CVD, SOURCE, sewName, idOf, urlOf, apiAs, noUrls, proxyMode, db, cleanup, leftovers, NONE_LEFT, closeDb } from './sew'
 
 // P2-D 저장·관리 흐름(설계 §2 완료 조건 2 저장 → 다시 열기·4 저장 흐름·5 판 관리·운영 속성의 화면 부분).
@@ -534,5 +534,81 @@ test('⑩ 위쪽 [시나리오 지우기…] 로 이름을 따라 쳐 지우고 
   await expect(dlg.getByRole('gridcell', { name: B.name, exact: true })).toHaveCount(0)
   await expect(dlg.getByTestId('se-load-cleanup')).toHaveCount(0)
   expect(await draftNames()).toEqual([])
+})
+
+// SEW-017: 배포한 적 없는 새 시나리오의 초안은 초안 키가 그 이름이다. 이어 연 뒤 다른 이름으로 보내면 서버가 그 이름의 초안에서
+// 새로 자른 그림을 찾지 못해 400 이었다 — 화면이 초안 그림을 먼저 받아 요청에 싣는다.
+test('⑪ 새 시나리오에서 새로 자른 그림 → 초안 저장 → 새로고침 → 초안 이어 열기 → 다른 이름으로 배포 → 다시 열면 그 그림', async ({ page }) => {
+  const NEW = { ...CVD, name: sewName('DN') }
+  const AS = { ...CVD, name: sewName('DR') }
+  const DIALOG = [560, 320, 880, 520] // 검색 영역(tools/scenario-gen/scenarios/basic.js)
+  const RESET = [711, 660, 255, 96] // 찾을 그림
+  await asUser(page, 'sew_master')
+  await page.goto(urlOf(SOURCE))
+  await expect(rows(page)).toHaveCount(4)
+  await selectRow(page, 's0')
+  await cellOf(page, 's2', 'no').click({ modifiers: ['Shift'] })
+  await page.getByTestId('se-tool-copy').click()
+  await expect(toast(page)).toContainText('스텝 3개를 복사했습니다')
+
+  await page.getByTestId('se-new').click()
+  const dlg = page.getByTestId('se-new-dialog')
+  await dlg.getByTestId('se-new-model').selectOption(CVD.model)
+  await dlg.getByTestId('se-new-type').selectOption('1')
+  await dlg.getByTestId('se-new-name').fill(NEW.name)
+  await dlg.getByTestId('se-new-mail').fill('E2E 새 그림 초안')
+  await dlg.getByTestId('se-new-create').click()
+  await expect(page.getByTestId('se-bar-id')).toHaveText(idOf(NEW))
+  await page.getByTestId('se-empty-paste').click()
+  await expect(rows(page)).toHaveCount(3)
+  const last = await rowAt(page, 2).getAttribute('row-id')
+  await cellOf(page, last, 'onTrue').locator('[data-pick]').click()
+  await page.getByTestId('se-picker').locator('[data-end="SUCCESS"]').click()
+
+  // 붙여 넣은 1번(이미지) 스텝의 기준 화면에서 새 이미지 스텝을 잡아 맨 앞에 넣는다 — 찾을 그림은 새로 자른 그림(올릴 그림)
+  const first = await rowAt(page, 0).getAttribute('row-id')
+  await selectRow(page, first)
+  await menu(page, 'se-tool-new', '[data-new="image"]')
+  const layer = page.getByTestId('se-capture-layer')
+  await expect(layer).toHaveAttribute('data-stage', 'area')
+  await drag(page, layer, DIALOG)
+  await expect(layer).toHaveAttribute('data-stage', 'train')
+  await drag(page, layer, RESET)
+  await expect(layer).toHaveAttribute('data-stage', 'click')
+  await clickAt(page, layer, RESET[0] + 24, RESET[1] + 12)
+  await page.getByTestId('se-detail').locator('[data-field="desc"]').fill('새로 자른 스텝')
+  await page.getByTestId('se-new-add').click()
+  await expect(rows(page)).toHaveCount(4)
+
+  await openSave(page)
+  await page.getByTestId('se-save-draft').click()
+  await expect(result(page).locator('h4')).toHaveText(/초안을 저장했습니다/)
+  await page.getByTestId('se-save-close').click()
+  expect((await leftovers()).draftImages).toBeGreaterThan(0) // 새로 자른 그림이 서버 초안에 있다
+
+  // 새로고침(로컬 그림이 사라진다) → 불러오기 창의 "초안만 있음" 행을 두 번 눌러 이어 연다
+  page.on('dialog', (d) => d.accept())
+  await page.reload()
+  await page.getByTestId('se-load').click()
+  await page.getByTestId('se-load-process').selectOption(CVD.process)
+  await page.getByTestId('se-load-model').selectOption(CVD.model)
+  await page.getByTestId('se-load-search').fill(NEW.name)
+  await page.getByTestId('se-load-dialog').getByRole('gridcell', { name: NEW.name, exact: true }).dblclick()
+  await expect(page.getByTestId('se-bar-id')).toHaveText(idOf(NEW))
+  await expect(rows(page)).toHaveCount(4)
+  const added = await rowAt(page, 0).getAttribute('row-id')
+  await expect(cellOf(page, added, 'desc')).toHaveText('새로 자른 스텝')
+  await expectImagesOf(page, added) // 찾을 그림은 서버 초안에서 온다
+
+  // 저장 창에서 이름을 바꿔 배포한다 — 초안 키(NEW)와 다른 이름
+  await openSave(page)
+  await page.getByTestId('se-save-name').fill(AS.name)
+  const version = await deployOk(page, `${idOf(AS)} 을 새로 저장하고`)
+  await expectCurrent(page, AS, version)
+  await reopen(page, AS)
+  await expect(rows(page)).toHaveCount(4)
+  await expect(cellOf(page, 's0', 'desc')).toHaveText('새로 자른 스텝')
+  await expectImagesOf(page, 's0')
+  expect(await api.versions(AS)).toHaveLength(1)
 })
 

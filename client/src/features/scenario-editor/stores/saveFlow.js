@@ -8,6 +8,7 @@ import { ref, computed } from 'vue'
 import { scenarioEditorApi as api } from '../api'
 import { t, errorCode, errorMessage, MESSAGES } from '../messages'
 import { buildMeta, buildFormData, uploadsToSend } from '../editor/request'
+import { loadBlob, draftImageUrl } from '../editor/images'
 import { unsavedChanges } from '../editor/diff'
 import { checkName, nameRuleOf } from '../editor/nameRule'
 import { propertyFieldOf } from '../editor/propertyRules'
@@ -113,6 +114,18 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
   const idOf = (t) => `${t.process}-${t.model}-${t.name}`
   // 멀티파트 본문 — 초안에서 이어 연 세션은 서버 초안에만 있는 그림을 다시 올리지 않는다(editor/request uploadsToSend)
   const formOf = (meta, used) => buildFormData(meta, edit.uploads, uploadsToSend(used, edit.uploads, edit.draftId))
+  // 보낼 본문(SEW-017). 배포한 적 없는 새 시나리오(출처 없음)는 초안 키가 저장 대상의 모델·이름이라, 이어 연 초안과 다른 곳으로 보내면
+  // 서버가 그 초안의 그림을 찾지 못한다("그림 파일이 없습니다" 400). 서버 초안에만 있는 그림(로컬 Blob 없음)을 먼저 받아
+  // 이 세션의 올릴 그림으로 넣고 싣는다 — 받지 못하면 던져 보내지 않는다. 기준 판이 있으면 초안 키가 기준 판 이름이라 받지 않는다.
+  async function formFor(meta, used, tg) {
+    const from = draftTarget()
+    if (!source() && edit.draftId && !(from && from.model === tg.model && from.name === tg.name)) {
+      const missing = used.filter((id) => !(edit.uploads?.get(id) instanceof Blob))
+      const blobs = await Promise.all(missing.map((id) => loadBlob(draftImageUrl(edit.draftId, id))))
+      missing.forEach((id, i) => edit.setUpload(id, blobs[i]))
+    }
+    return formOf(meta, used)
+  }
   const sameScenario = computed(() => { const s = source(); return !!s && target.value.model === s.model && target.value.name === s.name })
   // 다른 대상에는 확인할 충돌이 없다(서버는 같은 시나리오만 본다) — force 는 기준 판 파일이 지워졌을 때 서버 캐시로 읽는 것만 켠다(Task 2a).
   // 같은 시나리오는 사용자가 [내 내용으로 덮어씁니다]·[다시 만듭니다]·운영 속성 확인을 체크했을 때만.
@@ -290,7 +303,7 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
     let data
     try {
       const { meta, uploadsUsed } = buildMeta(s, { target: sentTarget.value, extra: { requestId: id, overwrite: confirm.value.overwrite, force: sendForce(), restoredFrom: s.restoredFrom ?? null } })
-      const body = formOf(meta, uploadsUsed)
+      const body = await formFor(meta, uploadsUsed, sentTarget.value)
       setPending({ requestId: id, target: sentTarget.value, at: Date.now() })
       data = (await api.deploy(body)).data.data
     } catch (e) {
@@ -340,9 +353,10 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
     busy.value = 'draft'
     notice.value = null
     try {
-      const { meta, uploadsUsed } = buildMeta(s, { target: fullTarget() })
-      const data = (await api.saveDraft(formOf(meta, uploadsUsed))).data.data
-      edit.markDraft({ ...data, target: fullTarget() })
+      const tg = fullTarget()
+      const { meta, uploadsUsed } = buildMeta(s, { target: tg })
+      const data = (await api.saveDraft(await formFor(meta, uploadsUsed, tg))).data.data
+      edit.markDraft({ ...data, target: tg })
       result.value = { savedAt: data.savedAt }
       stage.value = 'draft'
     } catch (e) {
@@ -359,7 +373,7 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
     if (stage.value || !s?.working || s.readOnly) throw new Error('draft unavailable')
     const tg = { process: process(), ...ownTarget() }
     const { meta, uploadsUsed } = buildMeta(s, { target: tg })
-    const data = (await api.saveDraft(formOf(meta, uploadsUsed))).data.data
+    const data = (await api.saveDraft(await formFor(meta, uploadsUsed, tg))).data.data
     edit.markDraft({ ...data, target: tg })
     return data
   }
