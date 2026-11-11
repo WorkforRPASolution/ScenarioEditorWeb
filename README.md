@@ -133,7 +133,7 @@ P2(편집·저장)를 사내 PC 에서 운영 EARS·InterfaceServer 에 붙여 �
 
 쓰던 운영 계정을 그대로 쓴다. 이 계정은 EARS 전체에 쓸 수 있어서 DB 권한이 잘못된 쓰기를 막아 주지 않고, 웹 서버에도 "시험 대상만 쓴다" 는 장치가 없다. **7 의 "하지 말 것" 을 지키는 것이 유일한 막이다.** 계정 정보는 `server\.env` 에만 둔다.
 
-초안·초안 그림·배포 기록은 사내 WebManager DB 에 임시 컬렉션 네 개로 둔다: `SCENARIO_EDITOR_DRAFTS`·`SCENARIO_EDITOR_DEPLOYS`·`seDraftImages.files`·`seDraftImages.chunks`. WebManager 가 쓰지 않는 이름이고 첫 쓰기 때 저절로 생긴다. 편입 뒤에도 같은 이름을 쓰므로 시험이 끝나면 꼭 지운다(6-12).
+초안·초안 그림·배포 기록은 사내 WebManager DB 의 웹 전용 컬렉션 네 개에 둔다: `SCENARIO_EDITOR_DRAFTS`·`SCENARIO_EDITOR_DEPLOYS`·`seDraftImages.files`·`seDraftImages.chunks`. WebManager 가 쓰지 않는 이름이고 첫 쓰기 때 저절로 생긴다(그림 둘은 새로 자른 그림이 든 초안을 저장할 때 생긴다). 편입 뒤에도 같은 이름으로 쓰는 컬렉션이라 지우지 않는다 — 시험 때 쌓인 문서만 운영 적용 전에 한 번 비운다(6-12).
 
 DB 이름은 사내 WebManager 의 `WEBMANAGER_DB_URI` 에 적힌 그대로 쓴다. 기본값은 `WEB_MANAGER` 이고 대소문자를 구분한다. 틀리면 오류 없이 새 DB 가 생긴다. 아래 명령의 `WEB_MANAGER` 는 실제 이름으로 바꿔 친다.
 
@@ -226,9 +226,13 @@ npm run dev
 9. **고쳐 배포**: 웹에서 이미지 스텝 하나를 골라 기준 화면에서 찾을 그림을 [다시 잡기]로 새로 자르고 배포한다. 확인 창은 6번과 같은 조건일 때만 [배포].
 10. **데스크톱으로 다시 열기**: 새로 자른 찾을 그림이 데스크톱에 보이는지 본다.
 11. **지우기**: 웹 불러오기 창에서 `SEW_TEST_<날짜>` 행을 고르고, 오른쪽 칸 맨 위 이름이 그 이름인지 본 뒤 [시나리오 지우기…] → 시나리오 이름을 따라 친다(맞게 치는 동안 남은 글자가 회색으로 보인다) → [지우기]. [내 초안도 함께 지웁니다] 가 보이면(그 이름의 내 초안이 남아 있을 때) 체크한다. 끝나면 4 의 조회 두 줄을 다시 돌려 둘 다 `0` 인지 본다. Redis 에 남은 판 기록은 지우지 않고 적기만 한다.
-12. **정리**: 서버를 끄고 임시 컬렉션 네 개를 지운다. 지우기 전에 `SCENARIO_EDITOR_DEPLOYS` 의 배포 기록을 결과와 함께 적어 둔다. **`dropDatabase` 는 절대 쓰지 않는다 — WebManager DB 전체가 지워진다.** 아래 한 줄만 친다(`WEB_MANAGER` 는 실제 이름으로). 줄마다 `true` 면 지운 것이고, `false` 는 그 컬렉션이 없었다는 뜻이다.
+12. **정리(운영 적용 전에 한 번)**: 시험이 끝날 때마다 하지 않는다. 웹 전용 컬렉션 네 개는 편입 뒤에도 같은 이름으로 쓰므로 **컬렉션은 남기고 그 안의 문서만 지운다.** 운영에 웹 편집기를 적용하기 직전에 한 번 해서 시험 때 쌓인 초안·배포 기록을 비운다.
+    - 서버를 끄고 한다(배포 중에 배포 기록을 지우면 그 배포의 결과 확인이 안 된다). 시험하던 사람들의 초안이 모두 없어지므로 미리 알린다.
+    - 지우기 전에 `SCENARIO_EDITOR_DEPLOYS` 의 배포 기록을 결과와 함께 적어 둔다(조회만): `db.getSiblingDB('WEB_MANAGER').SCENARIO_EDITOR_DEPLOYS.find().sort({ startedAt: 1 }).toArray()`
+    - **`dropDatabase` 는 절대 쓰지 않는다 — WebManager DB 전체가 지워진다.** 아래 한 줄만 친다(`WEB_MANAGER` 는 실제 이름으로). 줄마다 지운 문서 수가 나온다. 컬렉션이 없으면 `0` 이다 — `seDraftImages.files`·`seDraftImages.chunks` 는 새로 자른 그림이 든 초안을 저장한 적이 없으면 생기지 않는다(이 절차대로만 했으면 없다). 그림은 두 컬렉션을 함께 비워야 주인 없는 그림 데이터가 남지 않는다.
+    - 셸이 오래돼 `deleteMany` 가 없으면 `deleteMany({}).deletedCount` 자리에 `remove({}).nRemoved` 를 쓴다.
     ```js
-    var w = db.getSiblingDB('WEB_MANAGER'); ['SCENARIO_EDITOR_DRAFTS', 'SCENARIO_EDITOR_DEPLOYS', 'seDraftImages.files', 'seDraftImages.chunks'].forEach(function (c) { print(c, w.getCollection(c).drop()) })
+    var w = db.getSiblingDB('WEB_MANAGER'); ['SCENARIO_EDITOR_DRAFTS', 'SCENARIO_EDITOR_DEPLOYS', 'seDraftImages.files', 'seDraftImages.chunks'].forEach(function (c) { print(c, w.getCollection(c).deleteMany({}).deletedCount) })
     ```
 
 ### 7. 하지 말 것
