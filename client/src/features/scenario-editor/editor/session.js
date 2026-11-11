@@ -1,5 +1,6 @@
 import { sameStep } from './diff'
 import { newScenarioOf } from './newScenario'
+import { blankWindows } from './windows'
 
 // 편집 세션 — 서버가 준 작업본(skeleton.edited)을 그대로 쥔다. 브라우저에서 만들거나 기본값을 채우지 않는다.
 export function beginSession(skeleton, me) {
@@ -64,8 +65,15 @@ export function restoreSessionOf(oldSk, curSk, me) {
 // - 새 시나리오 초안(출처 없음): Task 6 새 시나리오 세션과 같은 모양. 만들 때 모습은 남지 않아 스텝 0·기본 운영 속성(newScenarioOf)으로 어림한다.
 // - 원본이 지워져 서버 사본으로만 남은 판(출처는 있는데 뼈대 없음): 기준 판 내용을 받을 길이 없어 연 때 작업본을 기준점으로 둔다(저장 전 0곳).
 //   스텝 배열만 따로 두어 표시가 작업본에서 스텝을 그린다(뼈대 스텝이 없다).
+// 이 기능(P2-F) 전에 저장한 초안에는 창 조건이 없다 — 기준 판 값(없으면 새 시나리오의 빈 값)으로 채운다. 서버가 그 초안을 조립하는 값과 같다.
+// 원본이 지워져 기준 판을 모르면 없는 채로 둔다(서버가 저장값을 그대로 쓰고, 전처리 설정 창은 고칠 수 없다).
+function withWindows(scenario, base) {
+  if (scenario.header?.windows || !base) return scenario
+  return { ...scenario, header: { ...scenario.header, windows: JSON.parse(JSON.stringify(base)) } }
+}
+
 export function draftSessionOf(draft, sourceSkeleton, me) {
-  const scenario = draft.scenario
+  const scenario = withWindows(draft.scenario, draft.scenario.source ? sourceSkeleton?.edited?.header?.windows : blankWindows())
   const info = { id: draft.draftId, savedAt: draft.savedAt }
   const head = draft.headCrtime ?? null
   const base = { source: scenario.source, headCrtime: head, propertyRev: draft.propertyRev ?? null, readOnly: writeMode(me), seq: 0, draft: info }

@@ -13,6 +13,8 @@ const MULTIPART = { 'Content-Type': 'multipart/form-data' }
 export const scenarioEditorApi = {
   me: () => api.get('/scenario-editor/me'),
   scopes: () => api.get('/scenario-editor/scopes'),
+  // 안내 문서 링크(P2-F) → { preprocessingSop: 주소 | null }
+  links: () => api.get('/scenario-editor/links'),
   refreshCache: () => api.post('/scenario-editor/cache/refresh'),
   dataCheck: () => api.get('/scenario-editor/data-check'),
   list: (process, model) => api.get('/scenario-editor/scenarios', { params: { process, model } }),

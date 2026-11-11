@@ -1,4 +1,5 @@
 // 저장 전 변경 목록(목업 svChanges). 스텝은 uid 로 짝짓는다 — 갈 곳도 uid 참조라 번호만 바뀐 스텝은 고친 것이 아니다(서버 changeDetect 와 같은 기준).
+import { windowChanges } from './windows'
 
 // 모든 단계에서 키를 정렬한 JSON(서버 changeDetect.canonicalJson 과 같다). undefined 는 null.
 export function canonicalJson(value) {
@@ -49,6 +50,11 @@ export function unsavedChanges(working, saveBase) {
     const after = working.header?.[field]
     if (String(before ?? '') !== String(after ?? '')) out.push({ kind: 'field', key, before, after })
   }
+  // 창 조건(P2-F): 같은 출처면 숨길 창을 자리(origin)로 맞춰 고침을 가르고, 출처가 다르면(되돌려 연 세션) 내용으로만 견준다
+  const sameSource = canonicalJson(working.source ?? null) === canonicalJson(saveBase.source ?? null)
+  const wc = windowChanges(working.header?.windows, saveBase.header?.windows, { byOrigin: sameSource })
+  if (wc.target) out.push({ kind: 'field', key: 'targetWindow', ...wc.target })
+  if (wc.hiding) out.push({ kind: 'field', key: 'hidingWindows', ...wc.hiding })
   const keys = changedPropertyKeys(working.property, saveBase.property)
   if (keys.length) out.push({ kind: 'field', key: 'property', keys })
   const baseIndex = new Map(saveBase.steps.map((s, i) => [s.uid, i]))

@@ -438,7 +438,8 @@ describe('ScenarioEditorView', () => {
       expect(w.findComponent({ name: 'LoadDialog' }).props('modelValue')).toBe(false)
       const e = useEditStore()
       expect(e.session.source).toBe(null)
-      expect(e.session.working).toEqual(scenario)
+      // 이 기능(P2-F) 전의 초안이라 창 조건이 없다 — 빈 값으로 채워 연다
+      expect(e.session.working).toEqual({ ...scenario, header: { ...scenario.header, windows: { target: { text: '', className: '', checkRect: false, left: 0, top: 0, right: 0, bottom: 0 }, hiding: [] } } })
       expect(useEditorStore().skeleton).toMatchObject({ name: 'X', isNew: true })
     })
   })

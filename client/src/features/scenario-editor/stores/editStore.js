@@ -7,6 +7,7 @@ import { checkStepFields } from '../editor/fieldRules'
 import { checkPropertyFields } from '../editor/propertyRules'
 import { firstError, CLICK_TYPES } from '../editor/panel'
 import { refUrl, loadBitmap, loadBlob, draftImageUrl, newTempId, uploadIdsOf } from '../editor/images'
+import { normalizeWindows, blankWindow } from '../editor/windows'
 import { cropPng, imageDataOf } from '../editor/crop'
 import { locate } from '../editor/locate'
 import { spotKey } from '../editor/trainView'
@@ -36,6 +37,8 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   const redo = shallowRef([])
   // 붙여넣기 묶음 Clip(+ uploads: 묶음이 쓰는 올릴 그림 tempId → Blob, R-P3). 세션이 바뀌어도(다른 시나리오 열기) 남는다.
   const clip = shallowRef(null)
+  // 숨길 창 복사 묶음(P2-F 전처리 설정) — 스텝 복사처럼 이 탭 안에 있고 다른 시나리오를 열어도 남는다. 일곱 칸만 담는다.
+  const windowClip = shallowRef([])
   // 올릴 그림(tempId → Blob). Blob 을 반응형으로 감싸지 않게 shallowRef 이고, 바꿀 때마다 새 Map 으로 바꾼다(setUpload).
   const uploads = shallowRef(new Map())
   // 큰 화면 잡기(목업 S.cap): { flow, stage, why, before, train } — before = 잡기 전 패널 초안(Esc 로 되돌린다),
@@ -301,6 +304,19 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     if (Object.keys(checkPropertyFields(next, s.source ? s.saveBase?.property : null)).length) return false
     session.value = { ...s, working: { ...s.working, property: { ...next } } }
     return true
+  }
+  // 전처리 설정 창 [적용](P2-F 설계 §7): 작업본 header.windows 만 바꾼다 — 배포·초안이 함께 싣는다. 바 칸·운영 속성처럼 되돌리기 목록에 넣지 않는다.
+  // 줄 검사(클래스 필수·좌표 정수)는 창이 줄을 넣거나 고칠 때 하고, 서버가 저장 때 다시 본다.
+  function applyWindows(next) {
+    const s = session.value
+    if (!editable.value || !next?.target || !Array.isArray(next.hiding)) return false
+    session.value = { ...s, working: { ...s.working, header: { ...s.working.header, windows: normalizeWindows(next) } } }
+    return true
+  }
+  function copyWindows(rows) {
+    if (!Array.isArray(rows) || !rows.length) return 0
+    windowClip.value = normalizeWindows({ target: blankWindow(), hiding: rows }).hiding.map(({ origin, ...w }) => w)
+    return windowClip.value.length
   }
   // 고친 곳 수(changeCount)와 저장 전 변경 수(unsavedCount). 읽기 전용이 된 세션(지워짐)의 고친 곳은 볼 수만 있어 떠날 때 묻지 않는다.
   const changeCount = computed(() => {
@@ -795,11 +811,11 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   }
 
   return {
-    session, selection, panel, undo, redo, clip, uploads, capture, locating, viewReq, canCapture, toast, dialog, moved, focusReq, editable, draftId, spots, spotGen, areaDragging,
+    session, selection, panel, undo, redo, clip, windowClip, uploads, capture, locating, viewReq, canCapture, toast, dialog, moved, focusReq, editable, draftId, spots, spotGen, areaDragging,
     begin, beginNew, beginRestore, beginFromDraft, markDeleted, markPropertyChanged, forgetDraft, end, rebase, markDraft, run, undoLast, redoLast,
     setSelection, syncFocus, requestSelect, clickRow, panelDirty, notify,
     openPanel, syncPanel, updateDraft, panelErrors, applyPanel, discardPanel, requestFocus,
-    guard, guardKeep, guardDrop, guardApply, setHeader, applyProperty, changeCount, unsavedCount, askLeave, leaveKeep, leaveDrop,
+    guard, guardKeep, guardDrop, guardApply, setHeader, applyProperty, applyWindows, copyWindows, changeCount, unsavedCount, askLeave, leaveKeep, leaveDrop,
     undoCommand, redoCommand, copySelection, pasteClip, deleteSelection, moveSelected, editCell,
     setUpload, requestView, startCapture, captureNext, cancelCapture, finishCapture, repick, findSpot, setAreaDrag, startNew, addNew, setInsertBefore, cancelNew
   }

@@ -25,6 +25,7 @@ const RULES = Object.freeze({
   // 창 조건(P2-F 설계 §6) — 규칙이 새로 넣거나 고친 조건에만 막음 코드를 낸다(옛 값은 아래 경고 코드)
   HIDING_CLASS_EMPTY: { scope: A, level: B },
   WINDOW_TEXT_SPACE: { scope: A, level: B },
+  TARGET_TEXT_SPACE: { scope: A, level: B },
   HIDING_LIMIT: { scope: 'special', level: B },
   NAME_EMPTY: { scope: A, level: B },
   NAME_TOO_LONG: { scope: A, level: B },

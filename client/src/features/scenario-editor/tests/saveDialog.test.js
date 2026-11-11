@@ -338,7 +338,7 @@ describe('저장 창(SaveDialog)', () => {
     expect(meta.target).toEqual({ process: 'P', model: 'M2', name: 'NEW_ONE' })
     expect(meta.propertyRev).toBe(null)
     expect(meta.force).toBe(false)
-    expect(meta.scenario).toEqual({ source: null, headCrtime: null, header: { description: '새 메일', timeoutLimit: '240' }, steps: [], property: defaultProperty({ id: 'P-M2-NEW_ONE', type: 1 }) })
+    expect(meta.scenario).toEqual({ source: null, headCrtime: null, header: { description: '새 메일', timeoutLimit: '240', windows: { target: { text: '', className: '', checkRect: false, left: 0, top: 0, right: 0, bottom: 0 }, hiding: [] } }, steps: [], property: defaultProperty({ id: 'P-M2-NEW_ONE', type: 1 }) })
     bar.unmount()
   })
   it('바뀐 것의 운영 속성 줄은 칸 이름과 이전 → 지금 값을 보인다(목업 svChanges "재시도 횟수 1 → 2") — 새 시나리오를 꺼짐으로 바꾸면 "상태 켜짐 → 꺼짐"', async () => {

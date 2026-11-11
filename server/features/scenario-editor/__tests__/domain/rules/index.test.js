@@ -128,7 +128,7 @@ describe('checkScenario 나누기', () => {
     const winSrc = skeletonWith([rawStep({ next: [1, FAIL] }), rawStep({ next: [SUCCESS, FAIL] })], { extra: { TargetWindowCondition: W('EQ', 'Main'), HidingWindowConditionList: [W('Notice', ''), W(' Popup ', 'Dlg'), ...many] } })
     const eW = fresh(winSrc)
     eW.header.windows.target = win(' EQ', '')
-    eW.header.windows.hiding.push({ origin: null, ...win('x', '') }, { origin: null, ...win('p0', 'C0') })
+    eW.header.windows.hiding.push({ origin: null, ...win('x', '') }, { origin: null, ...win('p0', 'C0') }, { origin: null, ...win(' y', 'Y') })
     run(eW, winSrc)
     const unknown = [...emitted].filter((c) => !(c in RULES))
     expect(unknown).toEqual([])

@@ -55,7 +55,7 @@ describe('2. RULES 표 고정', () => {
     EXECUTING_LEVEL_VALUE: [A, 'block'], FOLLOW_NAME_REQUIRED: [A, 'block'], FOLLOW_DESC_SHORT: [A, 'block'],
     FOLLOW_CYCLE: [A, 'warn'], TYPE_UNSET: [A, 'warn'],
     // P2-F 창 조건
-    HIDING_CLASS_EMPTY: [A, 'block'], WINDOW_TEXT_SPACE: [A, 'block'], HIDING_LIMIT: ['special', 'block'],
+    HIDING_CLASS_EMPTY: [A, 'block'], WINDOW_TEXT_SPACE: [A, 'block'], TARGET_TEXT_SPACE: [A, 'block'], HIDING_LIMIT: ['special', 'block'],
     TARGET_WINDOW_NOT_FOUND: [A, 'warn'], HIDING_NOT_FOUND: [A, 'warn'], HIDING_TEXT_SPACE: [A, 'warn'], HIDING_DUPLICATE: [A, 'warn']
   }
   it('코드·범위·수준이 표와 같다', () => {

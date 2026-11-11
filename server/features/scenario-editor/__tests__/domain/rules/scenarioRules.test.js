@@ -113,8 +113,8 @@ describe('창 조건(header.windows)', () => {
   it('고치지 않으면 막지 않는다 — 옛 숨길 창의 클래스 없음·앞뒤 공백은 경고', () => {
     const r = check(srcWith(W('*', 'Main'), OLD))
     expect(codesOf(r.blocks)).toEqual([])
-    expect(of(r.warns, 'HIDING_NOT_FOUND')).toEqual([{ code: 'HIDING_NOT_FOUND', params: { which: 'hiding:0', index: 0 } }])
-    expect(of(r.warns, 'HIDING_TEXT_SPACE')).toEqual([{ code: 'HIDING_TEXT_SPACE', params: { which: 'hiding:1', index: 1 } }])
+    expect(of(r.warns, 'HIDING_NOT_FOUND')).toEqual([{ code: 'HIDING_NOT_FOUND', params: { which: 'hiding:0', no: 1 } }])
+    expect(of(r.warns, 'HIDING_TEXT_SPACE')).toEqual([{ code: 'HIDING_TEXT_SPACE', params: { which: 'hiding:1', no: 2 } }])
   })
   it('창 조건이 멀쩡하면 아무것도 없다. windows 가 없어도(옛 초안) 아무것도 없다', () => {
     const src = srcWith(W('EQ*', 'Main'), [W('', 'Saver'), W('Popup', 'Dlg')])
@@ -124,18 +124,19 @@ describe('창 조건(header.windows)', () => {
   })
   it('새 숨길 창: 클래스가 비면(공백뿐 포함) 막는다 — 줄마다 하나씩', () => {
     const r = check(srcWith(W('EQ', 'Main'), []), (w) => { w.hiding = [add('화면 보호기', ''), add('x', '   '), add('', 'Dlg')] })
-    expect(of(r.blocks, 'HIDING_CLASS_EMPTY').map((i) => i.params.index)).toEqual([0, 1])
+    expect(of(r.blocks, 'HIDING_CLASS_EMPTY').map((i) => i.params.no)).toEqual([1, 2])
     expect(of(r.warns, 'HIDING_NOT_FOUND')).toEqual([])
   })
   it('옛 숨길 창을 고쳤는데 클래스가 여전히 비면 막는다', () => {
     const r = check(srcWith(W('EQ', 'Main'), OLD), (w) => { w.hiding[0] = { ...w.hiding[0], text: 'Notice2' } })
-    expect(of(r.blocks, 'HIDING_CLASS_EMPTY').map((i) => i.params.index)).toEqual([0])
+    expect(of(r.blocks, 'HIDING_CLASS_EMPTY').map((i) => i.params.no)).toEqual([1])
   })
-  it('앞뒤 공백: 새 줄·고친 줄·고친 대상 창은 막는다(WINDOW_TEXT_SPACE), 고치지 않은 것은 막지 않는다', () => {
+  it('앞뒤 공백: 새 줄·고친 줄(WINDOW_TEXT_SPACE)과 고친 대상 창(TARGET_TEXT_SPACE)은 막는다, 고치지 않은 것은 막지 않는다', () => {
     const src = srcWith(W(' EQ ', 'Main'), OLD)
     expect(codesOf(check(src).blocks)).toEqual([])
     const r = check(src, (w) => { w.target = { ...w.target, className: 'Main2' }; w.hiding.push(add('a ', 'A')); w.hiding[1] = { ...w.hiding[1], className: 'Dlg ' } })
-    expect(of(r.blocks, 'WINDOW_TEXT_SPACE').map((i) => i.params.which).sort()).toEqual(['hiding:1', 'hiding:3', 'target'])
+    expect(of(r.blocks, 'WINDOW_TEXT_SPACE').map((i) => i.params.which).sort()).toEqual(['hiding:1', 'hiding:3'])
+    expect(of(r.blocks, 'TARGET_TEXT_SPACE')).toEqual([{ code: 'TARGET_TEXT_SPACE', params: { which: 'target' } }])
     expect(of(r.warns, 'HIDING_TEXT_SPACE')).toEqual([])
   })
   it('대상 창을 에이전트가 찾지 않는 값으로 고쳐도 막지 않고 경고한다. 고치지 않았거나 비웠으면 경고도 없다', () => {
@@ -163,7 +164,7 @@ describe('창 조건(header.windows)', () => {
   })
   it('같은 조건의 숨길 창이 둘 이상이면 경고(뒤 줄마다)', () => {
     const r = check(srcWith(W('EQ', 'Main'), [W('a', 'A'), W('b', 'B')]), (w) => { w.hiding.push(add(' a', 'A'), add('a', 'A', { checkRect: true })) })
-    expect(of(r.warns, 'HIDING_DUPLICATE')).toEqual([{ code: 'HIDING_DUPLICATE', params: { which: 'hiding:2', index: 2, first: 0 } }])
+    expect(of(r.warns, 'HIDING_DUPLICATE')).toEqual([{ code: 'HIDING_DUPLICATE', params: { which: 'hiding:2', no: 3, firstNo: 1 } }])
   })
   it('새 시나리오(출처 없음)는 넣은 것이 모두 새 값이다', () => {
     const e = fresh(okSource())

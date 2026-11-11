@@ -14,6 +14,8 @@ export const useEditorStore = defineStore('scenarioEditor', () => {
   const meError = ref(null)
   const scopes = ref(null)
   const dataCheck = ref(null)
+  // 안내 문서 링크(P2-F 전처리 설정 창) — 설정값이 없거나 읽지 못하면 null(링크를 숨긴다)
+  const links = ref({ preprocessingSop: null })
   const skeleton = ref(null)
   const opening = ref(null)
   const openError = ref(null)
@@ -53,7 +55,8 @@ export const useEditorStore = defineStore('scenarioEditor', () => {
       meError.value = fail(e)
       return
     }
-    const [s, d] = await Promise.allSettled([api.scopes(), api.dataCheck()])
+    const [s, d, l] = await Promise.allSettled([api.scopes(), api.dataCheck(), api.links ? api.links() : Promise.reject(new Error('links api 없음'))])
+    if (l.status === 'fulfilled' && l.value?.data?.data) links.value = { preprocessingSop: l.value.data.data.preprocessingSop ?? null }
     scopes.value = s.status === 'fulfilled' ? s.value.data.data : null
     dataCheck.value = d.status === 'fulfilled' ? d.value.data.data : null
   }
@@ -188,7 +191,7 @@ export const useEditorStore = defineStore('scenarioEditor', () => {
   }
 
   return {
-    me, meError, scopes, dataCheck, skeleton, opening, openError, selectedUid, view, expanded,
+    me, meError, scopes, dataCheck, links, skeleton, opening, openError, selectedUid, view, expanded,
     steps, scenarioNotes, selectedStep, warningCount, infoCount, dataCheckCount,
     init, refreshCaches, openScenario, openRestore, openDraft, draftSourceKept, showSkeleton, setPerformance, select, selectByNo, moveSelection, nextNoted
   }

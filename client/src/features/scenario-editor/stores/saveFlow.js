@@ -22,9 +22,12 @@ export const SV_STEPS = ['SEW_SAVE_STEP_CHECK', 'SEW_SAVE_STEP_BUILD', 'SEW_SAVE
 // 검사 줄을 누르면 갈 곳(목업 svjump·svbar): 스텝 / 바 칸(메일 제목·제한 시간) / 운영 속성 창 / 저장 창의 칸(모델·이름)
 const BAR_CODES = { MAIL_TITLE_EMPTY: 'description', MAIL_TITLE_COLON: 'description', TIMEOUT_INVALID: 'timeoutLimit' }
 const FORM_CODES = { NAME_EMPTY: 'name', NAME_TOO_LONG: 'name', NAME_CHARS: 'name', MODEL_MISSING: 'model' }
+// 창 조건(P2-F) 검사 줄 → 전처리 설정 창. which = 'target' | 'hiding:<자리>' | null
+const WINDOW_CODES = new Set(['HIDING_CLASS_EMPTY', 'WINDOW_TEXT_SPACE', 'TARGET_TEXT_SPACE', 'HIDING_LIMIT', 'TARGET_WINDOW_NOT_FOUND', 'HIDING_NOT_FOUND', 'HIDING_TEXT_SPACE', 'HIDING_DUPLICATE'])
 export function issueGoal(issue) {
   if (issue?.uid !== undefined && issue?.uid !== null) return { kind: 'step', uid: issue.uid }
   if (BAR_CODES[issue?.code]) return { kind: 'bar', field: BAR_CODES[issue.code] }
+  if (WINDOW_CODES.has(issue?.code)) return { kind: 'windows', which: typeof issue.params?.which === 'string' && issue.params.which !== '' ? issue.params.which : null }
   const field = propertyFieldOf(issue) // 운영 속성 창의 그 칸(범위 5종·후속 5종·유형 2종)
   if (field) return { kind: 'property', field }
   if (FORM_CODES[issue?.code]) return { kind: 'form', field: FORM_CODES[issue.code] }

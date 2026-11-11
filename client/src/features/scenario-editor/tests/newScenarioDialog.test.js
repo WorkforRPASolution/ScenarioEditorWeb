@@ -47,7 +47,7 @@ describe('새 시나리오 규칙(editor/newScenario)', () => {
 
   it('newScenarioOf: 출처 없는 작업본(스텝 0, 제한 시간은 문자열)과 같은 대상을 담은 뼈대', () => {
     const { working, skeleton } = newScenarioOf({ process: 'P', model: 'M2', name: 'NEW_ONE', type: 1, description: '새 메일', timeoutLimit: 90 })
-    expect(working).toEqual({ source: null, headCrtime: null, header: { description: '새 메일', timeoutLimit: '90' }, steps: [], property: defaultProperty({ id: 'P-M2-NEW_ONE', type: 1 }) })
+    expect(working).toEqual({ source: null, headCrtime: null, header: { description: '새 메일', timeoutLimit: '90', windows: { target: { text: '', className: '', checkRect: false, left: 0, top: 0, right: 0, bottom: 0 }, hiding: [] } }, steps: [], property: defaultProperty({ id: 'P-M2-NEW_ONE', type: 1 }) })
     expect(skeleton).toMatchObject({ process: 'P', model: 'M2', name: 'NEW_ONE', id: 'P-M2-NEW_ONE', isNew: true, headCrtime: null, propertyRev: null, performance: null, steps: [], notes: [] })
     expect(skeleton.property).toBe(working.property)
     expect(skeleton.header).toEqual({ description: '새 메일', timeoutLimit: '90', targetWindow: null })
@@ -239,7 +239,7 @@ describe('새 시나리오 창(NewScenarioDialog)', () => {
     expect(w.emitted('update:modelValue').at(-1)).toEqual([false])
     const sess = e.session
     expect(sess).toMatchObject({ source: null, headCrtime: null, propertyRev: null, readOnly: null })
-    expect(sess.working).toEqual({ source: null, headCrtime: null, header: { description: '새 메일', timeoutLimit: '90' }, steps: [], property: defaultProperty({ id: 'P-M2-ALARM_RECOVERY_E2201', type: 3 }) })
+    expect(sess.working).toEqual({ source: null, headCrtime: null, header: { description: '새 메일', timeoutLimit: '90', windows: { target: { text: '', className: '', checkRect: false, left: 0, top: 0, right: 0, bottom: 0 }, hiding: [] } }, steps: [], property: defaultProperty({ id: 'P-M2-ALARM_RECOVERY_E2201', type: 3 }) })
     expect(sess.saveBase).toBe(sess.working)
     expect(s.skeleton).toMatchObject({ process: 'P', model: 'M2', name: 'ALARM_RECOVERY_E2201', id: 'P-M2-ALARM_RECOVERY_E2201', isNew: true })
     expect(e.editable).toBe(true)

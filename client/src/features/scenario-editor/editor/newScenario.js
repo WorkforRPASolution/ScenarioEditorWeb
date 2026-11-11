@@ -4,6 +4,7 @@
 //   이름은 editor/nameRule 하나(규칙이 있으면 대·중분류 + 3·4번 칸만, 없으면 직접 입력 — 40 §2.0 2026-11-09 ②).
 // 문구는 돌려주지 않는다 — code 만(issueKey 가 문구 키를 고른다).
 import { buildName, checkName } from './nameRule'
+import { blankWindows } from './windows'
 import { barFieldErrors } from './fieldRules'
 import { LABELS } from '../messages'
 
@@ -29,7 +30,8 @@ export function newScenarioOf({ process, model, name, type, description, timeout
   const property = defaultProperty({ id, type })
   const header = { description: String(description ?? ''), timeoutLimit: String(timeoutLimit ?? '') }
   return {
-    working: { source: null, headCrtime: null, header, steps: [], property },
+    // 작업본의 창 조건은 빈 값(P2-F — 사내 새 시나리오와 같다). 뼈대 머리에는 두지 않는다(열린 판의 뼈대와 같은 모양)
+    working: { source: null, headCrtime: null, header: { ...header, windows: blankWindows() }, steps: [], property },
     skeleton: {
       process, model, name, id, isNew: true,
       version: { crtime: null, isCurrent: true, fileId: null }, headCrtime: null, propertyRev: null,
