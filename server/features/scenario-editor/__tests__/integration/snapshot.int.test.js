@@ -128,14 +128,19 @@ describe('하루 목록', () => {
 
 describe('있는 날', () => {
   it('가장 늦은 날과 날짜별 개수', async () => {
-    expect(await data(await get(`/snapshots/days?eqpId=${EQP_TODAY}`))).toEqual({ eqpId: EQP_TODAY, latest: TODAY, days: null, truncated: false })
+    // 달력 범위(today·oldest)는 서버가 부를 때의 시각으로 정한다 — 자정을 걸치면 하루 다를 수 있어 꼴만 본다
+    const span = { today: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), oldest: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) }
+    const plain = await data(await get(`/snapshots/days?eqpId=${EQP_TODAY}`))
+    expect(plain).toEqual({ eqpId: EQP_TODAY, latest: TODAY, ...span, days: null, truncated: false })
+    expect(plain.oldest < plain.today).toBe(true)
+    expect(Math.round((Date.parse(plain.today) - Date.parse(plain.oldest)) / 86400000)).toBe(15)
     const counted = await data(await get(`/snapshots/days?eqpId=${EQP_TODAY}&counts=1`))
-    expect(counted).toEqual({ eqpId: EQP_TODAY, latest: TODAY, days: { [TODAY]: 4 }, truncated: false })
+    expect(counted).toEqual({ eqpId: EQP_TODAY, latest: TODAY, ...span, days: { [TODAY]: 4 }, truncated: false })
   })
 
   it('보관 기간 안에 스냅샷이 없으면 latest null', async () => {
     const res = await get('/snapshots/days?eqpId=SEWT_CVD_B01&counts=1')
-    expect(await data(res)).toEqual({ eqpId: 'SEWT_CVD_B01', latest: null, days: {}, truncated: false })
+    expect(await data(res)).toMatchObject({ eqpId: 'SEWT_CVD_B01', latest: null, days: {}, truncated: false })
   })
 })
 

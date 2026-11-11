@@ -5,7 +5,7 @@ const post = vi.fn().mockResolvedValue({ data: {} })
 const put = vi.fn().mockResolvedValue({ data: {} })
 const del = vi.fn().mockResolvedValue({ data: {} })
 vi.mock('@/shared/api', () => ({ default: { get: (...a) => get(...a), post: (...a) => post(...a), put: (...a) => put(...a), delete: (...a) => del(...a), defaults: { baseURL: 'http://x:3100/api' } } }))
-import { scenarioEditorApi as api, OPEN_TIMEOUT_MS, DEPLOY_TIMEOUT_MS, ADMIN_TIMEOUT_MS, imageUrl } from '../api'
+import { scenarioEditorApi as api, OPEN_TIMEOUT_MS, DEPLOY_TIMEOUT_MS, ADMIN_TIMEOUT_MS, SNAPSHOT_TIMEOUT_MS, imageUrl, blobError } from '../api'
 
 describe('scenarioEditorApi', () => {
   beforeEach(() => { get.mockClear(); post.mockClear(); put.mockClear(); del.mockClear(); localStorage.clear() })
@@ -82,5 +82,40 @@ describe('scenarioEditorApi', () => {
     expect(imageUrl('/scenario-editor/a/images/s0-bi')).toBe('http://x:3100/api/scenario-editor/a/images/s0-bi')
     localStorage.setItem('se-dev-user', 'sew_cvd')
     expect(imageUrl('/scenario-editor/a/images/s0-bi')).toBe('http://x:3100/api/scenario-editor/a/images/s0-bi?seUser=sew_cvd')
+  })
+
+  describe('스냅샷 (P3-B)', () => {
+    it('설비·있는 날·하루 목록 — 서버의 Cassandra 제한(10초)보다 길게 20초를 기다린다', async () => {
+      await api.equipment()
+      expect(get).toHaveBeenLastCalledWith('/scenario-editor/equipment', { timeout: SNAPSHOT_TIMEOUT_MS })
+      await api.snapshotDays('E1')
+      expect(get).toHaveBeenLastCalledWith('/scenario-editor/snapshots/days', { params: { eqpId: 'E1' }, timeout: SNAPSHOT_TIMEOUT_MS })
+      await api.snapshotDays('E1', true)
+      expect(get).toHaveBeenLastCalledWith('/scenario-editor/snapshots/days', { params: { eqpId: 'E1', counts: 1 }, timeout: SNAPSHOT_TIMEOUT_MS })
+      await api.snapshots('E1', '2026-11-11')
+      expect(get).toHaveBeenLastCalledWith('/scenario-editor/snapshots', { params: { eqpId: 'E1', date: '2026-11-11' }, timeout: SNAPSHOT_TIMEOUT_MS })
+      expect(SNAPSHOT_TIMEOUT_MS).toBe(20000)
+    })
+    it('그림은 Blob 으로 — 설비·파일 이름은 인코딩, 끊을 수 있게 signal', async () => {
+      const signal = new AbortController().signal
+      await api.snapshotImage('E 1', '1_[2][3].png', signal)
+      expect(get).toHaveBeenLastCalledWith('/scenario-editor/snapshots/E%201/1_%5B2%5D%5B3%5D.png/image', { responseType: 'blob', signal, timeout: SNAPSHOT_TIMEOUT_MS })
+    })
+    it('blobError: Blob 으로 온 오류 본문을 JSON 으로 읽어 code 를 꺼낼 수 있게 한다', async () => {
+      const err = { response: { status: 404, data: new Blob(['{"success":false,"code":"SNAPSHOT_NOT_FOUND","message":"x"}'], { type: 'application/json' }) } }
+      const out = await blobError(err)
+      expect(out).toBe(err)
+      expect(out.response.data).toMatchObject({ code: 'SNAPSHOT_NOT_FOUND' })
+    })
+    it('blobError: JSON 이 아닌 Blob·Blob 이 아닌 본문·응답 없는 오류는 그대로', async () => {
+      const html = new Blob(['<html>'])
+      const a = { response: { status: 502, data: html } }
+      expect((await blobError(a)).response.data).toBe(html)
+      const b = { response: { status: 403, data: { code: 'EQP_FORBIDDEN' } } }
+      expect((await blobError(b)).response.data).toEqual({ code: 'EQP_FORBIDDEN' })
+      const c = { request: {} }
+      expect(await blobError(c)).toBe(c)
+      expect(await blobError(undefined)).toBeUndefined()
+    })
   })
 })

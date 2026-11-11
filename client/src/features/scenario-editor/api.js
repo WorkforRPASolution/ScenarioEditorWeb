@@ -7,6 +7,8 @@ export const OPEN_TIMEOUT_MS = 120000
 export const DEPLOY_TIMEOUT_MS = 300000
 // 지우기(delscenario)는 판이 많으면 오래 걸린다 — 서버의 InterfaceServer 시간 제한(기본 15초)보다 먼저 끊지 않게 넉넉히 기다린다
 export const ADMIN_TIMEOUT_MS = 60000
+// 스냅샷(P3): 서버가 Cassandra 를 10초까지 기다린다 — 그보다 먼저 끊지 않게
+export const SNAPSHOT_TIMEOUT_MS = 20000
 // 공용 axios 의 기본 머리글은 JSON 이고, axios 는 그때 FormData 를 JSON 으로 바꾼다 — 멀티파트를 적으면 브라우저가 경계값과 함께 다시 쓴다.
 const MULTIPART = { 'Content-Type': 'multipart/form-data' }
 
@@ -49,7 +51,28 @@ export const scenarioEditorApi = {
   sameName: (p, n) => api.get(`/scenario-editor/scenarios/${enc(p)}/same-name/${enc(n)}`),
   // 원개발자 찾기(2자 이상) → [{ singleid, name, process }], 등록 여부(아이디 목록) → 등록된 사람만 같은 모양
   searchUsers: (q) => api.get('/scenario-editor/users', { params: { q } }),
-  registeredUsers: (ids) => api.get('/scenario-editor/users', { params: { ids: ids.join(',') } })
+  registeredUsers: (ids) => api.get('/scenario-editor/users', { params: { ids: ids.join(',') } }),
+  // ── 스냅샷(P3) ──
+  // 내 범위 설비 → { items: [{ eqpId, process, model, line }] }
+  equipment: () => api.get('/scenario-editor/equipment', { timeout: SNAPSHOT_TIMEOUT_MS }),
+  // 있는 날 → { eqpId, latest, today, oldest, days, truncated } — days 는 counts 일 때만 { 날짜: 개수 }
+  snapshotDays: (eqpId, counts = false) => api.get('/scenario-editor/snapshots/days', { params: counts ? { eqpId, counts: 1 } : { eqpId }, timeout: SNAPSHOT_TIMEOUT_MS }),
+  // 하루 목록 → { eqpId, date, timeDiff, items, skipped, truncated }
+  snapshots: (eqpId, date) => api.get('/scenario-editor/snapshots', { params: { eqpId, date }, timeout: SNAPSHOT_TIMEOUT_MS }),
+  // 그림 한 장(Blob). 실패 본문도 Blob 으로 온다 — blobError 로 code 를 읽는다
+  snapshotImage: (eqpId, fileName, signal) => api.get(`/scenario-editor/snapshots/${enc(eqpId)}/${enc(fileName)}/image`, { responseType: 'blob', signal, timeout: SNAPSHOT_TIMEOUT_MS })
+}
+
+// responseType 'blob' 요청의 오류 본문(JSON)을 읽어 err.response.data 에 되돌려 놓는다 — errorCode·errorMessage 가 code 를 읽을 수 있게.
+// 읽지 못하면(JSON 아님) 그대로 둔다.
+export async function blobError(err) {
+  const data = err?.response?.data
+  if (typeof Blob === 'undefined' || !(data instanceof Blob)) return err
+  try {
+    const parsed = JSON.parse(await data.text())
+    if (parsed && typeof parsed === 'object') err.response.data = parsed
+  } catch { /* JSON 이 아닌 본문 */ }
+  return err
 }
 
 export function readDevUser() {

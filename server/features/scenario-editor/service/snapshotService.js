@@ -113,7 +113,9 @@ function createSnapshotService({ snapshotRepo, scopes, now, env = {}, log = null
     const from = at - RETENTION_MS
     const to = at + DAY // 설비 시계가 조금 앞서 있어도 든다
     const latest = await latestDate(eqpId, timeDiff, from, to)
-    if (!counts) return { eqpId, latest, days: null, truncated: false }
+    // 달력이 고를 수 있는 범위 — 화면이 브라우저 시계·시간대에 기대지 않게 표시 날짜로 준다
+    const span = { today: displayOf(at, timeDiff, displayTz).date, oldest: displayOf(from, timeDiff, displayTz).date }
+    if (!counts) return { eqpId, latest, ...span, days: null, truncated: false }
     const { parsed, truncated } = await readRange(eqpId, from, to, COUNT_LIMIT)
     const buckets = dateBuckets(from, to, timeDiff)
     const byDate = {}
@@ -122,7 +124,7 @@ function createSnapshotService({ snapshotRepo, scopes, now, env = {}, log = null
       const date = b ? b.date : displayOf(p.ms, timeDiff, displayTz).date
       byDate[date] = (byDate[date] || 0) + 1
     }
-    return { eqpId, latest, days: byDate, truncated }
+    return { eqpId, latest, ...span, days: byDate, truncated }
   }
 
   async function image(user, eqpId, fileName) {

@@ -197,7 +197,7 @@ describe('snapshotService.days — 있는 날', () => {
   it('counts 없이: 가장 늦은 한 장만 찾고 days 는 null — 늦은 달부터 본다', async () => {
     const repo = fakeRepo({ months: { '2026-11': [click(kst(2026, 11, 9, 10)), click(kst(2026, 11, 10, 23, 50))], '2026-10': [click(kst(2026, 10, 30))] } })
     const out = await service(repo).days(USER, 'E1', {})
-    expect(out).toEqual({ eqpId: 'E1', latest: '2026-11-10', days: null, truncated: false })
+    expect(out).toEqual({ eqpId: 'E1', latest: '2026-11-10', today: '2026-11-11', oldest: '2026-10-27', days: null, truncated: false })
     // 이름 하한 = 지금 − 15일 — 그보다 앞의 지워진 줄을 훑지 않는다
     expect(repo.calls.latestName).toEqual([{ eqpId: 'E1', month: { year: 2026, month: 11 }, fromName: String(NOW - 15 * DAY) }])
     expect(repo.calls.listNames).toHaveLength(0)
@@ -237,7 +237,7 @@ describe('snapshotService.days — 있는 날', () => {
     ]
     const repo = fakeRepo({ months: { '2026-11': names.slice(0, 3), '2026-10': names.slice(3) } })
     const out = await service(repo).days(USER, 'E1', { counts: true })
-    expect(out).toEqual({ eqpId: 'E1', latest: '2026-11-11', days: { '2026-10-27': 1, '2026-11-10': 1, '2026-11-11': 2 }, truncated: false })
+    expect(out).toEqual({ eqpId: 'E1', latest: '2026-11-11', today: '2026-11-11', oldest: '2026-10-27', days: { '2026-10-27': 1, '2026-11-10': 1, '2026-11-11': 2 }, truncated: false })
     expect(repo.calls.listNames.map((c) => c.month)).toEqual([{ year: 2026, month: 10 }, { year: 2026, month: 11 }])
     expect(repo.calls.listNames[0]).toMatchObject({ fromName: String(NOW - 15 * DAY), toName: String(NOW + DAY), limit: COUNT_LIMIT })
   })
@@ -246,6 +246,18 @@ describe('snapshotService.days — 있는 날', () => {
     const repo = fakeRepo({ months: { '2026-11': [click(kst(2026, 11, 10, 23, 50)), click(kst(2026, 11, 10, 23, 20))] } })
     const out = await service(repo).days(USER, 'E2', { counts: true })
     expect(out.days).toEqual({ '2026-11-10': 1, '2026-11-11': 1 })
+  })
+
+  // 달력이 고를 수 있는 범위(P3-B) — 브라우저 시계·시간대에 기대지 않게 서버가 표시 날짜로 준다
+  it('달력 범위: today = 지금의 표시 날짜, oldest = 지금 − 15일의 표시 날짜 (스냅샷이 없어도)', async () => {
+    const out = await service(fakeRepo()).days(USER, 'E1', {})
+    expect(out).toMatchObject({ latest: null, today: '2026-11-11', oldest: '2026-10-27' })
+  })
+
+  it('달력 범위: 보정이 있으면 그만큼 옮겨진다 — +720분이면 낮 12시가 다음 날 0시', async () => {
+    const scopes = fakeScopes([{ eqpId: 'E9', process: 'CVD', eqpModel: 'M1', line: 'L1', snapshotTimeDiff: 720 }])
+    const out = await service(fakeRepo(), { scopes }).days(USER, 'E9', { counts: true })
+    expect(out).toMatchObject({ today: '2026-11-12', oldest: '2026-10-28' })
   })
 
   it('counts: 한도에서 멈추면 truncated', async () => {
