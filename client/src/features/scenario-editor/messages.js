@@ -24,6 +24,14 @@ export const MESSAGES = {
   SEW_ERR_TARGET_EXISTS: '같은 이름의 시나리오가 이미 있습니다. 저장 창에서 덮어쓸지 확인하세요.',
   SEW_ERR_SAVE_CONFLICT: '열어 둔 사이 시나리오가 바뀌었습니다. 저장 창에서 확인한 뒤 다시 배포하세요.',
   SEW_ERR_SAVE_IN_PROGRESS: '같은 시나리오를 다른 곳에서 처리하는 중입니다. 끝난 뒤 다시 하세요.',
+  // 스냅샷(P3 설계 §9)
+  SEW_ERR_EQP_FORBIDDEN: '이 설비를 볼 권한이 없습니다.',
+  SEW_ERR_SNAPSHOT_UNSET: '스냅샷 저장소(Cassandra) 주소가 설정되지 않았습니다.',
+  SEW_ERR_SNAPSHOT_DOWN: '스냅샷 저장소가 응답하지 않습니다. 잠시 뒤 다시 해 보세요.',
+  SEW_ERR_SNAPSHOT_TIMEOUT: '스냅샷 저장소가 응답하지 않습니다. 잠시 뒤 다시 해 보세요.',
+  SEW_ERR_SNAPSHOT_FAILED: '스냅샷 저장소 조회가 실패했습니다. 잠시 뒤 다시 해 보세요.',
+  SEW_ERR_SNAPSHOT_NOT_FOUND: '이 스냅샷의 그림이 서버에 없습니다. 보관 기간(15일)이 지났거나 저장되지 않았습니다.',
+  SEW_ERR_SNAPSHOT_BAD_NAME: '스냅샷 파일 이름이 올바르지 않습니다.',
 
   SEW_NOTE_CONDITION_UNKNOWN: '해석할 수 없는 조건 종류입니다(Variable 등). 원래 값을 그대로 둡니다.',
   SEW_NOTE_ACTION_INVALID: '알 수 없는 동작 번호입니다. 에이전트가 이 시나리오를 거부할 수 있습니다.',
