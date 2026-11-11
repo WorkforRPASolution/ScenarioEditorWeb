@@ -462,3 +462,77 @@ describe('assembleProperty', () => {
     expect(p).toEqual(before)
   })
 })
+
+// P2-F 전처리 설정(설계 §5): 고치지 않으면 글자까지 같고, 고친 조건만 새로 쓴다.
+describe('assembleScenario — 창 조건(header.windows)', () => {
+  const W = builders.windowCondition
+  const end = () => noneStep([0, ''], '끝', [10000, -1])
+  const win = (text, className, over = {}) => ({ text, className, checkRect: false, left: 0, top: 0, right: 0, bottom: 0, ...over })
+  const HIDE = [W('화면 보호기', 'Saver'), { ...W('', 'Dlg'), IsCheckRectEqual: true, Left: 100, Top: 100, Right: 500, Bottom: 400 }, { ...W(' Popup* ', 'X'), Left: -18, Top: -18, Right: -18, Bottom: -18 }]
+  const openWith = (over) => { const t = serializeScenario(scenario([end()], over)); return { t, ...open(t, [PLACEHOLDER_BI]) } }
+  const run = async (o, change) => {
+    const e = editedFromSkeleton(o.skeleton)
+    if (change) change(e.header.windows, e)
+    return assembleScenario(e, o.skeleton, { id: 'P-M-N', resolveImage: o.resolveImage })
+  }
+
+  it('고치지 않으면 글자까지 같다 — 숨길 창 여러 개·앞뒤 공백·위치 값 포함', async () => {
+    const o = openWith({ HidingWindowConditionList: HIDE })
+    expect((await run(o)).bodyString).toBe(o.t)
+  })
+  it('대상 창이 null/null, 숨길 창 목록이 null 이어도 고치지 않으면 글자까지 같다', async () => {
+    const o = openWith({ TargetWindowCondition: W(null, null), HidingWindowConditionList: null })
+    expect(o.t).toContain('"TargetWindowCondition":{"Text":null,"ClassName":null')
+    expect((await run(o)).bodyString).toBe(o.t)
+  })
+  it('대상 창만 고치면 대상 창만 새로 쓴다(빈 칸은 ""), 숨길 창은 저장값 그대로', async () => {
+    const o = openWith({ TargetWindowCondition: W(null, null), HidingWindowConditionList: HIDE })
+    const r = await run(o, (w) => { w.target = win('EQ Main*', '') })
+    expect(r.body.TargetWindowCondition).toEqual(W('EQ Main*', ''))
+    expect(r.body.HidingWindowConditionList).toEqual(HIDE)
+    expect(r.bodyString).toBe(serializeScenario(scenario([end()], { TargetWindowCondition: W('EQ Main*', ''), HidingWindowConditionList: HIDE })))
+  })
+  it('숨길 창: 한 줄 고침·한 줄 지움·한 줄 더함 — 그 줄만 새로, 나머지는 저장값, 순서는 편집 값', async () => {
+    const o = openWith({ HidingWindowConditionList: HIDE })
+    const r = await run(o, (w) => {
+      w.hiding = [w.hiding[2], { ...w.hiding[0], className: 'Saver2' }, { origin: null, ...win('', 'NotifyWnd', { checkRect: true, left: 0, top: 0, right: 800, bottom: 600 }) }]
+    })
+    expect(r.body.HidingWindowConditionList).toEqual([
+      HIDE[2], W('화면 보호기', 'Saver2'), { ...W('', 'NotifyWnd'), IsCheckRectEqual: true, Left: 0, Top: 0, Right: 800, Bottom: 600 }
+    ])
+  })
+  it('고쳤다가 원래 값으로 되돌리면 글자까지 같다', async () => {
+    const o = openWith({ TargetWindowCondition: W(null, null), HidingWindowConditionList: HIDE })
+    const r = await run(o, (w) => { w.target = { ...w.target, text: '' }; w.hiding = w.hiding.map((h) => ({ ...h })) })
+    expect(r.bodyString).toBe(o.t)
+  })
+  it('숨길 창을 모두 지우면 [] — 저장값이 null 이어도 새 줄을 넣으면 배열로 쓴다', async () => {
+    const o = openWith({ HidingWindowConditionList: HIDE })
+    expect((await run(o, (w) => { w.hiding = [] })).body.HidingWindowConditionList).toEqual([])
+    const n = openWith({ HidingWindowConditionList: null })
+    expect((await run(n, (w) => { w.hiding = [{ origin: null, ...win('a', 'A') }] })).body.HidingWindowConditionList).toEqual([W('a', 'A')])
+  })
+  it('windows 가 없으면(옛 초안) 지금까지처럼 출처 저장값 그대로', async () => {
+    const o = openWith({ TargetWindowCondition: W(null, null), HidingWindowConditionList: HIDE })
+    const r = await run(o, (_, e) => { delete e.header.windows; e.header.description = '새 제목' })
+    expect(r.body.TargetWindowCondition).toEqual(W(null, null))
+    expect(r.body.HidingWindowConditionList).toEqual(HIDE)
+  })
+  it('새 시나리오(출처 없음): windows 가 비면 사내 새 시나리오 값(null·[]), 넣었으면 그 값', async () => {
+    const e = editedFromSkeleton(skeletonWith([rawNone()]))
+    e.source = null
+    e.steps = e.steps.map((s) => ({ ...s, origin: null }))
+    e.header.windows = { target: win('', ''), hiding: [] }
+    const a = await assembleScenario(e, null, { id: 'P-M-NEW', resolveImage })
+    expect(a.body.TargetWindowCondition).toEqual(W(null, null))
+    expect(a.body.HidingWindowConditionList).toEqual([])
+    e.header.windows = { target: win('EQ', 'Main'), hiding: [{ origin: null, ...win('', 'Dlg') }] }
+    const b = await assembleScenario(e, null, { id: 'P-M-NEW', resolveImage })
+    expect(b.body.TargetWindowCondition).toEqual(W('EQ', 'Main'))
+    expect(b.body.HidingWindowConditionList).toEqual([W('', 'Dlg')])
+    delete e.header.windows
+    const c = await assembleScenario(e, null, { id: 'P-M-NEW', resolveImage })
+    expect(c.body.TargetWindowCondition).toEqual(W(null, null))
+  })
+})
+

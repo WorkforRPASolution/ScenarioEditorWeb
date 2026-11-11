@@ -2,6 +2,7 @@
 // 편집 시나리오: 브라우저가 검사·초안·배포 요청에 싣는 구조 값(저장 형식 문자열 없음). 모양·형만 본다(업무 규칙은 rules).
 const { isTrainKey, trainImageId } = require('./trainKey')
 const { CS_DEFAULTS } = require('./csDefaults')
+const { windowsOf, INT32_MIN, INT32_MAX } = require('./windowsModel')
 
 class EditedScenarioError extends Error {
   constructor(path, reason) {
@@ -113,6 +114,38 @@ function parseStep(s, i, seen) {
   }
 }
 
+// 창 조건 하나(P2-F 설계 §4). 글자는 문자열(빈 칸은 ""), 위치 확인은 참거짓, 좌표는 Int32 정수.
+function parseWindow(w, path) {
+  needObject(w, path)
+  const out = { text: needString(w.text, `${path}.text`), className: needString(w.className, `${path}.className`) }
+  if (typeof w.checkRect !== 'boolean') fail(`${path}.checkRect`, '참거짓이어야 합니다')
+  out.checkRect = w.checkRect
+  for (const k of ['left', 'top', 'right', 'bottom']) {
+    if (!Number.isInteger(w[k]) || w[k] < INT32_MIN || w[k] > INT32_MAX) fail(`${path}.${k}`, 'Int32 정수여야 합니다')
+    out[k] = w[k]
+  }
+  return out
+}
+
+// header.windows = { target, hiding[] }. 숨길 창의 origin 은 출처 판 목록의 자리(0 이상 정수)이거나 새 줄이면 null — 같은 자리를 두 줄이 가리킬 수 없다.
+function parseWindows(w, path) {
+  needObject(w, path)
+  const target = parseWindow(w.target, `${path}.target`)
+  if (!Array.isArray(w.hiding)) fail(`${path}.hiding`, '배열이어야 합니다')
+  const seen = new Set()
+  const hiding = w.hiding.map((h, i) => {
+    const p = `${path}.hiding[${i}]`
+    needObject(h, p)
+    if (h.origin !== null && !(Number.isInteger(h.origin) && h.origin >= 0)) fail(`${p}.origin`, '0 이상의 정수 또는 null 이어야 합니다')
+    if (h.origin !== null) {
+      if (seen.has(h.origin)) fail(`${p}.origin`, '같은 origin 이 둘 이상입니다')
+      seen.add(h.origin)
+    }
+    return { origin: h.origin, ...parseWindow(h, p) }
+  })
+  return { target, hiding }
+}
+
 function parseEditedScenario(json) {
   needObject(json, '$')
   const source = json.source === null ? null : parseSourceInfo(json.source, 'source')
@@ -122,6 +155,8 @@ function parseEditedScenario(json) {
   if (headCrtime !== null && !(typeof headCrtime === 'number' && Number.isFinite(headCrtime))) fail('headCrtime', '숫자 또는 null 이어야 합니다')
   needObject(json.header, 'header')
   const header = { description: needString(json.header.description, 'header.description'), timeoutLimit: needString(json.header.timeoutLimit, 'header.timeoutLimit') }
+  // 창 조건은 없어도 된다(P2-F 전에 저장한 초안) — 없으면 조립이 출처 판의 저장값을 그대로 쓴다
+  if (json.header.windows !== undefined && json.header.windows !== null) header.windows = parseWindows(json.header.windows, 'header.windows')
   if (!Array.isArray(json.steps)) fail('steps', '배열이어야 합니다')
   const seen = new Set()
   const steps = json.steps.map((s, i) => parseStep(s, i, seen))
@@ -172,7 +207,8 @@ function editedFromSkeleton(skeleton, { fileId } = {}) {
     headCrtime: skeleton.headCrtime ?? null,
     header: {
       description: typeof h.description === 'string' ? h.description : '',
-      timeoutLimit: typeof h.timeoutLimit === 'number' && Number.isFinite(h.timeoutLimit) ? String(h.timeoutLimit) : ''
+      timeoutLimit: typeof h.timeoutLimit === 'number' && Number.isFinite(h.timeoutLimit) ? String(h.timeoutLimit) : '',
+      windows: windowsOf(h.raw)
     },
     steps: skeleton.steps.map((s, i) => ({
       uid: s.uid, origin: i,

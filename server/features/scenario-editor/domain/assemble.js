@@ -7,6 +7,7 @@ const { encodeCondition, encodeAction } = require('./conditionCodec')
 const { fromTarget } = require('./nextStep')
 const { changedStepUids } = require('./changeDetect')
 const { isTrainKey } = require('./trainKey')
+const { targetRawFor, hidingRawFor } = require('./windowsModel')
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)))
@@ -90,15 +91,28 @@ const timeoutOf = (t) => (typeof t === 'string' && /^-?\d+$/.test(t) ? Number(t)
 
 async function headerOf(edited, source, id, resolveImage) {
   const head = { ID: id, Description: edited.header.description, TimeoutLimit: timeoutOf(edited.header.timeoutLimit) }
-  if (!source) return head // 새 시나리오: 나머지는 withCsDefaults 가 사내 새 시나리오 값으로 채운다
+  // 창 조건(P2-F 설계 §5): 편집 값이 저장값과 같은 뜻이면 저장값을 그대로 두고(null 글자·null 목록 포함), 달라진 조건만 새로 쓴다.
+  // windows 가 없으면(옛 초안) 저장값 그대로다. undefined = 손대지 않는다.
+  const w = edited.header.windows
+  const stored = (source && source.header.raw) || {}
+  const targetNew = w ? targetRawFor(w.target, stored.TargetWindowCondition) : undefined
+  const hidingNew = w ? hidingRawFor(w.hiding, stored.HidingWindowConditionList) : undefined
+  if (!source) {
+    // 새 시나리오: 넣은 창 조건만 쓰고 나머지는 withCsDefaults 가 사내 새 시나리오 값으로 채운다
+    if (targetNew !== undefined) head.TargetWindowCondition = targetNew
+    if (hidingNew !== undefined) head.HidingWindowConditionList = hidingNew
+    return head
+  }
   const sh = source.header
   head.RevisionNo = sh.revisionNo
   head.TriggerType = sh.triggerType
   head.Text = sh.text
   const raw = sh.raw || {}
-  if (hasOwn(raw, 'TargetWindowCondition')) head.TargetWindowCondition = clone(raw.TargetWindowCondition)
+  if (targetNew !== undefined) head.TargetWindowCondition = targetNew
+  else if (hasOwn(raw, 'TargetWindowCondition')) head.TargetWindowCondition = clone(raw.TargetWindowCondition)
   // 숨길 창은 저장값(null 포함) 그대로 — 화면용 hidingWindows 는 배열이 아니면 [] 라 쓰지 않는다. 없던 키는 withCsDefaults 가 [] 로 채운다.
-  if (hasOwn(raw, 'HidingWindowConditionList')) head.HidingWindowConditionList = clone(raw.HidingWindowConditionList)
+  if (hidingNew !== undefined) head.HidingWindowConditionList = hidingNew
+  else if (hasOwn(raw, 'HidingWindowConditionList')) head.HidingWindowConditionList = clone(raw.HidingWindowConditionList)
   if (hasOwn(raw, 'Compensation')) {
     const c = clone(raw.Compensation)
     // 보정 그림이 그림이었으면 뼈대 raw 에는 null, 그림은 'ref' 로 떼어 있다

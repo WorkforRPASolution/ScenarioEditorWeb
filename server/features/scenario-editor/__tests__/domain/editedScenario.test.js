@@ -28,6 +28,7 @@ const { skeleton } = buildSkeleton({
   baseImages: { parseFailed: false, present: new Set([0]), literals: new Map([[2, 'AA==']]) }
 })
 const fresh = () => editedFromSkeleton(skeleton, { fileId: 'F1' })
+const WINDOWS = { target: { text: 'EQ Control*', className: 'WF', checkRect: false, left: 0, top: 0, right: 0, bottom: 0 }, hiding: [] }
 
 describe('editedFromSkeleton', () => {
   it('뼈대에서 만든 편집 시나리오는 JSON 왕복 뒤 형식 검사를 통과하고 그대로다', () => {
@@ -41,9 +42,9 @@ describe('editedFromSkeleton', () => {
     expect(e.headCrtime).toBeNull()
     expect(editedFromSkeleton({ ...skeleton, headCrtime: 5 }).headCrtime).toBe(5)
     expect(editedFromSkeleton(skeleton).source.fileId).toBeNull()
-    expect(e.header).toEqual({ description: '메일 제목', timeoutLimit: '240' })
+    expect(e.header).toEqual({ description: '메일 제목', timeoutLimit: '240', windows: WINDOWS })
     const odd = editedFromSkeleton({ ...skeleton, header: { ...skeleton.header, description: undefined, timeoutLimit: undefined } })
-    expect(odd.header).toEqual({ description: '', timeoutLimit: '' })
+    expect(odd.header).toEqual({ description: '', timeoutLimit: '', windows: WINDOWS })
   })
   it('대상은 no 없이 uid 만, 해석 안 된 값은 raw 로 남는다', () => {
     const e = fresh()
@@ -163,8 +164,69 @@ describe('parseEditedScenario', () => {
     const e = fresh(); e.extra = 1; e.steps[0].raw = { x: 1 }; e.header.text = 'z'
     const out = parseEditedScenario(e)
     expect(out).not.toBe(e)
-    expect(out.extra).toBeUndefined(); expect(out.steps[0].raw).toBeUndefined(); expect(out.header).toEqual({ description: '메일 제목', timeoutLimit: '240' })
+    expect(out.extra).toBeUndefined(); expect(out.steps[0].raw).toBeUndefined(); expect(out.header).toEqual({ description: '메일 제목', timeoutLimit: '240', windows: WINDOWS })
     out.steps[0].condition.kind = 'none'
     expect(e.steps[0].condition.kind).toBe('image')
   })
 })
+
+// P2-F 전처리 설정(설계 §4): header.windows = 대상 창 + 숨길 창. 없으면(이 기능 전에 저장한 초안) 조립이 출처 저장값을 그대로 쓴다.
+describe('header.windows — 창 조건', () => {
+  const win = (text, className, over = {}) => ({ text, className, checkRect: false, left: 0, top: 0, right: 0, bottom: 0, ...over })
+  const stored = (Text, ClassName, over = {}) => ({ Text, ClassName, IsCheckRectEqual: false, Left: 0, Top: 0, Right: 0, Bottom: 0, ...over })
+  // 저장 본문은 JSON 에서 온다 — undefined 로 준 키는 없는 키다
+  const skeletonOf = (over) => buildSkeleton({ process: 'P', model: 'M', name: 'N', crtime: 1, isCurrent: true, body: JSON.parse(JSON.stringify({ ...body, ...over })), propertyDoc: { Priority: 10, Type: 1 },
+    performanceDoc: {}, imageBaseUrl: '/img', baseImages: { parseFailed: false, present: new Set([0]), literals: new Map([[2, 'AA==']]) } }).skeleton
+
+  it('editedFromSkeleton: 저장값에서 채운다 — 숨길 창마다 origin = 저장 목록의 자리, null 글자는 ""', () => {
+    const e = editedFromSkeleton(skeletonOf({
+      TargetWindowCondition: stored(null, null),
+      HidingWindowConditionList: [stored('화면 보호기', 'Saver'), stored(null, 'Dlg', { IsCheckRectEqual: true, Left: 1, Top: 2, Right: 3, Bottom: 4 })]
+    }))
+    expect(e.header.windows).toEqual({
+      target: win('', ''),
+      hiding: [{ origin: 0, ...win('화면 보호기', 'Saver') }, { origin: 1, ...win('', 'Dlg', { checkRect: true, left: 1, top: 2, right: 3, bottom: 4 }) }]
+    })
+    expect(parseEditedScenario(JSON.parse(JSON.stringify(e)))).toEqual(e)
+  })
+  it('editedFromSkeleton: 숨길 창 목록이 null·없는 키면 빈 목록', () => {
+    expect(editedFromSkeleton(skeletonOf({ HidingWindowConditionList: null })).header.windows.hiding).toEqual([])
+    expect(editedFromSkeleton(skeletonOf({ HidingWindowConditionList: undefined, TargetWindowCondition: undefined })).header.windows).toEqual({ target: win('', ''), hiding: [] })
+  })
+  it('parse: windows 가 없거나 null 이면 없는 채로 통과한다(옛 초안)', () => {
+    const e = fresh(); delete e.header.windows
+    expect('windows' in parseEditedScenario(e).header).toBe(false)
+    e.header.windows = null
+    expect('windows' in parseEditedScenario(e).header).toBe(false)
+  })
+  it('parse: 새 줄은 origin null, 알 수 없는 키는 버린다', () => {
+    const e = fresh()
+    e.header.windows = { target: { ...win('EQ', 'Main'), extra: 1 }, hiding: [{ origin: null, ...win('', 'Dlg'), isNew: true }, { origin: 0, ...win('a', 'A') }], more: 1 }
+    expect(parseEditedScenario(e).header.windows).toEqual({ target: win('EQ', 'Main'), hiding: [{ origin: null, ...win('', 'Dlg') }, { origin: 0, ...win('a', 'A') }] })
+  })
+  it.each([
+    ['windows 가 객체가 아님', (w) => 'x', 'header.windows'],
+    ['target 없음', (w) => ({ hiding: [] }), 'header.windows.target'],
+    ['hiding 이 배열이 아님', (w) => ({ ...w, hiding: {} }), 'header.windows.hiding'],
+    ['제목이 문자열이 아님(null)', (w) => ({ ...w, target: { ...w.target, text: null } }), 'header.windows.target.text'],
+    ['클래스가 문자열이 아님', (w) => ({ ...w, target: { ...w.target, className: 3 } }), 'header.windows.target.className'],
+    ['위치 확인이 참거짓이 아님', (w) => ({ ...w, target: { ...w.target, checkRect: 1 } }), 'header.windows.target.checkRect'],
+    ['좌표가 정수가 아님', (w) => ({ ...w, target: { ...w.target, left: 1.5 } }), 'header.windows.target.left'],
+    ['좌표가 글자', (w) => ({ ...w, target: { ...w.target, top: '3' } }), 'header.windows.target.top'],
+    ['좌표가 Int32 밖', (w) => ({ ...w, target: { ...w.target, right: 2147483648 } }), 'header.windows.target.right'],
+    ['좌표가 Int32 밖(음수)', (w) => ({ ...w, target: { ...w.target, bottom: -2147483649 } }), 'header.windows.target.bottom'],
+    ['숨길 창 origin 이 음수', (w) => ({ ...w, hiding: [{ origin: -1, ...win('', 'A') }] }), 'header.windows.hiding[0].origin'],
+    ['숨길 창 origin 이 글자', (w) => ({ ...w, hiding: [{ origin: '0', ...win('', 'A') }] }), 'header.windows.hiding[0].origin'],
+    ['숨길 창 origin 없음', (w) => ({ ...w, hiding: [win('', 'A')] }), 'header.windows.hiding[0].origin'],
+    ['같은 origin 이 둘', (w) => ({ ...w, hiding: [{ origin: 0, ...win('', 'A') }, { origin: 0, ...win('', 'A') }] }), 'header.windows.hiding[1].origin'],
+    ['숨길 창 좌표가 정수가 아님', (w) => ({ ...w, hiding: [{ origin: null, ...win('', 'A', { left: NaN }) }] }), 'header.windows.hiding[0].left']
+  ])('parse 거절: %s', (_, change, path) => {
+    const e = fresh()
+    e.header.windows = change(e.header.windows)
+    let err
+    try { parseEditedScenario(e) } catch (x) { err = x }
+    expect(err).toBeInstanceOf(EditedScenarioError)
+    expect(err.path).toBe(path)
+  })
+})
+
