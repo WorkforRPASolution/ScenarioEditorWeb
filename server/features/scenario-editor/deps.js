@@ -57,6 +57,11 @@ function build(env = process.env) {
   out.versionAdmin = createVersionAdminService({ repo, scopes, interfaceClient: require('./clients/interfaceClient'), web, now })
   const { createPerformanceService } = require('./service/performanceService')
   out.performance = createPerformanceService({ repo, scopes, now })
+  // 스냅샷(P3) — Cassandra 는 처음 쓸 때 연결한다. 주소가 비어 있어도 여기서는 아무 일도 없다.
+  const { createSnapshotRepository } = require('./repo/snapshotRepository')
+  const { createSnapshotService } = require('./service/snapshotService')
+  out.snapshotRepo = createSnapshotRepository({ env, driver: require('cassandra-driver') })
+  out.snapshots = createSnapshotService({ snapshotRepo: out.snapshotRepo, scopes, now, env, log })
   return out
 }
 

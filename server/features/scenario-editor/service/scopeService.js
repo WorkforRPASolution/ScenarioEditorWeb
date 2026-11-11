@@ -20,7 +20,14 @@ function createScopeService({ repo, ttlMs, now }) {
     const ok = pairs.some((p) => p.process === process && p.models.some((m) => m.model === model))
     if (!ok) throw seError(403, 'PROCESS_FORBIDDEN', '공정 권한 밖의 공정·모델입니다')
   }
-  return { scopeFor, assertAllowed, clear() { cache = null } }
+  // 내 공정 범위의 유효 설비 문서. 범위 밖·무효·없는 설비를 구별해 알리지 않는다(P3 설계 §5.2).
+  async function equipmentOf(user, eqpId) {
+    const { valid } = await scopeFor(user)
+    const found = typeof eqpId === 'string' && eqpId !== '' ? valid.find((e) => e.eqpId === eqpId) : null
+    if (!found) throw seError(403, 'EQP_FORBIDDEN', '내 공정 범위의 설비가 아닙니다')
+    return found
+  }
+  return { scopeFor, assertAllowed, equipmentOf, clear() { cache = null } }
 }
 
 module.exports = { createScopeService }
