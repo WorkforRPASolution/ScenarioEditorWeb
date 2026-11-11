@@ -164,6 +164,24 @@ describe('SnapshotViewer', () => {
       await show(w, s, 3) // (900, 20) — 640×360 밖
       expect(tid(w, 'se-snap-dot').exists()).toBe(false)
     })
+    it('이미 고른 줄을 다시 골라도(같은 줄 누름·끝에서 End·하나뿐인 태그로 이동) 점·그림 크기가 남고 [1:1] 이 듣는다', async () => {
+      const { w, s } = await mountSized()
+      await show(w, s, 1)
+      const img = tid(w, 'se-snap-image').element
+      s.select(name(1))
+      await flushPromises()
+      expect(tid(w, 'se-snap-image').element).toBe(img) // 같은 그림 요소 — 다시 불러오지 않는다
+      expect(tid(w, 'se-snap-dot').exists()).toBe(true)
+      expect(tid(w, 'se-snap-info').text()).toContain('640 × 360')
+      await tid(w, 'se-snap-zoom-actual').trigger('click')
+      expect(tf(w).scale).toBe(1)
+      s.moveTag(1) // 2 로 간다
+      await flushPromises()
+      w.vm.onLoad(IMG); await w.vm.$nextTick()
+      s.moveTag(1) // 태그가 하나뿐 — 같은 줄
+      await flushPromises()
+      expect(tid(w, 'se-snap-info').text()).toContain('640 × 360')
+    })
     it('다른 스냅샷을 고르면 새 그림이 불러와질 때까지 점이 없다 — 앞 그림의 크기로 그리지 않는다(DC-034)', async () => {
       const { w, s } = await mountSized()
       await show(w, s, 1)

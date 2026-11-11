@@ -54,6 +54,14 @@ describe('usePanZoom', () => {
     expect((200 - pz.view.ty) / pz.view.scale).toBeCloseTo(250, 5)
     w.unmount()
   })
+  it('1:1 의 배율은 어림값이 아니라 정확히 1 이다(배율 × 1/배율 로 구하면 0.9999999999999999 가 나오는 상자 크기가 있다)', () => {
+    for (const [cw, ch] of [[303, 300], [650, 417], [1011, 533], [777, 391]]) {
+      const { w, pz } = mountSized(cw, ch, { w: 640, h: 360 })
+      pz.actual()
+      expect(pz.view.scale, `${cw}×${ch}`).toBe(1)
+      w.unmount()
+    }
+  })
   it('1:1 은 직접 움직인 것으로 친다 — 상자 크기가 바뀌어도 다시 맞추지 않고, 맞춤 뒤에는 다시 따라간다', () => {
     const { w, pz, resize } = mountSized()
     pz.actual()

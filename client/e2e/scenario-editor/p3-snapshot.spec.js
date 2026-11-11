@@ -137,6 +137,20 @@ test('② 내 공정 범위의 설비만 보이고, 시나리오를 연 채 스�
   await page.locator('[data-testid="se-snap-eqp-option"][data-eqp="SEWT_CVD_A01"]').click()
   await expect(count(page)).toHaveText('2장')
 
+  // ── 고른 뒤 입력 칸을 다시 눌러 치면 목록이 다시 열린다. 아무것도 안 치고 Enter 를 눌러도 설비는 그대로다 ──
+  await page.getByTestId('se-snap-eqp-input').click()
+  await page.getByTestId('se-snap-eqp-input').fill('b01')
+  await expect(page.locator('[data-testid="se-snap-eqp-option"][data-eqp="SEWT_CVD_B01"]')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(options).toHaveCount(0)
+  await expect(page.getByTestId('se-snap-eqp-input')).toHaveValue('SEWT_CVD_A01')
+  await page.getByTestId('se-snap-eqp-input').click()
+  await expect(options.first()).toBeVisible()
+  await page.keyboard.press('Enter')
+  await expect(options).toHaveCount(0)
+  await expect(page.getByTestId('se-snap-eqp-input')).toHaveValue('SEWT_CVD_A01')
+  await expect(count(page)).toHaveText('2장')
+
   // ── 설비를 고르면 마지막 줄이 골라져 스냅샷 모드. 스텝 그림은 숨었을 뿐이다 ──
   await expect(page.getByTestId('se-snap-image')).toBeVisible()
   await expect(info(page)).toContainText('2 / 2')

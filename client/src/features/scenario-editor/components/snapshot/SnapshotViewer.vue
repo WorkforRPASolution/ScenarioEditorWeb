@@ -21,7 +21,8 @@ const { view, fit, actual, zoomButton, onWheel, onDown } = usePanZoom(box, natur
 
 const item = computed(() => snap.selected)
 const src = computed(() => (snap.image.status === 'ready' && !broken.value ? snap.image.url : null))
-watch(() => [snap.image.name, snap.image.url], () => { natural.value = null; broken.value = false })
+// 그림이 바뀔 때만 크기를 지운다 — 같은 줄을 다시 골라 값이 그대로면 <img> 가 다시 불러오지 않아 크기를 되찾을 길이 없다
+watch([() => snap.image.name, () => snap.image.url], () => { natural.value = null; broken.value = false })
 function onLoad(e) { natural.value = { w: e.target.naturalWidth, h: e.target.naturalHeight }; fit() }
 
 const point = computed(() => (src.value ? clickPoint(item.value, natural.value) : null))

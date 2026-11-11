@@ -103,6 +103,33 @@ describe('SnapshotPanel', () => {
       await flushPromises()
       expect(s.eqpId).toBe('SEWT_ETCH_A01')
     })
+    it('설비를 눌러 고른 뒤(입력 칸이 초점을 지킨 채) 다시 누르거나 글자를 치면 목록이 다시 열린다', async () => {
+      const { w, s } = await mountPanel()
+      const input = tid(w, 'se-snap-eqp-input')
+      await input.trigger('focus')
+      await tids(w, 'se-snap-eqp-option').find((o) => o.attributes('data-eqp') === 'SEWT_CVD_B01').trigger('click')
+      await flushPromises()
+      expect(options(w)).toEqual([])
+      await input.setValue('etch') // 초점은 그대로라 focus 이벤트가 다시 오지 않는다
+      expect(options(w)).toEqual(['SEWT_ETCH_A01'])
+      await input.trigger('keydown', { key: 'Escape' })
+      expect(options(w)).toEqual([])
+      await input.trigger('click')
+      expect(options(w)).toHaveLength(4)
+      expect(s.eqpId).toBe('SEWT_CVD_B01')
+    })
+    it('아무것도 치지 않고 Enter 를 누르면 설비를 바꾸지 않고 목록만 닫는다', async () => {
+      const { w, s } = await mountPanel({ pick: 'SEWT_PHOTO_A01' })
+      const input = tid(w, 'se-snap-eqp-input')
+      const calls = api.snapshotDays.mock.calls.length
+      await input.trigger('focus')
+      expect(options(w)[0]).toBe('SEWT_CVD_A01') // 전체 목록의 첫 설비는 다른 설비다
+      await input.trigger('keydown', { key: 'Enter' })
+      await flushPromises()
+      expect(s.eqpId).toBe('SEWT_PHOTO_A01')
+      expect(api.snapshotDays.mock.calls.length).toBe(calls)
+      expect(options(w)).toEqual([])
+    })
     it('이미 고른 설비가 입력 칸에 있을 때 들어가면 전체 목록을 보인다(그 ID 로 거르지 않는다)', async () => {
       const { w } = await mountPanel({ pick: 'SEWT_CVD_A01' })
       expect(tid(w, 'se-snap-eqp-input').element.value).toBe('SEWT_CVD_A01')

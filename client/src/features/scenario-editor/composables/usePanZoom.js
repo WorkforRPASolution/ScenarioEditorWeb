@@ -52,9 +52,14 @@ export function usePanZoom(box, natural) {
   }
   const center = () => [(box.value?.clientWidth || 0) / 2, (box.value?.clientHeight || 0) / 2]
   const zoomButton = (factor) => zoomAt(factor, ...center())
+  // 배율 1 을 직접 넣는다 — zoomAt(1 / 배율) 로 구하면 0.9999999999999999 가 되는 상자 크기가 있다
   function actual() {
     if (!natural.value) return
-    zoomAt(1 / view.scale, ...center())
+    const [cx, cy] = center()
+    userMoved = true
+    view.tx = cx - (cx - view.tx) / view.scale
+    view.ty = cy - (cy - view.ty) / view.scale
+    view.scale = 1
   }
   function setView({ scale, tx, ty }) {
     userMoved = true

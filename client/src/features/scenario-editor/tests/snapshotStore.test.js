@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { flushPromises } from '@vue/test-utils'
+import { isReactive } from 'vue'
 
 const api = vi.hoisted(() => ({ equipment: vi.fn(), snapshotDays: vi.fn(), snapshots: vi.fn(), snapshotImage: vi.fn() }))
 vi.mock('../api', async (importOriginal) => ({ ...(await importOriginal()), scenarioEditorApi: api }))
@@ -505,7 +506,7 @@ describe('snapshotStore', () => {
   })
 
   describe('그림 기억', () => {
-    it('여섯 장까지 기억하고, 넘치면 가장 오래 안 쓴 것부터 놓는다 — 화면에 뜬 그림은 놓지 않는다', async () => {
+    it('여섯 장까지 기억하고, 넘치면 가장 오래 안 쓴 것부터 놓는다 — 고른 그림은 늘 가장 최근에 쓴 것이라 남는다', async () => {
       const many = Array.from({ length: 12 }, (_, i) => click(100 + i))
       api.snapshots.mockImplementation((eqpId, date) => ok(listOf(eqpId, date, many)))
       const s = await ready()
@@ -518,6 +519,74 @@ describe('snapshotStore', () => {
       expect(revoked).toHaveLength(2)
       expect(revoked).not.toContain(s.image.url)
       expect(revoked).toContain('blob:1')
+    })
+  })
+
+  describe('검토에서 더한 것(P3-B 최종 검토)', () => {
+    it('이미 떠 있는 그림을 다시 고르면 그림 상태를 갈지 않는다(보는 쪽이 크기·점을 다시 지우지 않게)', async () => {
+      const s = await ready()
+      s.select(name(2))
+      await flushPromises()
+      const shown = s.image
+      s.select(name(2))
+      await flushPromises()
+      expect(s.image).toBe(shown)
+      expect(api.snapshotImage.mock.calls.filter((c) => c[1] === name(2))).toHaveLength(1)
+    })
+    it('그림을 받지 못한 줄을 다시 고르면 다시 받는다', async () => {
+      const s = await ready()
+      api.snapshotImage.mockImplementationOnce(() => Promise.reject(blobFail(503, 'SNAPSHOT_DOWN')))
+      s.select(name(2))
+      await flushPromises()
+      expect(s.image.status).toBe('error')
+      s.select(name(2))
+      await flushPromises()
+      expect(s.image).toMatchObject({ name: name(2), status: 'ready' })
+    })
+    it('설비를 바꾸면 진행 중인 그림 요청을 끊고, 그래도 뒤늦게 온 그림은 기억하지 않는다', async () => {
+      const s = await ready()
+      const slow = defer()
+      let signal = null
+      api.snapshotImage.mockImplementationOnce((eqpId, fileName, sg) => { signal = sg; return slow.promise })
+      s.select(name(2))
+      await s.pickEquipment('B', { select: false })
+      expect(signal.aborted).toBe(true)
+      const made = urls
+      slow.resolve({ data: new Blob(['late']) })
+      await flushPromises()
+      expect(urls).toBe(made) // object URL 을 만들지 않는다 — 놓을 길이 없는 URL 이 남지 않게
+      expect(s.image.status).toBe('idle')
+    })
+    it('새로 고침의 답이 늦게 와도 그 사이 고른 다른 설비의 상태를 덮지 않는다', async () => {
+      const s = await ready()
+      const slow = defer()
+      api.snapshotDays.mockImplementationOnce(() => slow.promise)
+      const p = s.refresh()
+      await s.pickEquipment('B', { select: false })
+      const calls = api.snapshots.mock.calls.length
+      slow.resolve({ data: { data: { eqpId: 'A', ...DAYS, latest: '2026-11-01', today: '2026-11-01', oldest: '2026-10-17' } } })
+      await p
+      expect(s.eqpId).toBe('B')
+      expect(s.range).toEqual({ latest: '2026-11-11', today: '2026-11-11', oldest: '2026-10-27' })
+      expect(api.snapshots.mock.calls.length).toBe(calls)
+    })
+    it('[다시 시도]·[새로 고침] 을 누르면 있는 날을 기다리는 동안에도 받는 중이 된다(저장소가 죽어 있으면 10초쯤 걸린다)', async () => {
+      const s = await ready()
+      api.snapshots.mockImplementationOnce(() => Promise.reject(fail(503, 'SNAPSHOT_DOWN')))
+      await s.setDate('2026-11-10')
+      expect(s.list.status).toBe('error')
+      const gate = defer()
+      api.snapshotDays.mockImplementationOnce(() => gate.promise)
+      const p = s.refresh()
+      expect(s.list).toMatchObject({ status: 'loading', items: [], error: '' })
+      gate.resolve({ data: { data: { eqpId: 'A', ...DAYS } } })
+      await p
+      expect(s.list.status).toBe('ready')
+    })
+    it('하루 목록의 줄은 깊은 반응형으로 감싸지 않는다 — 5만 줄에서 고르기·이동이 줄마다 프록시를 만들지 않게', async () => {
+      const s = await ready()
+      expect(isReactive(s.list.items[0])).toBe(false)
+      expect(isReactive(s.selected ?? s.shown[0])).toBe(false)
     })
   })
 

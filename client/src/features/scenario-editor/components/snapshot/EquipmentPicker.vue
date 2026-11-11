@@ -40,9 +40,16 @@ function pick(id) {
   q.value = id
   snap.pickEquipment(id)
 }
+// 목록을 눌러 고르면 입력 칸이 초점을 지킨 채 목록만 닫힌다 — 그 뒤 다시 누르거나 치면 focus 이벤트 없이도 연다
+const reopen = () => { listOpen.value = true }
 function onKey(e) {
   if (e.key === 'Escape') { closeList(); e.target.blur?.() }
-  else if (e.key === 'Enter' && listOpen.value && found.value.items.length) { pick(found.value.items[0].eqpId); e.target.blur?.() }
+  else if (e.key === 'Enter') {
+    // 친 글자가 있을 때만 맞는 첫 설비를 고른다 — 아무것도 안 쳤으면(전체 목록) 설비를 바꾸지 않고 닫기만 한다
+    if (listOpen.value && needle.value && found.value.items.length) pick(found.value.items[0].eqpId)
+    else closeList()
+    e.target.blur?.()
+  }
 }
 </script>
 
@@ -61,7 +68,7 @@ function onKey(e) {
     <div class="relative">
       <input v-model="q" class="se-inp" type="text" autocomplete="off" spellcheck="false" :aria-label="t('SEW_SNAP_EQP_LABEL')" :disabled="!ready"
         :placeholder="snap.equipment.status === 'loading' ? t('SEW_SNAP_EQP_LOADING') : t('SEW_SNAP_EQP_PLACEHOLDER')" data-testid="se-snap-eqp-input"
-        @focus="openList" @blur="closeList" @keydown="onKey" />
+        @focus="openList" @click="reopen" @input="reopen" @blur="closeList" @keydown="onKey" />
       <!-- 목록을 누를 때 입력 칸이 초점을 잃지 않게(잃으면 누르기 전에 목록이 닫힌다) mousedown 을 막는다 -->
       <div v-if="listOpen && ready" class="se-snap-eqp-list" @mousedown.prevent>
         <button v-for="(e, i) in found.items" :key="e.eqpId" type="button" tabindex="-1" :class="{ on: e.eqpId === snap.eqpId, first: i === 0 && !!needle }" data-testid="se-snap-eqp-option" :data-eqp="e.eqpId" @click="pick(e.eqpId)">

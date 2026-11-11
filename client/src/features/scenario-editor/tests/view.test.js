@@ -199,6 +199,20 @@ describe('ScenarioEditorView', () => {
       await w.vm.$nextTick()
       expect(snap.mode).toBe('step')
     })
+    it('스텝 표를 넓게 펼친 채(큰 화면이 가려짐) 스냅샷을 고르면 넓게 보기를 풀어 그림이 보이게 한다', async () => {
+      api.snapshotDays.mockReturnValue(ok({ eqpId: 'E', latest: '2026-11-11', today: '2026-11-11', oldest: '2026-10-27', days: null, truncated: false }))
+      const row = { fileName: '5_[1][2].png', ms: 5, time: '09:00:00', shift: 'DAY', kind: 'click', tag: null, x: 1, y: 2, txn: null, hasHistory: false, memo: null, daysLeft: 15 }
+      api.snapshots.mockReturnValue(ok({ eqpId: 'E', date: '2026-11-11', timeDiff: 0, items: [row], skipped: 0, truncated: false }))
+      api.snapshotImage.mockReturnValue(new Promise(() => {}))
+      const w = await openScenario([noneStep('a')])
+      const snap = useSnapshotStore()
+      await snap.pickEquipment('E', { select: false })
+      useEditorStore().expanded = true
+      await w.vm.$nextTick()
+      snap.select(row.fileName)
+      await w.vm.$nextTick()
+      expect(useEditorStore().expanded).toBe(false)
+    })
     it('스냅샷을 고르는 것만으로는(스텝 쪽 변화 없이) 스텝 그림으로 돌아가지 않는다', async () => {
       const w = await openScenario([noneStep('a')])
       const snap = useSnapshotStore()

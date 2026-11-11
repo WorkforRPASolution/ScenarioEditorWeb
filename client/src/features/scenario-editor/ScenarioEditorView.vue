@@ -116,6 +116,8 @@ watch(() => store.selectedUid, (uid) => { if (uid) snap.showStep() })
 watch(() => store.opening, (o) => { if (o) snap.showStep() })
 watch(() => !!edit.capture, (on) => { if (on) snap.showStep() })
 watch(() => (edit.panel?.isNew ? edit.panel.uid : null), (uid) => { if (uid) snap.showStep() })
+// 스텝 표를 넓게 펼치면 큰 화면이 가려진다 — 그 상태에서 스냅샷을 고르면 넓게 보기를 푼다(시나리오 열기와 같은 규칙)
+watch(() => snap.selectedName, (name) => { if (name && snap.mode === 'snapshot') store.expanded = false })
 
 const retry = () => store.openError && reopen(store.openError.target)
 // 불러오기 창이 열린 시나리오를 지웠다 — 편집 화면은 읽기 전용이고 고친 곳은 볼 수만 있다(목업 "열린 시나리오 지우기")
@@ -147,7 +149,7 @@ const card = 'bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:
         </template>
         <!-- 가운데 -->
         <div class="flex flex-col min-h-0 min-w-0">
-          <!-- 큰 화면: 스텝 그림 | 스냅샷. 두 쪽을 모두 그려 두고 숨긴다 — 모드를 오가도 확대·선택이 남는다 -->
+          <!-- 큰 화면: 스텝 그림 | 스냅샷. 두 쪽을 모두 그려 두고 숨긴다 — 모드를 오가도 그림·선택·잡기 상태가 남는다(확대는 돌아올 때 다시 맞춘다) -->
           <section v-show="!store.expanded" :class="card" class="flex-1 min-h-0 overflow-hidden">
             <div v-show="snap.mode === 'snapshot'" class="h-full"><SnapshotViewer /></div>
             <div v-show="snap.mode !== 'snapshot'" class="h-full flex flex-col" data-testid="se-mode-pane-step">

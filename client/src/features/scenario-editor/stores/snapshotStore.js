@@ -4,7 +4,7 @@
 // - 펼침·접힘과 마지막 설비는 브라우저에 기억한다. 접혀 있으면 서버를 부르지 않는다.
 // 메모(거르기·이동)는 P3-C, 여러 줄 고르기(다운로드)는 P3-D 에서 더한다.
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, shallowRef, computed } from 'vue'
 import { scenarioEditorApi as api, blobError } from '../api'
 import { t, errorCode, errorMessage } from '../messages'
 import { safeStorage } from '../composables/useSafeStorage'
@@ -36,7 +36,8 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
   const eqpId = ref(null)
   const range = ref(null) // { latest, today, oldest } — 표시 날짜
   const date = ref(null)
-  const list = ref(emptyList('idle'))
+  // 통째로 갈아 끼우기만 한다 — 깊은 반응형으로 감싸면 5만 줄에서 고르기·이동이 줄마다 프록시를 만든다
+  const list = shallowRef(emptyList('idle'))
   const filter = ref('all')
   const selectedName = ref(null)
   const calendar = ref(idleCalendar())
@@ -61,10 +62,11 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
   const cache = new Map()
   const inflight = new Map()
   const touch = (name) => { const v = cache.get(name); cache.delete(name); cache.set(name, v) }
+  // 고른 그림은 고를 때 맨 뒤로 가고 그 뒤에 더해지는 것은 이웃 둘뿐이라 넘쳐도 놓이지 않는다.
+  // 고르기와 상관없이 여러 장을 받는 길(P3-D 다운로드)이 생기면 화면에 뜬 그림을 건너뛰는 규칙을 시험과 함께 더한다.
   function evict() {
     for (const name of [...cache.keys()]) {
       if (cache.size <= IMAGE_KEEP) break
-      if (name === image.value.name || name === selectedName.value) continue // 화면에 뜬 그림은 놓지 않는다
       URL.revokeObjectURL(cache.get(name).url)
       cache.delete(name)
     }
@@ -102,7 +104,10 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
     const hit = cache.get(name)
     if (hit) {
       touch(name)
-      image.value = { name, status: 'ready', url: hit.url, code: null, error: '' }
+      // 이미 떠 있는 그림이면 상태를 갈지 않는다(같은 줄을 다시 고름)
+      if (!(image.value.name === name && image.value.status === 'ready' && image.value.url === hit.url)) {
+        image.value = { name, status: 'ready', url: hit.url, code: null, error: '' }
+      }
       prefetch(name)
       return
     }
@@ -196,6 +201,8 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
     const seq = ++listSeq
     calSeq++
     calendar.value = idleCalendar() // 날짜별 개수는 달력을 다시 열 때 받는다
+    // 있는 날을 기다리는 동안에도 받는 중으로 보인다(저장소가 응답하지 않으면 10초쯤 걸린다). 앞 목록은 그대로 둔다
+    list.value = { ...list.value, status: 'loading', error: '' }
     const id = eqpId.value
     let sameDay = !!date.value // 같은 날을 다시 받을 때만 앞 목록·선택을 지킨다
     try {
