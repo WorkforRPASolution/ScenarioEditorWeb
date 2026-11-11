@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
 const { PNG } = require('pngjs')
-const { planSnapshots, seedSnapshots, cleanSnapshots, partitionOf } = require('../lib/snapshots')
+const { planSnapshots, seedSnapshots, cleanSnapshots, removeSnapshots, partitionOf } = require('../lib/snapshots')
 const { cassandraEnv } = require('../lib/cassandra')
 const { PHOTO, CVD } = require('../data/snapshots')
 const { equipment } = require('../data/equipment')
@@ -157,6 +157,25 @@ describe('cleanSnapshots — 지우기', () => {
     const client = fakeClient()
     await expect(cleanSnapshots(client, [PHOTO, 'EQP_REAL_01'], NOW)).rejects.toThrow(/SEWT_/)
     await expect(cleanSnapshots(client, [''], NOW)).rejects.toThrow(/SEWT_/)
+    expect(client.calls).toHaveLength(0)
+  })
+})
+
+describe('removeSnapshots — 넣은 줄만 지우기 (통합 시험 정리용)', () => {
+  it('줄마다 목록·그림을 키로 지운다', async () => {
+    const client = fakeClient()
+    const ms = kst(2026, 10, 31, 23, 30)
+    const name = `${ms}_[1][2].png`
+    expect(await removeSnapshots(client, [{ eqpId: PHOTO, fileName: name, ms, png: null }])).toEqual({ rows: 1 })
+    expect(client.calls).toEqual([
+      { query: 'delete from snapshotlist where eqpid = ? and year = ? and month = ? and fname = ?', params: [PHOTO, 2026, 10, name], options: { prepare: true } },
+      { query: 'delete from snapshot where eqpid = ? and year = ? and month = ? and day = ? and fname = ?', params: [PHOTO, 2026, 10, 31, name], options: { prepare: true } }
+    ])
+  })
+
+  it('시험 설비가 아니면 아무것도 지우지 않고 던진다', async () => {
+    const client = fakeClient()
+    await expect(removeSnapshots(client, [{ eqpId: 'EQP_REAL_01', fileName: '1_[1][2].png', ms: 1, png: null }])).rejects.toThrow(/SEWT_/)
     expect(client.calls).toHaveLength(0)
   })
 })

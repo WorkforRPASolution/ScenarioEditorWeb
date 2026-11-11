@@ -12,6 +12,8 @@ const Q_INSERT_LIST = 'insert into snapshotlist (eqpid, year, month, fname, fnam
 const Q_INSERT_IMAGE = 'insert into snapshot (eqpid, year, month, day, fname, image) values (?, ?, ?, ?, ?, ?)'
 const Q_DELETE_LIST = 'delete from snapshotlist where eqpid = ? and year = ? and month = ?'
 const Q_DELETE_IMAGE = 'delete from snapshot where eqpid = ? and year = ? and month = ? and day = ?'
+const Q_REMOVE_LIST = 'delete from snapshotlist where eqpid = ? and year = ? and month = ? and fname = ?'
+const Q_REMOVE_IMAGE = 'delete from snapshot where eqpid = ? and year = ? and month = ? and day = ? and fname = ?'
 const CLEAN_BACK_DAYS = 16
 const CLEAN_AHEAD_DAYS = 1
 
@@ -111,4 +113,15 @@ async function cleanSnapshots(client, eqpIds, now) {
   return out
 }
 
-module.exports = { planSnapshots, seedSnapshots, cleanSnapshots, partitionOf }
+// 넣은 줄만 키로 지운다 — 통합 시험이 자기 줄을 치울 때 쓴다(파티션을 통째로 지우지 않는다).
+async function removeSnapshots(client, rows) {
+  assertTestEquipment(rows.map((r) => r.eqpId))
+  for (const r of rows) {
+    const { year, month, day } = partitionOf(r.ms)
+    await client.execute(Q_REMOVE_LIST, [r.eqpId, year, month, r.fileName], { prepare: true })
+    await client.execute(Q_REMOVE_IMAGE, [r.eqpId, year, month, day, r.fileName], { prepare: true })
+  }
+  return { rows: rows.length }
+}
+
+module.exports = { planSnapshots, seedSnapshots, cleanSnapshots, removeSnapshots, partitionOf }

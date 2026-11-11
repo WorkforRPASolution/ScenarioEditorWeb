@@ -28,6 +28,8 @@ playwright-report/
 # 도구 산출물
 # InterfaceServer 실행 파일 사본 (tools/infra/prepare-is.sh 가 채운다)
 infra/is/dist/
+# SnapShotServer 실행 파일 사본 (tools/infra/prepare-ss.sh 가 채운다). 계정이 든 infra/.env 는 위 .env 규칙으로 빠진다.
+infra/ss/dist/
 # 시나리오 생성기 출력
 tools/scenario-gen/out/
 # C# 기준 도구 빌드

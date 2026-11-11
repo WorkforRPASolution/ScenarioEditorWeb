@@ -1,0 +1,10 @@
+{
+  "CassandraAddress": "host.docker.internal#9042",
+  "CassandraAuthenticationEnable": true,
+  "ZookeeperQuorum": "ss-zookeeper:2181",
+  "WriterWorkerCount": 2,
+  "ReadWorkerCount": 2,
+  "FormatTransformerRouterCount": 1,
+  "BatchWriteCount": 20,
+  "BatchWriteDurationSeconds": 1
+}
