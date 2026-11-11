@@ -3,6 +3,7 @@ const { getDeps } = require('./deps')
 const { seError } = require('./errors')
 const { hasFullScope } = require('./domain/processPermission')
 const { writeDenial, reviewDenial } = require('./domain/writePolicy')
+const { linksFromEnv } = require('./domain/links')
 
 const ok = (res, data) => res.json({ success: true, data })
 
@@ -19,6 +20,18 @@ async function me(req, res) {
     singleid: u.singleid, name: u.name, processRaw: u.processRaw, processes: u.processes, isMaster: u.isMaster, canWrite: u.canWrite,
     authorityManager: u.authorityManager, authorityManagerValid: u.authorityManagerValid, authorityName: u.authorityName, duplicateUserDocs: u.duplicateUserDocs
   })
+}
+
+// 안내 문서 링크(P2-F): 환경 변수 값. 틀린 값은 없는 것으로 보고 변수마다 한 번만 경고를 남긴다.
+const warnedLinks = new Set()
+async function links(req, res) {
+  const { links: out, invalid } = linksFromEnv(process.env)
+  for (const name of invalid) {
+    if (warnedLinks.has(name)) continue
+    warnedLinks.add(name)
+    console.warn(`[scenario-editor] ${name} 은 http:// 또는 https:// 주소여야 합니다 — 링크를 숨깁니다`)
+  }
+  ok(res, out)
 }
 
 async function scopes(req, res) {
@@ -200,4 +213,4 @@ async function nameRule(req, res) {
   ok(res, await getDeps().performance.nameRule(req.seUser))
 }
 
-module.exports = { reviewScenario, savePerformance, sameName, searchUsers, nameRule, setEnabled, removeScenario, deploy, deployVerify, deployFinish, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, counts, versions, open, dataCheck, image }
+module.exports = { links, reviewScenario, savePerformance, sameName, searchUsers, nameRule, setEnabled, removeScenario, deploy, deployVerify, deployFinish, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, counts, versions, open, dataCheck, image }

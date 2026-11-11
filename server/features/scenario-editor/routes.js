@@ -10,6 +10,7 @@ router.use(asyncHandler(c.loadUser))
 
 router.get('/me', asyncHandler(c.me))
 router.get('/scopes', asyncHandler(c.scopes))
+router.get('/links', asyncHandler(c.links)) // 안내 문서 링크(P2-F) — 설정값이 없으면 null
 router.post('/cache/refresh', asyncHandler(c.refreshCache))
 router.get('/data-check', asyncHandler(c.dataCheck))
 router.post('/check', c.requireWrite, asyncHandler(c.check))

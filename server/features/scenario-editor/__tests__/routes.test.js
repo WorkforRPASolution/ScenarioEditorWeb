@@ -50,6 +50,21 @@ describe('/me·/scopes·/cache/refresh', () => {
       expect(await res.json()).toMatchObject({ code: 'USER_NOT_REGISTERED' })
     }
   })
+  it('/links: 설정한 안내 문서 주소(없거나 http·https 가 아니면 null)', async () => {
+    const get = async () => (await (await fetch(`${base}/links`)).json()).data
+    const before = process.env.SE_LINK_PREPROCESSING_SOP
+    try {
+      delete process.env.SE_LINK_PREPROCESSING_SOP
+      expect(await get()).toEqual({ preprocessingSop: null })
+      process.env.SE_LINK_PREPROCESSING_SOP = 'https://wiki.example.com/sop'
+      expect(await get()).toEqual({ preprocessingSop: 'https://wiki.example.com/sop' })
+      process.env.SE_LINK_PREPROCESSING_SOP = 'javascript:alert(1)'
+      expect(await get()).toEqual({ preprocessingSop: null })
+    } finally {
+      if (before === undefined) delete process.env.SE_LINK_PREPROCESSING_SOP
+      else process.env.SE_LINK_PREPROCESSING_SOP = before
+    }
+  })
   it('/scopes: 허용 쌍과 뺀 설비 수(무효 + 중복)', async () => {
     const body = await (await fetch(`${base}/scopes`)).json()
     expect(body.data).toEqual({ processes: [{ process: 'CVD', models: [{ model: 'M1', eqpCount: 2 }] }], excludedEqpCount: 2 })
