@@ -54,7 +54,7 @@ describe('ScenarioBar', () => {
   it('ID·메일 제목·현재 버전·켜짐·유형·등급·대상 창·경고 수', () => {
     const s = useEditorStore(); s.skeleton = skeleton()
     const text = mountBar().text()
-    for (const v of ['SEWCVD-SEWMODELA-X', '메일 제목', '240분', '현재 버전', '켜짐', '알람자동조치', '등급 A', '실행 때 창을 찾지 않음', '창 제목이 비어 있음', '경고 1', '알림 1'])
+    for (const v of ['SEWCVD-SEWMODELA-X', '메일 제목', '240분', '현재 버전', '켜짐', '알람자동조치', '등급 A', '전처리: 대상 창 없음 · 숨길 창 0', '경고 1', '알림 1'])
       expect(text).toContain(v)
     expect(text).toContain('사내 편집기에서는')
   })

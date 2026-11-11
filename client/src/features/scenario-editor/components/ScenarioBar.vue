@@ -3,7 +3,7 @@ import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
 import { useEditStore } from '../stores/editStore'
 import { useSaveFlow } from '../stores/saveFlow'
-import { t, LABELS, noteMessage } from '../messages'
+import { t, noteMessage } from '../messages'
 import { barFieldErrors } from '../editor/fieldRules'
 import { formatCrtime, scenarioTypeLabel, enabledLabel } from '../format'
 import PropertyDialog from './PropertyDialog.vue'
@@ -11,6 +11,8 @@ import PerformanceDialog from './PerformanceDialog.vue'
 import DataCheckDialog from './DataCheckDialog.vue'
 import SaveDialog from './SaveDialog.vue'
 import ScenarioDeleteDialog from './ScenarioDeleteDialog.vue'
+import PreprocessDialog from './PreprocessDialog.vue'
+import { windowsSummary, windowsFromHeader } from '../editor/windows'
 
 defineOptions({ name: 'ScenarioBar' })
 // load = [불러오기], new = [새 시나리오](창은 화면이 연다 — 패널 확인을 먼저 거친다)
@@ -41,12 +43,22 @@ const sk = computed(() => store.skeleton)
 // 켜짐·유형 표시: 운영 속성 창에서 [적용]한 작업본 값을 따른다(해석하지 못한 운영 속성은 표시하지 않는다)
 const barProperty = computed(() => (sk.value?.property ? edit.session?.working?.property ?? sk.value.property : null))
 const tw = computed(() => sk.value?.header.targetWindow)
-const twText = computed(() => {
-  const w = tw.value
-  if (!w) return ''
-  if (w.agentFinds) return t('SEW_UI_TW_FINDS', { text: w.raw.Text, mode: LABELS.matchMode[w.matchMode], cls: w.raw.ClassName })
-  return t('SEW_UI_TW_NOT_FINDS', { reason: t(`SEW_UI_TW_REASON_${w.reasonCode}`) })
+// 전처리 버튼(P2-F 설계 §7): 대상 창 상태 + 숨길 창 수 + 확인할 줄 수. 작업본에 [적용] 한 값을 따르고, 편집 세션이 없으면 뼈대 저장값으로 보인다.
+// 값을 모르면(원본이 지워진 옛 초안) "전처리" 만. 누르면 전처리 설정 창 — 저장 창의 창 조건 검사 줄도 이 창을 연다(focus = { which, n }).
+const showPreprocess = ref(false)
+const preprocessFocus = ref(null)
+function openPreprocess(which) {
+  preprocessFocus.value = which ? { which, n: (preprocessFocus.value?.n ?? 0) + 1 } : null
+  showPreprocess.value = true
+}
+const windowsNow = computed(() => edit.session?.working?.header?.windows ?? (edit.session ? null : windowsFromHeader(sk.value?.header)))
+const ppText = computed(() => {
+  const s = windowsSummary(windowsNow.value)
+  if (!s) return t('SEW_PP_OPEN')
+  return `${t('SEW_PP_OPEN')}: ${t(`SEW_PP_BAR_TARGET_${s.target}`)} · ${t('SEW_PP_BAR_HIDING', { n: s.hiding })}${s.attention ? ` ${t('SEW_PP_BAR_ATTENTION', { n: s.attention })}` : ''}`
 })
+const ppAttention = computed(() => { const s = windowsSummary(windowsNow.value); return !!s && (s.attention > 0 || s.target === 'warn') })
+const ppTitle = computed(() => (windowsNow.value ? t('SEW_PP_BAR_TITLE') : t('SEW_PP_BAR_UNKNOWN')))
 const twDiffers = computed(() => !!tw.value && tw.value.agentFinds !== tw.value.inHouseShowsSet)
 // 시나리오 단위 경고·알림(본문·기준 화면·운영 속성 해석 실패, SUCCESS 없음, 비표준 우선순위 등).
 // 대상 창 알림(TARGET_WINDOW_DIFFERS)은 대상 창 자리에 이미 나오므로 뺀다.
@@ -162,7 +174,8 @@ const btn = 'h-8 px-3 rounded-lg text-sm'
         <span v-if="draftTime" :class="badge" class="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" data-testid="se-bar-draft">{{ t('SEW_SAVE_BAR_DRAFT', { time: draftTime }) }}</span>
       </div>
       <div class="text-xs text-gray-600 dark:text-gray-300 min-w-0" data-testid="se-bar-target-window">
-        <div class="truncate">{{ twText }}</div>
+        <button type="button" class="max-w-full truncate h-6 px-2 rounded border border-gray-300 dark:border-dark-border hover:bg-primary-50 dark:hover:bg-primary-900/20"
+          :class="ppAttention ? 'text-amber-700 dark:text-amber-400' : ''" :title="ppTitle" data-testid="se-bar-preprocess" @click="openPreprocess(null)">{{ ppText }}</button>
         <div v-if="twDiffers" ref="twEl" tabindex="-1" class="text-amber-600 dark:text-amber-400 truncate outline-none" :class="flash && !scenarioNotes.length ? flashRing : ''"
           data-testid="se-bar-tw-differs" :data-flash="String(flash && !scenarioNotes.length)">{{ t('SEW_NOTE_TARGET_WINDOW_DIFFERS') }}</div>
       </div>
@@ -186,7 +199,8 @@ const btn = 'h-8 px-3 rounded-lg text-sm'
     <PropertyDialog ref="propertyEl" v-model="showProperty" :focus="propertyFocus" @open-performance="showPerformance = true" />
     <PerformanceDialog v-model="showPerformance" />
     <DataCheckDialog v-model="showDataCheck" />
-    <SaveDialog @bar="focusBar" @property="openProperty" />
+    <SaveDialog @bar="focusBar" @property="openProperty" @windows="openPreprocess" />
+    <PreprocessDialog v-model="showPreprocess" :focus="preprocessFocus" />
     <ScenarioDeleteDialog v-model="showDelete" />
   </div>
 </template>

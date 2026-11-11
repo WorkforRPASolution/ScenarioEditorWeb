@@ -22,6 +22,7 @@ function sub(i, goal) {
   if (goal.kind === 'step') return stepSub(goal.uid)
   if (goal.kind === 'bar') return t('SEW_SAVE_ISSUE_BAR')
   if (goal.kind === 'form') return t('SEW_SAVE_ISSUE_FORM')
+  if (goal.kind === 'windows') return t('SEW_SAVE_ISSUE_WINDOWS')
   const p = i.params ?? {}
   return (p.which === 'success' || p.which === 'fail') && p.name ? t('SEW_SAVE_ISSUE_FOLLOW', { which: t(`SEW_SAVE_WHICH_${p.which}`), name: p.name }) : t('SEW_SAVE_ISSUE_PROPERTY')
 }

@@ -19,7 +19,7 @@ import SaveResult from './save/SaveResult.vue'
 import './save/save.css'
 
 defineOptions({ name: 'SaveDialog' })
-const emit = defineEmits(['bar', 'property'])
+const emit = defineEmits(['bar', 'property', 'windows'])
 const flow = useSaveFlow()
 const edit = useEditStore()
 const editor = useEditorStore()
@@ -34,6 +34,7 @@ function go(goal) {
   if (!goal) return
   if (goal.kind === 'step') flow.jump(goal.uid)
   else if (goal.kind === 'form') flow.requestFocus(goal.field)
+  else if (goal.kind === 'windows') { if (flow.close({ keep: true })) emit('windows', goal.which) } // 전처리 설정 창(P2-F)
   else if (flow.close({ keep: true })) emit(goal.kind === 'bar' ? 'bar' : 'property', goal.field)
 }
 

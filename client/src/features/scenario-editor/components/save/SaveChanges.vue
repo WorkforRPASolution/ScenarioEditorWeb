@@ -5,6 +5,7 @@ import { useSaveFlow } from '../../stores/saveFlow'
 import { useEditStore } from '../../stores/editStore'
 import { diffLines } from '../../editor/panel'
 import { propertyDiffs } from '../../editor/propertyView'
+import { windowLabel } from '../../editor/windows'
 import { t } from '../../messages'
 import ChangeText from '../ChangeText.vue'
 
@@ -19,6 +20,8 @@ const minutes = (v) => (v === '' || v === null || v === undefined ? t('SEW_SAVE_
 // 줄 아래 글은 조각 목록이다: { text } 는 글 그대로, { label, before, after } 는 "이름 이전 → 지금"(바뀐 부분만 색 — ChangeText)
 const arrow = (label, before, after) => ({ label, before, after })
 const lineOf = (l) => (l.before === '' && l.after === '' ? { text: l.label } : arrow(l.label, l.before, l.after))
+// 창 조건 한 줄 글(P2-F): 제목 / 클래스 [좌표]
+const winText = (w) => windowLabel(w, { anyTitle: t('SEW_PP_ANY_TITLE'), noClass: t('SEW_PP_NO_CLASS') })
 
 const rows = computed(() => {
   const s = edit.session
@@ -32,6 +35,18 @@ const rows = computed(() => {
     if (c.kind === 'field' && c.key === 'property') {
       // 칸 이름만 늘어놓으면 "켜짐" 같은 이름이 값으로 읽힌다 — 운영 속성 창의 "바뀐 값" 과 같은 글로 이전 → 지금을 보인다(목업 svChanges)
       out.push({ label: t('SEW_SAVE_CHANGE_PROPERTY'), subs: propertyDiffs(s.saveBase?.property, w.property).map((d) => arrow(d.label, d.from, d.to)), goal: { kind: 'property' } })
+    } else if (c.kind === 'field' && c.key === 'targetWindow') {
+      out.push({ label: t('SEW_SAVE_CHANGE_TARGET_WINDOW'), subs: [arrow('', winText(c.before), winText(c.after))], goal: { kind: 'windows', which: 'target' } })
+    } else if (c.kind === 'field' && c.key === 'hidingWindows') {
+      out.push({
+        label: t('SEW_SAVE_CHANGE_HIDING_WINDOWS'),
+        subs: [
+          ...c.changed.map((x) => arrow('', winText(x.before), winText(x.after))),
+          ...c.added.map((x) => ({ text: t('SEW_SAVE_CHANGE_HIDING_ADDED', { text: winText(x) }) })),
+          ...c.removed.map((x) => ({ text: t('SEW_SAVE_CHANGE_HIDING_REMOVED', { text: winText(x) }) }))
+        ],
+        goal: { kind: 'windows', which: null }
+      })
     } else if (c.kind === 'field') {
       const desc = c.key === 'description'
       out.push({ label: t(desc ? 'SEW_SAVE_MAIL_TITLE' : 'SEW_SAVE_TIMEOUT'), subs: [arrow('', (desc ? text : minutes)(c.before), (desc ? text : minutes)(c.after))], goal: { kind: 'bar', field: c.key } })

@@ -119,3 +119,24 @@ export function windowsSummary(w) {
 export function normalizeWindows(w) {
   return { target: pick(w.target), hiding: w.hiding.map((h) => ({ origin: h.origin ?? null, ...pick(h) })) }
 }
+
+// 편집 세션이 없을 때(뼈대만 있는 화면) 바가 쓰는 값: 뼈대 머리의 대상 창 저장값(targetWindow.raw)·숨길 창 저장 목록(hidingWindows)에서 만든다.
+// 서버 windowsModel.viewOf 와 같은 규칙(null·빠진 키 → 빈 값). 대상 창 해석값이 없는 뼈대(새 시나리오·원본이 지워진 초안)는 값을 모른다 → null.
+const rawView = (r) => {
+  const o = r && typeof r === 'object' && !Array.isArray(r) ? r : {}
+  const str = (v) => (typeof v === 'string' ? v : '')
+  const int = (v) => (Number.isInteger(v) && v >= INT32_MIN && v <= INT32_MAX ? v : 0)
+  return { text: str(o.Text), className: str(o.ClassName), checkRect: o.IsCheckRectEqual === true, left: int(o.Left), top: int(o.Top), right: int(o.Right), bottom: int(o.Bottom) }
+}
+export function windowsFromHeader(header) {
+  if (!header?.targetWindow) return null
+  const list = Array.isArray(header.hidingWindows) ? header.hidingWindows : []
+  return { target: rawView(header.targetWindow.raw), hiding: list.map((r, i) => ({ origin: i, ...rawView(r) })) }
+}
+
+// 한 줄 글(저장 창 "바뀐 것"): 제목 / 클래스 [좌표]. 빈 제목·빈 클래스 자리는 부르는 쪽이 준 글로 채운다.
+export function windowLabel(w, { anyTitle, noClass }) {
+  const rect = w.checkRect ? ` [${[w.left, w.top, w.right, w.bottom].join(', ')}]` : ''
+  return `${w.text.trim() || anyTitle} / ${w.className.trim() || noClass}${rect}`
+}
+

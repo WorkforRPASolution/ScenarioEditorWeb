@@ -34,7 +34,9 @@ test('① 공정 권한 안만 보이고, ALL_ACTIONS 가 표·순서도·상세
   await expect(page.getByTestId('se-detail')).toContainText('24:12')
   await expect(page.getByTestId('se-base-image')).toBeVisible()
   await expect(page.getByTestId('se-search-area')).toBeVisible()
-  await expect(page.getByTestId('se-bar-target-window')).toContainText('실행 때 창을 찾지 않음')
+  // 대상 창은 바의 [전처리] 버튼에 요약된다(P2-F) — 저장값이 null/null 이라 "없음", 사내 표시와 다르다는 안내는 그 아래 줄
+  await expect(page.getByTestId('se-bar-preprocess')).toHaveText('전처리: 대상 창 없음 · 숨길 창 0')
+  await expect(page.getByTestId('se-bar-target-window')).toContainText('사내 편집기에서는 대상 창이 "설정"으로 보이지만')
 })
 
 test('② 옛 버전을 열면 "옛 버전" 과 그 버전의 스텝', async ({ page }) => {

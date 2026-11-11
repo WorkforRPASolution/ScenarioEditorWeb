@@ -1,0 +1,50 @@
+/* 전처리 설정 창(목업 2026-11-11-preprocessing-v1). 색 변수·버튼·확인 창은 운영 속성 창(property.css 의 .se-pp)을 함께 쓴다 — 뿌리에 .se-pp .se-pw 를 같이 둔다. */
+.se-pw .se-inp { height: 30px; background: var(--pp-inp); color: var(--pp-ink); border-color: var(--pp-line2); }
+.se-pw .se-inp[disabled] { background: var(--pp-band); color: var(--pp-faint); }
+.se-pw-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.se-pw-link { font-size: 12px; color: var(--pp-pri-ink); text-decoration: underline; white-space: nowrap; }
+.se-pw-ro { background: var(--pp-am-s); color: var(--pp-am); font-size: 12px; padding: 6px 20px; flex: none; }
+.se-pw-sec + .se-pw-sec { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--pp-line); }
+.se-pw-sec h4 { margin: 0 0 2px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.se-pw-cnt { font-weight: 500; font-size: 12px; color: var(--pp-mut); }
+.se-pw-hint { margin: 0 0 10px; font-size: 12px; color: var(--pp-mut); }
+.se-pw-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+.se-pw-f { display: block; font-size: 12px; color: var(--pp-ink2); }
+.se-pw-f > span { display: block; margin-bottom: 3px; }
+.se-pw-state { margin-top: 10px; font-size: 12px; border-radius: 6px; padding: 6px 10px; }
+.se-pw-state.ok { background: var(--pp-ok-s); color: var(--pp-ok); }
+.se-pw-state.warn { background: var(--pp-am-s); color: var(--pp-am); }
+.se-pw-state.none { background: var(--pp-ne-s); color: var(--pp-ne); }
+.se-pw-note { margin-top: 6px; font-size: 12px; color: var(--pp-am); }
+.se-pw-err { margin-top: 6px; font-size: 12px; color: var(--pp-fa); }
+.se-pw-more { margin-top: 10px; font-size: 12px; color: var(--pp-mut); }
+.se-pw-more > summary { cursor: pointer; }
+.se-pw-rect { display: flex; align-items: center; gap: 6px; margin-top: 8px; color: var(--pp-ink2); flex-wrap: wrap; font-size: 12px; }
+.se-pw-rect.tight { margin-top: 0; flex-wrap: nowrap; gap: 4px; }
+.se-pw .se-pw-rect.tight .se-pw-num { width: 50px; padding: 0 5px; }
+.se-pw-rect label { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.se-pw .se-pw-num { width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
+.se-pw-tools { display: flex; gap: 6px; align-items: center; margin: 10px 0 8px; }
+.se-pw .se-pp-btn.sm { height: 28px; padding: 0 10px; font-size: 12px; border-radius: 6px; }
+.se-pw-add { background: var(--pp-band); border: 1px solid var(--pp-line); border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+.se-pw-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.se-pw-table th, .se-pw-table td { padding: 6px 8px; border-bottom: 1px solid var(--pp-line); text-align: left; vertical-align: middle; }
+.se-pw-table th { font-weight: 600; color: var(--pp-mut); background: var(--pp-band); }
+.se-pw-table .no { width: 36px; }
+.se-pw-table .act { width: 130px; white-space: nowrap; text-align: right; }
+.se-pw-table .nowrap { white-space: nowrap; }
+.se-pw-table tr.sel td { background: var(--pp-pri-s); }
+.se-pw-table tr.ed td { background: var(--pp-band); }
+.se-pw-table tbody tr:not(.ed) { cursor: pointer; }
+.se-pw-table .faint { color: var(--pp-faint); }
+.se-pw-table .bad { color: var(--pp-fa); }
+.se-pw-pill { display: inline-block; border-radius: 9999px; font-size: 11px; font-weight: 600; padding: 0 8px; line-height: 18px; white-space: nowrap; }
+.se-pw-pill.ok { background: var(--pp-ok-s); color: var(--pp-ok); }
+.se-pw-pill.warn { background: var(--pp-am-s); color: var(--pp-am); }
+.se-pw-pill.bad { background: var(--pp-fa-s); color: var(--pp-fa); }
+.se-pw-pill.new { background: var(--pp-pri-s2); color: var(--pp-pri-ink); }
+.se-pw .se-pw-x { background: transparent; border: 0; color: var(--pp-mut); border-radius: 6px; height: 26px; padding: 0 6px; font-size: 12px; }
+.se-pw .se-pw-x:hover { background: var(--pp-ne-s); color: var(--pp-ink); }
+.se-pw .se-pw-x.del:hover { background: var(--pp-fa-s); color: var(--pp-fa); }
+.se-pw-empty { padding: 18px; text-align: center; color: var(--pp-faint); font-size: 12px; }
+.se-pw-foot { font-size: 12px; color: var(--pp-mut); }
