@@ -18,7 +18,7 @@ import { imageStep, noneStep } from './panelFixture'
 enableAutoUnmount(afterEach) // 화면이 beforeunload 감시자를 달므로 시험마다 내린다
 const ok = (data) => Promise.resolve({ data: { data } })
 const stubs = { ScenarioBar: true, LoadDialog: true, NewScenarioDialog: true, StepTable: true, StepFlow: true, StepViewer: true, StepDetail: true, StepPanel: true, StepToolbar: true, EditDialogs: true, MultiSelection: true }
-const mountView = () => shallowMount(ScenarioEditorView, { global: { stubs: { ...stubs, StatePanel: false, SplitGutter: false } } })
+const mountView = () => shallowMount(ScenarioEditorView, { global: { stubs: { ...stubs, StatePanel: false, SplitGutter: false, ViewerModeTabs: false } } })
 const skeletonOf = (name, crtime = 5, isCurrent = false) => ({ process: 'P', model: 'M', name, version: { crtime, isCurrent }, steps: [], notes: [] })
 const defer = () => { let resolve; const promise = new Promise((res) => { resolve = res }); return { promise, resolve } }
 
@@ -125,6 +125,87 @@ describe('ScenarioEditorView', () => {
       await w.find('[data-testid="se-snapshot-rail"]').trigger('click')
       await flushPromises()
       expect(w.findComponent({ name: 'SnapshotPanel' }).props('prefer')).toEqual({ process: 'P', model: 'M' })
+    })
+  })
+  describe('큰 화면 모드 — 스텝 그림 | 스냅샷 (P3-B)', () => {
+    const shownOf = (w, name) => w.findComponent({ name }).element.parentElement.style.display !== 'none'
+    const editedOf = (sk) => ({ source: { process: sk.process, model: sk.model, name: sk.name, crtime: sk.version.crtime, fileId: 'F' }, headCrtime: sk.version.crtime, header: { description: '', timeoutLimit: '1' }, steps: [], property: {} })
+    const openScenario = async (steps = []) => {
+      api.me.mockReturnValue(ok({ singleid: 'u', canWrite: true }))
+      route.query = { p: 'P', m: 'M', n: 'N' }
+      const sk = { ...skeletonOf('N', 5, true), steps }
+      api.open.mockReturnValue(ok({ ...sk, edited: { ...editedOf(sk), steps } }))
+      const w = mountView(); await flushPromises()
+      return w
+    }
+    it('시나리오가 없을 때도 탭 줄이 있고, [스냅샷] 을 누르면 스냅샷 보기가 보이고 스텝 쪽은 숨는다 — 둘 다 그려 둔 채다', async () => {
+      const w = mountView(); await flushPromises()
+      const snap = useSnapshotStore()
+      expect(w.find('[data-testid="se-mode-step"]').attributes('aria-pressed')).toBe('true')
+      expect(shownOf(w, 'SnapshotViewer')).toBe(false)
+      expect(w.find('[data-testid="se-empty"]').exists()).toBe(true)
+      await w.find('[data-testid="se-mode-snapshot"]').trigger('click')
+      expect(snap.mode).toBe('snapshot')
+      expect(shownOf(w, 'SnapshotViewer')).toBe(true)
+      expect(w.find('[data-testid="se-empty"]').exists()).toBe(true) // 숨겼을 뿐 지우지 않는다
+      expect(w.find('[data-testid="se-empty"]').element.closest('[data-testid="se-mode-pane-step"]').style.display).toBe('none')
+    })
+    it('시나리오가 열려 있으면 탭은 스텝 그림 머리 줄에 넣는다(lead 슬롯)', async () => {
+      const w = await openScenario()
+      expect(w.findComponent({ name: 'StepViewer' }).exists()).toBe(true)
+      expect(w.find('[data-testid="se-mode-bar"]').exists()).toBe(false)
+    })
+    it('스냅샷 모드에서 스텝 표·순서도 영역을 누르면 스텝 그림으로 돌아온다', async () => {
+      const w = await openScenario()
+      const snap = useSnapshotStore()
+      snap.showSnapshot()
+      await w.vm.$nextTick()
+      expect(shownOf(w, 'StepViewer')).toBe(false)
+      await w.find('[data-testid="se-steps-area"]').trigger('click')
+      expect(snap.mode).toBe('step')
+      expect(shownOf(w, 'StepViewer')).toBe(true)
+    })
+    it('고른 스텝이 바뀌면(↑↓·순서도 등) 스텝 그림으로 돌아온다', async () => {
+      const w = await openScenario([noneStep('a'), noneStep('b')])
+      const snap = useSnapshotStore()
+      snap.showSnapshot()
+      useEditorStore().selectedUid = 'b'
+      await w.vm.$nextTick()
+      expect(snap.mode).toBe('step')
+    })
+    it('다른 시나리오를 열기 시작하면 스텝 그림으로 돌아온다(여는 중 표시가 보이게)', async () => {
+      const w = await openScenario()
+      const snap = useSnapshotStore()
+      snap.showSnapshot()
+      const gate = defer()
+      api.open.mockReturnValue(gate.promise)
+      useEditorStore().openScenario({ process: 'P', model: 'M', name: 'B' })
+      await w.vm.$nextTick()
+      expect(snap.mode).toBe('step')
+      gate.resolve({ data: { data: skeletonOf('B', 6, true) } })
+      await flushPromises()
+    })
+    it('잡기나 새 스텝을 시작하면 스텝 그림으로 돌아온다', async () => {
+      const w = await openScenario([imageStep('a')])
+      const snap = useSnapshotStore()
+      const edit = useEditStore()
+      snap.showSnapshot()
+      edit.capture = { flow: ['area'], stage: 'area', why: null, before: null, train: null }
+      await w.vm.$nextTick()
+      expect(snap.mode).toBe('step')
+      edit.capture = null
+      snap.showSnapshot()
+      edit.startNew('none')
+      await w.vm.$nextTick()
+      expect(snap.mode).toBe('step')
+    })
+    it('스냅샷을 고르는 것만으로는(스텝 쪽 변화 없이) 스텝 그림으로 돌아가지 않는다', async () => {
+      const w = await openScenario([noneStep('a')])
+      const snap = useSnapshotStore()
+      snap.showSnapshot()
+      await w.vm.$nextTick()
+      await flushPromises()
+      expect(snap.mode).toBe('snapshot')
     })
   })
   it('경계선 안내 문구는 문구 목록에서 온다', async () => {

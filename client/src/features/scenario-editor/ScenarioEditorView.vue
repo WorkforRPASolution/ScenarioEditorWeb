@@ -20,6 +20,8 @@ import MultiSelection from './components/MultiSelection.vue'
 import EditDialogs from './components/EditDialogs.vue'
 import NewScenarioDialog from './components/NewScenarioDialog.vue'
 import SnapshotPanel from './components/snapshot/SnapshotPanel.vue'
+import SnapshotViewer from './components/snapshot/SnapshotViewer.vue'
+import ViewerModeTabs from './components/snapshot/ViewerModeTabs.vue'
 
 defineOptions({ name: 'ScenarioEditorView' })
 const store = useEditorStore()
@@ -108,6 +110,13 @@ watch(() => store.skeleton, (sk) => {
   if (sk && active) writeQuery(sk)
 })
 
+// 큰 화면 모드(P3 설계 §4.1): 스냅샷을 고르면 스냅샷으로(저장소 select), 스텝 쪽에서 무언가 하면 스텝 그림으로 저절로 돌아온다 —
+// 고른 스텝이 바뀜, 시나리오 열기를 시작함, 잡기·새 스텝을 시작함, 스텝 표·순서도 안을 누름(같은 줄을 다시 눌러도).
+watch(() => store.selectedUid, (uid) => { if (uid) snap.showStep() })
+watch(() => store.opening, (o) => { if (o) snap.showStep() })
+watch(() => !!edit.capture, (on) => { if (on) snap.showStep() })
+watch(() => (edit.panel?.isNew ? edit.panel.uid : null), (uid) => { if (uid) snap.showStep() })
+
 const retry = () => store.openError && reopen(store.openError.target)
 // 불러오기 창이 열린 시나리오를 지웠다 — 편집 화면은 읽기 전용이고 고친 곳은 볼 수만 있다(목업 "열린 시나리오 지우기")
 const deleted = computed(() => edit.session?.readOnly === 'deleted')
@@ -138,11 +147,20 @@ const card = 'bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:
         </template>
         <!-- 가운데 -->
         <div class="flex flex-col min-h-0 min-w-0">
+          <!-- 큰 화면: 스텝 그림 | 스냅샷. 두 쪽을 모두 그려 두고 숨긴다 — 모드를 오가도 확대·선택이 남는다 -->
           <section v-show="!store.expanded" :class="card" class="flex-1 min-h-0 overflow-hidden">
-            <StatePanel v-if="store.opening" kind="opening" :started-at="store.opening.startedAt" />
-            <StatePanel v-else-if="store.openError" kind="error" :message="store.openError.message" @retry="retry" />
-            <StatePanel v-else-if="!store.skeleton" kind="empty" :can-create="!!store.me?.canWrite" @load="loadOpen = true" @new="openNew" />
-            <StepViewer v-else />
+            <div v-show="snap.mode === 'snapshot'" class="h-full"><SnapshotViewer /></div>
+            <div v-show="snap.mode !== 'snapshot'" class="h-full flex flex-col" data-testid="se-mode-pane-step">
+              <template v-if="store.opening || store.openError || !store.skeleton">
+                <div class="h-10 px-3 flex items-center border-b border-gray-200 dark:border-dark-border shrink-0" data-testid="se-mode-bar"><ViewerModeTabs /></div>
+                <div class="flex-1 min-h-0">
+                  <StatePanel v-if="store.opening" kind="opening" :started-at="store.opening.startedAt" />
+                  <StatePanel v-else-if="store.openError" kind="error" :message="store.openError.message" @retry="retry" />
+                  <StatePanel v-else kind="empty" :can-create="!!store.me?.canWrite" @load="loadOpen = true" @new="openNew" />
+                </div>
+              </template>
+              <StepViewer v-else><template #lead><ViewerModeTabs /></template></StepViewer>
+            </div>
           </section>
           <SplitGutter v-show="!store.expanded" direction="h" testid="se-gutter-s" @start="startDrag('sh', $event, -1, 'y')" @reset="reset('sh')" />
           <section :class="card" class="flex flex-col min-h-0 shrink-0" :style="{ height: store.expanded ? '100%' : `${sizes.sh}px` }">
@@ -155,7 +173,7 @@ const card = 'bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:
               <StepToolbar v-if="edit.editable" @new="edit.startNew" />
               <button data-testid="se-expand" class="shrink-0 text-xs px-2 h-7 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300" @click="store.expanded = !store.expanded">{{ store.expanded ? '⤡ 줄이기' : '⤢ 넓게' }}</button>
             </div>
-            <div class="flex-1 min-h-0">
+            <div class="flex-1 min-h-0" data-testid="se-steps-area" @click.capture="snap.showStep()">
               <StepTable v-if="store.view === 'table'" />
               <StepFlow v-else />
             </div>

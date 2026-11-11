@@ -123,6 +123,8 @@ defineExpose({ onLoad, fit })
         </button>
       </template>
       <template v-else>
+        <!-- 큰 화면 모드 탭(스텝 그림 | 스냅샷, P3) — 화면이 넣는다. 잡는 중에는 단계 띠가 이 자리를 쓴다 -->
+        <slot name="lead" />
         <span v-if="isNew" class="font-semibold text-gray-800 dark:text-gray-100">{{ t('SEW_CAP_NEW_TITLE') }}</span>
         <span v-else-if="step" class="font-semibold text-gray-800 dark:text-gray-100">스텝 {{ step.no }} 기준 화면</span>
         <span v-if="adjustHint" class="text-gray-500 truncate">{{ t('SEW_CAP_ADJUST_HINT') }}</span>
