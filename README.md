@@ -52,17 +52,20 @@ copy client\.env.example client\.env
 notepad server\.env
 ```
 
-메모장에서 `<...>` 자리를 채우고 저장한다.
+메모장에서 `<...>` 자리를 채우고 저장한다. 파일은 구역 `[1]`~`[8]` 로 나뉘어 있고 채울 줄에는 `[채움]` 이 적혀 있다. 맨 위 "채울 곳" 에 시험별로 채울 변수가 있다. 아래 표의 구역 번호가 그 파일의 구역이다.
 
-| 변수 | 넣을 값 |
-|---|---|
-| `MONGODB_URI` | 운영 EARS 주소. 사내 WebManager 설정의 `MONGODB_URI` 형식 그대로. 읽기 전용 계정이 있으면 그것을 쓴다 |
-| `REDIS_URL` | 운영 Redis DB0. 사내 WebManager 설정의 `REDIS_URL` 형식 그대로. Sentinel 이면 `{호스트:포트},{호스트:포트}#master이름` 꼴이고 `REDIS_PASSWORD=` 줄을 더한다 |
-| `SE_USER_SINGLEID` | 본인 SingleID. 이 사용자의 공정·권한으로 보인다 |
-| `SE_WEBMANAGER_DB` | **반드시 `0` 그대로 둔다** |
-| `SE_WEB_DB_URI` | 읽기 시험에서는 비워 둔다(쓰기 시험 때 채운다) |
+| 구역 | 변수 | 넣을 값 |
+|---|---|---|
+| [2] | `MONGODB_URI` | 운영 EARS 주소. 사내 WebManager 설정의 `MONGODB_URI` 형식 그대로. 읽기 전용 계정이 있으면 그것을 쓴다 |
+| [3] | `REDIS_URL` | 운영 Redis DB0. 사내 WebManager 설정의 `REDIS_URL` 형식 그대로. Sentinel 이면 `{호스트:포트},{호스트:포트}#master이름` 꼴이고 `REDIS_PASSWORD=` 줄을 더한다 |
+| [4] | `SE_USER_SINGLEID` | 본인 SingleID. 이 사용자의 공정·권한으로 보인다 |
+| [5] | `SE_WEBMANAGER_DB` | **반드시 `0` 그대로 둔다** |
+| [5] | `SE_WEB_DB_URI` | 읽기 시험에서는 비워 둔다(쓰기 시험 때 채운다) |
+| [6] | `EARS_INTERFACE_URL` | 읽기 시험에서는 부르지 않으므로 `<...>` 그대로 두어도 된다(쓰기 시험 때 채운다) |
 
 `HOST=127.0.0.1` 도 그대로 둔다(인증 없는 서버라 이 PC 안에서만 받는다). `client\.env` 는 고칠 것이 없다.
+
+`server\.env.example` 은 맥 로컬 개발용이라 사내에서는 쓰지 않는다. 두 파일은 구역과 변수 순서가 같고, 웹 전용 DB 주소를 넣는 변수만 다르다(구역 `[5]` 의 설명 — 사내는 `SE_WEB_DB_URI`, 로컬 개발은 `WEBMANAGER_DB_URI`).
 
 ### 5. 실행·확인
 
@@ -144,20 +147,20 @@ db.runCommand({ connectionStatus: 1 }).authInfo.authenticatedUserRoles
 
 ### 3. 설정
 
-읽기 시험의 `server\.env` 에 더한다(없으면 `copy server\.env.inhouse.example server\.env`).
+읽기 시험 때 만든 `server\.env` 를 이어 쓴다(없으면 `copy server\.env.inhouse.example server\.env`). **이어 쓸 때는 `server\.env.inhouse.example` 과 구역별로 견주어 빠진 줄을 옮겨 적는다** — 읽기 시험에서 손대지 않은 구역 `[5]`·`[6]` 의 줄이 없거나 비어 있을 수 있다. `EARS_INTERFACE_URL` 줄이 없으면 서버가 `http://localhost:8080` 으로 보내 배포·삭제가 "저장 서버에 연결하지 못했습니다" 로 끝난다(2026-11-10 사내 첫 배포가 이랬다). 사전 점검(4)이 빠진 값을 멈춤으로 알린다.
 
 ```bat
 notepad server\.env
 ```
 
-| 변수 | 넣을 값 |
-|---|---|
-| `MONGODB_URI` | 운영 EARS, 기존 계정(사내 WebManager 의 `MONGODB_URI` 와 같은 형식): `mongodb://<계정>:<비밀번호>@<호스트>:<포트>/EARS`. 원래 주소에 `?authSource=…` 가 있으면 그대로 둔다 |
-| `SE_WEB_DB_URI` | 사내 WebManager 의 `WEBMANAGER_DB_URI` 값을 **그대로** 넣는다(DB 이름·계정·`authSource` 가 이미 맞다). `WEBMANAGER_DB_URI` 라는 변수를 새로 만들지 않고 이 변수에 넣는다. `MONGODB_URI` 의 계정을 쓰려면 DB 이름만 WebManager DB 이름으로 바꾸고, **`authSource` 가 없으면 끝에 `?authSource=EARS` 를 붙인다**(안 붙이면 인증에 실패해 서버가 뜨지 않는다) |
-| `EARS_INTERFACE_URL` | 사내 InterfaceServer 주소. **`http://<호스트>:<포트>` 까지만** 적는다 — 앞의 `http://` 를 빼거나 뒤에 `/EARS/Interface`·`/` 를 붙이지 않는다(서버가 붙인다). 사내 WebManager 설정과 같은 값을 쓰되, 그 값이 이 PC 에서 닿지 않으면(쿠버네티스 안쪽 이름 등) 이 PC 의 데스크톱 편집기가 쓰는 주소를 쓴다: 데스크톱 편집기 로그의 `EARSInterfaceSrv: <호스트>:<포트>` 줄(시작할 때 찍는다) 앞에 `http://` 를 붙인다 |
-| `EARS_INTERFACE_MAX_REQUEST_MB` | 사내 InterfaceServer 의 `max-content-length`(MB). 모르면 `100` 그대로 |
-| `SE_USER_SINGLEID` | WRITE 권한이 있는 본인 SingleID |
-| 그대로 둘 것 | `HOST=127.0.0.1` · `SE_WEBMANAGER_DB=0` · `SE_DEV_USER_OVERRIDE=0` |
+| 구역 | 변수 | 넣을 값 |
+|---|---|---|
+| [2] | `MONGODB_URI` | 운영 EARS, 기존 계정(사내 WebManager 의 `MONGODB_URI` 와 같은 형식): `mongodb://<계정>:<비밀번호>@<호스트>:<포트>/EARS`. 원래 주소에 `?authSource=…` 가 있으면 그대로 둔다 |
+| [5] | `SE_WEB_DB_URI` | 사내 WebManager 의 `WEBMANAGER_DB_URI` 값을 **그대로** 넣는다(DB 이름·계정·`authSource` 가 이미 맞다). `WEBMANAGER_DB_URI` 라는 변수를 새로 만들지 않고 이 변수에 넣는다. `MONGODB_URI` 의 계정을 쓰려면 DB 이름만 WebManager DB 이름으로 바꾸고, **`authSource` 가 없으면 끝에 `?authSource=EARS` 를 붙인다**(안 붙이면 인증에 실패해 서버가 뜨지 않는다) |
+| [6] | `EARS_INTERFACE_URL` | 사내 InterfaceServer 주소. **`http://<호스트>:<포트>` 까지만** 적는다 — 앞의 `http://` 를 빼거나 뒤에 `/EARS/Interface`·`/` 를 붙이지 않는다(서버가 붙인다). 사내 WebManager 설정과 같은 값을 쓰되, 그 값이 이 PC 에서 닿지 않으면(쿠버네티스 안쪽 이름 등) 이 PC 의 데스크톱 편집기가 쓰는 주소를 쓴다: 데스크톱 편집기 로그의 `EARSInterfaceSrv: <호스트>:<포트>` 줄(시작할 때 찍는다) 앞에 `http://` 를 붙인다 |
+| [6] | `EARS_INTERFACE_MAX_REQUEST_MB` | 사내 InterfaceServer 의 `max-content-length`(MB). 모르면 `100` 그대로 |
+| [4] | `SE_USER_SINGLEID` | WRITE 권한이 있는 본인 SingleID |
+| [1]·[4]·[5] | 그대로 둘 것 | `HOST=127.0.0.1` · `SE_DEV_USER_OVERRIDE=0` · `SE_WEBMANAGER_DB=0` |
 
 ### 4. 사전 점검
 
@@ -222,7 +225,7 @@ npm run dev
 8. **데스크톱 판을 웹으로**: 데스크톱에서 스텝 설명 하나만 바꿔 서버에 저장한다(사용 꺼짐 그대로). 웹에서 그 시나리오를 다시 열어(불러오기 창 → 현재 버전) 바뀐 설명과 그림이 보이는지 본다.
 9. **고쳐 배포**: 웹에서 이미지 스텝 하나를 골라 기준 화면에서 찾을 그림을 [다시 잡기]로 새로 자르고 배포한다. 확인 창은 6번과 같은 조건일 때만 [배포].
 10. **데스크톱으로 다시 열기**: 새로 자른 찾을 그림이 데스크톱에 보이는지 본다.
-11. **지우기**: 웹 불러오기 창에서 `SEW_TEST_<날짜>` 행을 고르고, 오른쪽 칸 맨 위 이름이 그 이름인지 본 뒤 [시나리오 지우기…] → 시나리오 이름을 그대로 입력 → [지우기]. 끝나면 4 의 조회 두 줄을 다시 돌려 둘 다 `0` 인지 본다. Redis 에 남은 판 기록은 지우지 않고 적기만 한다.
+11. **지우기**: 웹 불러오기 창에서 `SEW_TEST_<날짜>` 행을 고르고, 오른쪽 칸 맨 위 이름이 그 이름인지 본 뒤 [시나리오 지우기…] → 시나리오 이름을 따라 친다(맞게 치는 동안 남은 글자가 회색으로 보인다) → [지우기]. [내 초안도 함께 지웁니다] 가 보이면(그 이름의 내 초안이 남아 있을 때) 체크한다. 끝나면 4 의 조회 두 줄을 다시 돌려 둘 다 `0` 인지 본다. Redis 에 남은 판 기록은 지우지 않고 적기만 한다.
 12. **정리**: 서버를 끄고 임시 컬렉션 네 개를 지운다. 지우기 전에 `SCENARIO_EDITOR_DEPLOYS` 의 배포 기록을 결과와 함께 적어 둔다. **`dropDatabase` 는 절대 쓰지 않는다 — WebManager DB 전체가 지워진다.** 아래 한 줄만 친다(`WEB_MANAGER` 는 실제 이름으로). 줄마다 `true` 면 지운 것이고, `false` 는 그 컬렉션이 없었다는 뜻이다.
     ```js
     var w = db.getSiblingDB('WEB_MANAGER'); ['SCENARIO_EDITOR_DRAFTS', 'SCENARIO_EDITOR_DEPLOYS', 'seDraftImages.files', 'seDraftImages.chunks'].forEach(function (c) { print(c, w.getCollection(c).drop()) })
@@ -231,7 +234,8 @@ npm run dev
 ### 7. 하지 말 것
 
 - `SEW_TEST_<날짜>` 말고 다른 시나리오에 배포하지 않는다. 확인 창의 ID 가 다르거나 "덮어씁니다"·"켜져 있는 시나리오입니다." 가 보이면 [돌아가기]. 1번에서 연 운영 시나리오에서는 [저장]을 누르지 않는다.
-- [시나리오 지우기…]는 `SEW_TEST_<날짜>` 행에서만 쓴다. 그 이름의 문서와 모든 판이 지워지고 되살릴 수 없다.
+- [시나리오 지우기…]는 `SEW_TEST_<날짜>` 에만 쓴다. 그 이름의 문서와 모든 판이 지워지고 되살릴 수 없다. 이 단추는 두 곳에 있다 — 불러오기 창 오른쪽 칸(고른 행을 지운다)과 편집 화면 위쪽 바 맨 끝(**지금 열려 있는 시나리오**를 지운다). 1번에서 연 운영 시나리오가 열려 있는 동안 위쪽 바의 것을 누르지 않는다. 눌렀으면 확인 창에서 이름을 치지 않고 닫는다.
+- 불러오기 창의 [초안만 남은 것 정리]는 웹 전용 DB 의 내 초안만 지운다(운영 EARS 에는 쓰지 않는다). 시험에 필요하지는 않다.
 - 켜지 않는다(운영 속성 켜짐, 불러오기 창 켜기). 켜면 설비에서 실행될 수 있다.
 - 불러오기 창의 켜짐 스위치를 누르지 않고, 그 창에서 키보드(Tab·Space·Enter)를 쓰지 않는다. 심의·성과 저장도 하지 않는다. 모두 운영 EARS 에 바로 쓴다.
 - 운영 Mongo 셸에는 이 절차에 적힌 줄만 친다. 기존 계정은 EARS 와 WebManager DB 를 고치거나 지울 수 있다.
