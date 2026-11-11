@@ -44,7 +44,7 @@ describe('ScenarioEditorView', () => {
   it('열린 시나리오가 없으면 빈 상태', async () => {
     const w = mountView(); await flushPromises()
     expect(w.find('[data-testid="se-empty"]').exists()).toBe(true)
-    expect(w.find('[data-testid="se-snapshot-rail"]').text()).toContain('스냅샷 — 준비 중')
+    expect(w.find('[data-testid="se-snapshot-rail"]').text()).toBe('스냅샷')
   })
   it('미등록 사용자는 전체 안내만', async () => {
     api.me.mockRejectedValue({ response: { status: 403, data: { code: 'USER_NOT_REGISTERED' } } })

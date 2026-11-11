@@ -45,6 +45,7 @@ const NOTE_CODES = ['CONDITION_UNKNOWN', 'ACTION_INVALID', 'OCR_OP_NONE', 'PARSE
   'BASE_IMAGE_MISSING', 'KEY_CODE_UNKNOWN', 'PRIORITY_NONSTANDARD', 'TARGET_WINDOW_DIFFERS', 'HIDING_WINDOW_NOT_FOUND', 'HIDING_WINDOW_SPACE', 'HIDING_WINDOW_FIXED_SIZE']
 const ERROR_CODES = ['USER_NOT_REGISTERED', 'PROCESS_FORBIDDEN', 'MASTER_REQUIRED', 'HOST_FORBIDDEN', 'ORIGIN_FORBIDDEN', 'FILE_DAMAGED', 'NOT_FOUND', 'DATA_INVALID', 'UPSTREAM_DOWN', 'UPSTREAM_TIMEOUT', 'UPSTREAM_FAILED', 'BAD_REQUEST', 'NETWORK', 'TIMEOUT', 'UNKNOWN']
 
+import { FILTERS } from '../editor/snapshotList'
 describe('messages', () => {
   it('경고·알림 코드 22개 모두 문구가 있다', () => {
     for (const c of NOTE_CODES) expect(noteMessage({ code: c, params: {} })).not.toMatch(/^\[/)
@@ -134,7 +135,7 @@ describe('messages', () => {
     expect(fieldMessage({ code: 'NEXT_UNRESOLVED' })).toBe('갈 곳을 고르세요.')
   })
   it('P2 편집 코드(편집기·편집 저장소·편집 부품)에는 화면 문구(한글 글자)를 직접 쓰지 않는다 — 문구는 messages.js 한 곳', () => {
-    const files = import.meta.glob(['../editor/*.js', '../stores/editStore.js', '../stores/saveFlow.js', '../stepRows.js', '../components/{StepToolbar,TargetPicker,EditDialogs,MultiSelection,StepPanel,CaptureLayer,SaveDialog,NewScenarioDialog}.vue', '../components/panel/**/*.vue', '../components/save/*.vue', '../components/newScenario/*.vue', '../components/load/*.vue'],
+    const files = import.meta.glob(['../editor/*.js', '../stores/editStore.js', '../stores/saveFlow.js', '../stepRows.js', '../components/{StepToolbar,TargetPicker,EditDialogs,MultiSelection,StepPanel,CaptureLayer,SaveDialog,NewScenarioDialog}.vue', '../components/panel/**/*.vue', '../components/save/*.vue', '../components/newScenario/*.vue', '../components/load/*.vue', '../stores/snapshotStore.js', '../components/snapshot/*.vue'],
       { query: '?raw', import: 'default', eager: true })
     expect(Object.keys(files).length).toBeGreaterThan(30)
     const bad = []
@@ -149,6 +150,18 @@ describe('messages', () => {
     expect(body).toContain(`[${t('SEW_EDIT_GUARD_NEW_KEEP')}]`)
     expect(body).toContain(t('SEW_PANEL_NEW_WHERE'))
     expect(body).toContain(`[${t('SEW_PANEL_NEW_ADD')}]`)
+  })
+  it('스냅샷 문구(P3 설계 §4·§9): 태그 알약 다섯·거르기·모드 탭·설계가 글을 정한 안내', () => {
+    expect(['start', 'success', 'stop', 'fail', 'skip'].map((k) => t(`SEW_SNAP_TAG_${k}`))).toEqual(['시작', '성공', '중지', '실패', '건너뜀'])
+    for (const f of FILTERS) expect(MESSAGES[`SEW_SNAP_FILTER_${f}`], f).toBeDefined()
+    expect([t('SEW_SNAP_MODE_step'), t('SEW_SNAP_MODE_snapshot')]).toEqual(['스텝 그림', '스냅샷'])
+    expect(t('SEW_SNAP_NO_TAG')).toBe('이 날에는 태그 스냅샷이 없습니다.')
+    expect(t('SEW_SNAP_NO_RECENT')).toBe('최근 15일 안에 스냅샷이 없습니다.')
+    expect(t('SEW_SNAP_LIST_FAILED')).toBe('목록을 받지 못했습니다.')
+    expect(t('SEW_SNAP_EMPTY_DAY')).toBe('스냅샷이 없습니다.')
+    expect(t('SEW_SNAP_EXPIRES', { n: 2 })).toBe('2일 뒤 삭제')
+    expect(t('SEW_UI_SNAPSHOT_RAIL')).toBe('스냅샷')
+    expect(t('SEW_SNAP_WEEKDAYS')).toHaveLength(7)
   })
   it('화면 코드가 쓰는 문구 키가 모두 있다', () => {
     const sources = import.meta.glob(['../**/*.vue', '../**/*.js', '!../tests/**'], { query: '?raw', import: 'default', eager: true })
