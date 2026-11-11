@@ -45,21 +45,22 @@ defineExpose({ onLoad, fit })
   <div class="h-full flex flex-col" data-testid="se-snap-viewer">
     <div class="h-10 px-3 flex items-center gap-2 border-b border-gray-200 dark:border-dark-border text-xs shrink-0">
       <ViewerModeTabs />
-      <div v-if="item" class="flex items-center gap-x-3 min-w-0 overflow-hidden whitespace-nowrap text-gray-600 dark:text-gray-300" data-testid="se-snap-info">
-        <b class="text-gray-800 dark:text-gray-100">{{ snap.eqpId }}</b>
-        <span class="tabular-nums">{{ snap.date }} <b class="text-gray-800 dark:text-gray-100">{{ item.time }}</b></span>
-        <span>{{ item.shift }}</span>
-        <span v-if="item.kind === 'tag'" class="se-pill" :class="`se-snap-tag-${item.tag}`" data-testid="se-snap-tag">{{ t(`SEW_SNAP_TAG_${item.tag}`) }}</span>
-        <span v-else class="tabular-nums">{{ t('SEW_SNAP_INFO_CLICK', { x: item.x, y: item.y }) }}</span>
-        <span v-if="natural && src" class="tabular-nums">{{ t('SEW_SNAP_INFO_SIZE', { w: natural.w, h: natural.h }) }}</span>
-        <span v-if="snap.position >= 0" class="tabular-nums">{{ t('SEW_SNAP_INFO_POS', { i: snap.position + 1, n: count }) }}</span>
-      </div>
       <div class="ml-auto flex gap-1 shrink-0">
         <button type="button" class="w-7 h-7 rounded-lg bg-gray-200 dark:bg-gray-700" :title="t('SEW_SNAP_ZOOM_IN')" data-testid="se-snap-zoom-in" @click="zoomButton(1.25)">＋</button>
         <button type="button" class="w-7 h-7 rounded-lg bg-gray-200 dark:bg-gray-700" :title="t('SEW_SNAP_ZOOM_OUT')" data-testid="se-snap-zoom-out" @click="zoomButton(0.8)">－</button>
         <button type="button" class="h-7 px-2 rounded-lg bg-gray-200 dark:bg-gray-700" data-testid="se-snap-zoom-fit" @click="fit">{{ t('SEW_SNAP_ZOOM_FIT') }}</button>
         <button type="button" class="h-7 px-2 rounded-lg bg-gray-200 dark:bg-gray-700" :title="t('SEW_SNAP_ZOOM_ACTUAL_HINT')" data-testid="se-snap-zoom-actual" @click="actual">{{ t('SEW_SNAP_ZOOM_ACTUAL') }}</button>
       </div>
+    </div>
+    <!-- 정보 줄: 머리 줄에 함께 넣으면 패널을 펼친 화면에서 좌표·크기·순번이 잘려 제 줄에 둔다 -->
+    <div v-if="item" class="px-3 py-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-dark-border shrink-0" data-testid="se-snap-info">
+      <b class="text-gray-800 dark:text-gray-100">{{ snap.eqpId }}</b>
+      <span class="tabular-nums">{{ snap.date }} <b class="text-gray-800 dark:text-gray-100">{{ item.time }}</b></span>
+      <span>{{ item.shift }}</span>
+      <span v-if="item.kind === 'tag'" class="se-pill" :class="`se-snap-tag-${item.tag}`" data-testid="se-snap-tag">{{ t(`SEW_SNAP_TAG_${item.tag}`) }}</span>
+      <span v-else class="tabular-nums">{{ t('SEW_SNAP_INFO_CLICK', { x: item.x, y: item.y }) }}</span>
+      <span v-if="natural && src" class="tabular-nums">{{ t('SEW_SNAP_INFO_SIZE', { w: natural.w, h: natural.h }) }}</span>
+      <span v-if="snap.position >= 0" class="tabular-nums">{{ t('SEW_SNAP_INFO_POS', { i: snap.position + 1, n: count }) }}</span>
     </div>
     <div ref="box" class="flex-1 min-h-0 relative overflow-hidden bg-gray-50 dark:bg-dark-bg select-none" @wheel.prevent="onWheel" @mousedown="onDown">
       <div v-if="!item" class="h-full flex items-center justify-center text-sm text-gray-400 px-6 text-center" data-testid="se-snap-empty">{{ snap.open ? t('SEW_SNAP_VIEW_EMPTY') : t('SEW_SNAP_VIEW_NO_PANEL') }}</div>
