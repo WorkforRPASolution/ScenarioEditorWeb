@@ -58,6 +58,48 @@ describe('LoadDialog', () => {
     const sum = cols.reduce((n, c) => n + (c.width ?? c.minWidth), 0) + 104
     expect(sum).toBeLessThanOrEqual(1520 - 16)
   })
+  // 2026-11-11 사용자: "트리거, 유형, 켜짐이 모두 같은색에 글자만 달라 구분이 잘 안되" → 열마다 모양을 다르게(예시 확인 뒤 "제안대로 진행하자")
+  describe('트리거·유형·켜짐 열은 모양이 다르다', () => {
+    const colsOf = async () => { const { w } = setup(); await flushPromises(); return w.findComponent({ name: 'AgGridVue' }).props('columnDefs') }
+    const cell = (cols, field, data) => {
+      const c = cols.find((x) => x.field === field)
+      const value = data[field]
+      const valueFormatted = c.valueFormatter ? c.valueFormatter({ data, value }) : null
+      return c.cellRenderer({ data, value, valueFormatted })
+    }
+    it('트리거: 값마다 색이 다른 알약 — NA 는 알약 없이 흐린 글씨, 값이 없으면 빈칸, 모르는 값은 글 그대로', async () => {
+      const cols = await colsOf()
+      for (const name of ['Log', 'RV', 'EqState', 'Time', 'Scenario', 'Manual']) {
+        const el = cell(cols, 'triggerName', { triggerName: name })
+        expect([el.tagName, el.className, el.textContent]).toEqual(['SPAN', `se-load-tg se-load-tg-${name}`, name])
+      }
+      const na = cell(cols, 'triggerName', { triggerName: 'NA' })
+      expect([na.className, na.textContent]).toEqual(['se-load-dim', 'NA'])
+      expect(cell(cols, 'triggerName', { triggerName: null })).toBe('')
+      expect(cell(cols, 'triggerName', {})).toBe('') // 초안만 줄
+      const odd = cell(cols, 'triggerName', { triggerName: '9' })
+      expect([odd.className, odd.textContent]).toEqual(['', '9'])
+    })
+    it('유형: 보통 글씨 그대로, 미지정만 흐리게', async () => {
+      const cols = await colsOf()
+      const type = cols.find((c) => c.field === 'typeName')
+      expect(type.cellRenderer).toBeUndefined()
+      expect(type.cellClass({ data: { typeName: 'NOT_DEFINED' }, value: 'NOT_DEFINED' })).toBe('se-load-dim')
+      expect(type.cellClass({ data: { typeName: 'ALARM_RECOVERY' }, value: 'ALARM_RECOVERY' })).toBe('')
+      expect(type.cellClass({ data: {}, value: undefined })).toBe('')
+      expect(type.valueFormatter({ value: 'NOT_DEFINED' })).toBe('미지정')
+    })
+    it('켜짐: 점 + 글자 — 켜짐은 초록 점, 꺼짐은 빈 점에 흐린 글씨. 글은 전과 같다', async () => {
+      const cols = await colsOf()
+      const on = cell(cols, 'isEnabled', { isEnabled: true })
+      expect([on.tagName, on.className, on.textContent]).toEqual(['SPAN', 'se-load-en on', '켜짐'])
+      expect(on.querySelector('i')).not.toBeNull()
+      const off = cell(cols, 'isEnabled', { isEnabled: false })
+      expect([off.className, off.textContent]).toEqual(['se-load-en off', '꺼짐'])
+      expect(off.querySelector('i')).not.toBeNull()
+      expect(cell(cols, 'isEnabled', { isEnabled: null })).toBe('?') // 운영 속성을 못 풀었다 — 점 없음
+    })
+  })
   it('창 너비는 열이 늘어난 만큼 넓다 — 화면의 94%, 가장 넓어도 1800', async () => {
     const was = window.innerWidth
     for (const [vw, want] of [[1920, 1800], [1600, 1504], [1100, 1034]]) {
@@ -489,6 +531,12 @@ describe('LoadDialog — 쓰기 동작과 내 초안', () => {
     expect(cols.find((c) => c.field === 'isEnabled').valueFormatter({ data: byName('NEW_ONE'), value: null })).toBe('—')
     expect(cols.find((c) => c.field === 'isEnabled').cellDataType).toBe(false) // 체크 칸이 아니라 글자로
     expect(cols.find((c) => c.field === 'isEnabled').valueFormatter({ data: byName('DUP'), value: true })).toBe('?')
+    // 켜짐 칸의 점(2026-11-11)은 켜짐·꺼짐일 때만 — 초안만 있는 줄(—)과 같은 키 2건(?)은 점 없이 글만
+    const enabled = cols.find((c) => c.field === 'isEnabled')
+    const drawn = (data, value) => enabled.cellRenderer({ data, value, valueFormatted: enabled.valueFormatter({ data, value }) })
+    expect(drawn(byName('NEW_ONE'), null)).toBe('—')
+    expect(drawn(byName('DUP'), true)).toBe('?')
+    expect(drawn(byName('PLAIN'), false).className).toBe('se-load-en off')
     expect(cols.find((c) => c.field === 'currentCrtime').valueFormatter({ data: byName('NEW_ONE'), value: null })).toBe('없음')
     expect(cols[0].cellClass({ data: byName('ALL_ACTIONS') })).toContain('se-load-has-draft')
     expect(tid(w, 'se-load-draft-count').text()).toBe('3')

@@ -183,9 +183,9 @@ test('④ 불러오기 목록: 데스크톱 순서의 열·한글 값·넓은 �
   await api.deployFrom(SOURCE, L, (sc) => {
     Object.assign(sc.property, { IsEnabled: false, StartDelay: 120, RetryCnt: 2, RetryInterval: 30, DoNotSendEmailWhenSuccess: true, DoNotSendEmailWhenStop: true })
   })
-  // 트리거 정보는 성과 문서의 값이다(웹은 고치지 않는다) — 시험 시나리오에 직접 넣는다
+  // 트리거 정보·트리거는 성과 문서의 값이다(웹 목록은 읽기만 한다) — 시험 시나리오에 직접 넣는다. 트리거 5 = Scenario(알약이 가장 길다)
   const { ears } = await db()
-  await ears.db().collection('SC_PROPERTY').updateOne({ process: L.process, eqpModel: L.model, scname: L.name }, { $set: { 'performance.TriggerInfo': 'ALARM 1234 / E2E 트리거 정보' } })
+  await ears.db().collection('SC_PROPERTY').updateOne({ process: L.process, eqpModel: L.model, scname: L.name }, { $set: { 'performance.TriggerInfo': 'ALARM 1234 / E2E 트리거 정보', 'performance.Trigger': 5 } })
 
   await asUser(page, 'sew_master')
   await page.goto('/scenario-editor')
@@ -214,13 +214,32 @@ test('④ 불러오기 목록: 데스크톱 순서의 열·한글 값·넓은 �
   expect(file.length).toBeGreaterThan(1024)
   await dlg.getByTestId('se-load-search').fill(L.name)
   await expect.poll(() => loadRow(dlg, L.name)).toMatchObject({
-    triggerName: 'Log', typeName: '알람자동조치', description: '조건 4종', isEnabled: '꺼짐',
+    triggerName: 'Scenario', typeName: '알람자동조치', description: '조건 4종', isEnabled: '꺼짐',
     stepCount: '4', sizeBytes: `${(file.length / 1024).toFixed(1)} KB`, triggerInfo: 'ALARM 1234 / E2E 트리거 정보', status: ''
   })
   await expect(dlg.locator('.ag-cell[col-id="stepCount"]').first()).toHaveClass(/ag-right-aligned-cell/)
+  // 트리거·유형·켜짐은 열마다 모양이 다르다(2026-11-11): 트리거 = 색 알약, 켜짐 = 점 + 글자(꺼짐은 빈 점에 흐린 글씨) — 칸에서 잘리지 않는다
+  const rowL = dlg.locator('.ag-center-cols-container .ag-row').filter({ hasText: L.name })
+  const pill = rowL.locator('[col-id="triggerName"] .se-load-tg-Scenario')
+  await expect(pill).toHaveText('Scenario')
+  expect(await bg(pill)).not.toBe(CLEAR)
+  const off = rowL.locator('[col-id="isEnabled"] .se-load-en.off')
+  await expect(off).toHaveText('꺼짐')
+  expect(await bg(off.locator('i'))).toBe(CLEAR) // 빈 점
+  // 칸 안쪽(패딩·테두리를 뺀 너비)에 다 들어간다
+  const fits = (loc) => loc.evaluate((el) => {
+    const cell = el.closest('.ag-cell'); const cs = getComputedStyle(cell)
+    const inner = cell.getBoundingClientRect().width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - parseFloat(cs.borderLeftWidth) - parseFloat(cs.borderRightWidth)
+    return el.getBoundingClientRect().width <= inner
+  })
+  expect([await fits(pill), await fits(off)]).toEqual([true, true])
 
   // 열 수 없는 원인(같은 키 2건·현재 버전 없음)은 확인 필요 열에 붉은 글씨, 값이 없는 칸은 빈칸(현재 버전이 없으면 스텝 수·용량도 빈칸)
   await dlg.getByTestId('se-load-search').fill('')
+  // 켜진 줄은 초록 점
+  const on = dlg.locator('.ag-center-cols-container [col-id="isEnabled"] .se-load-en.on').first()
+  await expect(on).toHaveText('켜짐')
+  expect(await bg(on.locator('i'))).toBe('rgb(34, 197, 94)')
   await dlg.getByTestId('se-load-model').selectOption('SEWMODELB')
   await expect.poll(() => loadRow(dlg, 'DUP_PROPERTY')).toMatchObject({ status: '같은 키 2건', isEnabled: '?', triggerInfo: '' })
   expect(await loadRow(dlg, 'NO_REDIS_FIELD')).toMatchObject({ status: '현재 버전 없음', stepCount: '', sizeBytes: '' })

@@ -379,6 +379,29 @@ function renderDraft(p) {
   el.title = t(stale ? 'SEW_LOAD_DRAFT_CHIP_TITLE_STALE' : 'SEW_LOAD_DRAFT_CHIP_TITLE', { at })
   return el
 }
+// 트리거·유형·켜짐은 열마다 모양이 다르다(2026-11-11 사용자: 모두 같은 색 글씨라 구분이 안 된다) —
+// 트리거 = 값마다 색이 다른 알약, 유형 = 보통 글씨(미지정만 흐리게), 켜짐 = 점 + 글자(꺼짐은 흐리게).
+// 초록은 켜짐, 빨강은 확인 필요에만 쓰이게 트리거 알약에는 두 색을 넣지 않는다(load.css). 글자는 그대로라 색 없이도 읽힌다.
+const TRIGGER_PILLS = new Set(['Log', 'RV', 'EqState', 'Time', 'Scenario', 'Manual'])
+function renderTrigger(p) {
+  const name = p.value
+  if (name === null || name === undefined || name === '') return ''
+  const el = document.createElement('span')
+  el.className = TRIGGER_PILLS.has(name) ? `se-load-tg se-load-tg-${name}` : name === 'NA' ? 'se-load-dim' : ''
+  el.textContent = String(name)
+  return el
+}
+// 글은 valueFormatter 가 정한다(켜짐·꺼짐·초안만 —·같은 키 ?). 켜짐·꺼짐일 때만 앞에 점을 붙인다
+function renderEnabled(p) {
+  const text = p.valueFormatted ?? ''
+  const on = p.value === true
+  if (text !== enabledLabel(true) && text !== enabledLabel(false)) return text
+  const el = document.createElement('span')
+  el.className = `se-load-en ${on ? 'on' : 'off'}`
+  el.appendChild(document.createElement('i'))
+  el.appendChild(document.createTextNode(text))
+  return el
+}
 const draftOnlyText = (r) => t(r.draftOnly === 'new' ? 'SEW_LOAD_ROW_DRAFT_NEW' : 'SEW_LOAD_ROW_DRAFT_GONE')
 // 열 순서: 데스크톱 불러오기 목록의 NAME·TRIGGER·SCENARIO_TYPE·DESCRIPTION·ACTIVATED·TRIGGERINFO 순서에 스텝 수·용량을 켜짐 뒤에 넣고
 // 웹 전용 열(내 초안·최근 수정자·현재 버전·확인 필요)을 둔다. 스텝 수·용량(2026-11-10 사용자 요청)을 넣으면서 폭이 모자라
@@ -386,11 +409,12 @@ const draftOnlyText = (r) => t(r.draftOnly === 'new' ? 'SEW_LOAD_ROW_DRAFT_NEW' 
 const columnDefs = computed(() => [
   { field: 'name', headerName: '이름', minWidth: 220, flex: 1, cellClass: (p) => (p.data?.draft ? 'se-load-has-draft' : '') },
   ...(writer.value ? [{ field: 'draft', headerName: t('SEW_LOAD_COL_DRAFT'), width: 104, cellRenderer: renderDraft }] : []),
-  { field: 'triggerName', headerName: '트리거', width: 84 },
-  { field: 'typeName', headerName: '유형', width: 120, valueFormatter: (p) => LABELS.scenarioType[p.value] ?? p.value ?? '' },
+  // 너비 92: 가장 긴 알약(Scenario, 64px)이 칸 안쪽(너비 − 24)에 들어간다
+  { field: 'triggerName', headerName: '트리거', width: 92, cellRenderer: renderTrigger },
+  { field: 'typeName', headerName: '유형', width: 120, valueFormatter: (p) => LABELS.scenarioType[p.value] ?? p.value ?? '', cellClass: (p) => (p.value === 'NOT_DEFINED' ? 'se-load-dim' : '') },
   { field: 'description', headerName: '설명', minWidth: 180, flex: 1 },
   // cellDataType: false — AG Grid 가 참거짓 열을 체크 칸으로 그리면 문구(켜짐·꺼짐·초안만 —·같은 키 ?)가 나오지 않는다(목업은 글자)
-  { field: 'isEnabled', headerName: '켜짐', width: 66, cellDataType: false, valueFormatter: (p) => (p.data?.draftOnly ? '—' : writer.value && isDup(p.data) ? '?' : enabledLabel(p.value)), cellClass: (p) => (p.data?.draftOnly ? 'se-load-dim' : '') },
+  { field: 'isEnabled', headerName: '켜짐', width: 66, cellDataType: false, valueFormatter: (p) => (p.data?.draftOnly ? '—' : writer.value && isDup(p.data) ? '?' : enabledLabel(p.value)), cellRenderer: renderEnabled, cellClass: (p) => (p.data?.draftOnly ? 'se-load-dim' : '') },
   // 현재 버전 파일에서 읽는다 — 현재 버전이 없거나 초안만 있는 줄은 빈칸. 용량은 기준 화면 묶음(GridFS 파일)의 크기다(머리글 풍선말)
   { field: 'stepCount', headerName: t('SEW_LOAD_COL_STEPS'), width: 72, type: 'rightAligned', cellDataType: false, valueFormatter: (p) => (typeof p.value === 'number' ? String(p.value) : '') },
   { field: 'sizeBytes', headerName: t('SEW_LOAD_COL_SIZE'), headerTooltip: t('SEW_LOAD_COL_SIZE_TIP'), width: 88, type: 'rightAligned', cellDataType: false, valueFormatter: (p) => sizeText(p.value) },
@@ -403,7 +427,7 @@ const columnDefs = computed(() => [
   { field: 'status', headerName: '확인 필요', width: 132, pinned: 'right', valueFormatter: (p) => (p.data?.draftOnly ? draftOnlyText(p.data) : p.value.map((s) => LABELS.listStatus[s] ?? s).join(', ')),
     cellClass: (p) => (!p.data?.draftOnly && p.data?.status?.length ? 'se-load-bad' : '') }
 ])
-// 창 너비: 화면의 94%, 가장 넓어도 1800 — 1920 화면에서 표 영역(창 − 버전 칸 280)이 1520 이라 열(합계 1494)이 가로로 밀지 않고 다 보인다.
+// 창 너비: 화면의 94%, 가장 넓어도 1800 — 1920 화면에서 표 영역(창 − 버전 칸 280)이 1520 이라 열(합계 1502)이 가로로 밀지 않고 다 보인다.
 // 1600 화면(표 영역 1224)에서는 최근 수정자·현재 버전을 보려면 가로로 민다(확인 필요는 오른쪽 고정).
 const dialogWidth = Math.max(720, Math.min(1800, Math.round(window.innerWidth * 0.94)))
 const select = 'h-[38px] rounded-lg border border-gray-300 dark:border-dark-border bg-white dark:bg-dark-bg px-2 text-sm text-gray-900 dark:text-gray-100'
