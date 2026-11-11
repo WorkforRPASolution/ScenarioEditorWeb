@@ -3,7 +3,7 @@ import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
 const { PNG } = require('pngjs')
 const { planSnapshots, seedSnapshots, cleanSnapshots, removeSnapshots, partitionOf } = require('../lib/snapshots')
-const { cassandraEnv } = require('../lib/cassandra')
+const { cassandraEnv, connectCassandra, assertLocalCassandra } = require('../lib/cassandra')
 const { planBig, seedBig, BIG_EQP, IDLE_EQP } = require('../lib/snapshotsBig')
 const { PHOTO, CVD } = require('../data/snapshots')
 const { equipment } = require('../data/equipment')
@@ -252,5 +252,29 @@ describe('cassandraEnv — 접속 값 (server/.env, 환경 변수가 먼저)', (
   it('파일이 없으면(null) 환경 변수만', () => {
     expect(cassandraEnv({ CASSANDRA_PORT: '1' }, null)).toEqual({ CASSANDRA_PORT: '1' })
     expect(cassandraEnv({}, null)).toEqual({})
+  })
+})
+
+// 최종 검토 I-2: 시험 데이터 도구는 server/.env 의 주소로 Cassandra 에 쓴다 — 사내에서 운영 주소가 든 .env 로 돌려도 쓰지 않게 한다.
+describe('assertLocalCassandra — 이 PC 의 Cassandra 에만 쓴다', () => {
+  it('루프백 주소는 지난다', () => {
+    for (const points of [['127.0.0.1'], ['localhost'], ['LOCALHOST', '127.0.0.2'], ['::1']]) {
+      expect(() => assertLocalCassandra(points), points.join()).not.toThrow()
+    }
+  })
+
+  it('하나라도 루프백이 아니면 던진다 — 문구에 그 호스트를 싣는다', () => {
+    for (const points of [['10.1.2.3'], ['127.0.0.1', 'cass-prod-01'], ['127.0.0.1.evil.example'], ['0.0.0.0']]) {
+      expect(() => assertLocalCassandra(points), points.join()).toThrow(/루프백/)
+    }
+    expect(() => assertLocalCassandra(['127.0.0.1', 'cass-prod-01'])).toThrow(/cass-prod-01/)
+  })
+
+  it('connectCassandra 는 루프백이 아닌 주소에 연결하지 않고 던진다(계정을 문구에 싣지 않는다)', async () => {
+    const env = { CASSANDRA_CONTACT_POINTS: '10.1.2.3,10.1.2.4', CASSANDRA_USERNAME: 'prod_user', CASSANDRA_PASSWORD: 'prod_pw' }
+    const e = await connectCassandra(env).then(() => null, (x) => x)
+    expect(e).toBeInstanceOf(Error)
+    expect(e.message).toMatch(/루프백/)
+    expect(e.message).not.toMatch(/prod_user|prod_pw/)
   })
 })

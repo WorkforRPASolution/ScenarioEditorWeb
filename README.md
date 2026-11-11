@@ -90,7 +90,8 @@ Windows 방화벽 허용 창이 뜨면 허용하지 않아도 된다(이 PC 안�
 - `npm run seed` — 시험 데이터를 EARS 에 넣고 지운다
 - `npm --prefix server run test:integration`, `npm run e2e` — 통합 시험과 저장 E2E 는 InterfaceServer 로 `SEW_W_` 시나리오를 배포·삭제하고 SC_PROPERTY 에 직접 쓰며(켜기·끄기·성과), 시험 사용자(`sew_*`)의 초안·배포 기록을 웹 DB 에 썼다가 지운다. E2E 는 서버의 InterfaceServer 주소를 고장 주입 중계로 바꿔 띄운다(맥 로컬 전용 — 실행·전제는 `CLAUDE.md`)
 - `node tools/measure/open-big.js`·`deploy-big.js` — 큰 시험 시나리오(BIG_200)를 열고, deploy-big 은 새 판으로 배포한다
-- `npm run seed -- snapshots`·`snapshots-big`, `node tools/infra/check-ss-compat.js`, `node tools/measure/snapshot-big.js` — 스냅샷 시험 데이터를 **Cassandra 에 쓰고 지운다**(시험 설비 `SEWT_` 파티션). 웹 서버 자체는 Cassandra 를 읽기만 하지만 이 도구들은 쓴다 — 맥 로컬 전용이다
+- `npm run seed -- snapshots`·`snapshots-big`, `node tools/infra/check-ss-compat.js` — 스냅샷 시험 데이터를 **Cassandra 에 쓰고 지운다**(시험 설비 `SEWT_` 파티션). 웹 서버 자체는 Cassandra 를 읽기만 하지만 이 도구들은 쓴다 — 맥 로컬 전용이다. `CASSANDRA_CONTACT_POINTS` 가 이 PC(루프백)가 아니면 연결하지 않고 멈추지만, 돌리지 않는다
+- `node tools/measure/snapshot-big.js` — 위 큰 시험 데이터(`snapshots-big`)를 전제로 한 측정이다
 
 ### 7. 문제 해결
 

@@ -15,7 +15,7 @@ const Q_IMAGE = 'select image from snapshot where eqpid = ? and year = ? and mon
 const text = (v) => (typeof v === 'string' ? v.trim() : '')
 const port = (v) => (/^\d+$/.test(text(v)) ? Number(text(v)) : 9042)
 
-function createSnapshotRepository({ env = process.env, driver }) {
+function createSnapshotRepository({ env = process.env, driver, log = null }) {
   let client = null
   const points = () => text(env.CASSANDRA_CONTACT_POINTS).split(',').map((s) => s.trim()).filter(Boolean)
   const configured = () => points().length > 0
@@ -44,6 +44,15 @@ function createSnapshotRepository({ env = process.env, driver }) {
     return seError(502, 'SNAPSHOT_FAILED', '스냅샷 저장소(Cassandra) 조회가 실패했습니다')
   }
 
+  // 원인은 서버 로그에만 남긴다 — 데이터센터 이름·계정·주소가 틀렸을 때 무엇이 틀렸는지 알 수 있게(응답에는 싣지 않는다).
+  function logCause(e, code) {
+    if (!log) return
+    const inner = e && e.innerErrors && typeof e.innerErrors === 'object'
+      ? Object.entries(e.innerErrors).map(([host, err]) => `${host} ${(err && err.name) || 'Error'}: ${err && err.message}`).join(' / ')
+      : ''
+    log.warn(`스냅샷 저장소(Cassandra) 오류 → ${code} — ${(e && e.name) || 'Error'}: ${e && e.message}${inner ? ` [${inner}]` : ''}`)
+  }
+
   async function run(query, params, extra) {
     if (!configured()) throw seError(503, 'SNAPSHOT_UNSET', '스냅샷 저장소(Cassandra) 주소가 설정되지 않았습니다')
     if (!client) client = new driver.Client(options())
@@ -56,7 +65,9 @@ function createSnapshotRepository({ env = process.env, driver }) {
         client = null
         used.shutdown().catch(() => {})
       }
-      throw mapped(e)
+      const out = mapped(e)
+      if (out !== e) logCause(e, out.code)
+      throw out
     }
   }
 

@@ -162,4 +162,42 @@ describe('snapshotRepository — Cassandra 읽기만, 처음 쓸 때 연결 (P3 
     await repo.shutdown()
     expect(calls.shutdown).toBe(1)
   })
+
+  // 최종 검토 I-1: 응답에는 원인을 싣지 않지만 서버 로그에는 남긴다 — 데이터센터 이름·계정이 틀렸을 때 무엇이 틀렸는지 알 수 있게.
+  it('드라이버 오류의 이름·문구를 서버 로그에 남긴다 — 응답 문구에는 싣지 않는다', async () => {
+    const f = fakeDriver()
+    const lines = []
+    const log = { warn: (m) => lines.push(m) }
+    class ArgumentError extends Error { constructor(m) { super(m); this.name = 'ArgumentError' } }
+    const Client = class { async execute() { throw new ArgumentError('Datacenter dc1 was not found. Available DCs are: [datacenter1]') } async shutdown() {} }
+    const repo = createSnapshotRepository({ env: ENV, driver: { ...f.driver, Client }, log })
+    const e = await caught(repo.latestName('E1', { year: 2026, month: 11 }, '0'))
+    expect(e.code).toBe('SNAPSHOT_FAILED')
+    expect(e.message).not.toMatch(/dc1|datacenter1/)
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toContain('SNAPSHOT_FAILED')
+    expect(lines[0]).toContain('ArgumentError: Datacenter dc1 was not found. Available DCs are: [datacenter1]')
+  })
+
+  it('연결 못 함은 호스트마다의 원인도 로그에 남긴다', async () => {
+    const f = fakeDriver()
+    const lines = []
+    const err = new f.NoHostAvailableError('All host(s) tried for query failed.')
+    err.innerErrors = { '10.0.0.1:9042': Object.assign(new Error('Authentication provider not set'), { name: 'AuthenticationError' }), '10.0.0.2:9042': new Error('connect ECONNREFUSED') }
+    const Client = class { async execute() { throw err } async shutdown() {} }
+    const repo = createSnapshotRepository({ env: ENV, driver: { ...f.driver, Client }, log: { warn: (m) => lines.push(m) } })
+    expect((await caught(repo.latestName('E1', { year: 2026, month: 11 }, '0'))).code).toBe('SNAPSHOT_DOWN')
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toContain('10.0.0.1:9042 AuthenticationError: Authentication provider not set')
+    expect(lines[0]).toContain('10.0.0.2:9042 Error: connect ECONNREFUSED')
+  })
+
+  it('미설정(SNAPSHOT_UNSET)은 로그에 남기지 않고, log 를 주지 않아도 된다', async () => {
+    const f = fakeDriver()
+    const lines = []
+    await caught(createSnapshotRepository({ env: {}, driver: f.driver, log: { warn: (m) => lines.push(m) } }).latestName('E1', { year: 2026, month: 11 }, '0'))
+    expect(lines).toHaveLength(0)
+    const Client = class { async execute() { throw new Error('x') } async shutdown() {} }
+    expect((await caught(createSnapshotRepository({ env: ENV, driver: { ...f.driver, Client } }).latestName('E1', { year: 2026, month: 11 }, '0'))).code).toBe('SNAPSHOT_FAILED')
+  })
 })

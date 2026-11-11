@@ -3,7 +3,7 @@
 // 준비: npm run seed -- reset basic anomaly && npm run seed -- snapshots-big
 //       웹 서버: SE_DEV_USER_OVERRIDE=1 npm --prefix server start
 //       (스냅샷 서버 DIR 과 견주려면) tools/infra/prepare-ss.sh && docker compose -f infra/docker-compose.yml --profile ss up -d ss-zookeeper snapshot-server
-// 기준: 하루 목록 2초 안. 어기면 종료 코드 1. 끝나면 npm run seed -- clean 으로 큰 달을 지운다.
+// 기준: 하루 목록 2초 안. 어기면 종료 코드 1. 이 도구는 읽기만 한다. 끝나면 npm run seed -- reset basic anomaly && npm run seed -- snapshots 로 큰 달을 지우고 시험 데이터를 되돌린다.
 const { execFileSync } = require('node:child_process')
 const { BIG_EQP, IDLE_EQP } = require('../seed/lib/snapshotsBig')
 const { partitionOf } = require('../seed/lib/snapshots')
