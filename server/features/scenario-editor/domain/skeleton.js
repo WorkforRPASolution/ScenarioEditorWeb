@@ -161,7 +161,7 @@ function refreshPropertyParts(skeleton, propertyDoc, performanceDoc) {
   const prop = propertyFromBson(propertyDoc)
   const notes = [...versionNotes(skeleton.notes)]
   if (!prop.ok) notes.push(note('warning', 'PARSE_FAILED', { field: 'property', error: prop.error }))
-  notes.push(...scenarioNotes({ rawSteps: skeleton.steps.map((s) => s.raw), property: prop.ok ? prop.value : null, targetWindow: skeleton.header.targetWindow }))
+  notes.push(...scenarioNotes({ rawSteps: skeleton.steps.map((s) => s.raw), property: prop.ok ? prop.value : null, targetWindow: skeleton.header.targetWindow, hidingWindows: skeleton.header.hidingWindows }))
   return { ...skeleton, property: prop.ok ? prop.value : null, performance: performanceFromBson(performanceDoc), notes }
 }
 

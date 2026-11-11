@@ -870,3 +870,116 @@ describe('성과·심의 (설계 §7, 완료 조건 5)', () => {
     expect(await typeCount(PF, 'performance.CitizenDeveloper.0.Contribution', 'long')).toBe(1)
   })
 })
+
+// P2-F 전처리 설정(설계 p2f-preprocessing-design §4~§6). 시드 PREPROCESS_WINDOWS·BAD_WINDOWS(SEWPHOTO/SEWMODELB)는 읽기만 한다.
+describe('창 조건 header.windows (P2-F)', () => {
+  const PRE = { process: 'SEWPHOTO', model: 'SEWMODELB', name: 'PREPROCESS_WINDOWS' }
+  const BAD = { process: 'SEWPHOTO', model: 'SEWMODELB', name: 'BAD_WINDOWS' }
+  const W = (Text, ClassName, over = {}) => ({ Text, ClassName, IsCheckRectEqual: false, Left: -18, Top: -18, Right: -18, Bottom: -18, ...over })
+  const win = (text, className, over = {}) => ({ text, className, checkRect: false, left: -18, top: -18, right: -18, bottom: -18, ...over })
+  const STORED = [W('화면 보호기', 'ScreenSaverClass'), W('', 'TaskManagerWindow'), W('Alarm Popup*', '#32770', { IsCheckRectEqual: true, Left: 100, Top: 100, Right: 500, Bottom: 400 })]
+  const bodyOf = async (k, crtime) => JSON.parse(await redisValue(k, crtime))
+  const checkOf = (sk, target) => call('POST', '/check', { json: { target, propertyRev: sk.propertyRev, scenario: sk.edited } })
+
+  it('열면 창 조건이 저장값에서 채워져 온다. 고치지 않고 다른 이름으로 배포하면 창 조건이 글자까지 같다', async () => {
+    const sk = await open(PRE)
+    expect(sk.edited.header.windows).toEqual({
+      target: { text: 'EQ Control*', className: 'WindowsForms10', checkRect: false, left: 0, top: 0, right: 0, bottom: 0 },
+      hiding: [{ origin: 0, ...win('화면 보호기', 'ScreenSaverClass') }, { origin: 1, ...win('', 'TaskManagerWindow') },
+        { origin: 2, ...win('Alarm Popup*', '#32770', { checkRect: true, left: 100, top: 100, right: 500, bottom: 400 }) }]
+    })
+    const t = { ...PRE, name: NAME('WKEEP') }
+    const data = expectOk(await deploy(metaOf(sk, t)))
+    const src = await redisValue(PRE, sk.version.crtime)
+    const now = await redisValue(t, data.crtime)
+    const cut = (text) => text.slice(text.indexOf('"TargetWindowCondition"'))
+    expect(cut(now)).toBe(cut(src)) // 대상 창·숨길 창·보정·제한 시간 — 글자 그대로
+    expect(JSON.parse(now).HidingWindowConditionList).toEqual(STORED)
+  })
+
+  it('대상 창을 고치고 숨길 창을 고침·지움·더함 → 그 조건만 바뀌고, 다시 열면 같은 값(새 줄은 저장 목록의 자리를 받는다)', async () => {
+    const sk = await open(PRE)
+    const w = sk.edited.header.windows
+    w.target = { ...w.target, text: 'EQ Main', className: '' } // 에이전트가 찾지 않는 값 — 막지 않는다
+    w.hiding = [w.hiding[2], { ...w.hiding[0], className: 'ScreenSaver2' }, { origin: null, ...win('', 'NotifyWnd', { checkRect: true, left: 0, top: 0, right: 800, bottom: 600 }) }]
+    const t = { ...PRE, name: NAME('WEDIT') }
+    const c = await checkOf(sk, t)
+    expect(c.status, show(c)).toBe(200)
+    expect(c.body.data.blocks).toEqual([])
+    expect(c.body.data.warns.filter((x) => x.code === 'TARGET_WINDOW_NOT_FOUND')).toEqual([{ code: 'TARGET_WINDOW_NOT_FOUND', params: { which: 'target', reasonCode: 'CLASS_EMPTY' } }])
+    const data = expectOk(await deploy(metaOf(sk, t)))
+    const body = await bodyOf(t, data.crtime)
+    expect(body.TargetWindowCondition).toEqual({ Text: 'EQ Main', ClassName: '', IsCheckRectEqual: false, Left: 0, Top: 0, Right: 0, Bottom: 0 })
+    expect(body.HidingWindowConditionList).toEqual([STORED[2], W('화면 보호기', 'ScreenSaver2'), W('', 'NotifyWnd', { IsCheckRectEqual: true, Left: 0, Top: 0, Right: 800, Bottom: 600 })])
+    const again = await open(t)
+    expect(again.edited.header.windows.hiding.map((h) => [h.origin, h.text, h.className])).toEqual([[0, 'Alarm Popup*', '#32770'], [1, '화면 보호기', 'ScreenSaver2'], [2, '', 'NotifyWnd']])
+    expect(again.header.targetWindow).toMatchObject({ agentFinds: false, reasonCode: 'CLASS_EMPTY' })
+  })
+
+  it('옛 값의 문제(BAD_WINDOWS: 클래스 없음·앞뒤 공백)는 고치지 않으면 경고만 하고 배포된다 — 저장값 그대로', async () => {
+    const sk = await open(BAD)
+    expect(sk.notes.map((n) => n.code).sort()).toEqual(['HIDING_WINDOW_FIXED_SIZE', 'HIDING_WINDOW_NOT_FOUND', 'HIDING_WINDOW_SPACE', 'TARGET_WINDOW_DIFFERS'])
+    const t = { ...BAD, name: NAME('WBAD') }
+    const c = await checkOf(sk, t)
+    expect(c.body.data.blocks).toEqual([])
+    expect(c.body.data.warns.map((x) => x.code).filter((x) => /HIDING|WINDOW/.test(x)).sort()).toEqual(['HIDING_NOT_FOUND', 'HIDING_TEXT_SPACE'])
+    const data = expectOk(await deploy(metaOf(sk, t)))
+    expect((await bodyOf(t, data.crtime)).HidingWindowConditionList).toEqual((await bodyOf(BAD, sk.version.crtime)).HidingWindowConditionList)
+  })
+
+  it('새로 넣은 숨길 창에 클래스가 없거나 앞뒤 공백이 있으면, 또는 20개를 넘기면 422 이고 아무것도 쓰지 않는다', async () => {
+    const t = { ...PRE, name: NAME('WBLOCK') }
+    const blocked = async (change) => {
+      const sk = await open(PRE)
+      change(sk.edited.header.windows)
+      const meta = metaOf(sk, t)
+      const r = await deploy(meta)
+      expect(r.status, show(r)).toBe(422)
+      expect(r.body.code).toBe('VALIDATION_FAILED')
+      expect(await deployRecord(meta.requestId)).toBeNull()
+      return r.body.details.blocks.map((b) => b.code)
+    }
+    expect(await blocked((w) => { w.hiding.push({ origin: null, ...win('Notice', '') }) })).toEqual(['HIDING_CLASS_EMPTY'])
+    expect(await blocked((w) => { w.hiding.push({ origin: null, ...win(' Popup* ', 'Dlg') }) })).toEqual(['WINDOW_TEXT_SPACE'])
+    expect(await blocked((w) => { for (let i = 0; i < 18; i++) w.hiding.push({ origin: null, ...win('p' + i, 'C' + i) }) })).toEqual(['HIDING_LIMIT'])
+    expect(await propertyDocs(t)).toEqual([])
+    expect(await redisFields(t)).toEqual([])
+  })
+
+  it('형식이 틀리면(좌표가 정수가 아님) 400 BAD_REQUEST — /check·배포 모두', async () => {
+    const sk = await open(PRE)
+    sk.edited.header.windows.hiding[0].left = 1.5
+    const t = { ...PRE, name: NAME('WBADREQ') }
+    const c = await checkOf(sk, t)
+    expect(c.status, show(c)).toBe(400)
+    expect(c.body.code).toBe('BAD_REQUEST')
+    expect(c.body.details.path).toBe('header.windows.hiding[0].left')
+    expect((await deploy(metaOf(sk, t))).status).toBe(400)
+  })
+
+  it('windows 가 없는 요청(이 기능 전에 저장한 초안)도 배포된다 — 창 조건은 출처 저장값 그대로', async () => {
+    const sk = await open(PRE)
+    delete sk.edited.header.windows
+    sk.edited.header.description = '창 조건 없는 요청'
+    const t = { ...PRE, name: NAME('WOLD') }
+    const data = expectOk(await deploy(metaOf(sk, t)))
+    const body = await bodyOf(t, data.crtime)
+    expect(body.Description).toBe('창 조건 없는 요청')
+    expect(body.HidingWindowConditionList).toEqual(STORED)
+    expect(body.TargetWindowCondition).toMatchObject({ Text: 'EQ Control*', ClassName: 'WindowsForms10' })
+  })
+
+  it('초안에 창 조건이 함께 저장되고 다시 읽으면 같다 — 그 초안으로 배포하면 그 값이 나간다', async () => {
+    const base = (await copyTo(PRE, NAME('WDRAFT'))).target
+    const sk = await open(base)
+    sk.edited.header.windows.hiding = [{ origin: null, ...win('초안 창', 'DraftWnd') }]
+    const meta = { target: base, propertyRev: sk.propertyRev, scenario: sk.edited }
+    const s1 = await call('POST', '/drafts', { form: formOf(meta) })
+    expect(s1.status, show(s1)).toBe(200)
+    const got = await call('GET', `/drafts/${s1.body.data.draftId}`)
+    expect(got.body.data.scenario.header.windows).toEqual(sk.edited.header.windows)
+    const data = expectOk(await deploy({ ...meta, scenario: got.body.data.scenario, requestId: randomUUID() }))
+    expect((await bodyOf(base, data.crtime)).HidingWindowConditionList).toEqual([W('초안 창', 'DraftWnd')])
+  })
+})
+

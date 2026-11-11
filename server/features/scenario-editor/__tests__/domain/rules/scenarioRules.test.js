@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { checkScenario } from '../../../domain/rules'
-import { skeletonWith, rawStep, fresh, ctx, codesOf, okSource, SUCCESS, FAIL } from './helpers'
+import { skeletonWith, rawStep, fresh, ctx, codesOf, okSource, okSteps, SUCCESS, FAIL } from './helpers'
 
 const run = (mutate, { src = okSource(), c = ctx() } = {}) => { const e = fresh(src); mutate(e, c); return checkScenario(e, src, c) }
 const blocks = (m, o) => codesOf(run(m, o).blocks)
@@ -99,3 +99,80 @@ describe('시나리오 단위 경고', () => {
     expect(warns((e) => { e.property.NextScenarioIfSuccess = { Name: 'B' } }, { c })).toContain('FOLLOW_CYCLE')
   })
 })
+
+// P2-F 전처리 설정(설계 §6): 새로 넣거나 고친 창 조건만 막고, 옛 값은 경고한다.
+describe('창 조건(header.windows)', () => {
+  const W = (Text, ClassName, over = {}) => ({ Text, ClassName, IsCheckRectEqual: false, Left: 0, Top: 0, Right: 0, Bottom: 0, ...over })
+  const win = (text, className, over = {}) => ({ text, className, checkRect: false, left: 0, top: 0, right: 0, bottom: 0, ...over })
+  const add = (text, className, over) => ({ origin: null, ...win(text, className, over) })
+  const srcWith = (target, hiding) => skeletonWith(okSteps(), { extra: { TargetWindowCondition: target, HidingWindowConditionList: hiding } })
+  const check = (src, change) => { const e = fresh(src); if (change) change(e.header.windows, e); return checkScenario(e, src, ctx()) }
+  const of = (list, code) => list.filter((i) => i.code === code)
+  const OLD = [W('Notice', ''), W(' Popup* ', 'Dlg'), W('ok', 'Ok')]
+
+  it('고치지 않으면 막지 않는다 — 옛 숨길 창의 클래스 없음·앞뒤 공백은 경고', () => {
+    const r = check(srcWith(W('*', 'Main'), OLD))
+    expect(codesOf(r.blocks)).toEqual([])
+    expect(of(r.warns, 'HIDING_NOT_FOUND')).toEqual([{ code: 'HIDING_NOT_FOUND', params: { which: 'hiding:0', index: 0 } }])
+    expect(of(r.warns, 'HIDING_TEXT_SPACE')).toEqual([{ code: 'HIDING_TEXT_SPACE', params: { which: 'hiding:1', index: 1 } }])
+  })
+  it('창 조건이 멀쩡하면 아무것도 없다. windows 가 없어도(옛 초안) 아무것도 없다', () => {
+    const src = srcWith(W('EQ*', 'Main'), [W('', 'Saver'), W('Popup', 'Dlg')])
+    const names = (r) => [...codesOf(r.blocks), ...codesOf(r.warns)].filter((c) => /WINDOW|HIDING/.test(c))
+    expect(names(check(src))).toEqual([])
+    expect(names(check(srcWith(W('*', ''), OLD), (_, e) => { delete e.header.windows }))).toEqual([])
+  })
+  it('새 숨길 창: 클래스가 비면(공백뿐 포함) 막는다 — 줄마다 하나씩', () => {
+    const r = check(srcWith(W('EQ', 'Main'), []), (w) => { w.hiding = [add('화면 보호기', ''), add('x', '   '), add('', 'Dlg')] })
+    expect(of(r.blocks, 'HIDING_CLASS_EMPTY').map((i) => i.params.index)).toEqual([0, 1])
+    expect(of(r.warns, 'HIDING_NOT_FOUND')).toEqual([])
+  })
+  it('옛 숨길 창을 고쳤는데 클래스가 여전히 비면 막는다', () => {
+    const r = check(srcWith(W('EQ', 'Main'), OLD), (w) => { w.hiding[0] = { ...w.hiding[0], text: 'Notice2' } })
+    expect(of(r.blocks, 'HIDING_CLASS_EMPTY').map((i) => i.params.index)).toEqual([0])
+  })
+  it('앞뒤 공백: 새 줄·고친 줄·고친 대상 창은 막는다(WINDOW_TEXT_SPACE), 고치지 않은 것은 막지 않는다', () => {
+    const src = srcWith(W(' EQ ', 'Main'), OLD)
+    expect(codesOf(check(src).blocks)).toEqual([])
+    const r = check(src, (w) => { w.target = { ...w.target, className: 'Main2' }; w.hiding.push(add('a ', 'A')); w.hiding[1] = { ...w.hiding[1], className: 'Dlg ' } })
+    expect(of(r.blocks, 'WINDOW_TEXT_SPACE').map((i) => i.params.which).sort()).toEqual(['hiding:1', 'hiding:3', 'target'])
+    expect(of(r.warns, 'HIDING_TEXT_SPACE')).toEqual([])
+  })
+  it('대상 창을 에이전트가 찾지 않는 값으로 고쳐도 막지 않고 경고한다. 고치지 않았거나 비웠으면 경고도 없다', () => {
+    const src = srcWith(W('EQ', 'Main'), [])
+    const warn = (target) => of(check(src, (w) => { w.target = target }).warns, 'TARGET_WINDOW_NOT_FOUND').map((i) => i.params.reasonCode)
+    expect(warn(win('EQ', ''))).toEqual(['CLASS_EMPTY'])
+    expect(warn(win('', 'Main'))).toEqual(['TEXT_EMPTY'])
+    expect(warn(win('*', 'Main'))).toEqual(['TEXT_STAR'])
+    expect(warn(win('', ''))).toEqual([])
+    expect(warn(win('EQ*', 'Main2'))).toEqual([])
+    expect(codesOf(check(src, (w) => { w.target = win('EQ', '') }).blocks)).toEqual([])
+    expect(of(check(srcWith(W('*', 'Main'), [])).warns, 'TARGET_WINDOW_NOT_FOUND')).toEqual([])
+  })
+  it('한도 20개: 넘으면서 기준 판보다 많으면 막는다. 기준 판이 이미 넘었으면 더 늘릴 때만 막고 아니면 경고', () => {
+    const many = (n) => Array.from({ length: n }, (_, i) => W('p' + i, 'C' + i))
+    const fresh20 = check(srcWith(W('EQ', 'Main'), many(20)))
+    expect([...codesOf(fresh20.blocks), ...codesOf(fresh20.warns)]).not.toContain('HIDING_LIMIT')
+    const over = check(srcWith(W('EQ', 'Main'), many(20)), (w) => { w.hiding.push(add('n', 'N')) })
+    expect(of(over.blocks, 'HIDING_LIMIT')).toEqual([{ code: 'HIDING_LIMIT', params: { count: 21, limit: 20, grew: true } }])
+    const old25 = srcWith(W('EQ', 'Main'), many(25))
+    expect(of(check(old25).warns, 'HIDING_LIMIT')).toEqual([{ code: 'HIDING_LIMIT', params: { count: 25, limit: 20, grew: false } }])
+    expect(codesOf(check(old25).blocks)).not.toContain('HIDING_LIMIT')
+    expect(codesOf(check(old25, (w) => { w.hiding.pop() }).blocks)).not.toContain('HIDING_LIMIT')
+    expect(codesOf(check(old25, (w) => { w.hiding.push(add('n', 'N')) }).blocks)).toContain('HIDING_LIMIT')
+  })
+  it('같은 조건의 숨길 창이 둘 이상이면 경고(뒤 줄마다)', () => {
+    const r = check(srcWith(W('EQ', 'Main'), [W('a', 'A'), W('b', 'B')]), (w) => { w.hiding.push(add(' a', 'A'), add('a', 'A', { checkRect: true })) })
+    expect(of(r.warns, 'HIDING_DUPLICATE')).toEqual([{ code: 'HIDING_DUPLICATE', params: { which: 'hiding:2', index: 2, first: 0 } }])
+  })
+  it('새 시나리오(출처 없음)는 넣은 것이 모두 새 값이다', () => {
+    const e = fresh(okSource())
+    e.source = null
+    e.steps = e.steps.map((s) => ({ ...s, origin: null }))
+    e.header.windows = { target: win('EQ', ''), hiding: [add('x', '')] }
+    const r = checkScenario(e, null, ctx())
+    expect(codesOf(r.blocks)).toContain('HIDING_CLASS_EMPTY')
+    expect(codesOf(r.warns)).toContain('TARGET_WINDOW_NOT_FOUND')
+  })
+})
+

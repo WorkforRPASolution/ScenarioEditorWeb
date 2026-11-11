@@ -71,7 +71,11 @@ function workbench(process, model, name, desc, img) {
       return push(s, PLACEHOLDER_BI, o)
     },
     raw(step, biEntry, o = {}) { return push(step, biEntry, o) },
-    targetWindow(text, cls) { sc.scenario.TargetWindowCondition = windowCondition(text, cls) }
+    targetWindow(text, cls) { sc.scenario.TargetWindowCondition = windowCondition(text, cls) },
+    // 숨길 창 목록(전처리). 항목 = [제목, 클래스, 덮어쓸 필드?] — 위치 확인을 끈 값은 사내 전처리 창처럼 좌표 -18
+    hidingWindows(list) {
+      sc.scenario.HidingWindowConditionList = list.map(([text, cls, over]) => ({ ...windowCondition(text, cls), Left: -18, Top: -18, Right: -18, Bottom: -18, ...over }))
+    }
   }
 }
 

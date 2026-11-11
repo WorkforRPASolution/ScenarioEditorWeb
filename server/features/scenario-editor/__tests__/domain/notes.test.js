@@ -57,6 +57,23 @@ describe('scenarioNotes', () => {
   it('정상', () => {
     expect(scenarioNotes({ rawSteps: [st(10000, -1)], property: { Priority: 10 }, targetWindow: tw(true, true) })).toEqual([])
   })
+  // P2-F: 숨길 창(HidingWindowConditionList) — 에이전트 기준(windowsModel.judgeHiding)
+  it('숨길 창: 찾지 않는 줄(클래스 없음·값 없음)·앞뒤 공백은 경고, 고정 크기(-218)는 알림 — 줄 수를 싣는다', () => {
+    const W = (Text, ClassName, over = {}) => ({ Text, ClassName, IsCheckRectEqual: false, Left: 0, Top: 0, Right: 0, Bottom: 0, ...over })
+    const base = { rawSteps: [st(10000, -1)], property: { Priority: 10 }, targetWindow: tw(true, true) }
+    const notes = scenarioNotes({ ...base, hidingWindows: [W('ok', 'Ok'), W('Notice', ''), W(null, 'Dlg'), W(' Popup* ', 'Dlg'), W('L', 'W', { IsCheckRectEqual: true, Left: -218 }), null] })
+    expect(notes).toEqual([
+      { level: 'warning', code: 'HIDING_WINDOW_NOT_FOUND', params: { count: 3 } },
+      { level: 'warning', code: 'HIDING_WINDOW_SPACE', params: { count: 1 } },
+      { level: 'info', code: 'HIDING_WINDOW_FIXED_SIZE', params: { count: 1 } }
+    ])
+    expect(scenarioNotes({ ...base, hidingWindows: [W('ok', 'Ok'), W('', 'Saver')] })).toEqual([])
+    expect(scenarioNotes({ ...base, hidingWindows: undefined })).toEqual([])
+    expect(scenarioNotes({ ...base, hidingWindows: null })).toEqual([])
+  })
+  it('SCENARIO_NOTE_CODES 는 숨길 창 알림도 담는다(속성만 바뀐 뒤 다시 붙일 때 겹치지 않게)', () => {
+    expect(SCENARIO_NOTE_CODES).toEqual(expect.arrayContaining(['HIDING_WINDOW_NOT_FOUND', 'HIDING_WINDOW_SPACE', 'HIDING_WINDOW_FIXED_SIZE']))
+  })
   it('객체가 아닌 스텝이 있어도 던지지 않는다', () => {
     const codes = scenarioNotes({ rawSteps: [null, 5, st(10000, -1)], property: null, targetWindow: null }).map((n) => n.code)
     expect(codes).toEqual([])
@@ -65,7 +82,8 @@ describe('scenarioNotes', () => {
 
 describe('SCENARIO_NOTE_CODES', () => {
   it('scenarioNotes 가 낼 수 있는 코드 전부이고 얼려 있다', () => {
-    const all = scenarioNotes({ rawSteps: [st(10002, -1)], property: { Priority: 3 }, targetWindow: { agentFinds: false, inHouseShowsSet: true } })
+    const hidingWindows = [{ Text: 'a', ClassName: '' }, { Text: ' b ', ClassName: 'B' }, { Text: 'c', ClassName: 'C', IsCheckRectEqual: true, Left: -218 }]
+    const all = scenarioNotes({ rawSteps: [st(10002, -1)], property: { Priority: 3 }, targetWindow: { agentFinds: false, inHouseShowsSet: true }, hidingWindows })
     expect(all.map((n) => n.code).sort()).toEqual([...SCENARIO_NOTE_CODES].sort())
     expect(Object.isFrozen(SCENARIO_NOTE_CODES)).toBe(true)
   })

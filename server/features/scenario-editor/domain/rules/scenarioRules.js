@@ -2,6 +2,8 @@
 // 시나리오 단위 검사: 스텝 수·참조(다음 스텝)·머리·대상·크기·후속·운영 속성. 값은 Issue { code, uid?, params? } 뿐이다.
 const { graphNotes } = require('../notes')
 const { isCsBase64, csBase64Length } = require('../csharpJson')
+const { judgeTargetWindow } = require('../targetWindow')
+const { HIDING_LIMIT, sameMeaning, freshOf, judgeHiding, sameCondition } = require('../windowsModel')
 
 const STEP_MAX = 200
 const NAME_MAX = 50
@@ -87,6 +89,35 @@ function header(edited) {
   return out
 }
 
+// 창 조건(P2-F 설계 §6). windows 가 없으면(옛 초안) 저장값을 그대로 쓰므로 볼 것이 없다.
+// - 새로 넣거나 고친 조건(출처 저장값과 뜻이 달라진 것): 숨길 창 클래스 없음·앞뒤 공백을 막는다.
+// - 고치지 않은 숨길 창의 같은 문제는 경고. 대상 창은 실행에 쓰이지 않으므로(에이전트가 찾기만 한다) 고친 값이 "찾지 않음" 이어도 경고만.
+// - 한도: 20개를 넘고 기준 판보다 많을 때만 막는다(grew). which 는 같은 코드의 줄을 가르는 키다(rules/index 의 중복 거르기).
+function windows(edited, source) {
+  const w = edited.header.windows
+  if (!w) return []
+  const out = []
+  const stored = (source && source.header && source.header.raw) || {}
+  const list = Array.isArray(stored.HidingWindowConditionList) ? stored.HidingWindowConditionList : []
+  const spaced = (v) => v.text !== v.text.trim() || v.className !== v.className.trim()
+
+  if (!sameMeaning(w.target, stored.TargetWindowCondition)) {
+    if (spaced(w.target)) out.push(issue('WINDOW_TEXT_SPACE', undefined, { which: 'target' }))
+    const j = judgeTargetWindow(freshOf(w.target))
+    if ((w.target.text.trim() !== '' || w.target.className.trim() !== '') && !j.agentFinds) out.push(issue('TARGET_WINDOW_NOT_FOUND', undefined, { which: 'target', reasonCode: j.reasonCode }))
+  }
+  w.hiding.forEach((h, i) => {
+    const which = `hiding:${i}`
+    const changed = !(Number.isInteger(h.origin) && h.origin < list.length && sameMeaning(h, list[h.origin]))
+    if (!judgeHiding(freshOf(h)).finds) out.push(issue(changed ? 'HIDING_CLASS_EMPTY' : 'HIDING_NOT_FOUND', undefined, { which, index: i }))
+    else if (spaced(h)) out.push(issue(changed ? 'WINDOW_TEXT_SPACE' : 'HIDING_TEXT_SPACE', undefined, { which, index: i }))
+    const first = w.hiding.findIndex((x, k) => k < i && sameCondition(x, h))
+    if (first >= 0) out.push(issue('HIDING_DUPLICATE', undefined, { which, index: i, first }))
+  })
+  if (w.hiding.length > HIDING_LIMIT) out.push(issue('HIDING_LIMIT', undefined, { count: w.hiding.length, limit: HIDING_LIMIT, grew: w.hiding.length > list.length }))
+  return out
+}
+
 function target(ctx) {
   const out = []
   const { model, name } = ctx.target || {}
@@ -150,7 +181,7 @@ function propertyChecks(edited) {
 function scenarioRules(edited, source, ctx) {
   return [
     ...stepCount(edited, source), ...sourceChecks(edited, source), ...references(edited), ...flow(edited),
-    ...header(edited), ...target(ctx), ...sizes(ctx), ...follow(edited, ctx), ...propertyChecks(edited)
+    ...header(edited), ...windows(edited, source), ...target(ctx), ...sizes(ctx), ...follow(edited, ctx), ...propertyChecks(edited)
   ]
 }
 

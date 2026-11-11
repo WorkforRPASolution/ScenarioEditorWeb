@@ -22,6 +22,10 @@ const RULES = Object.freeze({
   MAIL_TITLE_EMPTY: { scope: A, level: B },
   MAIL_TITLE_COLON: { scope: A, level: B },
   TIMEOUT_INVALID: { scope: A, level: B },
+  // 창 조건(P2-F 설계 §6) — 규칙이 새로 넣거나 고친 조건에만 막음 코드를 낸다(옛 값은 아래 경고 코드)
+  HIDING_CLASS_EMPTY: { scope: A, level: B },
+  WINDOW_TEXT_SPACE: { scope: A, level: B },
+  HIDING_LIMIT: { scope: 'special', level: B },
   NAME_EMPTY: { scope: A, level: B },
   NAME_TOO_LONG: { scope: A, level: B },
   NAME_CHARS: { scope: A, level: B },
@@ -68,7 +72,11 @@ const RULES = Object.freeze({
   FOLLOW_MISSING: { scope: A, level: W },
   FOLLOW_SELF: { scope: A, level: W },
   FOLLOW_CYCLE: { scope: A, level: W },
-  TYPE_UNSET: { scope: A, level: W }
+  TYPE_UNSET: { scope: A, level: W },
+  TARGET_WINDOW_NOT_FOUND: { scope: A, level: W },
+  HIDING_NOT_FOUND: { scope: A, level: W },
+  HIDING_TEXT_SPACE: { scope: A, level: W },
+  HIDING_DUPLICATE: { scope: A, level: W }
 })
 
 module.exports = { RULES }

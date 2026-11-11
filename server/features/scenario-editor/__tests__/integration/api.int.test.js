@@ -80,7 +80,7 @@ describe('공정 권한 (완료 조건 2)', () => {
 })
 
 describe('전 종류 열기 (완료 조건 1·3)', () => {
-  it('생성 시나리오가 있다', () => expect(scenarios.length).toBe(22))
+  it('생성 시나리오가 있다', () => expect(scenarios.length).toBe(24))
   it.each(scenarios.map((s) => [`${s.set}/${s.name}`, s]))('%s', async (_, { meta, exp }) => {
     const rows = (await (await get(`/scenarios?process=${meta.process}&model=${meta.model}`)).json()).data
     const row = rows.find((r) => r.name === meta.name)

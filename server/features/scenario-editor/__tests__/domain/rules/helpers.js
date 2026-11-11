@@ -25,11 +25,12 @@ export function rawStep({ kind = 'none', action = [0, ''], next = [NEXT, FAIL], 
 }
 
 // literals: 스텝 번호 → 그림으로 보지 않은 BI 저장값(정규가 아닌 base64 등, 판정 R5)
-export function skeletonWith(rawSteps, { property = { Priority: 10, Type: 1 }, description = '메일 제목', timeout = 240, biCount, noBase = [], literals = new Map() } = {}) {
+// extra: 본문 머리에 더할 키(대상 창·숨길 창 등)
+export function skeletonWith(rawSteps, { property = { Priority: 10, Type: 1 }, description = '메일 제목', timeout = 240, biCount, noBase = [], literals = new Map(), extra = {} } = {}) {
   const present = new Set(rawSteps.map((s, i) => i).filter((i) => !noBase.includes(i) && !literals.has(i))) // 사내는 스텝마다 BI 한 칸
   const { skeleton } = buildSkeleton({
     process: 'P', model: 'M', name: 'N', crtime: 1730000000000, isCurrent: true,
-    body: { RevisionNo: 0, TriggerType: 2, ID: 'P-M-N', Text: '', Description: description, Step: rawSteps, TimeoutLimit: timeout },
+    body: { RevisionNo: 0, TriggerType: 2, ID: 'P-M-N', Text: '', Description: description, Step: rawSteps, TimeoutLimit: timeout, ...extra },
     propertyDoc: property, performanceDoc: {}, imageBaseUrl: '/img',
     baseImages: { parseFailed: false, present, literals, count: biCount ?? rawSteps.length }
   })

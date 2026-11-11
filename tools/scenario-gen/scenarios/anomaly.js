@@ -58,5 +58,18 @@ module.exports = [
     build: (w) => { one(w); w.sc.property.Priority = 3; w.sc.property.Type = 0 },
     expect: { list: { visible: true, status: [] }, open: { ok: true }, scenarioNotes: ['PRIORITY_NONSTANDARD'], performance: { supervisorNotEntered: true },
       steps: [S('none', 'None', 'SUCCESS', 'FAIL', 'notNeeded')] }
+  },
+  {
+    // P2-F 전처리 설정: 에이전트가 찾지 않거나 위험한 숨길 창(클래스 없음 · 앞뒤 공백 + '*' · 위치 확인 + -218), 대상 창 제목 '*'
+    name: 'BAD_WINDOWS', process: 'SEWPHOTO', model: 'SEWMODELB', desc: '문제 있는 창 조건',
+    build: (w) => {
+      w.targetWindow('*', 'MainFrame')
+      w.hidingWindows([['Notice', ''], ['  Popup* ', 'Dialog'], ['Legacy', 'LegacyWnd', { IsCheckRectEqual: true, Left: -218, Top: 0, Right: 0, Bottom: 0 }], ['정상', 'OkWnd']])
+      w.none({ desc: '끝', next: [SUCCESS, FAIL] })
+    },
+    expect: { list: { visible: true, status: [] }, open: { ok: true },
+      header: { targetWindow: { agentFinds: false, reasonCode: 'TEXT_STAR' } },
+      scenarioNotes: ['TARGET_WINDOW_DIFFERS', 'HIDING_WINDOW_NOT_FOUND', 'HIDING_WINDOW_SPACE', 'HIDING_WINDOW_FIXED_SIZE'],
+      steps: [S('none', 'None', 'SUCCESS', 'FAIL', 'notNeeded')] }
   }
 ]

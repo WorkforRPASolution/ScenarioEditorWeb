@@ -145,6 +145,17 @@ module.exports = [
     expect: ok([S('none', 'None', 'SUCCESS', 'FAIL', 'notNeeded')], { header: { targetWindow: { agentFinds: false, reasonCode: 'TEXT_STAR' } }, scenarioNotes: ['TARGET_WINDOW_DIFFERS'] })
   },
   {
+    // P2-F 전처리 설정: 대상 창 부분 일치 + 숨길 창 3(제목+클래스 · 클래스만 · 위치 확인)
+    name: 'PREPROCESS_WINDOWS', process: 'SEWPHOTO', model: 'SEWMODELB', desc: '대상 창·숨길 창',
+    build: (w) => {
+      w.targetWindow('EQ Control*', 'WindowsForms10')
+      w.hidingWindows([['화면 보호기', 'ScreenSaverClass'], ['', 'TaskManagerWindow'], ['Alarm Popup*', '#32770', { IsCheckRectEqual: true, Left: 100, Top: 100, Right: 500, Bottom: 400 }]])
+      w.none({ action: [6, '1000'], desc: '대기', skipPreprocessing: true })
+      w.none({ desc: '끝', next: [SUCCESS, FAIL] })
+    },
+    expect: ok([S('none', 'Wait', 'NEXT', 'FAIL', 'notNeeded'), S('none', 'None', 'SUCCESS', 'FAIL', 'notNeeded')], { header: { targetWindow: { agentFinds: true, matchMode: 'partial' } } })
+  },
+  {
     name: 'NO_BASE_IMAGE_STEPS', process: 'SEWPHOTO', model: 'SEWMODELB', desc: '기준 화면이 필요 없는 스텝만',
     build: (w) => { w.targetWindow(...TW); w.none({ action: [6, '1000'], desc: '대기' }); w.eqp({ expr: 'MAIN,IDLE,_', desc: '상태' }); w.none({ desc: '끝', next: [SUCCESS, FAIL] }) },
     expect: ok([S('none', 'Wait', 'NEXT', 'FAIL', 'notNeeded'), S('eqpState', 'None', 'NEXT', 'FAIL', 'notNeeded'), S('none', 'None', 'SUCCESS', 'FAIL', 'notNeeded')])

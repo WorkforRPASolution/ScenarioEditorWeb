@@ -53,7 +53,10 @@ describe('2. RULES 표 고정', () => {
     FALSE_NEXT_WITH_ACTION: [A, 'warn'], UNREACHABLE: [A, 'warn'], FOLLOW_MISSING: [A, 'warn'], FOLLOW_SELF: [A, 'warn'],
     START_DELAY_RANGE: [A, 'block'], RETRY_INTERVAL_RANGE: [A, 'block'], RETRY_CNT_RANGE: [A, 'block'], PRIORITY_VALUE: [A, 'block'],
     EXECUTING_LEVEL_VALUE: [A, 'block'], FOLLOW_NAME_REQUIRED: [A, 'block'], FOLLOW_DESC_SHORT: [A, 'block'],
-    FOLLOW_CYCLE: [A, 'warn'], TYPE_UNSET: [A, 'warn']
+    FOLLOW_CYCLE: [A, 'warn'], TYPE_UNSET: [A, 'warn'],
+    // P2-F 창 조건
+    HIDING_CLASS_EMPTY: [A, 'block'], WINDOW_TEXT_SPACE: [A, 'block'], HIDING_LIMIT: ['special', 'block'],
+    TARGET_WINDOW_NOT_FOUND: [A, 'warn'], HIDING_NOT_FOUND: [A, 'warn'], HIDING_TEXT_SPACE: [A, 'warn'], HIDING_DUPLICATE: [A, 'warn']
   }
   it('코드·범위·수준이 표와 같다', () => {
     expect(Object.fromEntries(Object.entries(RULES).map(([k, v]) => [k, [v.scope, v.level]]))).toEqual(table)
