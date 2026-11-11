@@ -60,6 +60,22 @@ describe('authMiddleware 대역', () => {
     expect(as('/api/scenario-editor/drafts/6af3f767bee74aa62e896b79/images/tmwbnn1vhdumplccf')).toBe('sew_multi')
   })
 
+  // P3-A: 스냅샷 그림(<img>)도 헤더를 못 보낸다. 목록·있는 날·메모 경로는 헤더만 받는다.
+  it('스냅샷 그림 경로(/snapshots/<설비>/<파일 이름>/image)도 ?seUser= 를 받는다 — 목록·있는 날 경로는 받지 않는다', () => {
+    process.env.SE_USER_SINGLEID = 'sew_multi'
+    process.env.SE_DEV_USER_OVERRIDE = '1'
+    const as = (url) => run(authenticate, {}, { url: `${url}?seUser=sew_master`, query: { seUser: 'sew_master' } }).req.user.singleid
+    expect(as('/api/scenario-editor/snapshots/SEWT_PHOTO_A01/1762820000123_%5B412%5D%5B388%5D.png/image')).toBe('sew_master')
+    expect(as('/api/scenario-editor/snapshots/SEWT_PHOTO_A01/1762820000123_[412][388].png/image')).toBe('sew_master')
+    expect(as('/api/scenario-editor/snapshots')).toBe('sew_multi')
+    expect(as('/api/scenario-editor/snapshots/days')).toBe('sew_multi')
+    expect(as('/api/scenario-editor/snapshots/SEWT_PHOTO_A01/1762820000123_%5B412%5D%5B388%5D.png/memo')).toBe('sew_multi')
+    expect(as('/api/scenario-editor/snapshots/SEWT_PHOTO_A01/image')).toBe('sew_multi')
+    expect(as('/api/scenario-editor/snapshots/a/b/c/image')).toBe('sew_multi')
+    process.env.SE_DEV_USER_OVERRIDE = '0'
+    expect(as('/api/scenario-editor/snapshots/SEWT_PHOTO_A01/1762820000123_%5B412%5D%5B388%5D.png/image')).toBe('sew_multi')
+  })
+
   it('?seUser= 는 이미지 경로에서만 받는다(헤더는 모든 경로)', () => {
     process.env.SE_USER_SINGLEID = 'sew_multi'
     process.env.SE_DEV_USER_OVERRIDE = '1'

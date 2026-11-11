@@ -430,3 +430,105 @@ describe('심의·성과·같은 이름·사용자 찾기·이름 규칙', () =>
     expect((await (await fetch(`${base}/scenarios/CVD/same-name/N`)).json()).data).toEqual(['M1'])
   })
 })
+
+describe('스냅샷 (P3-A)', () => {
+  const NAME = '1762820000123_[412][388].png'
+  const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3])
+  const imageUrl = (eqpId = 'E1', name = NAME) => `${base}/snapshots/${encodeURIComponent(eqpId)}/${encodeURIComponent(name)}/image`
+  let calls
+  beforeEach(() => {
+    calls = []
+    fake.snapshots = {
+      equipment: async (u) => { calls.push(['equipment', u.singleid]); return [{ eqpId: 'E1', process: 'CVD', model: 'M1', line: 'L1' }] },
+      days: async (u, eqpId, o) => { calls.push(['days', u.singleid, eqpId, o]); return { eqpId, latest: '2026-11-11', days: null, truncated: false } },
+      list: async (u, eqpId, date) => { calls.push(['list', u.singleid, eqpId, date]); return { eqpId, date, timeDiff: 0, items: [], skipped: 0, truncated: false } },
+      image: async (u, eqpId, fileName) => { calls.push(['image', u.singleid, eqpId, fileName]); return { png: PNG, maxAge: 123 } }
+    }
+  })
+
+  it('GET /equipment → { items }', async () => {
+    const res = await fetch(`${base}/equipment`)
+    expect(res.status).toBe(200)
+    expect((await res.json()).data).toEqual({ items: [{ eqpId: 'E1', process: 'CVD', model: 'M1', line: 'L1' }] })
+    expect(calls).toEqual([['equipment', 'sew_multi']])
+  })
+
+  it('GET /snapshots/days — counts=1 일 때만 날짜별 개수를 청한다, 그림 경로에 먹히지 않는다', async () => {
+    const res = await fetch(`${base}/snapshots/days?eqpId=E1`)
+    expect(res.status).toBe(200)
+    expect((await res.json()).data).toEqual({ eqpId: 'E1', latest: '2026-11-11', days: null, truncated: false })
+    await fetch(`${base}/snapshots/days?eqpId=E1&counts=1`)
+    await fetch(`${base}/snapshots/days?eqpId=E1&counts=true`)
+    expect(calls).toEqual([['days', 'sew_multi', 'E1', { counts: false }], ['days', 'sew_multi', 'E1', { counts: true }], ['days', 'sew_multi', 'E1', { counts: false }]])
+  })
+
+  it('GET /snapshots?eqpId&date → 하루 목록', async () => {
+    const res = await fetch(`${base}/snapshots?eqpId=E1&date=2026-11-11`)
+    expect(res.status).toBe(200)
+    expect((await res.json()).data).toEqual({ eqpId: 'E1', date: '2026-11-11', timeDiff: 0, items: [], skipped: 0, truncated: false })
+    expect(calls).toEqual([['list', 'sew_multi', 'E1', '2026-11-11']])
+  })
+
+  it('eqpId·date 가 없거나 글자 하나가 아니면 400 BAD_REQUEST 이고 서비스를 부르지 않는다', async () => {
+    for (const q of ['/snapshots', '/snapshots?eqpId=E1', '/snapshots?date=2026-11-11', '/snapshots?eqpId=&date=2026-11-11', '/snapshots?eqpId=E1&eqpId=E2&date=2026-11-11',
+      '/snapshots/days', '/snapshots/days?eqpId=', '/snapshots/days?eqpId[a]=1']) {
+      const res = await fetch(`${base}${q}`)
+      expect([res.status, (await res.json()).code], q).toEqual([400, 'BAD_REQUEST'])
+    }
+    expect(calls).toEqual([])
+  })
+
+  it('그림: PNG 바이트, 남은 보관 초만큼만 캐시, 파일 이름은 풀어서 넘긴다', async () => {
+    const res = await fetch(imageUrl())
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toMatch(/^image\/png/)
+    expect(res.headers.get('cache-control')).toBe('private, max-age=123, immutable')
+    expect(Buffer.from(await res.arrayBuffer()).equals(PNG)).toBe(true)
+    expect(calls).toEqual([['image', 'sew_multi', 'E1', NAME]])
+  })
+
+  it('그림: 남은 보관 초가 0 이면 캐시하지 않는다', async () => {
+    fake.snapshots.image = async () => ({ png: PNG, maxAge: 0 })
+    const res = await fetch(imageUrl())
+    expect(res.status).toBe(200)
+    expect(res.headers.get('cache-control')).toBe('private, no-store')
+  })
+
+  it('그림 오류는 JSON 이고 PNG·캐시 머리글이 없다', async () => {
+    const { seError } = require('../errors')
+    fake.snapshots.image = async () => { throw seError(404, 'SNAPSHOT_NOT_FOUND', '스냅샷 그림이 없습니다') }
+    const res = await fetch(imageUrl())
+    expect(res.status).toBe(404)
+    expect(res.headers.get('content-type')).toMatch(/^application\/json/)
+    expect(res.headers.get('cache-control') || '').not.toMatch(/immutable|max-age/)
+    expect(await res.json()).toMatchObject({ code: 'SNAPSHOT_NOT_FOUND' })
+  })
+
+  it('?seUser= 는 스냅샷 그림 경로에서 받고 목록 경로에서는 받지 않는다', async () => {
+    await fetch(`${imageUrl()}?seUser=sew_master`)
+    await fetch(`${base}/snapshots?eqpId=E1&date=2026-11-11&seUser=sew_master`)
+    expect(calls.map((c) => [c[0], c[1]])).toEqual([['image', 'sew_master'], ['list', 'sew_multi']])
+  })
+
+  it('미등록 사용자는 스냅샷 API 도 403 USER_NOT_REGISTERED', async () => {
+    for (const p of ['/equipment', '/snapshots?eqpId=E1&date=2026-11-11', '/snapshots/days?eqpId=E1']) {
+      const res = await fetch(`${base}${p}`, { headers: { 'X-SE-User': 'sew_none' } })
+      expect([res.status, (await res.json()).code], p).toEqual([403, 'USER_NOT_REGISTERED'])
+    }
+    expect(calls).toEqual([])
+  })
+
+  // Review Focus 1: Cassandra 주소가 비어 있어도 서버와 다른 API 는 그대로다.
+  it('Cassandra 주소가 비어 있으면 스냅샷 API 만 503 SNAPSHOT_UNSET 이고 /me·/scopes 는 200', async () => {
+    const { createSnapshotRepository } = require('../repo/snapshotRepository')
+    const { createSnapshotService } = require('../service/snapshotService')
+    const scopes = { ...fake.scopes, equipmentOf: async (u, eqpId) => ({ eqpId, process: 'CVD', eqpModel: 'M1', line: 'L1' }) }
+    fake.snapshots = createSnapshotService({ snapshotRepo: createSnapshotRepository({ env: {}, driver: require('cassandra-driver') }), scopes, now: () => Date.now(), env: {} })
+    for (const p of ['/snapshots?eqpId=E1&date=2026-11-11', '/snapshots/days?eqpId=E1', `/snapshots/E1/${encodeURIComponent(NAME)}/image`]) {
+      const res = await fetch(`${base}${p}`)
+      expect([res.status, (await res.json()).code], p).toEqual([503, 'SNAPSHOT_UNSET'])
+    }
+    expect((await fetch(`${base}/me`)).status).toBe(200)
+    expect((await fetch(`${base}/scopes`)).status).toBe(200)
+  })
+})

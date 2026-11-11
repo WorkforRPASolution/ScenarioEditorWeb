@@ -213,4 +213,25 @@ async function nameRule(req, res) {
   ok(res, await getDeps().performance.nameRule(req.seUser))
 }
 
-module.exports = { links, reviewScenario, savePerformance, sameName, searchUsers, nameRule, setEnabled, removeScenario, deploy, deployVerify, deployFinish, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, counts, versions, open, dataCheck, image }
+// ── 스냅샷 (P3) ── 읽기라 쓰기 권한을 보지 않는다. 설비 범위는 서비스가 본다.
+async function equipment(req, res) {
+  ok(res, { items: await getDeps().snapshots.equipment(req.seUser) })
+}
+
+async function snapshotDays(req, res) {
+  ok(res, await getDeps().snapshots.days(req.seUser, need(req.query.eqpId, 'eqpId'), { counts: req.query.counts === '1' }))
+}
+
+async function snapshotList(req, res) {
+  ok(res, await getDeps().snapshots.list(req.seUser, need(req.query.eqpId, 'eqpId'), need(req.query.date, 'date')))
+}
+
+// 남은 보관 기간만큼만 캐시한다 — 파일 이름이 곧 내용이라 주소가 바뀌지 않고, 보관이 끝난 그림을 브라우저가 계속 보이지 않게 한다.
+// 머리글은 그림을 받은 뒤에 붙인다(오류 JSON 에 PNG·캐시 머리글이 남지 않게).
+async function snapshotImage(req, res) {
+  const { png, maxAge } = await getDeps().snapshots.image(req.seUser, req.params.eqpId, req.params.fileName)
+  res.set({ 'Content-Type': 'image/png', 'Cache-Control': maxAge > 0 ? `private, max-age=${maxAge}, immutable` : 'private, no-store' })
+  res.send(png)
+}
+
+module.exports = { equipment, snapshotDays, snapshotList, snapshotImage, links, reviewScenario, savePerformance, sameName, searchUsers, nameRule, setEnabled, removeScenario, deploy, deployVerify, deployFinish, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, counts, versions, open, dataCheck, image }

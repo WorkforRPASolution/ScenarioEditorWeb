@@ -7,7 +7,8 @@ const { ApiError } = require('./errorHandler')
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1'])
 // 판 그림(/versions/<crtime>/files/<fileId>/images/<id>)과 초안 그림(/drafts/<id>/images/<tempId>, 2026-11-11 — 빠져 있어 사용자 바꾸기 때 404 였다)
-const IMAGE_PATH = /\/(?:versions\/[^/]+\/files\/[^/]+|drafts\/[^/]+)\/images\/[^/]+$/
+// 스냅샷 그림(/snapshots/<설비>/<파일 이름>/image, P3-A 2026-11-12)
+const IMAGE_PATH = /\/(?:versions\/[^/]+\/files\/[^/]+|drafts\/[^/]+)\/images\/[^/]+$|\/snapshots\/[^/]+\/[^/]+\/image$/
 const nonEmpty = (v) => typeof v === 'string' && v.trim() !== ''
 
 function devOverride(req) {
