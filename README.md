@@ -90,6 +90,7 @@ Windows 방화벽 허용 창이 뜨면 허용하지 않아도 된다(이 PC 안�
 - `npm run seed` — 시험 데이터를 EARS 에 넣고 지운다
 - `npm --prefix server run test:integration`, `npm run e2e` — 통합 시험과 저장 E2E 는 InterfaceServer 로 `SEW_W_` 시나리오를 배포·삭제하고 SC_PROPERTY 에 직접 쓰며(켜기·끄기·성과), 시험 사용자(`sew_*`)의 초안·배포 기록을 웹 DB 에 썼다가 지운다. E2E 는 서버의 InterfaceServer 주소를 고장 주입 중계로 바꿔 띄운다(맥 로컬 전용 — 실행·전제는 `CLAUDE.md`)
 - `node tools/measure/open-big.js`·`deploy-big.js` — 큰 시험 시나리오(BIG_200)를 열고, deploy-big 은 새 판으로 배포한다
+- `npm run seed -- snapshots`·`snapshots-big`, `node tools/infra/check-ss-compat.js`, `node tools/measure/snapshot-big.js` — 스냅샷 시험 데이터를 **Cassandra 에 쓰고 지운다**(시험 설비 `SEWT_` 파티션). 웹 서버 자체는 Cassandra 를 읽기만 하지만 이 도구들은 쓴다 — 맥 로컬 전용이다
 
 ### 7. 문제 해결
 
@@ -161,6 +162,7 @@ notepad server\.env
 | [6] | `EARS_INTERFACE_MAX_REQUEST_MB` | 사내 InterfaceServer 의 `max-content-length`(MB). 모르면 `100` 그대로 |
 | [4] | `SE_USER_SINGLEID` | WRITE 권한이 있는 본인 SingleID |
 | [9] | `SE_LINK_PREPROCESSING_SOP` | (선택) 전처리 설정 창에 보일 안내 문서 주소(`http://`·`https://`). 비워 두면 링크가 보이지 않는다. 읽기 시험 때 만든 `.env` 에는 이 줄이 없을 수 있다 — 없어도 된다 |
+| [10] | `CASSANDRA_*`·`SE_SNAPSHOT_PARTITION_TZ`·`SE_DISPLAY_TZ`·`HTTP_WEB_SERVER_URL` | 스냅샷·이력(P3) 설정이다. 아직 화면이 없어 **비워 둔다** — `CASSANDRA_CONTACT_POINTS` 가 비어 있으면 서버는 Cassandra 에 연결하지 않는다. 스냅샷 화면이 들어오면 이 표에 넣을 값(Cassandra 주소·읽기 계정·데이터센터 이름)을 적는다. 읽기·쓰기 시험 때 만든 `.env` 에는 이 구역이 없을 수 있다 — 없어도 된다 |
 | [1]·[4]·[5] | 그대로 둘 것 | `HOST=127.0.0.1` · `SE_DEV_USER_OVERRIDE=0` · `SE_WEBMANAGER_DB=0` |
 
 ### 4. 사전 점검
