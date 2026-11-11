@@ -33,9 +33,9 @@ function fakeRepo({ months = {}, images = {}, truncated = false } = {}) {
       const names = of(month).filter((n) => n >= fromName && n < toName)
       return { names: names.slice(0, limit), truncated: truncated || names.length > limit }
     },
-    latestName: async (eqpId, month) => {
-      calls.latestName.push({ eqpId, month })
-      const names = of(month)
+    latestName: async (eqpId, month, fromName) => {
+      calls.latestName.push({ eqpId, month, fromName })
+      const names = of(month).filter((n) => n >= fromName)
       return names.length ? names[names.length - 1] : null
     },
     imageBase64: async (eqpId, day, fileName) => {
@@ -198,7 +198,8 @@ describe('snapshotService.days — 있는 날', () => {
     const repo = fakeRepo({ months: { '2026-11': [click(kst(2026, 11, 9, 10)), click(kst(2026, 11, 10, 23, 50))], '2026-10': [click(kst(2026, 10, 30))] } })
     const out = await service(repo).days(USER, 'E1', {})
     expect(out).toEqual({ eqpId: 'E1', latest: '2026-11-10', days: null, truncated: false })
-    expect(repo.calls.latestName).toEqual([{ eqpId: 'E1', month: { year: 2026, month: 11 } }])
+    // 이름 하한 = 지금 − 15일 — 그보다 앞의 지워진 줄을 훑지 않는다
+    expect(repo.calls.latestName).toEqual([{ eqpId: 'E1', month: { year: 2026, month: 11 }, fromName: String(NOW - 15 * DAY) }])
     expect(repo.calls.listNames).toHaveLength(0)
   })
 
@@ -216,6 +217,9 @@ describe('snapshotService.days — 있는 날', () => {
 
   it('가장 늦은 이름이 보관 기간 밖이거나 하나도 없으면 latest null', async () => {
     const old = fakeRepo({ months: { '2026-10': [click(NOW - 15 * DAY - 1)] } })
+    expect((await service(old).days(USER, 'E1', {})).latest).toBeNull()
+    // 저장소가 하한을 지키지 않고 옛 이름을 줘도 걸러진다
+    old.latestName = async () => click(NOW - 15 * DAY - 1)
     expect((await service(old).days(USER, 'E1', {})).latest).toBeNull()
     expect((await service(fakeRepo()).days(USER, 'E1', {})).latest).toBeNull()
   })

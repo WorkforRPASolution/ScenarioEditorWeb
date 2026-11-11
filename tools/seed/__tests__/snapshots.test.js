@@ -4,6 +4,7 @@ const require = createRequire(import.meta.url)
 const { PNG } = require('pngjs')
 const { planSnapshots, seedSnapshots, cleanSnapshots, removeSnapshots, partitionOf } = require('../lib/snapshots')
 const { cassandraEnv } = require('../lib/cassandra')
+const { planBig, seedBig, BIG_EQP, IDLE_EQP } = require('../lib/snapshotsBig')
 const { PHOTO, CVD } = require('../data/snapshots')
 const { equipment } = require('../data/equipment')
 // 시험만 서버를 읽는다 — 넣는 이름이 서버가 받는 꼴인지 본다.
@@ -137,20 +138,20 @@ describe('seedSnapshots — 넣기', () => {
 })
 
 describe('cleanSnapshots — 지우기', () => {
-  it('준 설비의 최근 16일~내일 파티션만 지운다', async () => {
+  it('준 설비의 최근 27일~내일 파티션만 지운다', async () => {
     const client = fakeClient()
     const out = await cleanSnapshots(client, [PHOTO, CVD], NOW)
     const list = client.calls.filter((c) => c.query === 'delete from snapshotlist where eqpid = ? and year = ? and month = ?')
     const image = client.calls.filter((c) => c.query === 'delete from snapshot where eqpid = ? and year = ? and month = ? and day = ?')
     expect(list.length + image.length).toBe(client.calls.length)
     expect(client.calls.every((c) => c.options.prepare === true)).toBe(true)
-    // 2026-10-26 ~ 2026-11-12 (KST): 달 둘, 날 18
+    // 2026-10-15 ~ 2026-11-12 (KST): 달 둘, 날 29
     expect(list.map((c) => c.params)).toEqual([[PHOTO, 2026, 10], [PHOTO, 2026, 11], [CVD, 2026, 10], [CVD, 2026, 11]])
     const photoDays = image.filter((c) => c.params[0] === PHOTO).map((c) => c.params.slice(1))
-    expect(photoDays).toHaveLength(18)
-    expect(photoDays[0]).toEqual([2026, 10, 26])
-    expect(photoDays[17]).toEqual([2026, 11, 12])
-    expect(out).toEqual({ listPartitions: 4, imagePartitions: 36 })
+    expect(photoDays).toHaveLength(29)
+    expect(photoDays[0]).toEqual([2026, 10, 15])
+    expect(photoDays[28]).toEqual([2026, 11, 12])
+    expect(out).toEqual({ listPartitions: 4, imagePartitions: 58 })
   })
 
   it('시험 설비가 아닌 것이 섞이면 아무것도 지우지 않고 던진다', async () => {
@@ -177,6 +178,63 @@ describe('removeSnapshots — 넣은 줄만 지우기 (통합 시험 정리용)'
     const client = fakeClient()
     await expect(removeSnapshots(client, [{ eqpId: 'EQP_REAL_01', fileName: '1_[1][2].png', ms: 1, png: null }])).rejects.toThrow(/SEWT_/)
     expect(client.calls).toHaveLength(0)
+  })
+})
+
+describe('planBig — 큰 달 측정용 (목록 줄만)', () => {
+  const plan = planBig(NOW, { bigCount: 1000, idleCount: 400 })
+
+  it('바쁜 설비: 이번 달(KST) 1일부터 지금까지 고르게, 앞 절반은 지워질 줄', () => {
+    const big = plan.filter((r) => r.eqpId === BIG_EQP)
+    expect(big).toHaveLength(1000)
+    expect(big.every((r) => r.ms >= kst(2026, 11, 1) && r.ms < NOW)).toBe(true)
+    expect(new Set(big.map((r) => r.fileName)).size).toBe(1000)
+    expect(big.map((r) => r.ms)).toEqual([...big.map((r) => r.ms)].sort((a, b) => a - b))
+    expect(big.slice(0, 500).every((r) => r.expired)).toBe(true)
+    expect(big.slice(500).every((r) => !r.expired)).toBe(true)
+    expect(big.every((r) => parseSnapshotName(r.fileName).ms === r.ms)).toBe(true)
+  })
+
+  it('오래 쉰 설비: 16일 전까지의 열흘에 모두 지워질 줄 — 보관 기간 밖이다', () => {
+    const idle = plan.filter((r) => r.eqpId === IDLE_EQP)
+    expect(idle).toHaveLength(400)
+    expect(idle.every((r) => r.expired)).toBe(true)
+    expect(idle.every((r) => r.ms >= NOW - 26 * DAY && r.ms < NOW - 16 * DAY)).toBe(true)
+  })
+
+  it('두 설비 모두 시험 설비이고 seed·통합 시험의 스냅샷 설비와 겹치지 않는다', () => {
+    for (const id of [BIG_EQP, IDLE_EQP]) {
+      expect(equipment.some((e) => e.eqpId === id), id).toBe(true)
+      expect([PHOTO, CVD, 'SEWT_ETCH_A01', 'SEWT_ETCH_B01']).not.toContain(id)
+    }
+  })
+
+  it('월초라 이번 달이 줄 수보다 짧으면 던진다', () => {
+    expect(() => planBig(kst(2026, 11, 1, 0, 0, 0, 500), { bigCount: 1000, idleCount: 1 })).toThrow(/월초/)
+  })
+})
+
+describe('seedBig — 묶어서 넣기', () => {
+  it('지워질 줄은 TTL 1 로, 나머지는 TTL 없이 — 한 묶음은 한 파티션의 같은 종류 줄이다', async () => {
+    const batches = []
+    const client = { batch: async (queries, options) => { batches.push({ queries, options }) } }
+    const rows = planBig(NOW, { bigCount: 100, idleCount: 30 })
+    const out = await seedBig(client, rows, { batchSize: 40, concurrency: 2 })
+    expect(out).toEqual({ rows: 130, expired: 80, batches: batches.length })
+    const all = batches.flatMap((b) => b.queries)
+    expect(all).toHaveLength(130)
+    expect(all.filter((q) => q.query === 'insert into snapshotlist (eqpid, year, month, fname, fname_data) values (?, ?, ?, ?, ?) using ttl 1')).toHaveLength(80)
+    expect(all.filter((q) => q.query === 'insert into snapshotlist (eqpid, year, month, fname, fname_data) values (?, ?, ?, ?, ?)')).toHaveLength(50)
+    for (const b of batches) {
+      expect(b.queries.length).toBeLessThanOrEqual(40)
+      expect(b.options).toMatchObject({ prepare: true, logged: false })
+      expect(new Set(b.queries.map((q) => `${q.query}|${q.params.slice(0, 3).join('/')}`)).size).toBe(1)
+    }
+  })
+
+  it('시험 설비가 아니면 넣지 않고 던진다', async () => {
+    const client = { batch: async () => { throw new Error('불리면 안 된다') } }
+    await expect(seedBig(client, [{ eqpId: 'EQP_REAL_01', fileName: '1_[1][2].png', ms: 1, expired: false }])).rejects.toThrow(/SEWT_/)
   })
 })
 

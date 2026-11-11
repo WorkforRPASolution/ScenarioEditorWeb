@@ -86,7 +86,7 @@ function createSnapshotService({ snapshotRepo, scopes, now, env = {}, log = null
   // 보관 기간 안에서 가장 늦은 한 장의 표시 날짜. 늦은 달부터 한 줄씩 본다.
   async function latestDate(eqpId, timeDiff, from, to) {
     for (const month of monthsOf(from, to).reverse()) {
-      const p = parseSnapshotName(await snapshotRepo.latestName(eqpId, month))
+      const p = parseSnapshotName(await snapshotRepo.latestName(eqpId, month, nameBound(from)))
       if (!p || p.ms > MAX_DATE_MS) continue // 없거나 꼴이 아닌 이름이면 앞 달을 본다
       return p.ms >= from ? displayOf(p.ms, timeDiff, displayTz).date : null
     }

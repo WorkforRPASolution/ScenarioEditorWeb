@@ -1,5 +1,5 @@
 'use strict'
-// 사용: node tools/seed/cli.js reset basic anomaly | big | clean | snapshots
+// 사용: node tools/seed/cli.js reset basic anomaly | big | clean | snapshots | snapshots-big [바쁜 설비 줄 수]
 const fs = require('node:fs')
 const path = require('node:path')
 const { Long } = require('mongodb')
@@ -12,6 +12,7 @@ const { equipment, agents } = require('./data/equipment')
 const users = require('./data/users')
 const { connectCassandra } = require('./lib/cassandra')
 const { planSnapshots, seedSnapshots, cleanSnapshots } = require('./lib/snapshots')
+const { planBig, seedBig, BIG_EQP, IDLE_EQP } = require('./lib/snapshotsBig')
 
 const SNAPSHOT_EQP = [...new Set(equipment.map((e) => e.eqpId))] // 스냅샷을 지울 설비 = 시험 설비 전부(SEWT_)
 
@@ -70,9 +71,23 @@ async function seedSnapshotData() {
   }, { required: true })
 }
 
+// 큰 달 측정용(tools/measure/snapshot-big.js). 줄 수를 주면 바쁜 설비 줄 수를 바꾼다(오래 쉰 설비는 그 2/3).
+async function seedBigSnapshotData(countArg) {
+  const bigCount = /^\d+$/.test(countArg || '') ? Number(countArg) : 180000
+  await withCassandra(async (client) => {
+    const now = Date.now()
+    console.log('스냅샷 지움:', await cleanSnapshots(client, [BIG_EQP, IDLE_EQP], now))
+    const t0 = Date.now()
+    const out = await seedBig(client, planBig(now, { bigCount, idleCount: Math.round((bigCount * 2) / 3) }))
+    console.log(`큰 달 넣음: ${BIG_EQP}(바쁜 설비)·${IDLE_EQP}(오래 쉰 설비)`, out, `(${Date.now() - t0}ms)`)
+    await new Promise((r) => setTimeout(r, 2500)) // TTL 1 줄이 지워진 상태가 되기를 기다린다
+  }, { required: true })
+}
+
 async function main() {
   const [cmd, ...sets] = process.argv.slice(2)
   if (cmd === 'snapshots') return seedSnapshotData()
+  if (cmd === 'snapshots-big') return seedBigSnapshotData(sets[0])
   const ctx = await connect()
   try {
     if (cmd === 'clean' || cmd === 'reset') {
@@ -89,7 +104,7 @@ async function main() {
         console.log(`${r.meta.set}/${r.meta.name} ${r.meta.load}${out && out.crtime ? ` crtime=${out.crtime}` : ''} (${Date.now() - t0}ms)`)
       }
     }
-    if (!['clean', 'reset', 'big'].includes(cmd)) { console.error('사용: reset <묶음…> | big | clean | snapshots'); process.exitCode = 2 }
+    if (!['clean', 'reset', 'big'].includes(cmd)) { console.error('사용: reset <묶음…> | big | clean | snapshots | snapshots-big [줄 수]'); process.exitCode = 2 }
   } finally {
     await ctx.close()
   }

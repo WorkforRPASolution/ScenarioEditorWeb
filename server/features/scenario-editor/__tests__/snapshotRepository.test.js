@@ -39,14 +39,14 @@ describe('snapshotRepository — Cassandra 읽기만, 처음 쓸 때 연결 (P3 
     const { driver, calls } = fakeDriver()
     const repo = createSnapshotRepository({ env: ENV, driver })
     expect(calls.clients).toHaveLength(0)
-    await repo.latestName('E1', { year: 2026, month: 11 })
-    await repo.latestName('E1', { year: 2026, month: 10 })
+    await repo.latestName('E1', { year: 2026, month: 11 }, '0')
+    await repo.latestName('E1', { year: 2026, month: 10 }, '0')
     expect(calls.clients).toHaveLength(1)
   })
 
   it('Client 옵션: 주소·포트·데이터센터·키스페이스 기본값, 계정, 읽기 한도 10초, 다시 보내지 않음', async () => {
     const { driver, calls, FallthroughRetryPolicy } = fakeDriver()
-    await createSnapshotRepository({ env: ENV, driver }).latestName('E1', { year: 2026, month: 11 })
+    await createSnapshotRepository({ env: ENV, driver }).latestName('E1', { year: 2026, month: 11 }, '0')
     const o = calls.clients[0]
     expect(o.contactPoints).toEqual(['10.0.0.1', '10.0.0.2'])
     expect(o.protocolOptions).toEqual({ port: 9042 })
@@ -61,7 +61,7 @@ describe('snapshotRepository — Cassandra 읽기만, 처음 쓸 때 연결 (P3 
   it('Client 옵션: 설정값을 따르고, 계정은 둘 다 있을 때만 넣는다', async () => {
     const { driver, calls } = fakeDriver()
     const env = { CASSANDRA_CONTACT_POINTS: 'h', CASSANDRA_PORT: '19042', CASSANDRA_LOCAL_DC: 'dc9', CASSANDRA_KEYSPACE: 'ars2', CASSANDRA_USERNAME: 'reader' }
-    await createSnapshotRepository({ env, driver }).latestName('E1', { year: 2026, month: 11 })
+    await createSnapshotRepository({ env, driver }).latestName('E1', { year: 2026, month: 11 }, '0')
     const o = calls.clients[0]
     expect(o.protocolOptions).toEqual({ port: 19042 })
     expect(o.localDataCenter).toBe('dc9')
@@ -93,14 +93,15 @@ describe('snapshotRepository — Cassandra 읽기만, 처음 쓸 때 연결 (P3 
     expect(out).toEqual({ names: ['a', 'b'], truncated: false })
   })
 
-  it('latestName: 내림차순 한 줄, 없으면 null', async () => {
+  // 이름 하한을 준다 — 보관 기간이 지나 지워진 줄(tombstone)만 남은 달을 끝에서부터 훑지 않게(큰 달 측정 2026-11-12: 12만 줄이 지워진 달에서 조회 실패).
+  it('latestName: 이름 하한부터 내림차순 한 줄, 없으면 null', async () => {
     const a = fakeDriver({ pages: [names('z')] })
-    expect(await createSnapshotRepository({ env: ENV, driver: a.driver }).latestName('E1', { year: 2026, month: 11 })).toBe('z')
-    expect(a.calls.execute[0].query).toBe('select fname from snapshotlist where eqpid = ? and year = ? and month = ? order by fname desc limit 1')
-    expect(a.calls.execute[0].params).toEqual(['E1', 2026, 11])
+    expect(await createSnapshotRepository({ env: ENV, driver: a.driver }).latestName('E1', { year: 2026, month: 11 }, '1000000000000')).toBe('z')
+    expect(a.calls.execute[0].query).toBe('select fname from snapshotlist where eqpid = ? and year = ? and month = ? and fname >= ? order by fname desc limit 1')
+    expect(a.calls.execute[0].params).toEqual(['E1', 2026, 11, '1000000000000'])
     expect(a.calls.execute[0].options).toMatchObject({ prepare: true })
     const b = fakeDriver({ pages: [[]] })
-    expect(await createSnapshotRepository({ env: ENV, driver: b.driver }).latestName('E1', { year: 2026, month: 11 })).toBeNull()
+    expect(await createSnapshotRepository({ env: ENV, driver: b.driver }).latestName('E1', { year: 2026, month: 11 }, '1000000000000')).toBeNull()
   })
 
   it('imageBase64: 키 한 줄, 없으면 null', async () => {
@@ -115,7 +116,7 @@ describe('snapshotRepository — Cassandra 읽기만, 처음 쓸 때 연결 (P3 
 
   it('미설정이면 503 SNAPSHOT_UNSET 이고 Client 를 만들지 않는다', async () => {
     const { driver, calls } = fakeDriver()
-    const e = await caught(createSnapshotRepository({ env: {}, driver }).latestName('E1', { year: 2026, month: 11 }))
+    const e = await caught(createSnapshotRepository({ env: {}, driver }).latestName('E1', { year: 2026, month: 11 }, '0'))
     expect([e.statusCode, e.code]).toEqual([503, 'SNAPSHOT_UNSET'])
     expect(calls.clients).toHaveLength(0)
   })
@@ -146,9 +147,9 @@ describe('snapshotRepository — Cassandra 읽기만, 처음 쓸 때 연결 (P3 
       async shutdown() {}
     }
     const repo = createSnapshotRepository({ env: ENV, driver: { ...f.driver, Client } })
-    expect((await caught(repo.latestName('E1', { year: 2026, month: 11 }))).code).toBe('SNAPSHOT_DOWN')
+    expect((await caught(repo.latestName('E1', { year: 2026, month: 11 }, '0'))).code).toBe('SNAPSHOT_DOWN')
     down = false
-    expect(await repo.latestName('E1', { year: 2026, month: 11 })).toBeNull()
+    expect(await repo.latestName('E1', { year: 2026, month: 11 }, '0')).toBeNull()
     expect(made).toBe(2)
   })
 
@@ -157,7 +158,7 @@ describe('snapshotRepository — Cassandra 읽기만, 처음 쓸 때 연결 (P3 
     const repo = createSnapshotRepository({ env: ENV, driver })
     await repo.shutdown()
     expect(calls.shutdown).toBe(0)
-    await repo.latestName('E1', { year: 2026, month: 11 })
+    await repo.latestName('E1', { year: 2026, month: 11 }, '0')
     await repo.shutdown()
     expect(calls.shutdown).toBe(1)
   })

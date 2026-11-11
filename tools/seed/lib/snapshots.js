@@ -14,7 +14,7 @@ const Q_DELETE_LIST = 'delete from snapshotlist where eqpid = ? and year = ? and
 const Q_DELETE_IMAGE = 'delete from snapshot where eqpid = ? and year = ? and month = ? and day = ?'
 const Q_REMOVE_LIST = 'delete from snapshotlist where eqpid = ? and year = ? and month = ? and fname = ?'
 const Q_REMOVE_IMAGE = 'delete from snapshot where eqpid = ? and year = ? and month = ? and day = ? and fname = ?'
-const CLEAN_BACK_DAYS = 16
+const CLEAN_BACK_DAYS = 27 // 보관 15일 + 큰 달 측정용 '오래 쉰 설비' 줄(16~26일 전)까지
 const CLEAN_AHEAD_DAYS = 1
 
 function partitionOf(ms) {
@@ -90,7 +90,7 @@ async function seedSnapshots(client, rows) {
   return out
 }
 
-// 최근 16일부터 내일까지 걸치는 파티션을 지운다(보관 15일 + 여유).
+// 최근 27일부터 내일까지 걸치는 파티션을 지운다.
 async function cleanSnapshots(client, eqpIds, now) {
   assertTestEquipment(eqpIds)
   const days = []
@@ -124,4 +124,4 @@ async function removeSnapshots(client, rows) {
   return { rows: rows.length }
 }
 
-module.exports = { planSnapshots, seedSnapshots, cleanSnapshots, removeSnapshots, partitionOf }
+module.exports = { planSnapshots, seedSnapshots, cleanSnapshots, removeSnapshots, partitionOf, assertTestEquipment }

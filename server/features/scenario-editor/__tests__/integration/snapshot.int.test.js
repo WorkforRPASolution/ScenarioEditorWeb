@@ -228,7 +228,7 @@ describe('고장 (Review Focus 1)', () => {
     const env = { ...process.env, CASSANDRA_USERNAME: 'sew_wrong_user', CASSANDRA_PASSWORD: 'sew_wrong_password' }
     const repo = createSnapshotRepository({ env, driver })
     try {
-      const { e, ms } = await timed(repo.latestName(EQP_TODAY, { year: Y, month: M }))
+      const { e, ms } = await timed(repo.latestName(EQP_TODAY, { year: Y, month: M }, '0000000000000'))
       expect([e.statusCode, e.code]).toEqual([503, 'SNAPSHOT_DOWN'])
       expect(ms).toBeLessThan(10000)
       expect(e.message).not.toMatch(/sew_wrong/)
@@ -242,7 +242,8 @@ describe('고장 (Review Focus 1)', () => {
     try {
       const out = await repo.listNames(EQP_TODAY, { year: Y, month: M }, String(t.click), String(t.night + 1), 3)
       expect(out).toEqual({ names: ROWS_TODAY.slice(0, 3).map((r) => r.fileName), truncated: true })
-      expect(await repo.latestName(EQP_TODAY, { year: Y, month: M })).toBe(ROWS_TODAY[3].fileName)
+      expect(await repo.latestName(EQP_TODAY, { year: Y, month: M }, String(t.click))).toBe(ROWS_TODAY[3].fileName)
+      expect(await repo.latestName(EQP_TODAY, { year: Y, month: M }, String(t.night + 1))).toBeNull()
     } finally {
       await repo.shutdown()
     }

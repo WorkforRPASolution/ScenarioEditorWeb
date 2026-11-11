@@ -9,7 +9,7 @@ const READ_TIMEOUT_MS = 10000
 const CONNECT_TIMEOUT_MS = 5000
 const FETCH_SIZE = 5000
 const Q_LIST = 'select fname from snapshotlist where eqpid = ? and year = ? and month = ? and fname >= ? and fname < ?'
-const Q_LATEST = 'select fname from snapshotlist where eqpid = ? and year = ? and month = ? order by fname desc limit 1'
+const Q_LATEST = 'select fname from snapshotlist where eqpid = ? and year = ? and month = ? and fname >= ? order by fname desc limit 1'
 const Q_IMAGE = 'select image from snapshot where eqpid = ? and year = ? and month = ? and day = ? and fname = ?'
 
 const text = (v) => (typeof v === 'string' ? v.trim() : '')
@@ -72,8 +72,10 @@ function createSnapshotRepository({ env = process.env, driver }) {
     return { names: truncated ? names.slice(0, limit) : names, truncated }
   }
 
-  async function latestName(eqpId, { year, month }) {
-    const r = await run(Q_LATEST, [eqpId, year, month])
+  // fromName = 이름 하한. 보관 기간이 지나 지워진 줄만 남은 달을 끝에서부터 훑으면 Cassandra 가 조회를 실패시킨다
+  // (tombstone_failure_threshold 10만 — 큰 달 측정 2026-11-12). 하한을 주면 그 줄들을 지나가지 않는다.
+  async function latestName(eqpId, { year, month }, fromName) {
+    const r = await run(Q_LATEST, [eqpId, year, month, fromName])
     return r.rows.length ? r.rows[0].fname : null
   }
 
