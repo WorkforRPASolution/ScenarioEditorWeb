@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted, onBeforeUnmount, onActivated, onDeacti
 import { useRoute, useRouter } from 'vue-router'
 import { useEditorStore } from './stores/editorStore'
 import { useEditStore } from './stores/editStore'
+import { useSnapshotStore } from './stores/snapshotStore'
 import { useLayoutSizes } from './composables/useLayoutSizes'
 import { t } from './messages'
 import SplitGutter from './components/SplitGutter.vue'
@@ -18,10 +19,12 @@ import StepToolbar from './components/StepToolbar.vue'
 import MultiSelection from './components/MultiSelection.vue'
 import EditDialogs from './components/EditDialogs.vue'
 import NewScenarioDialog from './components/NewScenarioDialog.vue'
+import SnapshotPanel from './components/snapshot/SnapshotPanel.vue'
 
 defineOptions({ name: 'ScenarioEditorView' })
 const store = useEditorStore()
 const edit = useEditStore()
+const snap = useSnapshotStore()
 const route = useRoute()
 const router = useRouter()
 const { sizes, startDrag, reset } = useLayoutSizes()
@@ -84,6 +87,10 @@ async function start() {
 }
 
 onMounted(() => { active = true; start() })
+// 스냅샷 패널(P3): 펼침·마지막 설비를 되살린다 — 접혀 있으면 서버를 부르지 않는다
+onMounted(() => snap.restore())
+// 설비 고르기가 열린 시나리오의 공정·모델 설비를 먼저 보인다
+const snapPrefer = computed(() => (store.skeleton ? { process: store.skeleton.process, model: store.skeleton.model } : null))
 onDeactivated(() => { active = false })
 onActivated(() => {
   active = true
@@ -117,12 +124,18 @@ const card = 'bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:
         <span class="flex-1 min-w-0">{{ t('SEW_DELETED_BANNER') }}{{ edit.changeCount ? t('SEW_DELETED_BANNER_CHANGED', { n: edit.changeCount }) : '' }}</span>
         <button class="h-8 px-3 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-100" @click="loadOpen = true">{{ t('SEW_UI_LOAD') }}</button>
       </div>
-      <div class="flex-1 min-h-0 grid" :style="{ gridTemplateColumns: `36px 12px minmax(0,1fr) 12px ${sizes.rw}px` }">
-        <!-- 왼쪽: 스냅샷(P3) — P1 은 접힌 막대 -->
-        <aside :class="card" class="flex items-center justify-center" data-testid="se-snapshot-rail">
-          <span class="text-xs text-gray-400 dark:text-gray-500 [writing-mode:vertical-rl]">{{ t('SEW_UI_SNAPSHOT_RAIL') }}</span>
-        </aside>
-        <div />
+      <div class="flex-1 min-h-0 grid" :style="{ gridTemplateColumns: `${snap.open ? sizes.lw : 36}px 12px minmax(0,1fr) 12px ${sizes.rw}px` }">
+        <!-- 왼쪽: 스냅샷(P3) — 접힌 띠를 누르면 패널이 펼쳐진다 -->
+        <template v-if="snap.open">
+          <section :class="card" class="min-h-0 min-w-0 overflow-hidden"><SnapshotPanel :prefer="snapPrefer" /></section>
+          <SplitGutter direction="v" testid="se-gutter-l" @start="startDrag('lw', $event, 1, 'x')" @reset="reset('lw')" />
+        </template>
+        <template v-else>
+          <button type="button" :class="card" class="flex items-center justify-center hover:bg-gray-50 dark:hover:bg-gray-800" :title="t('SEW_SNAP_EXPAND_HINT')" data-testid="se-snapshot-rail" @click="snap.setOpen(true)">
+            <span class="text-xs text-gray-500 dark:text-gray-400 [writing-mode:vertical-rl]">{{ t('SEW_UI_SNAPSHOT_RAIL') }}</span>
+          </button>
+          <div />
+        </template>
         <!-- 가운데 -->
         <div class="flex flex-col min-h-0 min-w-0">
           <section v-show="!store.expanded" :class="card" class="flex-1 min-h-0 overflow-hidden">

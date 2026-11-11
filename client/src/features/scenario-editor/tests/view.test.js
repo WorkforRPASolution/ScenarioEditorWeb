@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from 'vitest'
 import { shallowMount, mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import { defineComponent, h, KeepAlive, ref, nextTick } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
@@ -6,11 +6,12 @@ import { setActivePinia, createPinia } from 'pinia'
 const replace = vi.fn()
 const route = { query: {} }
 vi.mock('vue-router', () => ({ useRoute: () => route, useRouter: () => ({ replace }) }))
-const api = vi.hoisted(() => ({ me: vi.fn(), scopes: vi.fn(), dataCheck: vi.fn(), open: vi.fn(), getDraft: vi.fn(), check: vi.fn() }))
+const api = vi.hoisted(() => ({ me: vi.fn(), scopes: vi.fn(), dataCheck: vi.fn(), open: vi.fn(), getDraft: vi.fn(), check: vi.fn(), equipment: vi.fn(), snapshotDays: vi.fn(), snapshots: vi.fn(), snapshotImage: vi.fn() }))
 vi.mock('../api', () => ({ scenarioEditorApi: api, imageUrl: (p) => p }))
 import ScenarioEditorView from '../ScenarioEditorView.vue'
 import { useEditorStore } from '../stores/editorStore'
 import { useEditStore } from '../stores/editStore'
+import { useSnapshotStore } from '../stores/snapshotStore'
 import { MESSAGES } from '../messages'
 import { imageStep, noneStep } from './panelFixture'
 
@@ -76,6 +77,55 @@ describe('ScenarioEditorView', () => {
     const w = mountView(); await flushPromises()
     await w.find('[data-testid="se-gutter-r"]').trigger('dblclick')
     expect(JSON.parse(localStorage.getItem('se-layout')).rw).toBe(370)
+  })
+  describe('스냅샷 패널(P3-B)', () => {
+    const cols = (w) => w.find('[data-testid="se-root"] .grid').attributes('style')
+    beforeEach(() => { api.equipment.mockReturnValue(ok({ items: [] })) })
+    it('접힌 띠를 누르면 패널이 펼쳐지고(기본 250px) 설비 목록을 받는다, 접으면 띠로 돌아온다', async () => {
+      const w = mountView(); await flushPromises()
+      expect(cols(w)).toContain('grid-template-columns: 36px 12px')
+      expect(w.findComponent({ name: 'SnapshotPanel' }).exists()).toBe(false)
+      expect(api.equipment).not.toHaveBeenCalled()
+      await w.find('[data-testid="se-snapshot-rail"]').trigger('click')
+      await flushPromises()
+      expect(w.findComponent({ name: 'SnapshotPanel' }).exists()).toBe(true)
+      expect(w.find('[data-testid="se-snapshot-rail"]').exists()).toBe(false)
+      expect(cols(w)).toContain('grid-template-columns: 250px 12px')
+      expect(api.equipment).toHaveBeenCalledTimes(1)
+      await useSnapshotStore().setOpen(false)
+      await w.vm.$nextTick()
+      expect(w.find('[data-testid="se-snapshot-rail"]').exists()).toBe(true)
+      expect(cols(w)).toContain('grid-template-columns: 36px 12px')
+    })
+    it('펼친 채 떠났으면 다시 켤 때 펼친 채로 시작한다', async () => {
+      localStorage.setItem('se-snapshot', JSON.stringify({ open: true, eqpId: null }))
+      const w = mountView(); await flushPromises()
+      expect(w.findComponent({ name: 'SnapshotPanel' }).exists()).toBe(true)
+    })
+    it('왼쪽 경계선은 펼쳤을 때만 있고, 끌면 넓어지며 두 번 누르면 기본값', async () => {
+      const width = window.innerWidth
+      window.innerWidth = 1600 // 패널 폭의 상한은 화면 너비 − 1100 (시험 환경 기본 1024 에서는 하한 180 이 된다)
+      onTestFinished(() => { window.innerWidth = width })
+      const w = mountView(); await flushPromises()
+      expect(w.find('[data-testid="se-gutter-l"]').exists()).toBe(false)
+      await w.find('[data-testid="se-snapshot-rail"]').trigger('click')
+      await flushPromises()
+      await w.find('[data-testid="se-gutter-l"]').trigger('mousedown', { clientX: 300 })
+      window.dispatchEvent(new MouseEvent('mousemove', { clientX: 360 }))
+      window.dispatchEvent(new MouseEvent('mouseup'))
+      await w.vm.$nextTick()
+      expect(cols(w)).toContain('grid-template-columns: 310px 12px')
+      await w.find('[data-testid="se-gutter-l"]').trigger('dblclick')
+      expect(cols(w)).toContain('grid-template-columns: 250px 12px')
+    })
+    it('열린 시나리오의 공정·모델을 설비 고르기에 넘긴다(그 설비가 먼저 온다)', async () => {
+      route.query = { p: 'P', m: 'M', n: 'N', v: '5' }
+      api.open.mockReturnValue(ok(skeletonOf('N')))
+      const w = mountView(); await flushPromises()
+      await w.find('[data-testid="se-snapshot-rail"]').trigger('click')
+      await flushPromises()
+      expect(w.findComponent({ name: 'SnapshotPanel' }).props('prefer')).toEqual({ process: 'P', model: 'M' })
+    })
   })
   it('경계선 안내 문구는 문구 목록에서 온다', async () => {
     const w = mountView(); await flushPromises()

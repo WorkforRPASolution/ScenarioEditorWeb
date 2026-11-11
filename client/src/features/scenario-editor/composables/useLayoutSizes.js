@@ -10,6 +10,7 @@ const KEY = 'se-layout'
 function upper(k) {
   if (k === 'sh') return Math.min(MAX.sh, window.innerHeight - 260)
   if (k === 'rw') return Math.min(MAX.rw, window.innerWidth - 400)
+  if (k === 'lw') return Math.min(MAX.lw, window.innerWidth - 1100) // 스냅샷 패널을 펼쳐도 가운데·오른쪽이 남게
   return MAX[k]
 }
 const clamp = (k, v) => Math.max(MIN[k], Math.min(Math.max(MIN[k], upper(k)), Math.round(v)))

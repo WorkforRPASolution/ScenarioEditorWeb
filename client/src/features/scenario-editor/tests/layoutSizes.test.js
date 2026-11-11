@@ -52,6 +52,15 @@ describe('useLayoutSizes', () => {
       localStorage.setItem('se-layout', JSON.stringify({ rw: 600 }))
       expect(useLayoutSizes().sizes.rw).toBe(400)
     })
+    it('저장된 lw(스냅샷 패널)가 화면 너비 - 1100 보다 크면 그만큼으로 줄인다 — 하한 180 아래로는 안 간다', () => {
+      setViewport(1400, 900)
+      localStorage.setItem('se-layout', JSON.stringify({ lw: 460 }))
+      expect(useLayoutSizes().sizes.lw).toBe(300)
+      setViewport(1200, 900)
+      expect(useLayoutSizes().sizes.lw).toBe(180)
+      setViewport(1920, 1080)
+      expect(useLayoutSizes().sizes.lw).toBe(460)
+    })
     it('화면이 아주 작아 상한이 하한 밑이면 하한을 쓴다', () => {
       setViewport(500, 300)
       localStorage.setItem('se-layout', JSON.stringify({ rw: 600, sh: 900 }))

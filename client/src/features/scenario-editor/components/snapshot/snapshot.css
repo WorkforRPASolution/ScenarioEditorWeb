@@ -1,0 +1,47 @@
+/* 스냅샷 패널·목록·달력(P3 설계 §4.2). 알약 바탕은 pills.css 의 .se-pill 을 쓴다. */
+.se-snap-row { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; font-size: 12px; cursor: default; white-space: nowrap; border-left: 3px solid transparent; }
+.se-snap-row:hover { background: #f3f4f6; }
+.se-snap-row[aria-selected='true'] { background: #dbeafe; border-left-color: #2563eb; }
+.se-snap-time { font-variant-numeric: tabular-nums; color: #111827; }
+.se-snap-shift { width: 40px; font-size: 10px; color: #6b7280; }
+.se-snap-expires { margin-left: auto; font-size: 10px; color: #b45309; }
+.se-snap-tag-start { background: #dbeafe; color: #1e40af; }
+.se-snap-tag-success { background: #dcfce7; color: #166534; }
+.se-snap-tag-stop { background: #e5e7eb; color: #374151; }
+.se-snap-tag-fail { background: #fee2e2; color: #991b1b; }
+.se-snap-tag-skip { background: #fef3c7; color: #92400e; }
+.se-snap-list:focus-visible { box-shadow: inset 0 0 0 2px #93c5fd; }
+
+.se-snap-eqp-list { position: absolute; left: 0; right: 0; top: calc(100% + 2px); z-index: 30; max-height: 280px; overflow-y: auto; background: #fff; border: 1px solid #d1d5db; border-radius: 6px; box-shadow: 0 8px 20px rgba(0, 0, 0, .15); }
+.se-snap-eqp-list button { display: flex; flex-direction: column; align-items: flex-start; width: 100%; padding: 4px 8px; border: 0; background: none; text-align: left; font-size: 12px; color: inherit; }
+.se-snap-eqp-list button:hover, .se-snap-eqp-list button.first { background: #eff6ff; }
+.se-snap-eqp-list button.on b { color: #1d4ed8; }
+.se-snap-eqp-list small { font-size: 10px; color: #6b7280; }
+.se-snap-eqp-list p { margin: 0; padding: 6px 8px; font-size: 11px; color: #6b7280; }
+
+.se-snap-cal { position: absolute; left: 0; right: 0; top: calc(100% + 2px); z-index: 30; padding: 8px; background: #fff; border: 1px solid #d1d5db; border-radius: 6px; box-shadow: 0 8px 20px rgba(0, 0, 0, .15); font-size: 11px; }
+.se-snap-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+.se-snap-cal-head { color: #6b7280; margin: 4px 0 2px; }
+.se-snap-cal-grid button { position: relative; height: 26px; border: 0; border-radius: 4px; background: none; color: inherit; font-size: 11px; font-variant-numeric: tabular-nums; }
+.se-snap-cal-grid button:enabled:hover { background: #eff6ff; }
+.se-snap-cal-grid button:disabled { color: #9ca3af; opacity: .5; }
+.se-snap-cal-grid button[aria-pressed='true'] { background: #dbeafe; color: #1d4ed8; font-weight: 600; }
+.se-snap-cal-grid button[data-has]::after { content: ''; position: absolute; left: 50%; bottom: 2px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: #2563eb; }
+.se-snap-cal p { margin: 6px 0 0; color: #6b7280; line-height: 1.4; }
+
+.dark .se-snap-row:hover { background: #334155; }
+.dark .se-snap-row[aria-selected='true'] { background: rgba(30, 64, 175, .4); border-left-color: #60a5fa; }
+.dark .se-snap-time { color: #e2e8f0; }
+.dark .se-snap-shift { color: #94a3b8; }
+.dark .se-snap-expires { color: #fcd34d; }
+.dark .se-snap-tag-start { background: rgba(30, 64, 175, .35); color: #93c5fd; }
+.dark .se-snap-tag-success { background: rgba(22, 101, 52, .35); color: #86efac; }
+.dark .se-snap-tag-stop { background: #374151; color: #d1d5db; }
+.dark .se-snap-tag-fail { background: rgba(153, 27, 27, .35); color: #fca5a5; }
+.dark .se-snap-tag-skip { background: rgba(146, 64, 14, .35); color: #fcd34d; }
+.dark .se-snap-eqp-list, .dark .se-snap-cal { background: #1e293b; border-color: #475569; }
+.dark .se-snap-eqp-list button:hover, .dark .se-snap-eqp-list button.first, .dark .se-snap-cal-grid button:enabled:hover { background: #334155; }
+.dark .se-snap-eqp-list button.on b { color: #93c5fd; }
+.dark .se-snap-eqp-list small, .dark .se-snap-eqp-list p, .dark .se-snap-cal p, .dark .se-snap-cal-head { color: #94a3b8; }
+.dark .se-snap-cal-grid button[aria-pressed='true'] { background: rgba(30, 64, 175, .4); color: #93c5fd; }
+.dark .se-snap-cal-grid button[data-has]::after { background: #60a5fa; }
