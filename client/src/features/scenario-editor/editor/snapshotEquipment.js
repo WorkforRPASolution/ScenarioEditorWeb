@@ -1,4 +1,5 @@
 // 설비 고르기 규칙(P3 설계 §4.2). items = GET /equipment 의 { eqpId, process, model, line, ipAddr, ipAddrL }.
+// 스냅샷 유무 표시(공정·모델 옆 "있는 설비 수 / 전체", 설비 줄의 가장 늦은 날짜)의 셈도 여기 있다.
 const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
 const uniq = (values) => [...new Set(values.filter((v) => typeof v === 'string' && v !== ''))].sort(cmp)
 const needleOf = (q) => String(q ?? '').trim().toLowerCase()
@@ -51,3 +52,35 @@ export function stepActive(index, delta, count) {
   if (index < 0) return delta > 0 ? 0 : count - 1
   return Math.min(count - 1, Math.max(0, index + delta))
 }
+
+// ── 스냅샷 유무 표시 ── latest = Map(설비 ID → 가장 늦은 스냅샷의 표시 날짜). 보관 기간 안에 스냅샷이 있는 설비만 들어 있다.
+// 값(field: 'process'·'model')마다 설비 수(total)와 그 가운데 스냅샷이 있는 설비 수(have). '' = 받은 설비 전체.
+export function countPresence(items, field, latest) {
+  const all = { have: 0, total: 0 }
+  const out = new Map([['', all]])
+  if (!Array.isArray(items)) return out
+  const known = latest instanceof Map ? latest : null
+  for (const e of items) {
+    const has = known && known.has(e.eqpId) ? 1 : 0
+    all.total++
+    all.have += has
+    const v = e[field]
+    if (typeof v !== 'string' || v === '') continue
+    let c = out.get(v)
+    if (!c) { c = { have: 0, total: 0 }; out.set(v, c) }
+    c.total++
+    c.have += has
+  }
+  return out
+}
+
+// 선택 상자 항목 옆 글 — 다 받았으면 "있는 수 / 전체", 받는 중이면 "… / 전체"(아직 다 세지 않았다), 그 밖(꺼짐·실패·받기 전)은 설비 수만.
+export function presenceText(count, status) {
+  if (!count) return ''
+  if (status === 'ready') return `${count.have} / ${count.total}`
+  if (status === 'loading') return `… / ${count.total}`
+  return String(count.total)
+}
+
+// 'YYYY-MM-DD' → 'MM-DD' (보관 기간이 15일이라 해는 쓰지 않는다)
+export const shortDate = (date) => (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date.slice(5) : '')

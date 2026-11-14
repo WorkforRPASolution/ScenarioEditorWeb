@@ -15,7 +15,9 @@ const props = defineProps({
   options: { type: Array, default: () => [] },
   allLabel: { type: String, required: true },
   testid: { type: String, required: true },
-  disabled: { type: Boolean, default: false }
+  disabled: { type: Boolean, default: false },
+  // 항목 옆에 붙일 글(스냅샷 있는 설비 수) — (항목) => { text, title }. 목록이 열려 있을 때만 부른다
+  noteOf: { type: Function, default: null }
 })
 const emit = defineEmits(['update:modelValue'])
 
@@ -29,6 +31,7 @@ const needle = computed(() => (text.value === props.modelValue ? '' : text.value
 const found = computed(() => filterOptions(props.options, needle.value))
 // 친 글자가 없을 때만 맨 위에 "전체" 줄('')을 둔다
 const rows = computed(() => (needle.value ? found.value.items : ['', ...found.value.items]))
+const notes = computed(() => (props.noteOf ? rows.value.map((o) => props.noteOf(o)) : null))
 // 친 글자가 있으면 맞는 첫 줄이 Enter 대상이다
 watch([needle, open], () => { active.value = needle.value && rows.value.length ? 0 : -1 })
 // ↑↓ 로 옮긴 줄이 목록 안에 보이게, 글자를 치면 맨 위로(스크롤해 둔 채 Enter 로 안 보이는 첫 줄을 고르지 않게)
@@ -80,7 +83,11 @@ function onKey(e) {
     <!-- 목록을 누를 때 칸이 초점을 잃지 않게(잃으면 누르기 전에 목록이 닫힌다) mousedown 을 막는다 -->
     <div v-if="open && !disabled" ref="list" class="se-snap-eqp-list" @mousedown.prevent>
       <button v-for="(o, i) in rows" :key="o" type="button" tabindex="-1" :class="{ on: o === modelValue, first: i === active }" :title="o || allLabel" :data-testid="`${testid}-option`" :data-value="o" @click="pick(o)">
-        <span class="se-snap-opt">{{ o || allLabel }}</span>
+        <span v-if="notes" class="se-snap-eqp-head">
+          <span class="se-snap-opt">{{ o || allLabel }}</span>
+          <em v-if="notes[i]?.text" :title="notes[i].title" :data-testid="`${testid}-note`">{{ notes[i].text }}</em>
+        </span>
+        <span v-else class="se-snap-opt">{{ o || allLabel }}</span>
       </button>
       <p v-if="!rows.length">{{ t('SEW_SNAP_OPT_NONE') }}</p>
       <p v-else-if="found.total > found.items.length" :data-testid="`${testid}-more`">{{ t('SEW_SNAP_OPT_MORE', { n: found.total - found.items.length }) }}</p>

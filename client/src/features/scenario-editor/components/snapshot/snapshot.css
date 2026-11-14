@@ -19,6 +19,12 @@
 .se-snap-eqp-list button.on b, .se-snap-eqp-list button.on .se-snap-opt { color: #1d4ed8; }
 .se-snap-eqp-list small { font-size: 10px; color: #6b7280; }
 .se-snap-opt { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 이름 + 오른쪽 끝의 스냅샷 유무(공정·모델: 있는 설비 수 / 전체, 설비: 가장 늦은 날짜) */
+.se-snap-eqp-head { display: flex; align-items: baseline; gap: 8px; width: 100%; min-width: 0; }
+.se-snap-eqp-head b, .se-snap-eqp-head .se-snap-opt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.se-snap-eqp-list em { flex: none; font-style: normal; font-size: 10px; font-variant-numeric: tabular-nums; color: #6b7280; }
+.se-snap-eqp-list em[data-has='1'] { color: #047857; }
+.se-snap-eqp-list em[data-has='0'] { color: #9ca3af; }
 .se-snap-eqp-list p { margin: 0; padding: 6px 8px; font-size: 11px; color: #6b7280; }
 
 .se-snap-cal { position: absolute; left: 0; right: 0; top: calc(100% + 2px); z-index: 30; padding: 8px; background: #fff; border: 1px solid #d1d5db; border-radius: 6px; box-shadow: 0 8px 20px rgba(0, 0, 0, .15); font-size: 11px; }
@@ -45,6 +51,9 @@
 .dark .se-snap-eqp-list button:hover, .dark .se-snap-eqp-list button.first, .dark .se-snap-cal-grid button:enabled:hover { background: #334155; }
 .dark .se-snap-eqp-list button.first { box-shadow: inset 3px 0 0 #60a5fa; }
 .dark .se-snap-eqp-list button.on b, .dark .se-snap-eqp-list button.on .se-snap-opt { color: #93c5fd; }
+.dark .se-snap-eqp-list em { color: #94a3b8; }
+.dark .se-snap-eqp-list em[data-has='1'] { color: #6ee7b7; }
+.dark .se-snap-eqp-list em[data-has='0'] { color: #64748b; }
 .dark .se-snap-eqp-list small, .dark .se-snap-eqp-list p, .dark .se-snap-cal p, .dark .se-snap-cal-head { color: #94a3b8; }
 .dark .se-snap-cal-grid button[aria-pressed='true'] { background: rgba(30, 64, 175, .4); color: #93c5fd; }
 .dark .se-snap-cal-grid button[data-has]::after { background: #60a5fa; }

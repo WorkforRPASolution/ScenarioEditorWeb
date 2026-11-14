@@ -55,6 +55,8 @@ export const scenarioEditorApi = {
   // ── 스냅샷(P3) ──
   // 내 범위 설비 → { items: [{ eqpId, process, model, line }] }
   equipment: () => api.get('/scenario-editor/equipment', { timeout: SNAPSHOT_TIMEOUT_MS }),
+  // 설비마다 가장 늦은 스냅샷 날짜(설비 고르기의 유무 표시) → { enabled, items: [[eqpId, 날짜]], checked, total, next } — after = 앞 응답의 next
+  snapshotPresence: (after = '') => api.get('/scenario-editor/snapshots/presence', { params: after ? { after } : {}, timeout: SNAPSHOT_TIMEOUT_MS }),
   // 있는 날 → { eqpId, latest, today, oldest, days, truncated } — days 는 counts 일 때만 { 날짜: 개수 }
   snapshotDays: (eqpId, counts = false) => api.get('/scenario-editor/snapshots/days', { params: counts ? { eqpId, counts: 1 } : { eqpId }, timeout: SNAPSHOT_TIMEOUT_MS }),
   // 하루 목록 → { eqpId, date, timeDiff, items, skipped, truncated }

@@ -3,6 +3,8 @@
 // - 설비는 내 공정 범위의 유효 설비만(scopes.equipmentOf). 저장소(Cassandra)는 검사를 지난 뒤에만 부른다.
 // - 목록은 표시 날짜 하루의 이름 범위로 읽는다. 표시 시각 = 파일 ms + 설비 보정(분)을 표시 시간대로 읽은 시각.
 // - 메모(`memo`)는 P3-C 가 채운다.
+// - 설비마다 가장 늦은 날짜(presence)는 설비 고르기의 "스냅샷 있는 설비" 표시용이다. 설비 한 대에 한두 줄만 읽고,
+//   한꺼번에 보내는 조회 수를 묶고(이 서버 프로세스 안에서 한 요청씩 차례로), 한 요청은 5초까지만 묻고, 받은 값은 10분 기억한다.
 const { seError } = require('../errors')
 const { parseSnapshotName } = require('../domain/snapshotName')
 const {
@@ -11,6 +13,11 @@ const {
 
 const DAY_LIMIT = 50000 // 하루 목록 줄 수 한도
 const COUNT_LIMIT = 300000 // 날짜별 개수를 셀 때 읽는 줄 수 한도
+const PRESENCE_CHUNK = 2000 // 한 요청이 보는 설비 수 — 나머지는 next 로 이어 청한다
+const PRESENCE_TTL_MS = 10 * 60000 // 설비의 가장 늦은 한 장을 기억하는 시간 — 화면이 다시 받는 주기(5분)보다 길게 둔다
+const PRESENCE_BUDGET_MS = 5000 // 한 요청이 저장소에 묻는 시간 — 넘으면 거기까지만 답하고 화면이 이어 청한다(저장소가 느려도 요청이 매달리지 않는다)
+const PRESENCE_CONCURRENCY = 8 // 한꺼번에 보내는 조회 수 기본값
+const PRESENCE_CONCURRENCY_MAX = 64
 const DAY = 86400000
 const DEFAULT_TZ = 'Asia/Seoul'
 const MAX_DATE_MS = 8.64e15 - 2 * DAY // Date 가 다룰 수 있는 끝(앞뒤 하루를 계산할 여유를 뺀 값)
@@ -34,6 +41,14 @@ function createSnapshotService({ snapshotRepo, scopes, now, env = {}, log = null
   }
   const displayTz = tzOf('SE_DISPLAY_TZ')
   const partitionTz = tzOf('SE_SNAPSHOT_PARTITION_TZ')
+  // 설비별 스냅샷 유무를 볼 때 한꺼번에 보내는 조회 수. 0 이면 끈다. 숫자가 아니면 기본값으로 돌리고 한 번 알린다.
+  const presenceConcurrency = (() => {
+    const v = typeof env.SE_SNAPSHOT_PRESENCE_CONCURRENCY === 'string' ? env.SE_SNAPSHOT_PRESENCE_CONCURRENCY.trim() : ''
+    if (!v) return PRESENCE_CONCURRENCY
+    if (/^\d+$/.test(v)) return Math.min(Number(v), PRESENCE_CONCURRENCY_MAX)
+    if (log) log.warn(`SE_SNAPSHOT_PRESENCE_CONCURRENCY 값을 수로 읽지 못해 ${PRESENCE_CONCURRENCY} 를 씁니다`)
+    return PRESENCE_CONCURRENCY
+  })()
 
   // 원본 ms 범위 [from, to) 의 이름을 걸치는 달마다 읽는다. 합쳐서 limit 줄에서 멈춘다 → { parsed, skipped, truncated }
   async function readRange(eqpId, from, to, limit) {
@@ -85,14 +100,83 @@ function createSnapshotService({ snapshotRepo, scopes, now, env = {}, log = null
     return { eqpId, date, timeDiff, items, skipped, truncated }
   }
 
-  // 보관 기간 안에서 가장 늦은 한 장의 표시 날짜. 늦은 달부터 한 줄씩 본다.
-  async function latestDate(eqpId, timeDiff, from, to) {
+  // 보관 기간 안에서 가장 늦은 한 장의 원본 ms. 늦은 달부터 한 줄씩 본다.
+  async function latestMs(eqpId, from, to) {
     for (const month of monthsOf(from, to).reverse()) {
       const p = parseSnapshotName(await snapshotRepo.latestName(eqpId, month, nameBound(from)))
       if (!p || p.ms > MAX_DATE_MS) continue // 없거나 꼴이 아닌 이름이면 앞 달을 본다
-      return p.ms >= from ? displayOf(p.ms, timeDiff, displayTz).date : null
+      return p.ms >= from ? p.ms : null
     }
     return null
+  }
+  // 그 한 장의 표시 날짜
+  async function latestDate(eqpId, timeDiff, from, to) {
+    const ms = await latestMs(eqpId, from, to)
+    return ms === null ? null : displayOf(ms, timeDiff, displayTz).date
+  }
+
+  // ── 설비마다 가장 늦은 한 장(설비 고르기의 유무 표시) ──
+  const latestKept = new Map() // eqpId → { ms, at } — 사용자와 상관없는 값이라 함께 쓴다. 키는 설비 기준정보의 ID 뿐이다
+  let line = Promise.resolve() // 한 번에 한 요청만 저장소에 묻는다(뒤 요청은 기다렸다가 기억을 쓴다) — 사용자가 몰려도 조회 수가 늘지 않는다
+  const inTurn = (fn) => {
+    const p = line.then(fn)
+    line = p.catch(() => {})
+    return p
+  }
+  const keptOf = (eqpId, at) => {
+    const hit = latestKept.get(eqpId)
+    return hit && at >= hit.at && at - hit.at < PRESENCE_TTL_MS ? hit : null
+  }
+  // 기억에 없는 설비만 차례로 묻는다. 첫 설비는 혼자 묻는다 — 저장소가 죽어 있으면 조회 하나로 끝난다.
+  // 하나라도 실패하거나 시간 예산이 지나면 남은 설비는 묻지 않는다(첫 설비는 늘 묻는다 — 요청마다 적어도 한 대는 나아간다).
+  async function fillLatest(ids) {
+    const at = now()
+    const deadline = at + PRESENCE_BUDGET_MS
+    const from = at - RETENTION_MS
+    const to = at + DAY
+    const todo = ids.filter((id) => !keptOf(id, at))
+    let i = 0
+    let failed = null
+    const one = async (id) => { latestKept.set(id, { ms: await latestMs(id, from, to), at }) }
+    if (todo.length) await one(todo[i++])
+    const worker = async () => {
+      while (i < todo.length && !failed && now() < deadline) {
+        try { await one(todo[i++]) } catch (e) { failed = failed || e }
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(presenceConcurrency, todo.length - i) }, worker))
+    if (failed) throw failed
+  }
+
+  // after 뒤의 설비를 PRESENCE_CHUNK 대까지(시간 예산 안에서) — 스냅샷이 있는 설비만 [설비 ID, 가장 늦은 표시 날짜].
+  // next 가 있으면 그 값을 after 로 다시 청한다. eqpId 가 글자가 아닌 설비 문서는 보지 않는다(저장소의 글자 칸에 보낼 수 없다).
+  async function presence(user, after = '') {
+    const { valid } = await scopes.scopeFor(user)
+    const all = valid.filter((e) => typeof e.eqpId === 'string' && e.eqpId !== '').sort((a, b) => cmp(a.eqpId, b.eqpId))
+    if (!presenceConcurrency) return { enabled: false, items: [], checked: 0, total: all.length, next: null }
+    let start = 0
+    if (after) while (start < all.length && !(all[start].eqpId > after)) start++
+    const chunk = all.slice(start, start + PRESENCE_CHUNK)
+    const asked = now()
+    const ids = chunk.map((e) => e.eqpId)
+    // 다 기억하고 있으면 줄을 서지 않는다
+    if (ids.some((id) => !keptOf(id, asked))) await inTurn(() => fillLatest(ids))
+    // 앞에서부터 값을 아는 설비까지만 답한다(시간 예산에서 멈췄으면 그 뒤는 다음 요청이 묻는다)
+    const known = (id) => { const hit = latestKept.get(id); return hit && asked - hit.at < PRESENCE_TTL_MS ? hit : null }
+    const at = now()
+    const items = []
+    let n = 0
+    for (; n < chunk.length; n++) {
+      const e = chunk[n]
+      const hit = known(e.eqpId)
+      if (!hit) break
+      // 기억한 한 장이 그 사이 보관 기간을 벗어났으면 없는 것으로 본다
+      if (hit.ms !== null && hit.ms >= at - RETENTION_MS) items.push([e.eqpId, displayOf(hit.ms, timeDiffOf(e.snapshotTimeDiff), displayTz).date])
+    }
+    // 채우기가 던지지 않았으면 첫 설비는 늘 안다 — 아니면 화면이 "다 봤다" 로 읽지 않게 실패로 답한다
+    if (!n && chunk.length) throw seError(502, 'SNAPSHOT_FAILED', '설비의 스냅샷 유무를 확인하지 못했습니다')
+    const end = start + n
+    return { enabled: true, items, checked: end, total: all.length, next: end < all.length ? chunk[n - 1].eqpId : null }
   }
 
   // [from, to) 에 걸치는 표시 날짜와 그 날의 원본 ms 범위
@@ -146,7 +230,7 @@ function createSnapshotService({ snapshotRepo, scopes, now, env = {}, log = null
     return { png, maxAge: maxAgeOf(p.ms, now()) }
   }
 
-  return { equipment, days, list, image }
+  return { equipment, presence, days, list, image }
 }
 
-module.exports = { createSnapshotService, DAY_LIMIT, COUNT_LIMIT }
+module.exports = { createSnapshotService, DAY_LIMIT, COUNT_LIMIT, PRESENCE_CHUNK, PRESENCE_TTL_MS, PRESENCE_CONCURRENCY, PRESENCE_BUDGET_MS }

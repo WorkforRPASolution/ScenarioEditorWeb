@@ -441,6 +441,7 @@ describe('스냅샷 (P3-A)', () => {
     fake.snapshots = {
       equipment: async (u) => { calls.push(['equipment', u.singleid]); return [{ eqpId: 'E1', process: 'CVD', model: 'M1', line: 'L1' }] },
       days: async (u, eqpId, o) => { calls.push(['days', u.singleid, eqpId, o]); return { eqpId, latest: '2026-11-11', days: null, truncated: false } },
+      presence: async (u, after) => { calls.push(['presence', u.singleid, after]); return { enabled: true, items: [['E1', '2026-11-11']], checked: 1, total: 1, next: null } },
       list: async (u, eqpId, date) => { calls.push(['list', u.singleid, eqpId, date]); return { eqpId, date, timeDiff: 0, items: [], skipped: 0, truncated: false } },
       image: async (u, eqpId, fileName) => { calls.push(['image', u.singleid, eqpId, fileName]); return { png: PNG, maxAge: 123 } }
     }
@@ -460,6 +461,16 @@ describe('스냅샷 (P3-A)', () => {
     await fetch(`${base}/snapshots/days?eqpId=E1&counts=1`)
     await fetch(`${base}/snapshots/days?eqpId=E1&counts=true`)
     expect(calls).toEqual([['days', 'sew_multi', 'E1', { counts: false }], ['days', 'sew_multi', 'E1', { counts: true }], ['days', 'sew_multi', 'E1', { counts: false }]])
+  })
+
+  it('GET /snapshots/presence — after 는 글자 하나일 때만 넘긴다(없으면 빈 글자), 그림 경로에 먹히지 않는다', async () => {
+    const res = await fetch(`${base}/snapshots/presence`)
+    expect(res.status).toBe(200)
+    expect((await res.json()).data).toEqual({ enabled: true, items: [['E1', '2026-11-11']], checked: 1, total: 1, next: null })
+    await fetch(`${base}/snapshots/presence?after=E%201`)
+    await fetch(`${base}/snapshots/presence?after=a&after=b`)
+    await fetch(`${base}/snapshots/presence?after[x]=1`)
+    expect(calls).toEqual([['presence', 'sew_multi', ''], ['presence', 'sew_multi', 'E 1'], ['presence', 'sew_multi', ''], ['presence', 'sew_multi', '']])
   })
 
   it('GET /snapshots?eqpId&date → 하루 목록', async () => {
@@ -511,7 +522,7 @@ describe('스냅샷 (P3-A)', () => {
   })
 
   it('미등록 사용자는 스냅샷 API 도 403 USER_NOT_REGISTERED', async () => {
-    for (const p of ['/equipment', '/snapshots?eqpId=E1&date=2026-11-11', '/snapshots/days?eqpId=E1']) {
+    for (const p of ['/equipment', '/snapshots?eqpId=E1&date=2026-11-11', '/snapshots/days?eqpId=E1', '/snapshots/presence']) {
       const res = await fetch(`${base}${p}`, { headers: { 'X-SE-User': 'sew_none' } })
       expect([res.status, (await res.json()).code], p).toEqual([403, 'USER_NOT_REGISTERED'])
     }
@@ -522,9 +533,9 @@ describe('스냅샷 (P3-A)', () => {
   it('Cassandra 주소가 비어 있으면 스냅샷 API 만 503 SNAPSHOT_UNSET 이고 /me·/scopes 는 200', async () => {
     const { createSnapshotRepository } = require('../repo/snapshotRepository')
     const { createSnapshotService } = require('../service/snapshotService')
-    const scopes = { ...fake.scopes, equipmentOf: async (u, eqpId) => ({ eqpId, process: 'CVD', eqpModel: 'M1', line: 'L1' }) }
+    const scopes = { ...fake.scopes, equipmentOf: async (u, eqpId) => ({ eqpId, process: 'CVD', eqpModel: 'M1', line: 'L1' }), scopeFor: async () => ({ valid: [{ eqpId: 'E1', process: 'CVD', eqpModel: 'M1', line: 'L1' }] }) }
     fake.snapshots = createSnapshotService({ snapshotRepo: createSnapshotRepository({ env: {}, driver: require('cassandra-driver') }), scopes, now: () => Date.now(), env: {} })
-    for (const p of ['/snapshots?eqpId=E1&date=2026-11-11', '/snapshots/days?eqpId=E1', `/snapshots/E1/${encodeURIComponent(NAME)}/image`]) {
+    for (const p of ['/snapshots?eqpId=E1&date=2026-11-11', '/snapshots/days?eqpId=E1', '/snapshots/presence', `/snapshots/E1/${encodeURIComponent(NAME)}/image`]) {
       const res = await fetch(`${base}${p}`)
       expect([res.status, (await res.json()).code], p).toEqual([503, 'SNAPSHOT_UNSET'])
     }

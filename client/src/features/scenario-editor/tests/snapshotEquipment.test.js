@@ -1,6 +1,6 @@
 // 설비 고르기 규칙 (P3 설계 §4.2)
 import { describe, it, expect } from 'vitest'
-import { processesOf, modelsOf, filterEquipment, searchEquipment, filterOptions, stepActive, scrollTopFor } from '../editor/snapshotEquipment'
+import { processesOf, modelsOf, filterEquipment, searchEquipment, filterOptions, stepActive, scrollTopFor, countPresence, presenceText, shortDate } from '../editor/snapshotEquipment'
 
 const eq = (eqpId, process, model) => ({ eqpId, process, model, line: 'L1' })
 const ITEMS = [
@@ -126,4 +126,40 @@ describe('scrollTopFor — 고른 줄이 목록 안에 보이게', () => {
   it('위로 가려졌으면 줄의 위에 맞춘다', () => expect(scrollTopFor(10, 30, 50, 100)).toBe(10))
   it('아래로 가려졌으면 줄의 아래가 보이게', () => expect(scrollTopFor(200, 30, 50, 100)).toBe(130))
   it('숫자가 아니면 지금 스크롤 그대로', () => expect(scrollTopFor(undefined, 30, 50, 100)).toBe(50))
+})
+
+describe('countPresence — 공정·모델마다 설비 수와 스냅샷이 있는 설비 수', () => {
+  const latest = new Map([['SEWT_PHOTO_A01', '2026-11-11'], ['SEWT_CVD_A01', '2026-11-09'], ['SEWT_CVD_A02', '2026-11-10'], ['GONE', '2026-11-01']])
+  it("값마다 { have, total }, '' 는 받은 설비 전체", () => {
+    const c = countPresence(ITEMS, 'process', latest)
+    expect(Object.fromEntries(c)).toEqual({
+      '': { have: 3, total: 6 }, SEWPHOTO: { have: 1, total: 2 }, SEWCVD: { have: 2, total: 3 }, SEWETCH: { have: 0, total: 1 }
+    })
+    expect(Object.fromEntries(countPresence(ITEMS.filter((e) => e.process === 'SEWCVD'), 'model', latest))).toEqual({
+      '': { have: 2, total: 3 }, SEWMODELA: { have: 2, total: 2 }, SEWMODELB: { have: 0, total: 1 }
+    })
+  })
+  it('받은 날짜가 없으면(null·빈 Map) have 는 0, 목록이 아니면 전체 0 만', () => {
+    expect(countPresence(ITEMS, 'process', null).get('SEWCVD')).toEqual({ have: 0, total: 3 })
+    expect(countPresence(ITEMS, 'process', new Map()).get('')).toEqual({ have: 0, total: 6 })
+    expect(Object.fromEntries(countPresence(null, 'process', latest))).toEqual({ '': { have: 0, total: 0 } })
+  })
+  it('값이 글자가 아니거나 빈 설비는 전체에만 센다', () => {
+    const c = countPresence([eq('A', '', 'M'), eq('B', null, 'M'), eq('C', 'P', 'M')], 'process', new Map([['A', '2026-11-11']]))
+    expect(Object.fromEntries(c)).toEqual({ '': { have: 1, total: 3 }, P: { have: 0, total: 1 } })
+  })
+})
+
+describe('presenceText · shortDate — 유무 표시 글', () => {
+  it('다 받았으면 "있는 수 / 전체", 받는 중이면 "… / 전체", 꺼짐·실패·받기 전이면 전체 수만', () => {
+    const c = { have: 12, total: 40 }
+    expect(presenceText(c, 'ready')).toBe('12 / 40')
+    expect(presenceText(c, 'loading')).toBe('… / 40')
+    for (const s of ['idle', 'off', 'error', undefined]) expect(presenceText(c, s)).toBe('40')
+    expect(presenceText(undefined, 'ready')).toBe('')
+  })
+  it('날짜는 월-일만, 날짜 꼴이 아니면 빈 글자', () => {
+    expect(shortDate('2026-11-14')).toBe('11-14')
+    for (const v of [null, undefined, '', '2026-11', 20261114]) expect(shortDate(v)).toBe('')
+  })
 })

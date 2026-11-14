@@ -218,6 +218,11 @@ async function equipment(req, res) {
   ok(res, { items: await getDeps().snapshots.equipment(req.seUser) })
 }
 
+// 설비마다 가장 늦은 스냅샷 날짜(설비 고르기의 유무 표시) — 2000대씩, after 는 앞 응답의 next
+async function snapshotPresence(req, res) {
+  ok(res, await getDeps().snapshots.presence(req.seUser, typeof req.query.after === 'string' ? req.query.after : ''))
+}
+
 async function snapshotDays(req, res) {
   ok(res, await getDeps().snapshots.days(req.seUser, need(req.query.eqpId, 'eqpId'), { counts: req.query.counts === '1' }))
 }
@@ -234,4 +239,4 @@ async function snapshotImage(req, res) {
   res.send(png)
 }
 
-module.exports = { equipment, snapshotDays, snapshotList, snapshotImage, links, reviewScenario, savePerformance, sameName, searchUsers, nameRule, setEnabled, removeScenario, deploy, deployVerify, deployFinish, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, counts, versions, open, dataCheck, image }
+module.exports = { equipment, snapshotPresence, snapshotDays, snapshotList, snapshotImage, links, reviewScenario, savePerformance, sameName, searchUsers, nameRule, setEnabled, removeScenario, deploy, deployVerify, deployFinish, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, counts, versions, open, dataCheck, image }

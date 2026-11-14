@@ -145,6 +145,38 @@ describe('있는 날', () => {
   })
 })
 
+describe('설비마다 스냅샷 유무', () => {
+  it('내 범위 설비를 다 보고, 스냅샷이 있는 설비만 가장 늦은 표시 날짜와 함께 준다', async () => {
+    const all = (await data(await get('/equipment'))).items
+    const r = await data(await get('/snapshots/presence'))
+    expect([r.enabled, r.checked, r.total, r.next]).toEqual([true, all.length, all.length, null])
+    const latest = new Map(r.items)
+    expect(latest.get(EQP_TODAY)).toBe(TODAY)
+    expect(latest.has('SEWT_CVD_B01')).toBe(false) // 스냅샷이 없는 설비
+    const ids = new Set(all.map((e) => e.eqpId))
+    expect(r.items.every(([id, date]) => ids.has(id) && /^\d{4}-\d{2}-\d{2}$/.test(date))).toBe(true)
+    // 있는 날 API 의 가장 늦은 날과 같다
+    for (const [id, date] of r.items.slice(0, 5)) expect((await data(await get(`/snapshots/days?eqpId=${enc(id)}`))).latest, id).toBe(date)
+  })
+
+  it('sew_cvd 는 SEWCVD 설비만 — 다른 공정 설비의 유무는 오지 않는다', async () => {
+    const cvd = (await data(await get('/equipment', 'sew_cvd'))).items
+    const r = await data(await get('/snapshots/presence', 'sew_cvd'))
+    expect([r.checked, r.total, r.next]).toEqual([cvd.length, cvd.length, null])
+    const ids = new Set(cvd.map((e) => e.eqpId))
+    expect(r.items.every(([id]) => ids.has(id))).toBe(true)
+    expect(new Map(r.items).has(EQP_TODAY)).toBe(false)
+  })
+
+  it('after 뒤의 설비만 본다', async () => {
+    const all = (await data(await get('/equipment'))).items
+    const mid = all[Math.floor(all.length / 2)].eqpId
+    const r = await data(await get(`/snapshots/presence?after=${enc(mid)}`))
+    expect([r.checked, r.total, r.next]).toEqual([all.length, all.length, null])
+    expect(r.items.every(([id]) => id > mid)).toBe(true)
+  })
+})
+
 describe('그림', () => {
   it('넣은 PNG 와 바이트가 같고, 남은 보관 기간만큼 캐시한다', async () => {
     const res = await get(imagePath(EQP_TODAY, ROWS_TODAY[0].fileName))

@@ -88,6 +88,10 @@ describe('scenarioEditorApi', () => {
     it('설비·있는 날·하루 목록 — 서버의 Cassandra 제한(10초)보다 길게 20초를 기다린다', async () => {
       await api.equipment()
       expect(get).toHaveBeenLastCalledWith('/scenario-editor/equipment', { timeout: SNAPSHOT_TIMEOUT_MS })
+      await api.snapshotPresence()
+      expect(get).toHaveBeenLastCalledWith('/scenario-editor/snapshots/presence', { params: {}, timeout: SNAPSHOT_TIMEOUT_MS })
+      await api.snapshotPresence('E 1')
+      expect(get).toHaveBeenLastCalledWith('/scenario-editor/snapshots/presence', { params: { after: 'E 1' }, timeout: SNAPSHOT_TIMEOUT_MS })
       await api.snapshotDays('E1')
       expect(get).toHaveBeenLastCalledWith('/scenario-editor/snapshots/days', { params: { eqpId: 'E1' }, timeout: SNAPSHOT_TIMEOUT_MS })
       await api.snapshotDays('E1', true)

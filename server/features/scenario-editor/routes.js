@@ -36,6 +36,7 @@ router.get('/scenarios/:process/:model/:name/versions/:crtime', asyncHandler(c.o
 router.get('/scenarios/:process/:model/:name/versions/:crtime/files/:fileId/images/:imageId', asyncHandler(c.image))
 // 스냅샷(P3) — 읽기. 설비 범위는 서비스가 본다(403 EQP_FORBIDDEN).
 router.get('/equipment', asyncHandler(c.equipment))
+router.get('/snapshots/presence', asyncHandler(c.snapshotPresence)) // 설비마다 가장 늦은 날짜 — 설비 고르기의 유무 표시
 router.get('/snapshots/days', asyncHandler(c.snapshotDays))
 router.get('/snapshots', asyncHandler(c.snapshotList))
 router.get('/snapshots/:eqpId/:fileName/image', asyncHandler(c.snapshotImage))

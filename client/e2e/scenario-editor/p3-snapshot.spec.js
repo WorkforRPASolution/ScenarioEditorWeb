@@ -260,3 +260,62 @@ test('③ 설비 찾기 — IP 일부로 검색하면 공정·모델 목록도 �
   await expect(processBox).toHaveValue('')
   await expect(processBox).toHaveAttribute('placeholder', '공정 전체')
 })
+
+test('④ 스냅샷 유무 표시 — 공정·모델 옆 "있는 설비 수 / 전체", 설비 줄에 가장 늦은 날짜·없음', async ({ page }) => {
+  await asUser(page, 'sew_master')
+  await page.goto('/scenario-editor')
+  await page.getByTestId('se-snapshot-rail').click()
+  const input = page.getByTestId('se-snap-eqp-input')
+  const processBox = page.getByTestId('se-snap-eqp-process')
+  const modelBox = page.getByTestId('se-snap-eqp-model')
+  const eqpRow = (id) => page.locator(`[data-testid="se-snap-eqp-option"][data-eqp="${id}"]`)
+  const note = (id, value) => page.locator(`[data-testid="${id}-option"][data-value="${value}"]`).getByTestId(`${id}-note`)
+
+  // ── 설비 줄: 스냅샷이 있는 설비는 가장 늦은 날(월-일), 없는 설비는 "없음" ──
+  await input.click()
+  await input.fill('sewt_photo_a01')
+  const latest = eqpRow('SEWT_PHOTO_A01').getByTestId('se-snap-eqp-latest')
+  await expect(latest).toHaveText(/^\d\d-\d\d$/)
+  await expect(latest).toHaveAttribute('data-has', '1')
+  const monthDay = await latest.textContent()
+  await input.fill('sewt_cvd_b01')
+  await expect(eqpRow('SEWT_CVD_B01').getByTestId('se-snap-eqp-latest')).toHaveText('없음')
+  await expect(eqpRow('SEWT_CVD_B01').getByTestId('se-snap-eqp-latest')).toHaveAttribute('data-has', '0')
+
+  // ── 검색어를 둔 채 공정 칸으로: 맞는 설비 안에서 센다(스냅샷이 없는 한 대) ──
+  await processBox.click()
+  await expect(note('se-snap-eqp-process', '')).toHaveText('0 / 1')
+  await expect(note('se-snap-eqp-process', 'SEWCVD')).toHaveText('0 / 1')
+  await input.click()
+  await input.fill('10.99.6')
+  await processBox.click()
+  await expect(note('se-snap-eqp-process', 'SEWPHOTO')).toHaveText('1 / 1')
+  await expect(note('se-snap-eqp-process', 'SEWPHOTO')).toHaveAttribute('title', '최근 15일 안에 스냅샷이 있는 설비 1대 / 전체 1대')
+
+  // ── 검색어 없이: 시험 스냅샷은 SEWT_PHOTO_A01·SEWT_CVD_A01 두 대뿐이다. 수는 줄의 오른쪽 끝에 있고 목록이 가로로 넘치지 않는다 ──
+  await input.click()
+  await page.keyboard.press('Escape')
+  await processBox.click()
+  await expect(note('se-snap-eqp-process', '')).toHaveText(/^2 \/ \d+$/)
+  await expect(note('se-snap-eqp-process', 'SEWCVD')).toHaveText(/^1 \/ \d+$/)
+  await expect(note('se-snap-eqp-process', 'SEWPHOTO')).toHaveText(/^1 \/ \d+$/)
+  await expect(note('se-snap-eqp-process', 'SEWETCH')).toHaveText(/^0 \/ \d+$/)
+  const list = page.locator('.se-snap-eqp-list')
+  const listBox = await list.boundingBox()
+  const noteBox = await note('se-snap-eqp-process', 'SEWCVD').boundingBox()
+  expect(listBox.x + listBox.width - (noteBox.x + noteBox.width)).toBeLessThan(30)
+  expect(await list.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
+
+  // ── 모델은 고른 공정 안에서 센다 ──
+  await processBox.fill('cvd')
+  await page.keyboard.press('Enter')
+  await modelBox.click()
+  await expect(note('se-snap-eqp-model', '')).toHaveText(/^1 \/ \d+$/)
+  await expect(note('se-snap-eqp-model', 'SEWMODELB')).toHaveText(/^0 \/ \d+$/)
+
+  // ── 그 날짜는 설비를 골랐을 때 열리는 가장 늦은 날과 같다 ──
+  await processBox.click()
+  await page.locator('[data-testid="se-snap-eqp-process-option"][data-value=""]').click()
+  await pickEquipment(page, 'sewt_photo_a01', 'SEWT_PHOTO_A01')
+  await expect(page.getByTestId('se-snap-date')).toContainText(`-${monthDay}`)
+})

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
-const { createSnapshotService, DAY_LIMIT, COUNT_LIMIT } = require('../service/snapshotService')
+const { createSnapshotService, DAY_LIMIT, COUNT_LIMIT, PRESENCE_CHUNK, PRESENCE_TTL_MS, PRESENCE_CONCURRENCY, PRESENCE_BUDGET_MS } = require('../service/snapshotService')
 const { createScopeService } = require('../service/scopeService')
 const { seError } = require('../errors')
 
@@ -330,6 +330,215 @@ describe('snapshotService.image — 그림 한 장', () => {
     const e = await caught(service(repo).image(USER, 'E1', '9999999999999999_[1][2].png'))
     expect([e.statusCode, e.code]).toEqual([404, 'SNAPSHOT_NOT_FOUND'])
     expect(repo.calls.imageBase64).toHaveLength(0)
+  })
+})
+
+describe('snapshotService.presence — 설비마다 가장 늦은 스냅샷 날짜', () => {
+  const many = (n) => Array.from({ length: n }, (_, i) => ({ eqpId: `B${String(i).padStart(5, '0')}`, process: 'CVD', eqpModel: 'M1', line: 'L1' }))
+  // 조회가 끝나는 때를 시험이 정하는 저장소 — 한꺼번에 떠 있는 조회 수를 센다
+  function slowRepo(names = {}) {
+    const state = { calls: [], flying: 0, peak: 0 }
+    return {
+      state,
+      latestName: async (eqpId) => {
+        state.calls.push(eqpId)
+        state.flying++
+        state.peak = Math.max(state.peak, state.flying)
+        await new Promise((r) => setTimeout(r, 1))
+        state.flying--
+        return names[eqpId] ?? null
+      }
+    }
+  }
+
+  it('내 범위 설비를 eqpId 순으로 보고, 스냅샷이 있는 설비만 [설비, 표시 날짜] 로 준다', async () => {
+    const repo = fakeRepo({ months: { '2026-11': [click(kst(2026, 11, 10, 23, 50))] } })
+    const r = await service(repo).presence(USER)
+    // 가짜 저장소는 설비를 가리지 않는다 — 셋 다 같은 이름을 받고, E2 는 보정 +30분이라 다음 날이다
+    expect(r).toEqual({ enabled: true, items: [['E1', '2026-11-10'], ['E2', '2026-11-11'], ['E3', '2026-11-10']], checked: 3, total: 3, next: null })
+    expect(repo.calls.latestName.map((c) => c.eqpId)).toEqual(['E1', 'E2', 'E3'])
+    expect(repo.calls.listNames).toEqual([])
+  })
+
+  it('있는 날과 같은 조회 — 이름 하한은 지금 − 15일, 늦은 달이 비면 앞 달을 본다. 없으면 싣지 않는다', async () => {
+    const repo = fakeRepo({ months: { '2026-10': [click(kst(2026, 10, 30, 9))] } })
+    const r = await service(repo, { scopes: fakeScopes([EQP[1]]) }).presence(USER)
+    expect(r.items).toEqual([['E1', '2026-10-30']])
+    expect(repo.calls.latestName).toEqual([
+      { eqpId: 'E1', month: { year: 2026, month: 11 }, fromName: String(NOW - 15 * DAY) },
+      { eqpId: 'E1', month: { year: 2026, month: 10 }, fromName: String(NOW - 15 * DAY) }
+    ])
+    const none = await service(fakeRepo(), { scopes: fakeScopes([EQP[1]]) }).presence(USER)
+    expect(none).toEqual({ enabled: true, items: [], checked: 1, total: 1, next: null })
+  })
+
+  it('기억하는 동안(10분)은 다시 묻지 않는다 — 사용자가 달라도 같은 기억을 쓴다', async () => {
+    let at = NOW
+    const repo = fakeRepo({ months: { '2026-11': [click(kst(2026, 11, 11, 9))] } })
+    const s = service(repo, { now: () => at, scopes: fakeScopes([EQP[1]]) })
+    await s.presence(USER)
+    at += PRESENCE_TTL_MS - 1
+    expect((await s.presence({ singleid: 'other' })).items).toEqual([['E1', '2026-11-11']])
+    expect(repo.calls.latestName).toHaveLength(1)
+    at += 1
+    await s.presence(USER)
+    expect(repo.calls.latestName).toHaveLength(2)
+    expect(PRESENCE_TTL_MS).toBe(10 * 60000) // 화면이 다시 받는 주기(5분)보다 길다 — 다시 받을 때마다 전부 다시 묻지 않게
+  })
+
+  it('시계가 뒤로 가면 기억을 쓰지 않고 다시 묻는다', async () => {
+    let at = NOW
+    const repo = fakeRepo({ months: { '2026-11': [click(kst(2026, 11, 11, 9))] } })
+    const s = service(repo, { now: () => at, scopes: fakeScopes([EQP[1]]) })
+    await s.presence(USER)
+    at -= 60000
+    expect((await s.presence(USER)).items).toEqual([['E1', '2026-11-11']])
+    expect(repo.calls.latestName).toHaveLength(2)
+  })
+
+  it('기억은 설비의 값이지 사용자의 것이 아니다 — 범위가 다른 사용자에게는 자기 범위 설비만 간다', async () => {
+    const repo = fakeRepo({ months: { '2026-11': [click(kst(2026, 11, 11, 9))] } })
+    const scopes = { scopeFor: async (u) => ({ valid: u.singleid === 'wide' ? EQP : [EQP[1]] }) }
+    const s = service(repo, { scopes })
+    expect((await s.presence({ singleid: 'wide' })).items.map(([id]) => id)).toEqual(['E1', 'E2', 'E3'])
+    const narrow = await s.presence({ singleid: 'narrow' })
+    expect(narrow).toEqual({ enabled: true, items: [['E1', '2026-11-11']], checked: 1, total: 1, next: null })
+    expect(repo.calls.latestName).toHaveLength(3) // 좁은 범위는 기억만 썼다
+  })
+
+  it('eqpId 가 글자가 아닌 설비 문서는 보지 않는다(저장소에 글자가 아닌 값을 보내지 않는다)', async () => {
+    const repo = fakeRepo({ months: { '2026-11': [click(kst(2026, 11, 11, 9))] } })
+    const r = await service(repo, { scopes: fakeScopes([{ eqpId: 7, process: 'CVD', eqpModel: 'M1' }, EQP[1], { eqpId: '', process: 'CVD', eqpModel: 'M1' }]) }).presence(USER)
+    expect(r).toEqual({ enabled: true, items: [['E1', '2026-11-11']], checked: 1, total: 1, next: null })
+    expect(repo.calls.latestName.map((c) => c.eqpId)).toEqual(['E1'])
+  })
+
+  it('한 요청은 시간 예산까지만 묻는다 — 거기까지의 next 를 주고, 이어 청하면 남은 설비만 묻는다', async () => {
+    let at = NOW
+    const calls = []
+    const repo = { latestName: async (eqpId) => { calls.push(eqpId); at += 600; return null } } // 조회 하나에 0.6초
+    const s = service(repo, { now: () => at, scopes: fakeScopes(many(100)), env: { SE_SNAPSHOT_PRESENCE_CONCURRENCY: '1' } })
+    const first = await s.presence(USER)
+    expect(first.total).toBe(100)
+    expect(first.checked).toBeGreaterThanOrEqual(1)
+    expect(first.checked).toBeLessThanOrEqual(Math.ceil(PRESENCE_BUDGET_MS / 1200) + 1)
+    expect(first.next).toBe(`B${String(first.checked - 1).padStart(5, '0')}`)
+    let r = first
+    let requests = 1
+    while (r.next) { r = await s.presence(USER, r.next); requests++ }
+    expect(r.checked).toBe(100)
+    expect(requests).toBeGreaterThan(10)
+    expect(calls).toHaveLength(200) // 100대 × 두 달 — 겹쳐 묻지 않았다
+    expect(PRESENCE_BUDGET_MS).toBe(5000)
+  })
+
+  it('다 기억하고 있는 요청은 줄을 서지 않는다 — 앞 요청이 저장소를 기다리는 동안에도 바로 답한다', async () => {
+    let release
+    const gate = new Promise((r) => { release = r })
+    let slow = false
+    const repo = { latestName: async () => { if (slow) await gate; return null } }
+    const scopes = { scopeFor: async (u) => ({ valid: u.singleid === 'cold' ? many(5) : [EQP[1]] }) }
+    const s = service(repo, { scopes })
+    await s.presence({ singleid: 'warm' })
+    slow = true
+    const cold = s.presence({ singleid: 'cold' })
+    expect((await s.presence({ singleid: 'warm' })).checked).toBe(1)
+    release()
+    expect((await cold).checked).toBe(5)
+  })
+
+  it('기억해 둔 한 장이 그 사이 보관 기간을 벗어나면 싣지 않는다', async () => {
+    let at = NOW
+    const repo = fakeRepo({ months: { '2026-10': [click(NOW - 15 * DAY + 60000)] } })
+    const s = service(repo, { now: () => at, scopes: fakeScopes([EQP[1]]) })
+    expect((await s.presence(USER)).items).toHaveLength(1)
+    at += 120000
+    expect((await s.presence(USER)).items).toEqual([])
+  })
+
+  it('한 번에 PRESENCE_CHUNK 대까지 — next 를 after 로 주면 이어서 본다', async () => {
+    const repo = slowRepo({ B00000: click(NOW - 1000), B02003: click(NOW - 2000) })
+    const s = service(repo, { scopes: fakeScopes(many(PRESENCE_CHUNK + 5)) })
+    const first = await s.presence(USER)
+    expect([first.checked, first.total, first.next]).toEqual([PRESENCE_CHUNK, PRESENCE_CHUNK + 5, `B${String(PRESENCE_CHUNK - 1).padStart(5, '0')}`])
+    expect(first.items).toEqual([['B00000', '2026-11-11']])
+    const rest = await s.presence(USER, first.next)
+    expect([rest.checked, rest.total, rest.next]).toEqual([PRESENCE_CHUNK + 5, PRESENCE_CHUNK + 5, null])
+    expect(rest.items).toEqual([['B02003', '2026-11-11']])
+    // after 가 목록에 없는 글자여도(그 사이 설비가 빠짐) 그보다 뒤의 설비부터 본다
+    expect((await s.presence(USER, 'B02002x')).items).toEqual([['B02003', '2026-11-11']])
+    expect((await s.presence(USER, 'ZZZ'))).toEqual({ enabled: true, items: [], checked: PRESENCE_CHUNK + 5, total: PRESENCE_CHUNK + 5, next: null })
+  })
+
+  it('한꺼번에 보내는 조회는 정한 수까지 — 두 요청이 함께 와도 줄을 서고, 뒤 요청은 기억을 쓴다', async () => {
+    const repo = slowRepo()
+    const s = service(repo, { scopes: fakeScopes(many(60)), env: { SE_SNAPSHOT_PRESENCE_CONCURRENCY: '4' } })
+    const [a, b] = await Promise.all([s.presence(USER), s.presence({ singleid: 'other' })])
+    expect(repo.state.peak).toBe(4)
+    expect(repo.state.calls).toHaveLength(120) // 60대 × 두 달(둘 다 빔) — 두 요청이어도 한 번씩만
+    expect([a.checked, b.checked]).toEqual([60, 60])
+  })
+
+  it('기본은 한꺼번에 8, 틀린 값이면 기본으로(한 번 알린다), 64 보다 크면 64', async () => {
+    for (const env of [{}, { SE_SNAPSHOT_PRESENCE_CONCURRENCY: 'many' }, { SE_SNAPSHOT_PRESENCE_CONCURRENCY: '-1' }]) {
+      const repo = slowRepo()
+      const warned = []
+      const s = createSnapshotService({ snapshotRepo: repo, scopes: fakeScopes(many(80)), now: () => NOW, env, log: { warn: (m) => warned.push(m) } })
+      await s.presence(USER)
+      expect(repo.state.peak, JSON.stringify(env)).toBe(PRESENCE_CONCURRENCY)
+      expect(warned.length, JSON.stringify(env)).toBe(env.SE_SNAPSHOT_PRESENCE_CONCURRENCY ? 1 : 0)
+    }
+    expect(PRESENCE_CONCURRENCY).toBe(8)
+    const repo = slowRepo()
+    await service(repo, { scopes: fakeScopes(many(300)), env: { SE_SNAPSHOT_PRESENCE_CONCURRENCY: '100' } }).presence(USER)
+    expect(repo.state.peak).toBe(64)
+  })
+
+  it('SE_SNAPSHOT_PRESENCE_CONCURRENCY=0 이면 끈다 — 저장소를 부르지 않는다', async () => {
+    const repo = fakeRepo({ months: { '2026-11': [click(NOW - 1000)] } })
+    const r = await service(repo, { env: { SE_SNAPSHOT_PRESENCE_CONCURRENCY: '0' } }).presence(USER)
+    expect(r).toEqual({ enabled: false, items: [], checked: 0, total: 3, next: null })
+    expect(repo.calls.latestName).toEqual([])
+  })
+
+  it('저장소가 실패하면 첫 조회 하나로 끝난다 — 오류를 그대로 던지고 기억하지 않는다', async () => {
+    let down = true
+    const calls = []
+    const repo = {
+      latestName: async (eqpId) => {
+        calls.push(eqpId)
+        if (down) throw seError(503, 'SNAPSHOT_DOWN', 'x')
+        return null
+      }
+    }
+    const s = service(repo, { scopes: fakeScopes(many(40)) })
+    expect((await caught(s.presence(USER))).code).toBe('SNAPSHOT_DOWN')
+    expect(calls).toEqual(['B00000'])
+    down = false
+    expect((await s.presence(USER)).checked).toBe(40)
+    expect(calls).toHaveLength(1 + 80)
+  })
+
+  it('가운데에서 실패하면 남은 설비는 묻지 않고, 그때까지 받은 것은 기억한다', async () => {
+    const calls = []
+    let fail = true
+    const repo = {
+      latestName: async (eqpId) => {
+        calls.push(eqpId)
+        await new Promise((r) => setTimeout(r, 1))
+        if (fail && eqpId === 'B00010') throw seError(504, 'SNAPSHOT_TIMEOUT', 'x')
+        return null
+      }
+    }
+    const s = service(repo, { scopes: fakeScopes(many(200)), env: { SE_SNAPSHOT_PRESENCE_CONCURRENCY: '2' } })
+    expect((await caught(s.presence(USER))).code).toBe('SNAPSHOT_TIMEOUT')
+    const asked = new Set(calls)
+    expect(asked.size).toBeLessThan(20)
+    fail = false
+    calls.length = 0
+    await s.presence(USER)
+    expect(calls).not.toContain('B00000') // 앞에서 받은 설비는 다시 묻지 않는다
+    expect(new Set(calls).has('B00010')).toBe(true)
   })
 })
 

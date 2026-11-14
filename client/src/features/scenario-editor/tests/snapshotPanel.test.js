@@ -3,10 +3,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 
-const api = vi.hoisted(() => ({ equipment: vi.fn(), snapshotDays: vi.fn(), snapshots: vi.fn(), snapshotImage: vi.fn() }))
+const api = vi.hoisted(() => ({ equipment: vi.fn(), snapshotPresence: vi.fn(), snapshotDays: vi.fn(), snapshots: vi.fn(), snapshotImage: vi.fn() }))
 vi.mock('../api', async (importOriginal) => ({ ...(await importOriginal()), scenarioEditorApi: api }))
 import SnapshotPanel from '../components/snapshot/SnapshotPanel.vue'
 import { useSnapshotStore } from '../stores/snapshotStore'
+import SearchSelect from '../components/snapshot/SearchSelect.vue'
 import { MESSAGES, t } from '../messages'
 
 enableAutoUnmount(afterEach)
@@ -32,6 +33,7 @@ describe('SnapshotPanel', () => {
     localStorage.clear()
     Object.values(api).forEach((f) => f.mockReset())
     api.equipment.mockImplementation(() => ok({ items: EQP }))
+    api.snapshotPresence.mockImplementation(() => ok({ enabled: true, items: [], checked: 4, total: 4, next: null }))
     api.snapshotDays.mockImplementation((eqpId) => ok({ eqpId, ...DAYS }))
     api.snapshots.mockImplementation((eqpId, date) => ok(listOf(eqpId, date)))
     api.snapshotImage.mockImplementation(() => Promise.resolve({ data: new Blob(['x']) }))
@@ -373,6 +375,101 @@ describe('SnapshotPanel', () => {
       expect(options(w)).toHaveLength(50)
       expect(tid(w, 'se-snap-eqp-more').text()).toBe(t('SEW_SNAP_EQP_MORE', { n: 23 }))
     })
+    describe('스냅샷 유무 표시', () => {
+      const HAVE = [['SEWT_PHOTO_A01', '2026-11-11'], ['SEWT_CVD_A01', '2026-11-09']]
+      const all = (items = HAVE) => ok({ enabled: true, items, checked: 4, total: 4, next: null })
+      const notes = (w, id) => Object.fromEntries(tids(w, `${id}-option`).map((o) => [o.attributes('data-value'), o.find(`[data-testid="${id}-note"]`).text()]))
+      const latestOf = (w) => Object.fromEntries(tids(w, 'se-snap-eqp-option').map((o) => {
+        const el = o.find('[data-testid="se-snap-eqp-latest"]')
+        return [o.attributes('data-eqp'), el.exists() ? el.text() : null]
+      }))
+      // 칸에 들어가면(초점) 유무를 받기 시작한다
+      const enter = async (w, id) => { await tid(w, id).trigger('focus'); await flushPromises() }
+
+      it('패널을 펴기만 해서는 받지 않고, 설비 고르기 칸에 들어갈 때 받는다', async () => {
+        const { w } = await mountPanel()
+        expect(api.snapshotPresence).not.toHaveBeenCalled()
+        await enter(w, 'se-snap-eqp-model')
+        expect(api.snapshotPresence).toHaveBeenCalledTimes(1)
+      })
+      it('공정·모델 항목 옆에 "스냅샷 있는 설비 수 / 전체" — 모델은 고른 공정 안에서 센다', async () => {
+        api.snapshotPresence.mockImplementation(() => all())
+        const { w } = await mountPanel()
+        await enter(w, 'se-snap-eqp-process')
+        expect(notes(w, 'se-snap-eqp-process')).toEqual({ '': '2 / 4', SEWCVD: '1 / 2', SEWETCH: '0 / 1', SEWPHOTO: '1 / 1' })
+        expect(tid(w, 'se-snap-eqp-process-note').attributes('title')).toBe('최근 15일 안에 스냅샷이 있는 설비 2대 / 전체 4대')
+        await choose(w, 'se-snap-eqp-process', 'SEWCVD')
+        await tid(w, 'se-snap-eqp-model').trigger('focus')
+        expect(notes(w, 'se-snap-eqp-model')).toEqual({ '': '1 / 2', SEWMODELA: '1 / 1', SEWMODELB: '0 / 1' })
+      })
+      it('검색어가 있으면 맞는 설비 안에서 센다', async () => {
+        api.snapshotPresence.mockImplementation(() => all())
+        const { w } = await mountPanel()
+        await enter(w, 'se-snap-eqp-input')
+        await tid(w, 'se-snap-eqp-input').setValue('cvd')
+        await tid(w, 'se-snap-eqp-process').trigger('focus')
+        expect(notes(w, 'se-snap-eqp-process')).toEqual({ '': '1 / 2', SEWCVD: '1 / 2' })
+      })
+      it('설비 줄에 가장 늦은 스냅샷 날짜(월-일), 없으면 "없음"', async () => {
+        api.snapshotPresence.mockImplementation(() => all())
+        const { w } = await mountPanel()
+        await enter(w, 'se-snap-eqp-input')
+        expect(latestOf(w)).toEqual({ SEWT_CVD_A01: '11-09', SEWT_CVD_B01: '없음', SEWT_ETCH_A01: '없음', SEWT_PHOTO_A01: '11-11' })
+        const first = tid(w, 'se-snap-eqp-latest')
+        expect([first.attributes('data-has'), first.attributes('title')]).toEqual(['1', '가장 늦은 스냅샷 2026-11-09'])
+        expect(tids(w, 'se-snap-eqp-latest')[1].attributes('data-has')).toBe('0')
+      })
+      it('받는 중에는 "… / 전체" 이고, 아직 모르는 설비에는 "없음" 을 쓰지 않는다', async () => {
+        const rest = defer()
+        api.snapshotPresence.mockImplementation((after) => (after ? rest.promise : ok({ enabled: true, items: [HAVE[1]], checked: 2, total: 4, next: 'SEWT_CVD_B01' })))
+        const { w } = await mountPanel()
+        await enter(w, 'se-snap-eqp-input')
+        expect(latestOf(w)).toEqual({ SEWT_CVD_A01: '11-09', SEWT_CVD_B01: null, SEWT_ETCH_A01: null, SEWT_PHOTO_A01: null })
+        await tid(w, 'se-snap-eqp-process').trigger('focus')
+        expect(notes(w, 'se-snap-eqp-process')).toEqual({ '': '… / 4', SEWCVD: '… / 2', SEWETCH: '… / 1', SEWPHOTO: '… / 1' })
+        expect(tid(w, 'se-snap-eqp-process-note').attributes('title')).toBe('스냅샷이 있는 설비를 세는 중 / 전체 4대')
+        rest.resolve({ data: { data: { enabled: true, items: [HAVE[0]], checked: 4, total: 4, next: null } } })
+        await flushPromises()
+        expect(notes(w, 'se-snap-eqp-process')['']).toBe('2 / 4')
+      })
+      it('서버가 꺼 두었거나 받지 못했으면 설비 수만 보이고, 설비 줄에는 아무것도 붙지 않는다("없음" 도 쓰지 않는다)', async () => {
+        for (const answer of [() => ok({ enabled: false, items: [], checked: 0, total: 4, next: null }), () => Promise.reject(fail(503, 'SNAPSHOT_DOWN'))]) {
+          setActivePinia(createPinia())
+          api.snapshotPresence.mockImplementation(answer)
+          const { w } = await mountPanel()
+          await enter(w, 'se-snap-eqp-process')
+          expect(notes(w, 'se-snap-eqp-process')).toEqual({ '': '4', SEWCVD: '2', SEWETCH: '1', SEWPHOTO: '1' })
+          expect(tid(w, 'se-snap-eqp-process-note').attributes('title')).toBe('설비 4대')
+          await tid(w, 'se-snap-eqp-input').trigger('focus')
+          expect(options(w)).toHaveLength(4)
+          expect(tids(w, 'se-snap-eqp-latest')).toHaveLength(0)
+          w.unmount()
+        }
+      })
+      it('칸에 들어갈 때 받은 지 5분이 지났으면 다시 받는다', async () => {
+        const clock = vi.spyOn(Date, 'now').mockReturnValue(1000000)
+        const { w } = await mountPanel()
+        await enter(w, 'se-snap-eqp-input')
+        expect(api.snapshotPresence).toHaveBeenCalledTimes(1)
+        await tid(w, 'se-snap-eqp-input').trigger('blur')
+        await enter(w, 'se-snap-eqp-process')
+        expect(api.snapshotPresence).toHaveBeenCalledTimes(1)
+        clock.mockReturnValue(1000000 + 5 * 60000)
+        await enter(w, 'se-snap-eqp-input')
+        expect(api.snapshotPresence).toHaveBeenCalledTimes(2)
+      })
+      it('선택 상자는 목록이 열려 있을 때만 항목 옆 글을 청한다(닫혀 있거나 검색 칸에 치는 동안에는 세지 않는다)', async () => {
+        const noteOf = vi.fn((o) => ({ text: `n:${o}`, title: '' }))
+        const w = mount(SearchSelect, { props: { modelValue: '', options: ['A', 'B'], allLabel: '전체', testid: 'x', noteOf }, attachTo: document.body })
+        await w.setProps({ options: ['A', 'B', 'C'] })
+        expect(noteOf).not.toHaveBeenCalled()
+        await tid(w, 'x').trigger('focus')
+        expect(noteOf.mock.calls.map((c) => c[0])).toEqual(['', 'A', 'B', 'C'])
+        expect(tids(w, 'x-note').map((n) => n.text())).toEqual(['n:', 'n:A', 'n:B', 'n:C'])
+        w.unmount()
+      })
+    })
+
     it('설비 목록을 받지 못하면 문구와 [다시 시도], 볼 설비가 없으면 그 안내', async () => {
       api.equipment.mockImplementationOnce(() => Promise.reject(fail(503, 'UPSTREAM_DOWN')))
       const { w, s } = await mountPanel()

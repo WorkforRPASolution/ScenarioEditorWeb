@@ -2,6 +2,7 @@
 // - 목록·그림 응답은 마지막 요청만 반영한다(DC-034·DC-077). 설비·날짜가 바뀌면 요청을 보낼 때 바로 고른 스냅샷·그림을 비운다(DC-035).
 // - 그림은 Blob 으로 받아 object URL 로 띄운다 — 실패 이유(code)를 알 수 있고, 고른 것의 앞뒤 한 장을 미리 받아 둔다.
 // - 펼침·접힘과 마지막 설비는 브라우저에 기억한다. 접혀 있으면 서버를 부르지 않는다.
+// - 설비마다 스냅샷 유무(가장 늦은 날짜)는 설비 고르기 칸에 들어갈 때 뒤에서 나눠 받는다 — 패널을 펴기만 해서는 받지 않고, 설비 목록·고르기를 기다리게 하지 않는다.
 // 메모(거르기·이동)는 P3-C, 여러 줄 고르기(다운로드)는 P3-D 에서 더한다.
 import { defineStore } from 'pinia'
 import { ref, shallowRef, computed } from 'vue'
@@ -14,6 +15,7 @@ import { isDate, addDays, clampDate, laterOf } from '../editor/snapshotDates'
 const KEY = 'se-snapshot'
 const IMAGE_KEEP = 6 // 기억해 두는 그림 수(고른 것 + 앞뒤 + 방금 본 것)
 const NOTICE_MS = 3000
+const PRESENCE_STALE_MS = 5 * 60000 // 이보다 오래된 유무 표시는 설비 고르기에 들어갈 때 다시 받는다(서버는 10분 기억한다). 실패한 뒤에도 이만큼은 다시 청하지 않는다
 
 function readSaved() {
   try {
@@ -28,12 +30,16 @@ function readSaved() {
 const emptyList = (status) => ({ status, items: [], truncated: false, error: '' })
 const idleImage = () => ({ name: null, status: 'idle', url: null, code: null, error: '' })
 const idleCalendar = () => ({ status: 'idle', days: null, truncated: false })
+// status: idle(받기 전) · loading · ready · error · off(서버가 꺼 둠). latest = Map(설비 ID → 가장 늦은 표시 날짜), 스냅샷이 있는 설비만
+const idlePresence = () => ({ status: 'idle', latest: new Map(), checked: 0, total: 0 })
 
 export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
   const mode = ref('step') // 큰 화면: 'step'(스텝 그림) | 'snapshot'
   const open = ref(false) // 왼쪽 패널 펼침
   // 통째로 갈아 끼운다 — 설비 수만 대를 깊은 반응형으로 감싸면 설비 찾기에서 칠 때마다 느리다(10만 대 130~220ms → 5~22ms)
   const equipment = shallowRef({ status: 'idle', items: [], error: '' })
+  // 통째로 갈아 끼운다(Map 은 받는 동안 같은 것에 더하고 감싼 값만 새로 낸다)
+  const presence = shallowRef(idlePresence())
   const eqpId = ref(null)
   const range = ref(null) // { latest, today, oldest } — 표시 날짜
   const date = ref(null)
@@ -263,9 +269,58 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
     }
   }
 
+  // ── 설비마다 스냅샷 유무 ── 서버가 나눠 준다(next 를 after 로 이어 청한다). 실패해도 설비 고르기는 그대로 쓴다(표시만 빠진다).
+  let presenceSeq = 0
+  let presenceBusy = false
+  let presenceAt = 0 // 마지막으로 받기를 끝낸 때(실패 포함)
+  // quiet = 다시 받기 — 다 받을 때까지 앞의 값을 그대로 보인다
+  async function loadPresence({ quiet = false } = {}) {
+    const seq = ++presenceSeq
+    const latest = new Map()
+    presenceBusy = true
+    const done = (value) => { presence.value = value; presenceBusy = false; presenceAt = Date.now() }
+    if (!quiet) presence.value = { status: 'loading', latest, checked: 0, total: 0 }
+    try {
+      let after = ''
+      for (;;) {
+        const r = (await api.snapshotPresence(after)).data.data
+        if (seq !== presenceSeq) return
+        const total = Number.isFinite(r?.total) ? r.total : 0
+        if (r?.enabled === false) { done({ status: 'off', latest: new Map(), checked: 0, total }); return }
+        for (const [id, date] of Array.isArray(r?.items) ? r.items : []) latest.set(id, date)
+        const checked = Number.isFinite(r?.checked) ? r.checked : 0
+        const next = typeof r?.next === 'string' && r.next ? r.next : null
+        if (!next) { done({ status: 'ready', latest, checked, total }); return }
+        if (!(next > after)) throw new Error('presence cursor did not advance') // 끝없이 청하지 않는다
+        if (!quiet) presence.value = { status: 'loading', latest, checked, total }
+        after = next
+      }
+    } catch {
+      if (seq !== presenceSeq) return
+      done({ status: 'error', latest: new Map(), checked: 0, total: 0 })
+    }
+  }
+  // 설비 고르기 칸에 들어갈 때 부른다 — 처음이면 받기 시작하고, 받은(실패한) 지 오래됐으면 다시 받는다. 서버가 꺼 두었으면 다시 청하지 않는다.
+  function refreshPresence() {
+    if (equipment.value.status !== 'ready' || presenceBusy) return
+    const status = presence.value.status
+    if (status === 'off') return
+    if (status !== 'idle' && Date.now() - presenceAt < PRESENCE_STALE_MS) return
+    loadPresence({ quiet: status === 'ready' })
+  }
+  // 받던 것을 버린다. 처음 받던 중이었으면 받기 전으로 돌린다(다시 받던 중이었으면 앞의 값은 남는다)
+  function stopPresence() {
+    presenceSeq++
+    presenceBusy = false
+    if (presence.value.status === 'loading') presence.value = idlePresence()
+  }
+
   // ── 설비 목록·패널 ──
   async function loadEquipment() {
     equipment.value = { status: 'loading', items: equipment.value.items, error: '' }
+    // 설비 목록이 바뀔 수 있으니 유무는 받기 전으로 — 설비 고르기 칸에 들어갈 때 다시 받는다
+    stopPresence()
+    presence.value = idlePresence()
     try {
       const data = (await api.equipment()).data.data
       equipment.value = { status: 'ready', items: Array.isArray(data?.items) ? data.items : [], error: '' }
@@ -284,6 +339,7 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
   async function setOpen(next) {
     open.value = !!next
     persist()
+    if (!open.value) stopPresence() // 접으면 서버를 부르지 않는다
     if (open.value && equipment.value.status === 'idle') await loadEquipment()
   }
   // 화면이 처음 뜰 때 한 번 — 접힌 채면 서버를 부르지 않는다
@@ -306,8 +362,8 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
   }
 
   return {
-    mode, open, equipment, eqpId, range, date, list, filter, selectedName, calendar, image, notice,
+    mode, open, equipment, presence, eqpId, range, date, list, filter, selectedName, calendar, image, notice,
     shown, selected, position, minDate, maxDate,
-    restore, setOpen, loadEquipment, pickEquipment, setDate, moveDate, refresh, setFilter, select, move, moveTag, openCalendar, showStep, showSnapshot, say
+    restore, setOpen, loadEquipment, refreshPresence, pickEquipment, setDate, moveDate, refresh, setFilter, select, move, moveTag, openCalendar, showStep, showSnapshot, say
   }
 })
