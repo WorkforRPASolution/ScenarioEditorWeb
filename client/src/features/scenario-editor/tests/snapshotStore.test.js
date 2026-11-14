@@ -586,6 +586,9 @@ describe('snapshotStore', () => {
     it('하루 목록의 줄은 깊은 반응형으로 감싸지 않는다 — 5만 줄에서 고르기·이동이 줄마다 프록시를 만들지 않게', async () => {
       const s = await ready()
       expect(isReactive(s.list.items[0])).toBe(false)
+      // 설비 목록도 같다 — 10만 대를 깊은 반응형으로 감싸면 검색 칸에 칠 때마다 느리다
+      expect(isReactive(s.equipment.items)).toBe(false)
+      expect(isReactive(s.equipment.items[0])).toBe(false)
       expect(isReactive(s.selected ?? s.shown[0])).toBe(false)
     })
   })

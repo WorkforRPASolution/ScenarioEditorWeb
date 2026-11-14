@@ -15,7 +15,8 @@
 .se-snap-eqp-list { position: absolute; left: 0; right: 0; top: calc(100% + 2px); z-index: 30; max-height: 280px; overflow-y: auto; background: #fff; border: 1px solid #d1d5db; border-radius: 6px; box-shadow: 0 8px 20px rgba(0, 0, 0, .15); }
 .se-snap-eqp-list button { display: flex; flex-direction: column; align-items: flex-start; width: 100%; padding: 4px 8px; border: 0; background: none; text-align: left; font-size: 12px; color: inherit; }
 .se-snap-eqp-list button:hover, .se-snap-eqp-list button.first { background: #eff6ff; }
-.se-snap-eqp-list button.on b { color: #1d4ed8; }
+.se-snap-eqp-list button.first { box-shadow: inset 3px 0 0 #2563eb; } /* 키보드로 고른 줄 — 마우스가 올라간 줄과 구분한다 */
+.se-snap-eqp-list button.on b, .se-snap-eqp-list button.on .se-snap-opt { color: #1d4ed8; }
 .se-snap-eqp-list small { font-size: 10px; color: #6b7280; }
 .se-snap-opt { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .se-snap-eqp-list p { margin: 0; padding: 6px 8px; font-size: 11px; color: #6b7280; }
@@ -42,7 +43,8 @@
 .dark .se-snap-tag-skip { background: rgba(146, 64, 14, .35); color: #fcd34d; }
 .dark .se-snap-eqp-list, .dark .se-snap-cal { background: #1e293b; border-color: #475569; }
 .dark .se-snap-eqp-list button:hover, .dark .se-snap-eqp-list button.first, .dark .se-snap-cal-grid button:enabled:hover { background: #334155; }
-.dark .se-snap-eqp-list button.on b { color: #93c5fd; }
+.dark .se-snap-eqp-list button.first { box-shadow: inset 3px 0 0 #60a5fa; }
+.dark .se-snap-eqp-list button.on b, .dark .se-snap-eqp-list button.on .se-snap-opt { color: #93c5fd; }
 .dark .se-snap-eqp-list small, .dark .se-snap-eqp-list p, .dark .se-snap-cal p, .dark .se-snap-cal-head { color: #94a3b8; }
 .dark .se-snap-cal-grid button[aria-pressed='true'] { background: rgba(30, 64, 175, .4); color: #93c5fd; }
 .dark .se-snap-cal-grid button[data-has]::after { background: #60a5fa; }

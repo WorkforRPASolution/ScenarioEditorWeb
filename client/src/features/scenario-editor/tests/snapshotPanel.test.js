@@ -216,7 +216,67 @@ describe('SnapshotPanel', () => {
       await flushPromises()
       expect(s.eqpId).toBe('SEWT_CVD_B01')
     })
-    it('목록이 닫혀 있을 때 ↓ 는 목록을 열기만 한다 — 이어서 Enter 를 눌러도 아무것도 고르지 않는다', async () => {
+    it('검색어 때문에 목록에서 빠진 모델은 풀리지 않는다 — 공정을 바꿔 그 공정에 없는 모델이 될 때만 풀린다', async () => {
+      const { w } = await mountPanel()
+      await choose(w, 'se-snap-eqp-model', 'SEWMODELB')
+      const input = tid(w, 'se-snap-eqp-input')
+      await input.trigger('focus')
+      await input.setValue('etch') // 맞는 설비는 SEWMODELA 뿐이다
+      await input.trigger('blur')
+      expect(tid(w, 'se-snap-eqp-model').element.value).toBe('SEWMODELB')
+      await choose(w, 'se-snap-eqp-process', 'SEWETCH')
+      expect(tid(w, 'se-snap-eqp-model').element.value).toBe('')
+    })
+    it('고른 뒤(초점이 남은 채) 칸을 다시 누르면 글자가 모두 골라진다 — 이어서 치면 덧붙지 않고 바뀐다', async () => {
+      const { w } = await mountPanel()
+      const selected = (el) => [el.selectionStart, el.selectionEnd]
+      const box = tid(w, 'se-snap-eqp-process')
+      await choose(w, 'se-snap-eqp-process', 'SEWCVD')
+      box.element.setSelectionRange(6, 6)
+      await box.trigger('click')
+      expect(selected(box.element)).toEqual([0, 6])
+      const input = tid(w, 'se-snap-eqp-input')
+      await input.trigger('focus')
+      await tids(w, 'se-snap-eqp-option').find((o) => o.attributes('data-eqp') === 'SEWT_CVD_B01').trigger('click')
+      await flushPromises()
+      input.element.setSelectionRange(12, 12)
+      await input.trigger('click')
+      expect(selected(input.element)).toEqual([0, 12])
+      // 목록이 열려 있을 때 누르는 것은 글자 자리를 옮기는 것이다 — 고르지 않는다
+      input.element.setSelectionRange(3, 3)
+      await input.trigger('click')
+      expect(selected(input.element)).toEqual([3, 3])
+    })
+    it('글자를 치면 목록이 맨 위로 돌아온다(스크롤해 둔 채 Enter 로 안 보이는 줄을 고르지 않게)', async () => {
+      api.equipment.mockImplementation(() => ok({ items: Array.from({ length: 73 }, (_, i) => eq(`E${String(i).padStart(3, '0')}`, 'P', `M${String(i).padStart(3, '0')}`)) }))
+      const { w } = await mountPanel()
+      const input = tid(w, 'se-snap-eqp-input')
+      await input.trigger('focus')
+      const list = w.find('.se-snap-eqp-list').element
+      list.scrollTop = 400
+      await input.setValue('e0')
+      await flushPromises()
+      expect(list.scrollTop).toBe(0)
+      const box = tid(w, 'se-snap-eqp-model')
+      await box.trigger('focus')
+      const options = w.find('.se-snap-eqp-list').element
+      options.scrollTop = 300
+      await box.setValue('m0')
+      await flushPromises()
+      expect(options.scrollTop).toBe(0)
+    })
+    it('세 목록은 모두 검색 칸 아래(두 줄을 감싼 자리)에 열린다 — 공정·모델 목록이 검색 칸을 덮지 않는다', async () => {
+      const { w } = await mountPanel()
+      const fields = tid(w, 'se-snap-eqp-fields')
+      expect(fields.classes()).toContain('relative')
+      expect(fields.find('[data-testid="se-snap-eqp-input"]').exists()).toBe(true)
+      expect(fields.find('[data-testid="se-snap-eqp-process"]').exists()).toBe(true)
+      // 자리 잡힌 조상은 감싼 자리 하나뿐이다(선택 상자 줄·검색 칸 줄은 자리를 잡지 않는다)
+      expect(fields.findAll('.relative')).toHaveLength(0)
+      await tid(w, 'se-snap-eqp-process').trigger('focus')
+      expect(fields.find('.se-snap-eqp-list').exists()).toBe(true)
+    })
+    it('목록이 닫혀 있을 때 ↓ 는 목록을 열기만 한다 — 검색어가 없으면 이어서 Enter 를 눌러도 아무것도 고르지 않는다', async () => {
       const { w, s } = await mountPanel({ pick: 'SEWT_PHOTO_A01' })
       const input = tid(w, 'se-snap-eqp-input')
       await input.trigger('focus')

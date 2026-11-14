@@ -1,6 +1,6 @@
 // 설비 고르기 규칙 (P3 설계 §4.2)
 import { describe, it, expect } from 'vitest'
-import { processesOf, modelsOf, filterEquipment, searchEquipment, filterOptions, stepActive } from '../editor/snapshotEquipment'
+import { processesOf, modelsOf, filterEquipment, searchEquipment, filterOptions, stepActive, scrollTopFor } from '../editor/snapshotEquipment'
 
 const eq = (eqpId, process, model) => ({ eqpId, process, model, line: 'L1' })
 const ITEMS = [
@@ -118,4 +118,12 @@ describe('stepActive — ↑↓ 로 목록 안 줄 옮기기', () => {
     expect(stepActive(-1, -1, 3)).toBe(2)
   })
   it('줄이 없으면 -1', () => expect(stepActive(0, 1, 0)).toBe(-1))
+})
+
+describe('scrollTopFor — 고른 줄이 목록 안에 보이게', () => {
+  // (줄의 위, 줄 높이, 지금 스크롤, 보이는 높이) → 새 스크롤
+  it('이미 보이면 그대로', () => expect(scrollTopFor(40, 30, 20, 100)).toBe(20))
+  it('위로 가려졌으면 줄의 위에 맞춘다', () => expect(scrollTopFor(10, 30, 50, 100)).toBe(10))
+  it('아래로 가려졌으면 줄의 아래가 보이게', () => expect(scrollTopFor(200, 30, 50, 100)).toBe(130))
+  it('숫자가 아니면 지금 스크롤 그대로', () => expect(scrollTopFor(undefined, 30, 50, 100)).toBe(50))
 })

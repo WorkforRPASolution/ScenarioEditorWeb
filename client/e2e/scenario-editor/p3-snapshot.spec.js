@@ -199,15 +199,17 @@ test('③ 설비 찾기 — IP 일부로 검색하면 공정·모델 목록도 �
   await modelBox.click()
   await expect(page.getByTestId('se-snap-eqp-process-option')).toHaveCount(0)
   expect(await choices('se-snap-eqp-model')).toEqual(['', 'SEWMODELA'])
-  // 목록은 두 칸을 합친 폭으로 열린다(좁은 칸 폭이 아니다)
+  // 목록은 두 칸을 합친 폭으로, 검색 칸 아래에 열린다 — 검색 칸(남은 검색어)을 덮지 않는다
   const listBox = await page.locator('.se-snap-eqp-list').boundingBox()
   const modelBoxSize = await modelBox.boundingBox()
+  const inputSize = await input.boundingBox()
   expect(listBox.width).toBeGreaterThan(modelBoxSize.width * 1.8)
+  expect(listBox.y).toBeGreaterThanOrEqual(inputSize.y + inputSize.height)
 
-  // ── 열린 목록은 Esc 로 닫는다(아래 검색 칸을 덮고 있다). 검색어를 버리고(Esc) 공정·모델을 글자로 찾아 고른다 ──
-  await page.keyboard.press('Escape')
-  await expect(page.getByTestId('se-snap-eqp-model-option')).toHaveCount(0)
+  // ── 모델 목록이 열린 채 검색 칸을 누르면 그 목록이 닫히고 설비 목록이 열린다. 검색어를 버리고(Esc) 공정·모델을 글자로 찾아 고른다 ──
   await input.click()
+  await expect(page.getByTestId('se-snap-eqp-model-option')).toHaveCount(0)
+  await expect(options).toHaveCount(1)
   await page.keyboard.press('Escape')
   await expect(input).toHaveValue('')
   await processBox.click()
@@ -223,6 +225,13 @@ test('③ 설비 찾기 — IP 일부로 검색하면 공정·모델 목록도 �
   await page.keyboard.press('Enter')
   await expect(modelBox).toHaveValue('SEWMODELB')
 
+  // ── 고른 뒤(초점이 남은 채) 칸을 다시 눌러 치면 덧붙지 않고 바뀐다 ──
+  await modelBox.click()
+  await page.keyboard.type('modela')
+  expect(await choices('se-snap-eqp-model')).toEqual(['SEWMODELA'])
+  await page.keyboard.press('Escape')
+  await expect(modelBox).toHaveValue('SEWMODELB')
+
   // ── 좁혀진 설비를 ↑↓·Enter 로 고른다 → 목록이 뜨고 머리 줄에 지금 설비 ──
   await input.click()
   await expect(options).toHaveCount(1)
@@ -232,7 +241,15 @@ test('③ 설비 찾기 — IP 일부로 검색하면 공정·모델 목록도 �
   await expect(page.getByTestId('se-snap-current')).toHaveText('SEWT_CVD_B01')
   await expect(page.getByTestId('se-snap-state')).toHaveText('최근 15일 안에 스냅샷이 없습니다.')
 
-  // ── 공정을 바꾸면 그 공정에 없는 모델은 풀린다. "전체" 줄로 공정도 푼다 ──
+  // ── 설비를 고른 뒤에도 칸을 눌러 치면 설비 ID 뒤에 덧붙지 않는다 ──
+  await input.click()
+  await page.keyboard.type('prx')
+  await expect(options).toHaveCount(0) // 공정·모델(SEWCVD·SEWMODELB)에 맞는 PRX 설비는 없다
+  await expect(input).toHaveValue('prx')
+  await page.keyboard.press('Escape')
+  await expect(input).toHaveValue('SEWT_CVD_B01')
+
+  // ── 공정을 바꿔도 그 공정에 있는 모델은 남는다. "전체" 줄로 공정을 푼다 ──
   await processBox.click()
   await processBox.fill('photo')
   await page.keyboard.press('Enter')

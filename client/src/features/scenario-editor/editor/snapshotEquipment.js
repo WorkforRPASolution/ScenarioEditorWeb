@@ -36,6 +36,15 @@ export function filterOptions(options, q, limit = 100) {
   return { items: hit.slice(0, limit), total: hit.length }
 }
 
+// 고른 줄(위 top·높이 height)이 목록(지금 스크롤 scrollTop·보이는 높이 viewHeight) 안에 보이게 하는 새 스크롤.
+// 목록 자신의 스크롤만 바꾼다 — scrollIntoView 는 바깥(패널)까지 밀 수 있다.
+export function scrollTopFor(top, height, scrollTop, viewHeight) {
+  if (![top, height, scrollTop, viewHeight].every(Number.isFinite)) return Number.isFinite(scrollTop) ? scrollTop : 0
+  if (top < scrollTop) return top
+  if (top + height > scrollTop + viewHeight) return top + height - viewHeight
+  return scrollTop
+}
+
 // ↑↓ 로 목록 안 줄 옮기기 — 끝에서 멈춘다. 고른 줄이 없으면(-1) 아래는 첫 줄, 위는 마지막 줄.
 export function stepActive(index, delta, count) {
   if (!(count > 0)) return -1

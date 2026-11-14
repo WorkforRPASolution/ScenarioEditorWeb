@@ -5,7 +5,7 @@
 // - 열린 시나리오의 공정·모델(prefer) 설비가 먼저 온다. 맞는 설비는 50대까지만 그리고 나머지는 수로 알린다.
 import { ref, computed, watch, nextTick } from 'vue'
 import { useSnapshotStore } from '../../stores/snapshotStore'
-import { processesOf, modelsOf, filterEquipment, searchEquipment, stepActive } from '../../editor/snapshotEquipment'
+import { processesOf, modelsOf, filterEquipment, searchEquipment, stepActive, scrollTopFor } from '../../editor/snapshotEquipment'
 import { t } from '../../messages'
 import SearchSelect from './SearchSelect.vue'
 import '../panel/panel.css'
@@ -36,9 +36,16 @@ const ready = computed(() => snap.equipment.status === 'ready')
 const ipOf = (e) => [e.ipAddr, e.ipAddrL].filter((v) => typeof v === 'string' && v !== '').join(' / ')
 // 친 글자가 있으면 맞는 첫 설비가 Enter 대상이다. 안 쳤으면(전체 목록) ↑↓ 로 고른 줄만 대상이다.
 watch([needle, listOpen, process, model], () => { active.value = needle.value && found.value.items.length ? 0 : -1 })
+// ↑↓ 로 옮긴 줄이 목록 안에 보이게, 글자를 치면 맨 위로(스크롤해 둔 채 Enter 로 안 보이는 첫 줄을 고르지 않게)
 watch(active, async () => {
   await nextTick()
-  list.value?.querySelector('.first')?.scrollIntoView?.({ block: 'nearest' })
+  const box = list.value
+  const row = box?.querySelector('.first')
+  if (row) box.scrollTop = scrollTopFor(row.offsetTop, row.offsetHeight, box.scrollTop, box.clientHeight)
+})
+watch(needle, async () => {
+  await nextTick()
+  if (list.value) list.value.scrollTop = 0
 })
 
 function openList(e) {
@@ -60,7 +67,9 @@ function pick(id) {
   q.value = id
   snap.pickEquipment(id)
 }
-// 목록을 눌러 고르면 입력 칸이 초점을 지킨 채 목록만 닫힌다 — 그 뒤 다시 누르거나 치면 focus 이벤트 없이도 연다
+// 목록을 눌러 고르면 입력 칸이 초점을 지킨 채 목록만 닫힌다 — 그 뒤 다시 누르거나 치면 focus 이벤트 없이도 연다.
+// 닫힌 채 누르면 들어올 때처럼 글자를 모두 고른다(이어서 치면 설비 ID 뒤에 덧붙지 않고 바뀐다).
+function onClick(e) { if (!listOpen.value) openList(e) }
 const reopen = () => { listOpen.value = true }
 function onKey(e) {
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -80,15 +89,15 @@ function onKey(e) {
 
 <template>
   <div class="flex flex-col gap-1.5" data-testid="se-snap-eqp">
-    <!-- 두 선택 상자의 목록은 이 줄의 폭 전체로 열린다 -->
-    <div class="relative flex gap-1.5">
-      <SearchSelect v-model="process" :options="processes" :all-label="t('SEW_SNAP_EQP_ALL_PROCESS')" :disabled="!ready" testid="se-snap-eqp-process" />
-      <SearchSelect v-model="model" :options="models" :all-label="t('SEW_SNAP_EQP_ALL_MODEL')" :disabled="!ready" testid="se-snap-eqp-model" />
-    </div>
-    <div class="relative">
+    <!-- 세 목록(공정·모델·설비)은 모두 이 자리의 폭 전체로, 검색 칸 아래에 열린다 — 공정·모델 목록이 검색 칸을 덮지 않게 -->
+    <div class="relative flex flex-col gap-1.5" data-testid="se-snap-eqp-fields">
+      <div class="flex gap-1.5">
+        <SearchSelect v-model="process" :options="processes" :all-label="t('SEW_SNAP_EQP_ALL_PROCESS')" :disabled="!ready" testid="se-snap-eqp-process" />
+        <SearchSelect v-model="model" :options="models" :all-label="t('SEW_SNAP_EQP_ALL_MODEL')" :disabled="!ready" testid="se-snap-eqp-model" />
+      </div>
       <input v-model="q" class="se-inp" type="text" autocomplete="off" spellcheck="false" :aria-label="t('SEW_SNAP_EQP_LABEL')" :disabled="!ready"
         :placeholder="snap.equipment.status === 'loading' ? t('SEW_SNAP_EQP_LOADING') : t('SEW_SNAP_EQP_PLACEHOLDER')" data-testid="se-snap-eqp-input"
-        @focus="openList" @click="reopen" @input="reopen" @blur="closeList" @keydown="onKey" />
+        @focus="openList" @click="onClick" @input="reopen" @blur="closeList" @keydown="onKey" />
       <!-- 목록을 누를 때 입력 칸이 초점을 잃지 않게(잃으면 누르기 전에 목록이 닫힌다) mousedown 을 막는다 -->
       <div v-if="listOpen && ready" ref="list" class="se-snap-eqp-list" @mousedown.prevent>
         <button v-for="(e, i) in found.items" :key="e.eqpId" type="button" tabindex="-1" :class="{ on: e.eqpId === snap.eqpId, first: i === active }" data-testid="se-snap-eqp-option" :data-eqp="e.eqpId" @click="pick(e.eqpId)">
