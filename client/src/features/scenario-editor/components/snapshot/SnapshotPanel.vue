@@ -52,8 +52,10 @@ const btn = 'h-7 px-2 rounded-md text-xs bg-gray-200 dark:bg-gray-700 text-gray-
 <template>
   <div class="h-full flex flex-col min-h-0 text-gray-800 dark:text-gray-100" data-testid="se-snap-panel">
     <div class="h-10 px-3 flex items-center gap-2 border-b border-gray-200 dark:border-dark-border shrink-0">
-      <span class="text-sm font-semibold">{{ t('SEW_SNAP_TITLE') }}</span>
-      <button type="button" :class="btn" class="ml-auto" data-testid="se-snap-collapse" @click="snap.setOpen(false)">{{ t('SEW_SNAP_COLLAPSE') }}</button>
+      <span class="text-sm font-semibold shrink-0">{{ t('SEW_SNAP_TITLE') }}</span>
+      <!-- 지금 설비 — 입력 칸에 검색어가 남아 있어도 무엇을 보고 있는지 알 수 있게 -->
+      <span v-if="snap.eqpId" class="min-w-0 truncate text-xs text-gray-500 dark:text-gray-400" :title="snap.eqpId" data-testid="se-snap-current">{{ snap.eqpId }}</span>
+      <button type="button" :class="btn" class="ml-auto shrink-0" data-testid="se-snap-collapse" @click="snap.setOpen(false)">{{ t('SEW_SNAP_COLLAPSE') }}</button>
     </div>
     <div class="p-2.5 flex flex-col gap-2 border-b border-gray-200 dark:border-dark-border shrink-0">
       <EquipmentPicker :prefer="prefer" />

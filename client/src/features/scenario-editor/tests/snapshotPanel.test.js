@@ -13,8 +13,11 @@ enableAutoUnmount(afterEach)
 const ok = (data) => Promise.resolve({ data: { data } })
 const defer = () => { let resolve; const promise = new Promise((res) => { resolve = res }); return { promise, resolve } }
 const fail = (status, code) => ({ response: { status, data: { code } } })
-const eq = (eqpId, process, model) => ({ eqpId, process, model, line: 'L' })
-const EQP = [eq('SEWT_PHOTO_A01', 'SEWPHOTO', 'SEWMODELA'), eq('SEWT_CVD_B01', 'SEWCVD', 'SEWMODELB'), eq('SEWT_CVD_A01', 'SEWCVD', 'SEWMODELA'), eq('SEWT_ETCH_A01', 'SEWETCH', 'SEWMODELA')]
+const eq = (eqpId, process, model, ipAddr = '', ipAddrL = '') => ({ eqpId, process, model, line: 'L', ipAddr, ipAddrL })
+const EQP = [
+  eq('SEWT_PHOTO_A01', 'SEWPHOTO', 'SEWMODELA', '10.99.6.1'), eq('SEWT_CVD_B01', 'SEWCVD', 'SEWMODELB', '10.99.3.1', '192.168.0.3'),
+  eq('SEWT_CVD_A01', 'SEWCVD', 'SEWMODELA', '10.99.1.1'), eq('SEWT_ETCH_A01', 'SEWETCH', 'SEWMODELA', '10.99.4.1')
+]
 const click = (n) => ({ fileName: `${n}_[1][2].png`, ms: n, time: '09:00:00', shift: 'DAY', kind: 'click', tag: null, x: 1, y: 2, txn: null, hasHistory: false, memo: null, daysLeft: 15 })
 const tag = (n) => ({ fileName: `${n}_[9999][${n}].png`, ms: n, time: '10:00:00', shift: 'DAY', kind: 'tag', tag: 'start', x: null, y: null, txn: String(n), hasHistory: false, memo: null, daysLeft: 15 })
 const ITEMS = [click(10), tag(11), click(12), tag(13), click(14)]
@@ -46,6 +49,12 @@ describe('SnapshotPanel', () => {
     return { w, s }
   }
   const options = (w) => tids(w, 'se-snap-eqp-option').map((o) => o.attributes('data-eqp'))
+  // 글자로 찾는 선택 상자(공정·모델)의 열린 목록 — '' 는 "전체" 줄
+  const choices = (w, id) => tids(w, `${id}-option`).map((o) => o.attributes('data-value'))
+  const choose = async (w, id, value) => {
+    await tid(w, id).trigger('focus')
+    await tids(w, `${id}-option`).find((o) => o.attributes('data-value') === value).trigger('click')
+  }
 
   describe('설비 고르기', () => {
     it('설비를 고르기 전에는 "설비를 고르세요." 이고 날짜·거르기는 꺼져 있다', async () => {
@@ -69,15 +78,171 @@ describe('SnapshotPanel', () => {
     })
     it('공정을 고르면 모델 목록이 그 공정 것으로 줄고 설비도 좁혀진다', async () => {
       const { w } = await mountPanel()
-      const models = () => tid(w, 'se-snap-eqp-model').findAll('option').map((o) => o.element.value)
-      expect(tid(w, 'se-snap-eqp-process').findAll('option').map((o) => o.element.value)).toEqual(['', 'SEWCVD', 'SEWETCH', 'SEWPHOTO'])
-      expect(models()).toEqual(['', 'SEWMODELA', 'SEWMODELB'])
-      await tid(w, 'se-snap-eqp-model').setValue('SEWMODELB')
-      await tid(w, 'se-snap-eqp-process').setValue('SEWETCH')
-      expect(models()).toEqual(['', 'SEWMODELA'])
+      const models = async () => { await tid(w, 'se-snap-eqp-model').trigger('focus'); const r = choices(w, 'se-snap-eqp-model'); await tid(w, 'se-snap-eqp-model').trigger('blur'); return r }
+      await tid(w, 'se-snap-eqp-process').trigger('focus')
+      expect(choices(w, 'se-snap-eqp-process')).toEqual(['', 'SEWCVD', 'SEWETCH', 'SEWPHOTO'])
+      await tid(w, 'se-snap-eqp-process').trigger('blur')
+      expect(choices(w, 'se-snap-eqp-process')).toEqual([])
+      expect(await models()).toEqual(['', 'SEWMODELA', 'SEWMODELB'])
+      await choose(w, 'se-snap-eqp-model', 'SEWMODELB')
+      expect(tid(w, 'se-snap-eqp-model').element.value).toBe('SEWMODELB')
+      await choose(w, 'se-snap-eqp-process', 'SEWETCH')
+      expect(tid(w, 'se-snap-eqp-process').element.value).toBe('SEWETCH')
+      expect(await models()).toEqual(['', 'SEWMODELA'])
       expect(tid(w, 'se-snap-eqp-model').element.value).toBe('') // 그 공정에 없는 모델은 풀린다
       await tid(w, 'se-snap-eqp-input').trigger('focus')
       expect(options(w)).toEqual(['SEWT_ETCH_A01'])
+    })
+    it('공정·모델 선택 상자는 글자를 치면 항목이 좁혀지고 Enter 로 맞는 첫 항목을 고른다', async () => {
+      const { w } = await mountPanel()
+      const box = tid(w, 'se-snap-eqp-process')
+      await box.trigger('focus')
+      await box.setValue('ph')
+      expect(choices(w, 'se-snap-eqp-process')).toEqual(['SEWPHOTO']) // 친 글자가 있으면 "전체" 줄은 없다
+      await box.trigger('keydown', { key: 'Enter' })
+      expect(box.element.value).toBe('SEWPHOTO')
+      expect(choices(w, 'se-snap-eqp-process')).toEqual([])
+      await tid(w, 'se-snap-eqp-input').trigger('focus')
+      expect(options(w)).toEqual(['SEWT_PHOTO_A01'])
+    })
+    it('선택 상자에 맞는 항목이 없으면 안내를 보이고 Enter 는 닫기만 한다', async () => {
+      const { w } = await mountPanel()
+      const box = tid(w, 'se-snap-eqp-process')
+      await box.trigger('focus')
+      await box.setValue('zzz')
+      expect(choices(w, 'se-snap-eqp-process')).toEqual([])
+      expect(w.text()).toContain(MESSAGES.SEW_SNAP_OPT_NONE)
+      await box.trigger('keydown', { key: 'Enter' })
+      expect(box.element.value).toBe('')
+      expect(w.text()).not.toContain(MESSAGES.SEW_SNAP_OPT_NONE)
+    })
+    it('선택 상자는 ↑↓ 로 줄을 옮기고 Enter 로 고른다 — "전체" 줄로 풀 수 있다', async () => {
+      const { w } = await mountPanel()
+      const box = tid(w, 'se-snap-eqp-process')
+      await box.trigger('focus')
+      await box.trigger('keydown', { key: 'ArrowDown' }) // 전체
+      await box.trigger('keydown', { key: 'ArrowDown' }) // SEWCVD
+      await box.trigger('keydown', { key: 'ArrowDown' }) // SEWETCH
+      await box.trigger('keydown', { key: 'ArrowUp' }) // SEWCVD
+      expect(tids(w, 'se-snap-eqp-process-option').filter((o) => o.classes('first')).map((o) => o.attributes('data-value'))).toEqual(['SEWCVD'])
+      await box.trigger('keydown', { key: 'Enter' })
+      expect(box.element.value).toBe('SEWCVD')
+      await box.trigger('click')
+      await box.trigger('keydown', { key: 'ArrowDown' })
+      await box.trigger('keydown', { key: 'Enter' })
+      expect(box.element.value).toBe('')
+      expect(box.attributes('placeholder')).toBe(MESSAGES.SEW_SNAP_EQP_ALL_PROCESS)
+    })
+    it('선택 상자에서 치다가 Esc 를 누르거나 나가면 고른 값으로 되돌린다', async () => {
+      const { w } = await mountPanel()
+      const box = tid(w, 'se-snap-eqp-process')
+      await choose(w, 'se-snap-eqp-process', 'SEWCVD')
+      await box.setValue('et')
+      await box.trigger('keydown', { key: 'Escape' })
+      expect(box.element.value).toBe('SEWCVD')
+      expect(choices(w, 'se-snap-eqp-process')).toEqual([])
+      await box.trigger('focus')
+      expect(choices(w, 'se-snap-eqp-process')).toEqual(['', 'SEWCVD', 'SEWETCH', 'SEWPHOTO']) // 고른 값이 칸에 그대로면 전체 목록
+      await box.setValue('et')
+      await box.trigger('blur')
+      expect(box.element.value).toBe('SEWCVD')
+    })
+    it('선택 상자 항목이 100개를 넘으면 100개만 그리고 나머지 수를 알린다', async () => {
+      api.equipment.mockImplementation(() => ok({ items: Array.from({ length: 130 }, (_, i) => eq(`E${String(i).padStart(3, '0')}`, 'P', `M${String(i).padStart(3, '0')}`)) }))
+      const { w } = await mountPanel()
+      await tid(w, 'se-snap-eqp-model').trigger('focus')
+      expect(choices(w, 'se-snap-eqp-model')).toHaveLength(101) // 전체 + 100
+      expect(tid(w, 'se-snap-eqp-model-more').text()).toBe(t('SEW_SNAP_OPT_MORE', { n: 30 }))
+    })
+    it('설비 ID·IP 의 일부를 치면 맞는 설비만 남고 공정·모델 목록도 그 설비의 것으로 좁혀진다', async () => {
+      const { w } = await mountPanel()
+      const input = tid(w, 'se-snap-eqp-input')
+      await input.trigger('focus')
+      await input.setValue('10.99.3')
+      expect(options(w)).toEqual(['SEWT_CVD_B01'])
+      await input.setValue('192.168')
+      expect(options(w)).toEqual(['SEWT_CVD_B01']) // 안쪽 IP 로도 찾는다
+      expect(tids(w, 'se-snap-eqp-option')[0].text()).toContain('10.99.3.1 / 192.168.0.3')
+      await input.trigger('blur')
+      expect(input.element.value).toBe('192.168') // 검색어는 다른 칸으로 가도 남는다
+      await tid(w, 'se-snap-eqp-process').trigger('focus')
+      expect(choices(w, 'se-snap-eqp-process')).toEqual(['', 'SEWCVD'])
+      await tid(w, 'se-snap-eqp-process').trigger('blur')
+      await tid(w, 'se-snap-eqp-model').trigger('focus')
+      expect(choices(w, 'se-snap-eqp-model')).toEqual(['', 'SEWMODELB'])
+    })
+    it('검색어를 둔 채 공정을 골라 좁힌 뒤 설비를 고르면 입력 칸은 그 설비 ID 가 되고 목록은 다시 전체다', async () => {
+      const { w, s } = await mountPanel()
+      const input = tid(w, 'se-snap-eqp-input')
+      await input.trigger('focus')
+      await input.setValue('a01')
+      await input.trigger('blur')
+      await choose(w, 'se-snap-eqp-process', 'SEWCVD')
+      await input.trigger('focus')
+      expect(options(w)).toEqual(['SEWT_CVD_A01'])
+      await tids(w, 'se-snap-eqp-option')[0].trigger('click')
+      await flushPromises()
+      expect(s.eqpId).toBe('SEWT_CVD_A01')
+      expect(input.element.value).toBe('SEWT_CVD_A01')
+      await tid(w, 'se-snap-eqp-process').trigger('focus')
+      expect(choices(w, 'se-snap-eqp-process')).toEqual(['', 'SEWCVD', 'SEWETCH', 'SEWPHOTO'])
+    })
+    it('고른 공정에 맞는 설비가 없는 검색어여도 공정 선택은 그대로다 — 설비 목록에 "맞는 설비가 없습니다"', async () => {
+      const { w } = await mountPanel()
+      await choose(w, 'se-snap-eqp-process', 'SEWCVD')
+      const input = tid(w, 'se-snap-eqp-input')
+      await input.trigger('focus')
+      await input.setValue('etch')
+      expect(options(w)).toEqual([])
+      expect(w.text()).toContain(MESSAGES.SEW_SNAP_EQP_NONE)
+      expect(tid(w, 'se-snap-eqp-process').element.value).toBe('SEWCVD')
+    })
+    it('검색어를 지우고 나가면 입력 칸은 지금 설비 ID 로 돌아온다', async () => {
+      const { w } = await mountPanel({ pick: 'SEWT_CVD_A01' })
+      const input = tid(w, 'se-snap-eqp-input')
+      await input.trigger('focus')
+      await input.setValue('  ')
+      await input.trigger('blur')
+      expect(input.element.value).toBe('SEWT_CVD_A01')
+    })
+    it('설비 목록도 ↑↓ 로 줄을 옮기고 Enter 로 고른다', async () => {
+      const { w, s } = await mountPanel()
+      const input = tid(w, 'se-snap-eqp-input')
+      await input.trigger('focus')
+      await input.trigger('keydown', { key: 'ArrowDown' }) // SEWT_CVD_A01
+      await input.trigger('keydown', { key: 'ArrowDown' }) // SEWT_CVD_B01
+      expect(tids(w, 'se-snap-eqp-option').filter((o) => o.classes('first')).map((o) => o.attributes('data-eqp'))).toEqual(['SEWT_CVD_B01'])
+      await input.trigger('keydown', { key: 'Enter' })
+      await flushPromises()
+      expect(s.eqpId).toBe('SEWT_CVD_B01')
+    })
+    it('목록이 닫혀 있을 때 ↓ 는 목록을 열기만 한다 — 이어서 Enter 를 눌러도 아무것도 고르지 않는다', async () => {
+      const { w, s } = await mountPanel({ pick: 'SEWT_PHOTO_A01' })
+      const input = tid(w, 'se-snap-eqp-input')
+      await input.trigger('focus')
+      await input.trigger('keydown', { key: 'Escape' })
+      expect(options(w)).toEqual([])
+      await input.trigger('keydown', { key: 'ArrowDown' })
+      expect(options(w)).toHaveLength(4)
+      expect(tids(w, 'se-snap-eqp-option').filter((o) => o.classes('first'))).toHaveLength(0)
+      await input.trigger('keydown', { key: 'Enter' })
+      await flushPromises()
+      expect(s.eqpId).toBe('SEWT_PHOTO_A01')
+      const box = tid(w, 'se-snap-eqp-process')
+      await box.trigger('focus')
+      await box.trigger('keydown', { key: 'Escape' })
+      await box.trigger('keydown', { key: 'ArrowUp' })
+      expect(choices(w, 'se-snap-eqp-process')).toHaveLength(4)
+      expect(tids(w, 'se-snap-eqp-process-option').filter((o) => o.classes('first'))).toHaveLength(0)
+    })
+    it('지금 설비는 패널 머리 줄에도 보인다(검색어를 치는 중에도 무엇을 보고 있는지 알 수 있게)', async () => {
+      const { w } = await mountPanel({ pick: 'SEWT_CVD_A01' })
+      expect(tid(w, 'se-snap-current').text()).toBe('SEWT_CVD_A01')
+      const input = tid(w, 'se-snap-eqp-input')
+      await input.trigger('focus')
+      await input.setValue('photo')
+      await input.trigger('blur')
+      expect(tid(w, 'se-snap-current').text()).toBe('SEWT_CVD_A01')
     })
     it('설비를 누르면 그 설비를 고르고 목록이 닫히며 입력 칸에 설비 ID 가 남는다', async () => {
       const { w, s } = await mountPanel()

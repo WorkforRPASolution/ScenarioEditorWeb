@@ -15,9 +15,9 @@ const NOW = kst(2026, 11, 11, 12)
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3])
 const USER = { singleid: 'u' }
 const EQP = [
-  { eqpId: 'E2', process: 'CVD', eqpModel: 'M2', line: 'L2', snapshotTimeDiff: 30 },
-  { eqpId: 'E1', process: 'CVD', eqpModel: 'M1', line: 'L1', snapshotTimeDiff: 0 },
-  { eqpId: 'E3', process: 'CVD', eqpModel: 'M1', line: 'L1' }
+  { eqpId: 'E2', process: 'CVD', eqpModel: 'M2', line: 'L2', snapshotTimeDiff: 30, ipAddr: '10.0.0.2', ipAddrL: '192.168.0.2' },
+  { eqpId: 'E1', process: 'CVD', eqpModel: 'M1', line: 'L1', snapshotTimeDiff: 0, ipAddr: '10.0.0.1', ipAddrL: '' },
+  { eqpId: 'E3', process: 'CVD', eqpModel: 'M1', line: 'L1', ipAddr: 10 }
 ]
 const click = (ms, x = 1, y = 2) => `${ms}_[${x}][${y}].png`
 const caught = async (p) => { try { await p } catch (e) { return e } return null }
@@ -58,11 +58,11 @@ function fakeScopes(valid = EQP) {
 const service = (repo, { env = {}, now = () => NOW, scopes = fakeScopes() } = {}) => createSnapshotService({ snapshotRepo: repo, scopes, now, env })
 
 describe('snapshotService.equipment', () => {
-  it('범위 안 설비를 eqpId 순으로, 모델은 eqpModel', async () => {
+  it('범위 안 설비를 eqpId 순으로, 모델은 eqpModel, IP 둘(글자가 아니면 빈 글자)', async () => {
     expect(await service(fakeRepo()).equipment(USER)).toEqual([
-      { eqpId: 'E1', process: 'CVD', model: 'M1', line: 'L1' },
-      { eqpId: 'E2', process: 'CVD', model: 'M2', line: 'L2' },
-      { eqpId: 'E3', process: 'CVD', model: 'M1', line: 'L1' }
+      { eqpId: 'E1', process: 'CVD', model: 'M1', line: 'L1', ipAddr: '10.0.0.1', ipAddrL: '' },
+      { eqpId: 'E2', process: 'CVD', model: 'M2', line: 'L2', ipAddr: '10.0.0.2', ipAddrL: '192.168.0.2' },
+      { eqpId: 'E3', process: 'CVD', model: 'M1', line: 'L1', ipAddr: '', ipAddrL: '' }
     ])
   })
 })

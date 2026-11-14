@@ -87,7 +87,8 @@ const imagePath = (eqpId, fileName) => `/snapshots/${enc(eqpId)}/${enc(fileName)
 describe('설비', () => {
   it('내 범위 설비만 — sew_cvd 는 SEWCVD 설비만 본다', async () => {
     const all = (await data(await get('/equipment'))).items
-    expect(all.find((e) => e.eqpId === EQP_TODAY)).toEqual({ eqpId: EQP_TODAY, process: 'SEWETCH', model: 'SEWMODELB', line: 'SEWLINE1' })
+    expect(all.find((e) => e.eqpId === EQP_TODAY)).toEqual({ eqpId: EQP_TODAY, process: 'SEWETCH', model: 'SEWMODELB', line: 'SEWLINE1', ipAddr: '10.99.5.1', ipAddrL: '' })
+    expect(all.find((e) => e.eqpId === 'SEWT_PRX01')).toMatchObject({ ipAddr: '10.99.11.1', ipAddrL: '192.168.0.11' })
     const cvd = (await data(await get('/equipment', 'sew_cvd'))).items
     expect(cvd.length).toBeGreaterThan(0)
     expect(cvd.every((e) => e.process === 'SEWCVD')).toBe(true)

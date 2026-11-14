@@ -57,10 +57,12 @@ function createSnapshotService({ snapshotRepo, scopes, now, env = {}, log = null
     return { parsed, skipped, truncated }
   }
 
+  // 설비 고르기용 — IP 둘(ipAddr, 안쪽 ipAddrL)은 화면이 글자 일부로 찾는 데 쓴다. 글자가 아니면 빈 글자.
   async function equipment(user) {
     const { valid } = await scopes.scopeFor(user)
+    const ip = (v) => (typeof v === 'string' ? v : '')
     return valid
-      .map((e) => ({ eqpId: e.eqpId, process: e.process, model: e.eqpModel, line: e.line }))
+      .map((e) => ({ eqpId: e.eqpId, process: e.process, model: e.eqpModel, line: e.line, ipAddr: ip(e.ipAddr), ipAddrL: ip(e.ipAddrL) }))
       .sort((a, b) => cmp(a.eqpId, b.eqpId))
   }
 

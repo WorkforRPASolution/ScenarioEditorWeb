@@ -17,6 +17,7 @@
 .se-snap-eqp-list button:hover, .se-snap-eqp-list button.first { background: #eff6ff; }
 .se-snap-eqp-list button.on b { color: #1d4ed8; }
 .se-snap-eqp-list small { font-size: 10px; color: #6b7280; }
+.se-snap-opt { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .se-snap-eqp-list p { margin: 0; padding: 6px 8px; font-size: 11px; color: #6b7280; }
 
 .se-snap-cal { position: absolute; left: 0; right: 0; top: calc(100% + 2px); z-index: 30; padding: 8px; background: #fff; border: 1px solid #d1d5db; border-radius: 6px; box-shadow: 0 8px 20px rgba(0, 0, 0, .15); font-size: 11px; }

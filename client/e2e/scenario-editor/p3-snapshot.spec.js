@@ -168,3 +168,78 @@ test('② 내 공정 범위의 설비만 보이고, 시나리오를 연 채 스�
   await expect(info(page)).toContainText('클릭 (111, 222)')
   await expect(snapRow(page, '09:30:00')).toHaveAttribute('aria-selected', 'true')
 })
+
+test('③ 설비 찾기 — IP 일부로 검색하면 공정·모델 목록도 좁혀지고, 공정·모델은 글자를 쳐서 고른다', async ({ page }) => {
+  await asUser(page, 'sew_master')
+  await page.goto('/scenario-editor')
+  await page.getByTestId('se-snapshot-rail').click()
+  const input = page.getByTestId('se-snap-eqp-input')
+  const options = page.getByTestId('se-snap-eqp-option')
+  const processBox = page.getByTestId('se-snap-eqp-process')
+  const modelBox = page.getByTestId('se-snap-eqp-model')
+  const choices = (id) => page.getByTestId(`${id}-option`).evaluateAll((els) => els.map((e) => e.getAttribute('data-value')))
+
+  // ── IP 일부 → 맞는 설비만, 줄에 IP 가 보인다. 안쪽 IP 로도 찾는다 ──
+  await input.click()
+  await input.fill('10.99.6')
+  await expect(options).toHaveCount(1)
+  await expect(options.first()).toHaveAttribute('data-eqp', 'SEWT_PHOTO_A01')
+  await expect(options.first()).toContainText('10.99.6.1')
+  await input.fill('192.168.0.11')
+  await expect(options).toHaveCount(2)
+  await expect(options.first()).toContainText('10.99.11.1 / 192.168.0.11')
+
+  // ── 검색어를 둔 채 공정 칸으로 가면 검색어는 남고, 공정·모델 목록은 맞는 설비의 것만이다 ──
+  await input.fill('10.99.6')
+  await processBox.click()
+  await expect(options).toHaveCount(0)
+  await expect(input).toHaveValue('10.99.6')
+  await expect(page.getByTestId('se-snap-eqp-process-option').last()).toBeVisible()
+  expect(await choices('se-snap-eqp-process')).toEqual(['', 'SEWPHOTO'])
+  await modelBox.click()
+  await expect(page.getByTestId('se-snap-eqp-process-option')).toHaveCount(0)
+  expect(await choices('se-snap-eqp-model')).toEqual(['', 'SEWMODELA'])
+  // 목록은 두 칸을 합친 폭으로 열린다(좁은 칸 폭이 아니다)
+  const listBox = await page.locator('.se-snap-eqp-list').boundingBox()
+  const modelBoxSize = await modelBox.boundingBox()
+  expect(listBox.width).toBeGreaterThan(modelBoxSize.width * 1.8)
+
+  // ── 열린 목록은 Esc 로 닫는다(아래 검색 칸을 덮고 있다). 검색어를 버리고(Esc) 공정·모델을 글자로 찾아 고른다 ──
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('se-snap-eqp-model-option')).toHaveCount(0)
+  await input.click()
+  await page.keyboard.press('Escape')
+  await expect(input).toHaveValue('')
+  await processBox.click()
+  await processBox.fill('wcv')
+  expect(await choices('se-snap-eqp-process')).toEqual(['SEWCVD'])
+  await page.keyboard.press('Enter')
+  await expect(processBox).toHaveValue('SEWCVD')
+  await modelBox.click()
+  expect(await choices('se-snap-eqp-model')).toEqual(['', 'SEWMODELA', 'SEWMODELB'])
+  await page.keyboard.press('ArrowDown') // 전체
+  await page.keyboard.press('ArrowDown') // SEWMODELA
+  await page.keyboard.press('ArrowDown') // SEWMODELB
+  await page.keyboard.press('Enter')
+  await expect(modelBox).toHaveValue('SEWMODELB')
+
+  // ── 좁혀진 설비를 ↑↓·Enter 로 고른다 → 목록이 뜨고 머리 줄에 지금 설비 ──
+  await input.click()
+  await expect(options).toHaveCount(1)
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('Enter')
+  await expect(input).toHaveValue('SEWT_CVD_B01')
+  await expect(page.getByTestId('se-snap-current')).toHaveText('SEWT_CVD_B01')
+  await expect(page.getByTestId('se-snap-state')).toHaveText('최근 15일 안에 스냅샷이 없습니다.')
+
+  // ── 공정을 바꾸면 그 공정에 없는 모델은 풀린다. "전체" 줄로 공정도 푼다 ──
+  await processBox.click()
+  await processBox.fill('photo')
+  await page.keyboard.press('Enter')
+  await expect(processBox).toHaveValue('SEWPHOTO')
+  await expect(modelBox).toHaveValue('SEWMODELB') // SEWPHOTO 에도 있는 모델이라 남는다
+  await processBox.click()
+  await page.locator('[data-testid="se-snap-eqp-process-option"][data-value=""]').click()
+  await expect(processBox).toHaveValue('')
+  await expect(processBox).toHaveAttribute('placeholder', '공정 전체')
+})

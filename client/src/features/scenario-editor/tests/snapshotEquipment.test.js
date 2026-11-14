@@ -1,6 +1,6 @@
 // 설비 고르기 규칙 (P3 설계 §4.2)
 import { describe, it, expect } from 'vitest'
-import { processesOf, modelsOf, filterEquipment } from '../editor/snapshotEquipment'
+import { processesOf, modelsOf, filterEquipment, searchEquipment, filterOptions, stepActive } from '../editor/snapshotEquipment'
 
 const eq = (eqpId, process, model) => ({ eqpId, process, model, line: 'L1' })
 const ITEMS = [
@@ -54,4 +54,68 @@ describe('filterEquipment', () => {
     filterEquipment(ITEMS, {})
     expect(ITEMS.map((e) => e.eqpId)).toEqual(before)
   })
+})
+
+describe('searchEquipment — 설비 ID·IP 의 부분 글자', () => {
+  const ip = (eqpId, ipAddr, ipAddrL = '') => ({ eqpId, process: 'P', model: 'M', line: 'L', ipAddr, ipAddrL })
+  const LIST = [ip('SEWT_A01', '10.99.1.1'), ip('SEWT_B01', '10.99.2.1'), ip('SEWT_PRX01', '10.99.11.1', '192.168.0.11'), ip('SEWT_PRX02', '10.99.11.1', '192.168.0.12')]
+  const found = (q) => searchEquipment(LIST, q).map((e) => e.eqpId)
+  it('설비 ID 의 일부(대소문자 없이, 앞뒤 공백 지움)', () => {
+    expect(found(' prx ')).toEqual(['SEWT_PRX01', 'SEWT_PRX02'])
+    expect(found('b01')).toEqual(['SEWT_B01'])
+  })
+  it('IP 의 일부 — 바깥 IP 와 안쪽 IP 둘 다 본다', () => {
+    expect(found('10.99.2')).toEqual(['SEWT_B01'])
+    expect(found('10.99.11.1')).toEqual(['SEWT_PRX01', 'SEWT_PRX02'])
+    expect(found('192.168.0.12')).toEqual(['SEWT_PRX02'])
+    expect(found('172.')).toEqual([])
+  })
+  it('검색어가 비면 받은 배열 그대로(새로 만들지 않는다), 목록이 아니면 빈 배열', () => {
+    expect(searchEquipment(LIST, '')).toBe(LIST)
+    expect(searchEquipment(LIST, '   ')).toBe(LIST)
+    expect(searchEquipment(null, 'a')).toEqual([])
+  })
+  it('IP 칸이 없는 설비(옛 응답)도 설비 ID 로는 찾는다', () => {
+    expect(searchEquipment([{ eqpId: 'OLD_01', process: 'P', model: 'M' }], 'old').map((e) => e.eqpId)).toEqual(['OLD_01'])
+    expect(searchEquipment([{ eqpId: 'OLD_01', process: 'P', model: 'M' }], '10.')).toEqual([])
+  })
+  it('filterEquipment 의 검색어도 IP 를 본다', () => {
+    expect(filterEquipment(LIST, { q: '192.168' }).items.map((e) => e.eqpId)).toEqual(['SEWT_PRX01', 'SEWT_PRX02'])
+  })
+  it('좁혀진 설비로 공정·모델 목록을 만들 수 있다', () => {
+    const hit = searchEquipment(ITEMS, 'photo')
+    expect(processesOf(hit)).toEqual(['SEWPHOTO'])
+    expect(modelsOf(hit, '')).toEqual(['SEWMODELA', 'SEWMODELB'])
+  })
+})
+
+describe('filterOptions — 선택 상자 항목을 글자 일부로', () => {
+  const OPTS = ['SEWCVD', 'SEWETCH', 'SEWPHOTO']
+  it('빈 검색어면 모두, 치면 부분 글자(대소문자 없이)', () => {
+    expect(filterOptions(OPTS, '')).toEqual({ items: OPTS, total: 3 })
+    expect(filterOptions(OPTS, ' etc ')).toEqual({ items: ['SEWETCH'], total: 1 })
+    expect(filterOptions(OPTS, 'zzz')).toEqual({ items: [], total: 0 })
+  })
+  it('그리는 수를 넘으면 앞에서 그만큼만 주고 전체 수를 알린다', () => {
+    const many = Array.from({ length: 130 }, (_, i) => `M${String(i).padStart(3, '0')}`)
+    const r = filterOptions(many, 'm')
+    expect(r.items).toHaveLength(100)
+    expect(r.total).toBe(130)
+    expect(filterOptions(many, '', 10).items).toHaveLength(10)
+  })
+  it('목록이 아니면 빈 결과', () => expect(filterOptions(null, 'a')).toEqual({ items: [], total: 0 }))
+})
+
+describe('stepActive — ↑↓ 로 목록 안 줄 옮기기', () => {
+  it('아래로·위로 한 줄씩, 끝에서 멈춘다', () => {
+    expect(stepActive(0, 1, 3)).toBe(1)
+    expect(stepActive(2, 1, 3)).toBe(2)
+    expect(stepActive(1, -1, 3)).toBe(0)
+    expect(stepActive(0, -1, 3)).toBe(0)
+  })
+  it('고른 줄이 없으면(-1) 아래는 첫 줄, 위는 마지막 줄', () => {
+    expect(stepActive(-1, 1, 3)).toBe(0)
+    expect(stepActive(-1, -1, 3)).toBe(2)
+  })
+  it('줄이 없으면 -1', () => expect(stepActive(0, 1, 0)).toBe(-1))
 })
