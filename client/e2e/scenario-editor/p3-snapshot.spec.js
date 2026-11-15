@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
-import { asUser, openFromDialog, rowAt } from './helpers'
-import { cleanupMemos, memosLeft, closeDb } from './sew'
+import { asUser, openFromDialog, rowAt, rows, cellOf, selectRow, column, drag, clickAt } from './helpers'
+import { cleanupMemos, memosLeft, closeDb, CVD, sewName, idOf, apiAs, cleanup, leftovers, NONE_LEFT } from './sew'
 import { API_URL, ROOT } from '../env.js'
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -562,4 +562,158 @@ test('⑥ 여러 줄 고르기(Ctrl·Shift) → 좌표 포함으로 ZIP 받기(�
   await expect(hd).toHaveCount(0)
   // 이력 창을 닫아도 스냅샷은 그대로다
   await expect(page.getByTestId('se-snap-image')).toBeVisible()
+})
+
+// P3-E 스냅샷에서 스텝 만들기(설계 §4.8, §12 E2E ④, 완료 조건 8). 시험 스냅샷은 읽기만 — 배포는 새 시나리오 SEW_W_<시각>_<화면>_SNAP 에만 하고
+// 끝나면(실패해도) 저장 E2E 와 같은 정리로 지운다. InterfaceServer 컨테이너가 떠 있어야 한다.
+test.describe('스냅샷에서 스텝 만들기', () => {
+  test.beforeAll(async () => { await cleanup() })
+  test.afterEach(async () => { await cleanup() })
+  test.afterAll(async () => {
+    try {
+      expect(await leftovers()).toEqual(NONE_LEFT)
+    } finally {
+      await closeDb()
+    }
+  })
+
+  test('⑦ 새 시나리오(스텝 0) → 스냅샷으로 이미지 스텝·같은 스냅샷으로 OCR 스텝 → 배포(그림은 한 번만 올림) → 다시 열면 기준 화면이 그 스냅샷', async ({ page }) => {
+    const NEW = { ...CVD, name: sewName('SNAP') }
+    const SNAP = { w: 640, h: 360 } // 시험 스냅샷 크기
+    const AREA = [300, 200, 240, 140] // 검색 영역 — 클릭 자리(412, 288)의 붉은 네모를 품는다
+    const TRAIN = [392, 268, 40, 40] // 찾을 그림
+    const OCR = [40, 40, 200, 80]
+    const snapMode = () => page.locator('[data-testid="se-mode-snapshot"]:visible')
+    const newBtn = page.getByTestId('se-snap-new')
+    const layer = page.getByTestId('se-capture-layer')
+    const naturalOf = (testid) => page.getByTestId(testid).evaluate((el) => (el.complete ? [el.naturalWidth, el.naturalHeight] : null))
+    const get = async (path) => {
+      const res = await fetch(new URL(path, API_URL), { headers: { 'X-SE-User': 'sew_master' } })
+      expect(res.status, path).toBe(200)
+      return res
+    }
+
+    await asUser(page, 'sew_master')
+    // 요청에 싣는 그림 파일(필드 이름·크기)을 적어 둔다 — 브라우저는 Blob 이 든 요청 본문을 시험에 보여 주지 않는다
+    await page.addInitScript(() => {
+      window.__seParts = []
+      const append = FormData.prototype.append
+      FormData.prototype.append = function (name, value, ...rest) {
+        if (value instanceof Blob) window.__seParts.push([name, value.size])
+        return append.call(this, name, value, ...rest)
+      }
+    })
+    await page.goto('/scenario-editor')
+    await page.getByTestId('se-snapshot-rail').click()
+    await pickEquipment(page, 'photo_a', 'SEWT_PHOTO_A01')
+    await expect(count(page)).toHaveText('20장')
+    const date = /\d{4}-\d{2}-\d{2}/.exec(await page.getByTestId('se-snap-date').innerText())[0]
+    await snapRow(page, '09:13:02').click()
+    await expect(info(page)).toContainText('클릭 (412, 288)')
+    await expect(page.getByTestId('se-snap-image')).toBeVisible()
+    // 스냅샷의 서버 바이트(다시 연 기준 화면과 견준다)
+    const list = (await (await get(`snapshots?eqpId=SEWT_PHOTO_A01&date=${date}`)).json()).data.items
+    const fileName = list.find((i) => i.time === '09:13:02' && i.kind === 'click').fileName
+    const snapBytes = Buffer.from(await (await get(`snapshots/SEWT_PHOTO_A01/${encodeURIComponent(fileName)}/image`)).arrayBuffer())
+
+    // ── 시나리오를 열지 않았으면 꺼져 있고 까닭을 알린다 ──
+    await expect(newBtn).toBeDisabled()
+    await expect(newBtn).toHaveAttribute('title', /시나리오를 열거나 새로 만들면/)
+
+    // ── 스텝이 없는 새 시나리오 ──
+    await page.getByTestId('se-new').click()
+    const dlg = page.getByTestId('se-new-dialog')
+    await dlg.getByTestId('se-new-process').selectOption(CVD.process)
+    await dlg.getByTestId('se-new-model').selectOption(CVD.model)
+    await dlg.getByTestId('se-new-type').selectOption('1')
+    await dlg.getByTestId('se-new-name').fill(NEW.name)
+    await dlg.getByTestId('se-new-mail').fill('E2E 스냅샷에서 스텝')
+    await dlg.getByTestId('se-new-create').click()
+    await expect(dlg).toHaveCount(0)
+    await expect(page.getByTestId('se-bar-id')).toHaveText(idOf(NEW))
+    await expect(page.getByTestId('se-table-empty')).toContainText('왼쪽 스냅샷에서 화면을 골라')
+    // 고른 스냅샷은 그대로다 — 스냅샷 탭으로 가면 [새 스텝] 이 켜져 있다
+    if (!(await page.getByTestId('se-snap-image').isVisible())) await snapMode().click()
+    await expect(snapRow(page, '09:13:02')).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByTestId('se-snap-image')).toBeVisible()
+    await expect(newBtn).toBeEnabled()
+
+    // ── 이미지 스텝: 큰 화면이 스텝 그림으로 바뀌고 그 스냅샷 위에서 잡는다 ──
+    await newBtn.click()
+    await page.getByTestId('se-snap-new-image').click()
+    await expect(layer).toHaveAttribute('data-stage', 'area')
+    await expect(page.getByTestId('se-cap-bar')).toBeVisible() // 잡는 중에는 탭 자리에 단계 띠가 뜬다
+    await expect(page.getByTestId('se-snap-viewer')).toBeHidden()
+    await expect.poll(() => naturalOf('se-base-image')).toEqual([SNAP.w, SNAP.h])
+    await drag(page, layer, AREA, SNAP)
+    await expect(layer).toHaveAttribute('data-stage', 'train')
+    await drag(page, layer, TRAIN, SNAP)
+    await expect(layer).toHaveAttribute('data-stage', 'click')
+    await clickAt(page, layer, 412, 288, SNAP)
+    await page.getByTestId('se-detail').locator('[data-field="desc"]').fill('스냅샷 이미지 스텝')
+    await page.getByTestId('se-new-add').click()
+    await expect(rows(page)).toHaveCount(1)
+
+    // ── 같은 스냅샷으로 OCR 스텝 ──
+    await snapMode().click()
+    await expect(snapRow(page, '09:13:02')).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByTestId('se-snap-image')).toBeVisible()
+    await newBtn.click()
+    await page.getByTestId('se-snap-new-ocr').click()
+    await expect(layer).toHaveAttribute('data-stage', 'ocr')
+    await expect.poll(() => naturalOf('se-base-image')).toEqual([SNAP.w, SNAP.h])
+    await drag(page, layer, OCR, SNAP)
+    const panel = page.getByTestId('se-detail')
+    await panel.locator('[data-field="ocrOp"]').selectOption('1')
+    await panel.locator('[data-field="ocrVal"]').fill('IDLE')
+    await panel.locator('[data-field="desc"]').fill('스냅샷 OCR 스텝')
+    await page.getByTestId('se-new-add').click()
+    await expect(rows(page)).toHaveCount(2)
+    expect(await column(page, 'desc')).toEqual(['스냅샷 이미지 스텝', '스냅샷 OCR 스텝'])
+    // 마지막 스텝의 성공 시 NEXT 는 갈 곳이 없다 — 성공으로 끝낸다
+    const last = await rowAt(page, 1).getAttribute('row-id')
+    await cellOf(page, last, 'onTrue').locator('[data-pick]').click()
+    await page.getByTestId('se-picker').locator('[data-end="SUCCESS"]').click()
+    await expect(cellOf(page, last, 'onTrue')).toHaveText('SUCCESS')
+
+    // ── 배포: 올리는 그림은 둘 — 두 스텝이 함께 쓰는 기준 화면 하나와 찾을 그림 하나 ──
+    await page.getByTestId('se-save').click()
+    await expect(page.getByTestId('se-save-dialog')).toContainText('첫 저장')
+    const go = page.getByTestId('se-save-deploy')
+    await expect(go).toBeEnabled()
+    await go.click()
+    await page.evaluate(() => { window.__seParts = [] }) // 검사 요청은 그림을 싣지 않지만, 배포 요청의 것만 세게 비운다
+    await page.getByTestId('se-save-go').click()
+    await expect(page.getByTestId('se-save-result').locator('h4')).toHaveText(/설비에 배포했습니다/, { timeout: 60_000 })
+    const parts = await page.evaluate(() => window.__seParts)
+    expect(parts.map(([name]) => name.slice(0, 4))).toEqual(['img:', 'img:'])
+    expect(parts.filter(([, size]) => size === snapBytes.length)).toHaveLength(1) // 기준 화면은 스냅샷 크기 그대로 한 번만
+    await page.getByTestId('se-save-close').click()
+    await expect(page.getByTestId('se-bar-version')).toContainText('현재 버전')
+
+    // ── 다시 열면 두 스텝의 기준 화면이 그 스냅샷이다 ──
+    await page.reload()
+    await expect(page.getByTestId('se-bar-id')).toHaveText(idOf(NEW))
+    await expect(rows(page)).toHaveCount(2)
+    await selectRow(page, 's0')
+    await expect.poll(() => naturalOf('se-base-image')).toEqual([SNAP.w, SNAP.h])
+    // 찾을 그림은 그 스냅샷에서 자른 것(끈 자리는 화면 배율만큼 1~2px 어긋날 수 있다)
+    const near = (v, want) => Math.abs(v - want) <= 2
+    await expect.poll(() => page.getByTestId('se-detail').locator('[data-station="find"] img').first().evaluate((el) => (el.complete ? el.naturalWidth : 0)).then((w) => near(w, TRAIN[2]))).toBe(true)
+    const api = await apiAs('sew_master')
+    try {
+      const back = await api.open(NEW)
+      expect(back.steps.map((s) => s.condition.kind)).toEqual(['image', 'ocr'])
+      const area = back.steps[0].condition.searchArea
+      expect([area.x, area.y, area.w, area.h].every((v, i) => near(v, AREA[i])), JSON.stringify(area)).toBe(true)
+      for (const st of back.steps) {
+        expect(st.baseImage.state).toBe('present')
+        const bytes = Buffer.from(await (await get(st.baseImage.url.replace(/^\/scenario-editor\//, ''))).arrayBuffer())
+        expect(bytes.equals(snapBytes), `스텝 ${st.no} 기준 화면`).toBe(true)
+      }
+      expect(await api.versions(NEW)).toHaveLength(1)
+    } finally {
+      await api.dispose()
+    }
+  })
 })

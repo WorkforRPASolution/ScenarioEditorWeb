@@ -53,20 +53,21 @@ export async function pickNext(page, uid, col, to) {
 }
 
 // 큰 화면 잡기 층 위의 기준 화면 픽셀 → 화면 좌표(층은 확대·이동이 들어간 상자 안에 있다). 기준 화면은 alarm.png(1920×1200).
+// size = 기준 화면 크기 — 스냅샷으로 만든 스텝은 스냅샷 크기(시험 스냅샷 640×360)를 준다.
 export const BASE_IMG = { w: 1920, h: 1200 }
-export async function toScreen(layer, x, y) {
+export async function toScreen(layer, x, y, size = BASE_IMG) {
   const b = await layer.boundingBox()
-  return { x: b.x + (x * b.width) / BASE_IMG.w, y: b.y + (y * b.height) / BASE_IMG.h }
+  return { x: b.x + (x * b.width) / size.w, y: b.y + (y * b.height) / size.h }
 }
-export async function drag(page, layer, [x, y, w, h]) {
-  const a = await toScreen(layer, x, y)
-  const z = await toScreen(layer, x + w, y + h)
+export async function drag(page, layer, [x, y, w, h], size = BASE_IMG) {
+  const a = await toScreen(layer, x, y, size)
+  const z = await toScreen(layer, x + w, y + h, size)
   await page.mouse.move(a.x, a.y)
   await page.mouse.down()
   await page.mouse.move(z.x, z.y, { steps: 6 })
   await page.mouse.up()
 }
-export async function clickAt(page, layer, x, y) {
-  const p = await toScreen(layer, x, y)
+export async function clickAt(page, layer, x, y, size = BASE_IMG) {
+  const p = await toScreen(layer, x, y, size)
   await page.mouse.click(p.x, p.y)
 }
