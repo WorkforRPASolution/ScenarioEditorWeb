@@ -4,7 +4,8 @@
 // 고른 것이 바뀌면 그림 크기를 지워, 새 그림이 불러와질 때까지 점·크기를 그리지 않는다(DC-034).
 // 메모 줄(P3-C): 메모가 있으면 글·작성자·[고치기]·[지우기], 없으면 [메모 쓰기]. 메모 창은 창을 연 스냅샷(파일 이름)에 쓴다.
 // [받기 ▾](P3-D): 목록에서 고른 줄(하나 또는 여러 줄)을 그림만·좌표 포함으로 받는다 — 진행·결과는 받기 저장소와 DownloadDialog.
-// [이력 보기]·[새 스텝] 은 P3-D~E 에서 더한다.
+// [이력 보기](P3-D): 이력이 남는 태그 스냅샷(태그이고 txn ≥ 99999 — 서버의 hasHistory)에서만 켜진다. 창은 연 때의 설비·txn 으로 받는다.
+// [새 스텝] 은 P3-E 에서 더한다.
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useSnapshotStore } from '../../stores/snapshotStore'
 import { useEditorStore } from '../../stores/editorStore'
@@ -15,6 +16,7 @@ import { t } from '../../messages'
 import ViewerModeTabs from './ViewerModeTabs.vue'
 import MemoDialog from './MemoDialog.vue'
 import DownloadDialog from './DownloadDialog.vue'
+import HistoryDialog from './HistoryDialog.vue'
 import '../../pills.css'
 import './snapshot.css'
 
@@ -52,6 +54,18 @@ const memoMeta = computed(() => {
 const memoDialog = ref({ open: false, fileName: '', mode: 'edit' })
 function openMemo(mode) {
   if (item.value) memoDialog.value = { open: true, fileName: item.value.fileName, mode }
+}
+
+// ── 이력 보기 ──
+const historyDialog = ref({ open: false, eqpId: '', txn: '', tag: '' })
+const historyOff = computed(() => !item.value?.hasHistory)
+const historyWhy = computed(() => {
+  if (!item.value || item.value.hasHistory) return undefined
+  return t(item.value.kind === 'tag' ? 'SEW_SNAP_HISTORY_NO_TXN' : 'SEW_SNAP_HISTORY_ONLY_TAG')
+})
+function openHistory() {
+  const it = item.value
+  if (it?.hasHistory) historyDialog.value = { open: true, eqpId: snap.eqpId, txn: String(it.txn), tag: it.tag ?? '' }
 }
 
 // ── 받기 ──
@@ -133,6 +147,7 @@ defineExpose({ onLoad, fit })
       <button type="button" :class="btn" :disabled="noList" data-testid="se-snap-memo-prev" @click="snap.moveMemo(-1)">{{ t('SEW_SNAP_MEMO_PREV') }}</button>
       <button type="button" :class="btn" :disabled="noList" data-testid="se-snap-memo-next" @click="snap.moveMemo(1)">{{ t('SEW_SNAP_MEMO_NEXT') }}</button>
       <span class="w-2" />
+      <button type="button" :class="btn" :disabled="historyOff" :title="historyWhy" data-testid="se-snap-history" @click="openHistory">{{ t('SEW_SNAP_HISTORY') }}</button>
       <span ref="dlBox" class="relative shrink-0">
         <button type="button" :class="btn" :disabled="dlOff" :aria-expanded="dlOpen ? 'true' : 'false'" aria-haspopup="menu" data-testid="se-snap-download" @click="dlOpen = !dlOpen">{{ dlLabel }} ▾</button>
         <!-- 이동 줄이 화면 아래쪽이라 위로 연다 -->
@@ -145,5 +160,6 @@ defineExpose({ onLoad, fit })
     </div>
     <MemoDialog v-model="memoDialog.open" :file-name="memoDialog.fileName" :mode="memoDialog.mode" :me="editor.me?.singleid ?? ''" />
     <DownloadDialog />
+    <HistoryDialog v-model="historyDialog.open" :eqp-id="historyDialog.eqpId" :txn="historyDialog.txn" :tag="historyDialog.tag" />
   </div>
 </template>

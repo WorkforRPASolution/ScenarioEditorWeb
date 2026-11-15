@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount, DOMWrapper } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 
-const api = vi.hoisted(() => ({ equipment: vi.fn(), snapshotDays: vi.fn(), snapshots: vi.fn(), snapshotImage: vi.fn() }))
+const api = vi.hoisted(() => ({ equipment: vi.fn(), snapshotDays: vi.fn(), snapshots: vi.fn(), snapshotImage: vi.fn(), history: vi.fn() }))
 vi.mock('../api', async (importOriginal) => ({ ...(await importOriginal()), scenarioEditorApi: api }))
 import SnapshotViewer from '../components/snapshot/SnapshotViewer.vue'
 import { useSnapshotStore } from '../stores/snapshotStore'
@@ -340,6 +340,35 @@ describe('SnapshotViewer', () => {
       useSnapshotDownloadStore().job = { status: 'running', done: 0, total: 1, failed: [], saved: null }
       await w.vm.$nextTick()
       expect(tid(w, 'se-snap-download').attributes('disabled')).toBeDefined()
+    })
+  })
+
+  describe('이력 보기 (P3-D)', () => {
+    it('이력이 남는 태그 스냅샷에서만 켜진다 — 꺼져 있을 때는 이유를 도움말로', async () => {
+      api.snapshots.mockImplementation((eqpId, date) => ok({ eqpId, date, timeDiff: 0, items: [ITEMS[0], ITEMS[2], { ...tag(15, 'success'), txn: '5', hasHistory: false }], skipped: 0, truncated: false }))
+      const { w, s } = await mountSized()
+      expect(tid(w, 'se-snap-history').attributes('disabled')).toBeDefined()
+      await show(w, s, 0) // 클릭 스냅샷
+      expect(tid(w, 'se-snap-history').attributes('disabled')).toBeDefined()
+      expect(tid(w, 'se-snap-history').attributes('title')).toBe(MESSAGES.SEW_SNAP_HISTORY_ONLY_TAG)
+      await show(w, s, 2) // 태그, txn ≥ 99999
+      expect(tid(w, 'se-snap-history').attributes('disabled')).toBeUndefined()
+      s.select(`15_[9999][15].png`) // 태그지만 이력 대상이 아니다
+      await flushPromises()
+      expect(tid(w, 'se-snap-history').attributes('disabled')).toBeDefined()
+      expect(tid(w, 'se-snap-history').attributes('title')).toBe(MESSAGES.SEW_SNAP_HISTORY_NO_TXN)
+    })
+    it('누르면 그 설비·txn·태그로 이력 창을 연다', async () => {
+      api.history.mockImplementation((eqpId, txn) => ok({ eqpId, txn, steps: [{ no: 1, text: '확인', images: [] }] }))
+      const { w, s } = await mountSized()
+      await show(w, s, 2)
+      await tid(w, 'se-snap-history').trigger('click')
+      await flushPromises()
+      expect(api.history.mock.calls).toEqual([['SEWT_A01', '12']])
+      const dialog = new DOMWrapper(document.body).find('[data-testid="se-history-dialog"]')
+      expect(dialog.exists()).toBe(true)
+      expect(dialog.find('[data-testid="se-history-head"]').text()).toContain('SEWT_A01')
+      expect(dialog.findAll('[data-testid="se-history-step"]')).toHaveLength(1)
     })
   })
 

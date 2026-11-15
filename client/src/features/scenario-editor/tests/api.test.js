@@ -5,7 +5,7 @@ const post = vi.fn().mockResolvedValue({ data: {} })
 const put = vi.fn().mockResolvedValue({ data: {} })
 const del = vi.fn().mockResolvedValue({ data: {} })
 vi.mock('@/shared/api', () => ({ default: { get: (...a) => get(...a), post: (...a) => post(...a), put: (...a) => put(...a), delete: (...a) => del(...a), defaults: { baseURL: 'http://x:3100/api' } } }))
-import { scenarioEditorApi as api, OPEN_TIMEOUT_MS, DEPLOY_TIMEOUT_MS, ADMIN_TIMEOUT_MS, SNAPSHOT_TIMEOUT_MS, imageUrl, blobError } from '../api'
+import { scenarioEditorApi as api, OPEN_TIMEOUT_MS, DEPLOY_TIMEOUT_MS, ADMIN_TIMEOUT_MS, SNAPSHOT_TIMEOUT_MS, imageUrl, blobError, HISTORY_TIMEOUT_MS } from '../api'
 
 describe('scenarioEditorApi', () => {
   beforeEach(() => { get.mockClear(); post.mockClear(); put.mockClear(); del.mockClear(); localStorage.clear() })
@@ -96,6 +96,14 @@ describe('scenarioEditorApi', () => {
       expect(del).toHaveBeenLastCalledWith(path, { data: { expect: '옛 글' }, timeout: SNAPSHOT_TIMEOUT_MS })
       await api.memos()
       expect(get).toHaveBeenLastCalledWith('/scenario-editor/memos', { timeout: SNAPSHOT_TIMEOUT_MS })
+    })
+  })
+
+  describe('이력 (P3-D)', () => {
+    it('GET /history/{설비}/{txn} — 경로 값은 인코딩, 서버의 이력 서버 제한(15초)보다 길게 30초를 기다린다', async () => {
+      await api.history('E 1', '1763254800000')
+      expect(get).toHaveBeenLastCalledWith('/scenario-editor/history/E%201/1763254800000', { timeout: HISTORY_TIMEOUT_MS })
+      expect(HISTORY_TIMEOUT_MS).toBe(30000)
     })
   })
 

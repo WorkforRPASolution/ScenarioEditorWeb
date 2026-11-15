@@ -9,6 +9,8 @@ export const DEPLOY_TIMEOUT_MS = 300000
 export const ADMIN_TIMEOUT_MS = 60000
 // 스냅샷(P3): 서버가 Cassandra 를 10초까지 기다린다 — 그보다 먼저 끊지 않게
 export const SNAPSHOT_TIMEOUT_MS = 20000
+// 이력(P3-D): 서버가 이력 서버(HttpWebServer)를 15초까지 기다린다 — 그보다 먼저 끊지 않게
+export const HISTORY_TIMEOUT_MS = 30000
 // 공용 axios 의 기본 머리글은 JSON 이고, axios 는 그때 FormData 를 JSON 으로 바꾼다 — 멀티파트를 적으면 브라우저가 경계값과 함께 다시 쓴다.
 const MULTIPART = { 'Content-Type': 'multipart/form-data' }
 
@@ -66,6 +68,8 @@ export const scenarioEditorApi = {
   removeMemo: (eqpId, fileName, expect) => api.delete(`/scenario-editor/snapshots/${enc(eqpId)}/${enc(fileName)}/memo`, { data: { expect }, timeout: SNAPSHOT_TIMEOUT_MS }),
   // 메모 목록 → { items: [{ eqpId, process, model, fileName, date, time, daysLeft, memo }], truncated }
   memos: () => api.get('/scenario-editor/memos', { timeout: SNAPSHOT_TIMEOUT_MS }),
+  // 자동 복구 이력(P3-D) → { eqpId, txn, steps: [{ no, text, images: [{ kind: 'ref'|'screen', src }] }] } — txn 은 태그 스냅샷의 것(99999 이상)
+  history: (eqpId, txn) => api.get(`/scenario-editor/history/${enc(eqpId)}/${enc(txn)}`, { timeout: HISTORY_TIMEOUT_MS }),
   // 그림 한 장(Blob). 실패 본문도 Blob 으로 온다 — blobError 로 code 를 읽는다
   snapshotImage: (eqpId, fileName, signal) => api.get(`/scenario-editor/snapshots/${enc(eqpId)}/${enc(fileName)}/image`, { responseType: 'blob', signal, timeout: SNAPSHOT_TIMEOUT_MS })
 }

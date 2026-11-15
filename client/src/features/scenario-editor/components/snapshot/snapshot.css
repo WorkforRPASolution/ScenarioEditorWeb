@@ -13,6 +13,16 @@
 .se-snap-tag-stop { background: #e5e7eb; color: #374151; }
 .se-snap-tag-fail { background: #fee2e2; color: #991b1b; }
 .se-snap-tag-skip { background: #fef3c7; color: #92400e; }
+/* 이력 창 — 스텝 카드 */
+.se-history-card { border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; background: #fff; }
+.se-history-card > header { display: flex; align-items: center; gap: 10px; padding: 8px 12px; font-size: 13px; font-weight: 600; background: #308cfc; color: #fff; }
+.se-history-no { flex: none; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; font-size: 12px; line-height: 22px; text-align: center; font-variant-numeric: tabular-nums; background: rgba(255, 255, 255, .25); }
+.se-history-ref { max-width: 120px; max-height: 32px; border: 2px solid #fff; border-radius: 3px; background: #fff; cursor: zoom-in; }
+.se-history-screen-box { display: flex; justify-content: center; padding: 10px; background: #f9fafb; }
+.se-history-screen-box > img { max-width: 100%; max-height: 260px; border: 1px solid #d1d5db; cursor: zoom-in; }
+.se-history-zoom { position: absolute; inset: 0; z-index: 5; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px; background: rgba(17, 24, 39, .88); cursor: zoom-out; }
+.se-history-zoom-label { flex: none; font-size: 12px; color: #e5e7eb; }
+.se-history-zoom > img { flex: none; max-width: none; background: #fff; }
 /* 큰 화면 이동 줄의 펼침 메뉴(받기) — 위로 연다 */
 .se-snap-menu { position: absolute; left: 0; bottom: calc(100% + 4px); z-index: 20; display: flex; flex-direction: column; min-width: 120px; padding: 4px; border-radius: 8px; background: #fff; border: 1px solid #e5e7eb; box-shadow: 0 8px 24px rgba(0, 0, 0, .15); }
 .se-snap-menu > button { height: 28px; padding: 0 10px; border-radius: 6px; font-size: 12px; text-align: left; white-space: nowrap; color: #374151; }
@@ -72,6 +82,10 @@
 .dark .se-memo-table td { border-bottom-color: #334155; }
 .dark .se-memo-table tbody tr:hover { background: #334155; }
 .dark .se-memo-table tbody tr[aria-selected='true'] { background: rgba(30, 64, 175, .4); }
+.dark .se-history-card { border-color: #475569; background: #1e293b; }
+.dark .se-history-card > header { background: #1d4ed8; }
+.dark .se-history-screen-box { background: #0f172a; }
+.dark .se-history-screen-box > img { border-color: #475569; }
 .dark .se-snap-menu { background: #1e293b; border-color: #475569; }
 .dark .se-snap-menu > button { color: #e2e8f0; }
 .dark .se-snap-menu > button:hover { background: #334155; }
