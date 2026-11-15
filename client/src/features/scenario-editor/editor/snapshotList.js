@@ -1,12 +1,15 @@
-// 스냅샷 하루 목록 규칙(P3 설계 §4.2·§4.3) — 거르기, 이전·다음, 태그 이동, 클릭 점, 보이는 줄.
+// 스냅샷 하루 목록 규칙(P3 설계 §4.2·§4.3) — 거르기, 이전·다음, 태그·메모 이동, 클릭 점, 보이는 줄.
 // items = 서버 하루 목록의 줄({ fileName, ms, time, shift, kind, tag, x, y, txn, hasHistory, memo, daysLeft }), 시각 오름차순.
 
-// 메모 거르기는 P3-C 에서 더한다.
-export const FILTERS = ['all', 'tag']
+export const FILTERS = ['all', 'tag', 'memo']
 export const isTag = (item) => item?.kind === 'tag'
+// 메모가 달린 줄 — 빈 글 메모(데스크톱이 남겼을 수 있다)도 메모다
+export const hasMemo = (item) => !!item?.memo
 
 export function filterItems(items, filter) {
-  return filter === 'tag' ? items.filter(isTag) : items
+  if (filter === 'tag') return items.filter(isTag)
+  if (filter === 'memo') return items.filter(hasMemo)
+  return items
 }
 
 const indexOfName = (items, fileName) => (fileName ? items.findIndex((i) => i.fileName === fileName) : -1)

@@ -1,6 +1,6 @@
 // 스냅샷 하루 목록 규칙 — 거르기·이웃·태그 이동·클릭 점·보이는 줄 (P3 설계 §4.2·§4.3)
 import { describe, it, expect } from 'vitest'
-import { FILTERS, isTag, filterItems, stepName, nextMatch, clickPoint, expiryDays, rowWindow, scrollFor } from '../editor/snapshotList'
+import { FILTERS, isTag, hasMemo, filterItems, stepName, nextMatch, clickPoint, expiryDays, rowWindow, scrollFor } from '../editor/snapshotList'
 
 const click = (n, x = 1, y = 2) => ({ fileName: `${n}_[${x}][${y}].png`, ms: n, kind: 'click', tag: null, x, y, txn: null, daysLeft: 15 })
 const tag = (n, t = 'start') => ({ fileName: `${n}_[9999][${n}].png`, ms: n, kind: 'tag', tag: t, x: null, y: null, txn: String(n), daysLeft: 15 })
@@ -9,14 +9,19 @@ const SIX = [click(10), click(11), tag(12), click(13), click(14), tag(15, 'fail'
 const name = (i) => SIX[i].fileName
 
 describe('filterItems', () => {
-  it('거르기 종류는 전체·태그', () => expect(FILTERS).toEqual(['all', 'tag']))
+  it('거르기 종류는 전체·태그·메모', () => expect(FILTERS).toEqual(['all', 'tag', 'memo']))
   it('전체는 받은 배열 그대로, 태그는 태그 스냅샷만', () => {
     expect(filterItems(SIX, 'all')).toBe(SIX)
     expect(filterItems(SIX, 'tag').map((i) => i.fileName)).toEqual([name(2), name(5)])
     expect(isTag(SIX[2])).toBe(true)
     expect(isTag(SIX[0])).toBe(false)
   })
-  it('모르는 거르기 값은 전체로 본다', () => expect(filterItems(SIX, 'memo')).toBe(SIX))
+  it('모르는 거르기 값은 전체로 본다', () => expect(filterItems(SIX, 'nope')).toBe(SIX))
+  it('메모 거르기는 메모가 있는 줄만 — 빈 글 메모도 메모다', () => {
+    const items = [SIX[0], { ...SIX[1], memo: { text: '글' } }, { ...SIX[2], memo: null }, { ...SIX[3], memo: { text: '' } }]
+    expect(filterItems(items, 'memo').map((i) => i.fileName)).toEqual([name(1), name(3)])
+    expect([hasMemo(items[1]), hasMemo(items[0]), hasMemo(items[2]), hasMemo(undefined)]).toEqual([true, false, false, false])
+  })
 })
 
 describe('stepName — 이전·다음', () => {

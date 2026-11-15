@@ -4,7 +4,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import { flushPromises } from '@vue/test-utils'
 import { isReactive } from 'vue'
 
-const api = vi.hoisted(() => ({ equipment: vi.fn(), snapshotPresence: vi.fn(), snapshotDays: vi.fn(), snapshots: vi.fn(), snapshotImage: vi.fn() }))
+const api = vi.hoisted(() => ({ equipment: vi.fn(), snapshotPresence: vi.fn(), snapshotDays: vi.fn(), snapshots: vi.fn(), snapshotImage: vi.fn(), saveMemo: vi.fn(), removeMemo: vi.fn(), memos: vi.fn() }))
 vi.mock('../api', async (importOriginal) => ({ ...(await importOriginal()), scenarioEditorApi: api }))
 import { useSnapshotStore } from '../stores/snapshotStore'
 import { MESSAGES } from '../messages'
@@ -322,7 +322,7 @@ describe('snapshotStore', () => {
       s.setFilter('tag')
       expect(s.selectedName).toBeNull()
       expect(s.image.status).toBe('idle')
-      s.setFilter('memo') // 모르는 값은 무시
+      s.setFilter('nope') // 모르는 값은 무시
       expect(s.filter).toBe('tag')
     })
     it('새로 고침: 있는 날과 목록을 다시 받고, 고른 줄이 새 목록에 있으면 지킨다 — 받는 동안 목록을 비우지 않는다', async () => {
@@ -591,6 +591,205 @@ describe('snapshotStore', () => {
       expect(isReactive(s.equipment.items)).toBe(false)
       expect(isReactive(s.equipment.items[0])).toBe(false)
       expect(isReactive(s.selected ?? s.shown[0])).toBe(false)
+    })
+  })
+
+  describe('메모 (P3-C)', () => {
+    const memo = (text, author = 'kim') => ({ text, author, authorName: author, writtenAt: '2026-11-11 09:14', editedBy: null, editedAt: null })
+    // 0 클릭 · 1 태그+메모 · 2 클릭 · 3 클릭+메모 · 4 태그 · 5 클릭
+    const WITH = ITEMS.map((it, i) => (i === 1 ? { ...it, memo: memo('태그 메모') } : i === 3 ? { ...it, memo: memo('클릭 메모', 'lee') } : it))
+    const conflict = (current) => ({ response: { status: 409, data: { code: 'MEMO_CONFLICT', details: { current } } } })
+    const withMemos = async () => {
+      api.snapshots.mockImplementation((eqpId, date) => ok(listOf(eqpId, date, WITH)))
+      return ready()
+    }
+
+    it("'메모' 거르기는 메모가 있는 줄만 보인다", async () => {
+      const s = await withMemos()
+      s.setFilter('memo')
+      expect(s.filter).toBe('memo')
+      expect(s.shown.map((i) => i.fileName)).toEqual([name(1), name(3)])
+    })
+    it('메모 이동은 그 날 목록에서 찾고 끝에서 처음으로 돌아간다. 하나도 없으면 알린다', async () => {
+      const s = await withMemos()
+      s.select(name(2))
+      s.moveMemo(1)
+      expect(s.selectedName).toBe(name(3))
+      s.moveMemo(1)
+      expect(s.selectedName).toBe(name(1))
+      s.moveMemo(-1)
+      expect(s.selectedName).toBe(name(3))
+      api.snapshots.mockImplementation((eqpId, date) => ok(listOf(eqpId, date)))
+      const t = await ready('B')
+      t.select(name(0))
+      t.moveMemo(1)
+      expect(t.notice).toBe('이 날에는 메모가 있는 스냅샷이 없습니다.')
+      expect(t.selectedName).toBe(name(0))
+    })
+    it('메모·태그 이동으로 갈 줄이 거른 목록에 없으면 거르기를 전체로 돌린다 — 있으면 그대로', async () => {
+      const s = await withMemos()
+      s.setFilter('tag')
+      s.select(name(1))
+      s.moveMemo(1) // 3번은 태그가 아니다
+      expect([s.filter, s.selectedName, s.position]).toEqual(['all', name(3), 3])
+      s.setFilter('memo')
+      s.moveTag(1) // 4번은 메모가 없다
+      expect([s.filter, s.selectedName]).toEqual(['all', name(4)])
+      s.setFilter('tag')
+      s.moveMemo(1) // 1번은 태그이면서 메모가 있다
+      expect([s.filter, s.selectedName]).toEqual(['tag', name(1)])
+    })
+    it('새 메모: 본 값 없이(null) 보내고, 받은 메모를 그 줄에 넣는다 — 목록 배열을 갈아 끼운다', async () => {
+      const s = await withMemos()
+      const before = s.list.items
+      api.saveMemo.mockImplementation(() => ok({ memo: memo('새 메모', 'me') }))
+      expect(await s.saveMemo(name(0), '새 메모')).toEqual({ ok: true })
+      expect(api.saveMemo).toHaveBeenCalledWith('A', name(0), '새 메모', null)
+      expect(s.list.items).not.toBe(before)
+      expect(s.list.items[0].memo.text).toBe('새 메모')
+      expect(s.list.items[1]).toBe(before[1])
+      expect(isReactive(s.list.items[0])).toBe(false)
+    })
+    it('고치기: 화면이 본 글을 함께 보낸다', async () => {
+      const s = await withMemos()
+      api.saveMemo.mockImplementation(() => ok({ memo: { ...memo('고친 글'), editedBy: 'me' } }))
+      await s.saveMemo(name(1), '고친 글')
+      expect(api.saveMemo).toHaveBeenCalledWith('A', name(1), '고친 글', '태그 메모')
+      expect(s.list.items[1].memo).toMatchObject({ text: '고친 글', editedBy: 'me' })
+    })
+    it('그 사이 바뀌었으면(409) 그 줄을 서버가 준 지금 값으로 바꾸고 conflict 로 알린다 — 지워졌으면 메모 없음', async () => {
+      const s = await withMemos()
+      api.saveMemo.mockImplementation(() => Promise.reject(conflict(memo('남이 바꾼 글', 'lee'))))
+      expect(await s.saveMemo(name(1), '내 글')).toEqual({ conflict: true, current: memo('남이 바꾼 글', 'lee') })
+      expect(s.list.items[1].memo.text).toBe('남이 바꾼 글')
+      api.saveMemo.mockImplementation(() => Promise.reject(conflict(null)))
+      expect(await s.saveMemo(name(1), '내 글')).toEqual({ conflict: true, current: null })
+      expect(s.list.items[1].memo).toBeNull()
+      // 지워진 뒤 다시 저장하면 새 메모로 보낸다
+      api.saveMemo.mockImplementation(() => ok({ memo: memo('내 글', 'me') }))
+      await s.saveMemo(name(1), '내 글')
+      expect(api.saveMemo).toHaveBeenLastCalledWith('A', name(1), '내 글', null)
+    })
+    it('그 밖의 실패는 문구와 code 를 돌려주고 줄은 그대로 둔다', async () => {
+      const s = await withMemos()
+      api.saveMemo.mockImplementation(() => Promise.reject(fail(400, 'MEMO_QUOTE')))
+      expect(await s.saveMemo(name(1), "it's")).toEqual({ error: MESSAGES.SEW_ERR_MEMO_QUOTE, code: 'MEMO_QUOTE' })
+      expect(s.list.items[1].memo.text).toBe('태그 메모')
+    })
+    it('목록에 없는 줄에는 쓰지 않는다', async () => {
+      const s = await withMemos()
+      expect(await s.saveMemo('nope.png', '글')).toEqual({ error: MESSAGES.SEW_SNAP_MEMO_SNAPSHOT_GONE, code: 'SNAPSHOT_NOT_FOUND' })
+      expect(api.saveMemo).not.toHaveBeenCalled()
+    })
+    it('지우기: 본 글을 보내고 그 줄의 메모를 비운다. 같은 키의 옛 메모가 남았으면 그것을 보인다', async () => {
+      const s = await withMemos()
+      api.removeMemo.mockImplementation(() => ok({ removed: true, memo: null }))
+      expect(await s.removeMemo(name(1))).toEqual({ ok: true })
+      expect(api.removeMemo).toHaveBeenCalledWith('A', name(1), '태그 메모')
+      expect(s.list.items[1].memo).toBeNull()
+      api.removeMemo.mockImplementation(() => ok({ removed: true, memo: memo('옛 메모') }))
+      await s.removeMemo(name(3))
+      expect(s.list.items[3].memo.text).toBe('옛 메모')
+    })
+    it("'메모' 거르기에서 고른 줄의 메모를 지우면 거르기를 전체로 돌린다(고른 줄이 목록에서 사라지지 않게)", async () => {
+      const s = await withMemos()
+      s.setFilter('memo')
+      s.select(name(3))
+      api.removeMemo.mockImplementation(() => ok({ removed: true, memo: null }))
+      await s.removeMemo(name(3))
+      expect([s.filter, s.selectedName, s.position]).toEqual(['all', name(3), 3])
+    })
+    it('지우기: 이미 없으면(404 MEMO_GONE) 줄의 메모를 비우고 gone, 바뀌었으면 지금 값으로 바꾸고 conflict, 메모가 없는 줄은 부르지 않는다', async () => {
+      const s = await withMemos()
+      api.removeMemo.mockImplementation(() => Promise.reject(fail(404, 'MEMO_GONE')))
+      expect(await s.removeMemo(name(1))).toEqual({ gone: true })
+      expect(s.list.items[1].memo).toBeNull()
+      api.removeMemo.mockImplementation(() => Promise.reject(conflict(memo('남이 바꾼 글'))))
+      expect(await s.removeMemo(name(3))).toEqual({ conflict: true, current: memo('남이 바꾼 글') })
+      expect(s.list.items[3].memo.text).toBe('남이 바꾼 글')
+      api.removeMemo.mockClear()
+      expect(await s.removeMemo(name(0))).toEqual({ gone: true })
+      expect(api.removeMemo).not.toHaveBeenCalled()
+    })
+    it('저장하는 사이 설비나 날짜를 바꿨으면 늦게 온 답을 다른 목록의 줄에 붙이지 않는다', async () => {
+      const s = await withMemos()
+      const pending = defer()
+      api.saveMemo.mockImplementation(() => pending.promise)
+      const saving = s.saveMemo(name(0), '늦은 메모')
+      await s.pickEquipment('B', { select: false }) // 같은 파일 이름의 줄이 있는 다른 설비
+      pending.resolve({ data: { data: { memo: memo('늦은 메모', 'me') } } })
+      expect(await saving).toEqual({ ok: true })
+      expect(s.list.items[0].memo).toBeNull()
+      const again = defer()
+      api.saveMemo.mockImplementation(() => again.promise)
+      const second = s.saveMemo(name(0), '또 늦음')
+      await s.setDate('2026-11-10')
+      again.reject(conflict(memo('남의 글')))
+      await second
+      expect(s.list.items[0].memo).toBeNull()
+    })
+    it('하루 목록이 메모를 읽지 못했다고 하면(memoFailed) 그대로 든다', async () => {
+      api.snapshots.mockImplementation((eqpId, date) => ok(listOf(eqpId, date, ITEMS, { memoFailed: true })))
+      const s = await ready()
+      expect(s.list.memoFailed).toBe(true)
+      api.snapshots.mockImplementation((eqpId, date) => ok(listOf(eqpId, date)))
+      await s.refresh()
+      expect(s.list.memoFailed).toBe(false)
+    })
+
+    const row = (eqpId, date, fileName, text = '글') => ({ eqpId, process: 'P1', model: 'M1', fileName, date, time: '09:00:00', daysLeft: 15, memo: memo(text) })
+    it('메모 목록: 받는 중·받음(잘림 포함)·실패 — 깊은 반응형으로 감싸지 않는다', async () => {
+      const pending = defer()
+      api.memos.mockImplementation(() => pending.promise)
+      const s = useSnapshotStore()
+      const loading = s.loadMemoList()
+      expect(s.memoList.status).toBe('loading')
+      pending.resolve({ data: { data: { items: [row('A', '2026-11-11', name(0))], truncated: true } } })
+      await loading
+      expect([s.memoList.status, s.memoList.items.length, s.memoList.truncated]).toEqual(['ready', 1, true])
+      expect(isReactive(s.memoList.items[0])).toBe(false)
+      api.memos.mockImplementation(() => Promise.reject(fail(503, 'UPSTREAM_DOWN')))
+      await s.loadMemoList()
+      expect([s.memoList.status, s.memoList.items.length]).toEqual(['error', 0])
+      expect(s.memoList.error).not.toBe('')
+    })
+    it('메모로 가기: 그 설비·그 날로 바꾸고 거르기를 전체로 돌려 목록을 한 번 받아 그 줄을 고른다', async () => {
+      const s = await withMemos()
+      s.setFilter('tag')
+      api.snapshots.mockClear()
+      api.snapshotDays.mockClear()
+      await s.goToMemo(row('B', '2026-11-09', name(3)))
+      expect([s.eqpId, s.date, s.filter, s.selectedName, s.mode]).toEqual(['B', '2026-11-09', 'all', name(3), 'snapshot'])
+      expect(api.snapshots.mock.calls).toEqual([['B', '2026-11-09']])
+      expect(api.snapshotDays.mock.calls).toEqual([['B']])
+      expect(s.range).toEqual({ latest: '2026-11-11', today: '2026-11-11', oldest: '2026-10-27' }) // 날짜 이동·달력이 된다
+      expect(JSON.parse(localStorage.getItem('se-snapshot')).eqpId).toBe('B')
+    })
+    it('메모로 가기: 그 스냅샷이 목록에 없으면 알리고 다시 청하지 않는다(SE-016)', async () => {
+      const s = await ready()
+      api.snapshots.mockClear()
+      await s.goToMemo(row('B', '2026-11-09', 'gone_[1][2].png'))
+      expect(api.snapshots).toHaveBeenCalledTimes(1)
+      expect([s.eqpId, s.date, s.selectedName]).toEqual(['B', '2026-11-09', null])
+      expect(s.notice).toBe('스냅샷이 없습니다(보관 기간이 지났거나 지워졌습니다).')
+      expect(s.list.items).toHaveLength(6)
+    })
+    it('메모로 가기: 목록을 받지 못하면 그 실패를 목록 자리에 보인다(알림은 띄우지 않는다)', async () => {
+      const s = await ready()
+      api.snapshots.mockImplementation(() => Promise.reject(fail(503, 'SNAPSHOT_DOWN')))
+      await s.goToMemo(row('B', '2026-11-09', name(3)))
+      expect([s.list.status, s.selectedName, s.notice]).toEqual(['error', null, ''])
+    })
+    it('메모로 가는 사이 다른 설비를 고르면 늦게 온 목록으로 고르지 않는다', async () => {
+      const s = await ready()
+      const slow = defer()
+      api.snapshots.mockImplementationOnce(() => slow.promise)
+      const going = s.goToMemo(row('B', '2026-11-09', name(3)))
+      api.snapshots.mockImplementation((eqpId, date) => ok(listOf(eqpId, date)))
+      await s.pickEquipment('A', { select: false })
+      slow.resolve({ data: { data: listOf('B', '2026-11-09') } })
+      await going
+      expect([s.eqpId, s.date, s.selectedName]).toEqual(['A', '2026-11-11', null])
     })
   })
 

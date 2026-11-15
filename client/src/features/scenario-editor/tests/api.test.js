@@ -84,6 +84,21 @@ describe('scenarioEditorApi', () => {
     expect(imageUrl('/scenario-editor/a/images/s0-bi')).toBe('http://x:3100/api/scenario-editor/a/images/s0-bi?seUser=sew_cvd')
   })
 
+  describe('스냅샷 메모 (P3-C)', () => {
+    it('쓰기·고치기는 PUT …/memo 본문 { memo, expect }, 지우기는 DELETE 본문 { expect }, 메모 목록은 GET /memos — 경로 값은 인코딩', async () => {
+      const name = '1762820000123_[412][388].png'
+      const path = '/scenario-editor/snapshots/E%201/1762820000123_%5B412%5D%5B388%5D.png/memo'
+      await api.saveMemo('E 1', name, '글')
+      expect(put).toHaveBeenLastCalledWith(path, { memo: '글', expect: null }, { timeout: SNAPSHOT_TIMEOUT_MS })
+      await api.saveMemo('E 1', name, '새 글', '옛 글')
+      expect(put).toHaveBeenLastCalledWith(path, { memo: '새 글', expect: '옛 글' }, { timeout: SNAPSHOT_TIMEOUT_MS })
+      await api.removeMemo('E 1', name, '옛 글')
+      expect(del).toHaveBeenLastCalledWith(path, { data: { expect: '옛 글' }, timeout: SNAPSHOT_TIMEOUT_MS })
+      await api.memos()
+      expect(get).toHaveBeenLastCalledWith('/scenario-editor/memos', { timeout: SNAPSHOT_TIMEOUT_MS })
+    })
+  })
+
   describe('스냅샷 (P3-B)', () => {
     it('설비·있는 날·하루 목록 — 서버의 Cassandra 제한(10초)보다 길게 20초를 기다린다', async () => {
       await api.equipment()

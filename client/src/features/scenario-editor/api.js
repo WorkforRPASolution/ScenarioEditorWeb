@@ -61,6 +61,11 @@ export const scenarioEditorApi = {
   snapshotDays: (eqpId, counts = false) => api.get('/scenario-editor/snapshots/days', { params: counts ? { eqpId, counts: 1 } : { eqpId }, timeout: SNAPSHOT_TIMEOUT_MS }),
   // 하루 목록 → { eqpId, date, timeDiff, items, skipped, truncated }
   snapshots: (eqpId, date) => api.get('/scenario-editor/snapshots', { params: { eqpId, date }, timeout: SNAPSHOT_TIMEOUT_MS }),
+  // 메모(P3-C) — expect = 화면이 본 메모 글(새 메모면 null). 그 사이 바뀌었으면 409 MEMO_CONFLICT(details.current = 지금 값)
+  saveMemo: (eqpId, fileName, memo, expect = null) => api.put(`/scenario-editor/snapshots/${enc(eqpId)}/${enc(fileName)}/memo`, { memo, expect }, { timeout: SNAPSHOT_TIMEOUT_MS }),
+  removeMemo: (eqpId, fileName, expect) => api.delete(`/scenario-editor/snapshots/${enc(eqpId)}/${enc(fileName)}/memo`, { data: { expect }, timeout: SNAPSHOT_TIMEOUT_MS }),
+  // 메모 목록 → { items: [{ eqpId, process, model, fileName, date, time, daysLeft, memo }], truncated }
+  memos: () => api.get('/scenario-editor/memos', { timeout: SNAPSHOT_TIMEOUT_MS }),
   // 그림 한 장(Blob). 실패 본문도 Blob 으로 온다 — blobError 로 code 를 읽는다
   snapshotImage: (eqpId, fileName, signal) => api.get(`/scenario-editor/snapshots/${enc(eqpId)}/${enc(fileName)}/image`, { responseType: 'blob', signal, timeout: SNAPSHOT_TIMEOUT_MS })
 }

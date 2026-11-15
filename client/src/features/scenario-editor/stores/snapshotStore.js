@@ -3,13 +3,15 @@
 // - 그림은 Blob 으로 받아 object URL 로 띄운다 — 실패 이유(code)를 알 수 있고, 고른 것의 앞뒤 한 장을 미리 받아 둔다.
 // - 펼침·접힘과 마지막 설비는 브라우저에 기억한다. 접혀 있으면 서버를 부르지 않는다.
 // - 설비마다 스냅샷 유무(가장 늦은 날짜)는 설비 고르기 칸에 들어갈 때 뒤에서 나눠 받는다 — 패널을 펴기만 해서는 받지 않고, 설비 목록·고르기를 기다리게 하지 않는다.
-// 메모(거르기·이동)는 P3-C, 여러 줄 고르기(다운로드)는 P3-D 에서 더한다.
+// - 메모(P3-C): 줄의 메모는 하루 목록이 준다. 쓰기·고치기·지우기 뒤에는 그 줄만 바꾼 새 배열로 갈아 끼운다. 화면이 본 글을 함께 보내
+//   그 사이 남이 바꿨으면(409) 덮어쓰지 않고 지금 값을 보인다. 갈 줄·고른 줄이 거른 목록에 없게 되면 거르기를 '전체' 로 돌린다.
+// 여러 줄 고르기(다운로드)는 P3-D 에서 더한다.
 import { defineStore } from 'pinia'
 import { ref, shallowRef, computed } from 'vue'
 import { scenarioEditorApi as api, blobError } from '../api'
 import { t, errorCode, errorMessage } from '../messages'
 import { safeStorage } from '../composables/useSafeStorage'
-import { FILTERS, filterItems, stepName, nextMatch, isTag } from '../editor/snapshotList'
+import { FILTERS, filterItems, stepName, nextMatch, isTag, hasMemo } from '../editor/snapshotList'
 import { isDate, addDays, clampDate, laterOf } from '../editor/snapshotDates'
 
 const KEY = 'se-snapshot'
@@ -27,7 +29,9 @@ function readSaved() {
   }
 }
 
-const emptyList = (status) => ({ status, items: [], truncated: false, error: '' })
+// memoFailed = 서버가 메모를 읽지 못했다(목록은 메모 없이 왔다)
+const emptyList = (status) => ({ status, items: [], truncated: false, memoFailed: false, error: '' })
+const idleMemoList = () => ({ status: 'idle', items: [], truncated: false, error: '' })
 const idleImage = () => ({ name: null, status: 'idle', url: null, code: null, error: '' })
 const idleCalendar = () => ({ status: 'idle', days: null, truncated: false })
 // status: idle(받기 전) · loading · ready · error · off(서버가 꺼 둠). latest = Map(설비 ID → 가장 늦은 표시 날짜), 스냅샷이 있는 설비만
@@ -48,6 +52,8 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
   const filter = ref('all')
   const selectedName = ref(null)
   const calendar = ref(idleCalendar())
+  // 메모 목록 창 — 통째로 갈아 끼운다
+  const memoList = shallowRef(idleMemoList())
   const image = ref(idleImage())
   const notice = ref('')
 
@@ -153,7 +159,7 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
         list.value = { ...emptyList('error'), error: t('SEW_SNAP_LIST_FAILED') }
         return
       }
-      list.value = { status: 'ready', items: Array.isArray(r.items) ? r.items : [], truncated: !!r.truncated, error: '' }
+      list.value = { status: 'ready', items: Array.isArray(r.items) ? r.items : [], truncated: !!r.truncated, memoFailed: !!r.memoFailed, error: '' }
       if (keep) {
         if (!list.value.items.some((i) => i.fileName === keep)) clearSelection()
       } else if (selectLast && shown.value.length) {
@@ -247,11 +253,100 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
     const next = stepName(shown.value, selectedName.value, delta)
     if (next) select(next)
   }
-  // 그 날 목록에서 다음(앞) 태그 — 끝에서 처음으로 돌아간다(DC-076)
-  function moveTag(dir) {
-    const next = nextMatch(list.value.items, selectedName.value, dir, isTag)
-    if (!next) { say(t('SEW_SNAP_NO_TAG')); return }
+  // 그 날 목록(거르기와 상관없이 전체)에서 다음(앞) 태그·메모 — 끝에서 처음으로 돌아간다(DC-076).
+  // 갈 줄이 지금 거른 목록에 없으면 거르기를 '전체' 로 돌린다(고른 줄이 목록에 안 보이는 상태를 만들지 않는다).
+  function jump(dir, pred, noneKey) {
+    const next = nextMatch(list.value.items, selectedName.value, dir, pred)
+    if (!next) { say(t(noneKey)); return }
+    if (!shown.value.some((i) => i.fileName === next)) filter.value = 'all'
     select(next)
+  }
+  const moveTag = (dir) => jump(dir, isTag, 'SEW_SNAP_NO_TAG')
+  const moveMemo = (dir) => jump(dir, hasMemo, 'SEW_SNAP_NO_MEMO')
+
+  // ── 메모 ──
+  // 그 줄의 메모를 바꾼다(줄 하나만 새로 만든 새 배열). 그 사이 설비·날짜가 바뀌었으면(다른 목록) 아무것도 하지 않는다.
+  function patchMemo(id, day, name, memo) {
+    if (eqpId.value !== id || date.value !== day) return
+    const i = list.value.items.findIndex((x) => x.fileName === name)
+    if (i < 0) return
+    const items = list.value.items.slice()
+    items[i] = { ...items[i], memo }
+    list.value = { ...list.value, items }
+    // '메모' 거르기에서 고른 줄의 메모를 지웠다 — 고른 줄이 목록에서 사라지지 않게
+    if (selectedName.value && position.value < 0) filter.value = 'all'
+  }
+  const currentOf = (e) => e?.response?.data?.details?.current ?? null
+  // 결과: { ok } · { conflict, current }(그 사이 바뀜 — 줄은 지금 값으로 바꿨다) · { gone }(지우려는데 이미 없음) · { error, code }
+  async function saveMemo(name, text) {
+    const item = list.value.items.find((i) => i.fileName === name)
+    if (!item) return { error: t('SEW_SNAP_MEMO_SNAPSHOT_GONE'), code: 'SNAPSHOT_NOT_FOUND' }
+    const [id, day] = [eqpId.value, date.value]
+    try {
+      const r = (await api.saveMemo(id, name, text, item.memo ? item.memo.text : null)).data.data
+      patchMemo(id, day, name, r?.memo ?? null)
+      return { ok: true }
+    } catch (e) {
+      const code = errorCode(e)
+      if (code !== 'MEMO_CONFLICT') return { error: errorMessage(e), code }
+      const current = currentOf(e)
+      patchMemo(id, day, name, current)
+      return { conflict: true, current }
+    }
+  }
+  async function removeMemo(name) {
+    const item = list.value.items.find((i) => i.fileName === name)
+    if (!item?.memo) return { gone: true }
+    const [id, day] = [eqpId.value, date.value]
+    try {
+      const r = (await api.removeMemo(id, name, item.memo.text)).data.data
+      patchMemo(id, day, name, r?.memo ?? null) // 같은 키의 옛 메모가 남아 있으면 그것이 온다
+      return { ok: true }
+    } catch (e) {
+      const code = errorCode(e)
+      if (code === 'MEMO_GONE') { patchMemo(id, day, name, null); return { gone: true } }
+      if (code !== 'MEMO_CONFLICT') return { error: errorMessage(e), code }
+      const current = currentOf(e)
+      patchMemo(id, day, name, current)
+      return { conflict: true, current }
+    }
+  }
+
+  // ── 메모 목록 창 ──
+  let memoSeq = 0
+  async function loadMemoList() {
+    const seq = ++memoSeq
+    memoList.value = { ...memoList.value, status: 'loading', error: '' }
+    try {
+      const r = (await api.memos()).data.data
+      if (seq !== memoSeq) return
+      memoList.value = { status: 'ready', items: Array.isArray(r?.items) ? r.items : [], truncated: !!r?.truncated, error: '' }
+    } catch (e) {
+      if (seq !== memoSeq) return
+      memoList.value = { status: 'error', items: [], truncated: false, error: errorMessage(e) }
+    }
+  }
+  // 메모 목록에서 고른 메모의 스냅샷으로 간다 — 설비·날짜를 바꾸고 거르기를 '전체' 로 돌려 목록을 한 번 받아 그 줄을 고른다.
+  // 목록에 없으면 알리고 다시 청하지 않는다(SE-016).
+  async function goToMemo(m) {
+    const seq = ++listSeq
+    calSeq++
+    resetImages()
+    eqpId.value = m.eqpId
+    pendingEqp = null
+    persist()
+    range.value = null
+    date.value = m.date
+    calendar.value = idleCalendar()
+    clearSelection()
+    filter.value = 'all'
+    // 달력·날짜 이동의 범위는 따로 받는다(실패해도 목록은 보인다)
+    const days = api.snapshotDays(m.eqpId).then((res) => { if (seq === listSeq) range.value = sameRange(res.data.data) }).catch(() => {})
+    await loadList(seq)
+    await days
+    if (seq !== listSeq || list.value.status !== 'ready') return
+    if (list.value.items.some((i) => i.fileName === m.fileName)) select(m.fileName)
+    else say(t('SEW_SNAP_MEMO_SNAPSHOT_GONE'))
   }
 
   // 달력을 열 때 날짜별 개수를 받는다(설비를 바꾸거나 새로 고치기 전까지 한 번)
@@ -362,8 +457,8 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
   }
 
   return {
-    mode, open, equipment, presence, eqpId, range, date, list, filter, selectedName, calendar, image, notice,
+    mode, open, equipment, presence, eqpId, range, date, list, filter, selectedName, calendar, image, notice, memoList,
     shown, selected, position, minDate, maxDate,
-    restore, setOpen, loadEquipment, refreshPresence, pickEquipment, setDate, moveDate, refresh, setFilter, select, move, moveTag, openCalendar, showStep, showSnapshot, say
+    restore, setOpen, loadEquipment, refreshPresence, pickEquipment, setDate, moveDate, refresh, setFilter, select, move, moveTag, moveMemo, saveMemo, removeMemo, loadMemoList, goToMemo, openCalendar, showStep, showSnapshot, say
   }
 })
