@@ -7,6 +7,7 @@
 //   한꺼번에 보내는 조회 수를 묶고(이 서버 프로세스 안에서 한 요청씩 차례로), 한 요청은 5초까지만 묻고, 받은 값은 10분 기억한다.
 const { seError } = require('../errors')
 const { parseSnapshotName } = require('../domain/snapshotName')
+const { zoneOf } = require('../domain/displayZone')
 const {
   RETENTION_MS, timeDiffOf, displayOf, dayRange, monthsOf, partitionDays, nameBound, daysLeft, maxAgeOf
 } = require('../domain/snapshotTime')
@@ -19,7 +20,6 @@ const PRESENCE_BUDGET_MS = 5000 // 한 요청이 저장소에 묻는 시간 — 
 const PRESENCE_CONCURRENCY = 8 // 한꺼번에 보내는 조회 수 기본값
 const PRESENCE_CONCURRENCY_MAX = 64
 const DAY = 86400000
-const DEFAULT_TZ = 'Asia/Seoul'
 const MAX_DATE_MS = 8.64e15 - 2 * DAY // Date 가 다룰 수 있는 끝(앞뒤 하루를 계산할 여유를 뺀 값)
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
@@ -27,20 +27,8 @@ const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
 const nextDate = (date) => new Date(Date.parse(`${date}T00:00:00Z`) + DAY).toISOString().slice(0, 10)
 
 function createSnapshotService({ snapshotRepo, scopes, now, env = {}, log = null }) {
-  // 시간대 값이 틀리면 기본값으로 돌리고 한 번 알린다(틀린 채로 두면 요청마다 Intl 이 던진다).
-  function tzOf(name) {
-    const v = typeof env[name] === 'string' ? env[name].trim() : ''
-    if (!v) return DEFAULT_TZ
-    try {
-      new Intl.DateTimeFormat('en-US', { timeZone: v })
-      return v
-    } catch {
-      if (log) log.warn(`${name} 값을 시간대로 읽지 못해 ${DEFAULT_TZ} 를 씁니다`)
-      return DEFAULT_TZ
-    }
-  }
-  const displayTz = tzOf('SE_DISPLAY_TZ')
-  const partitionTz = tzOf('SE_SNAPSHOT_PARTITION_TZ')
+  const displayTz = zoneOf(env, 'SE_DISPLAY_TZ', log)
+  const partitionTz = zoneOf(env, 'SE_SNAPSHOT_PARTITION_TZ', log)
   // 설비별 스냅샷 유무를 볼 때 한꺼번에 보내는 조회 수. 0 이면 끈다. 숫자가 아니면 기본값으로 돌리고 한 번 알린다.
   const presenceConcurrency = (() => {
     const v = typeof env.SE_SNAPSHOT_PRESENCE_CONCURRENCY === 'string' ? env.SE_SNAPSHOT_PRESENCE_CONCURRENCY.trim() : ''
