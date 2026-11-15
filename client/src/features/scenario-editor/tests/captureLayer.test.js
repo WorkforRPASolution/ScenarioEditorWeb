@@ -13,6 +13,8 @@ import StepViewer from '../components/StepViewer.vue'
 import StepPanel from '../components/StepPanel.vue'
 import EditDialogs from '../components/EditDialogs.vue'
 import { useEditStore } from '../stores/editStore'
+import { useSnapshotStore } from '../stores/snapshotStore'
+import ModalShell from '../components/ModalShell.vue'
 import { areaView } from '../editor/capture'
 import { t } from '../messages'
 import { panelFixture, imageStep, ocrStep, noneStep } from './panelFixture'
@@ -304,6 +306,37 @@ describe('StepViewer — 편집 세션의 큰 화면', () => {
     expect(e.panel.draft.condition.searchArea).toBe(edited.steps[0].condition.searchArea)
     expect(e.panel.draft.descriptionToEmail).toBe('잡는 중 설명')
     panel.unmount()
+    viewer.unmount()
+  })
+  it('Esc(큰 화면): 스냅샷 모드로 가 있어 잡기가 보이지 않으면, 또는 창·메뉴가 열려 있으면 잡기를 취소하지 않는다 — 잡은 값이 조용히 사라지지 않게', async () => {
+    const { e } = panelFixture([imageStep(0), imageStep(1)])
+    const viewer = await mountViewer()
+    e.startCapture(['area', 'train', 'click'])
+    await e.captureNext({ x: 5, y: 5, w: 100, h: 100 })
+    await nextTick()
+    const kept = () => { expect(e.capture).not.toBe(null); expect(e.panel.draft.condition.searchArea).toEqual({ x: 5, y: 5, w: 100, h: 100 }) }
+    // 잡는 중에 왼쪽 목록에서 다른 스냅샷을 눌러 스냅샷 모드로 갔다 — 거기서 누른 Esc(메뉴·창 닫기)는 숨은 잡기의 몫이 아니다
+    const snap = useSnapshotStore()
+    snap.showSnapshot()
+    esc()
+    kept()
+    snap.showStep()
+    // 스텝 그림에 있어도 창(메모 목록·불러오기 등 ModalShell, 메모 창·달력)이나 스냅샷 쪽 펼침 메뉴가 열려 있으면 Esc 는 그쪽 몫이다
+    const modal = mount(ModalShell, { props: { modelValue: true, title: 'x' }, attachTo: document.body })
+    esc()
+    kept()
+    modal.unmount()
+    for (const html of ['<div role="dialog"></div>', '<span class="se-snap-menu"></span>']) {
+      const host = document.createElement('div')
+      host.innerHTML = html
+      document.body.appendChild(host)
+      esc()
+      kept()
+      host.remove()
+    }
+    // 아무것도 열려 있지 않으면 지금까지처럼 취소한다
+    esc()
+    expect(e.capture).toBe(null)
     viewer.unmount()
   })
   it('Esc 는 기준 화면 그림을 그리지 못했을 때(잡기 층이 없을 때)도 잡기를 취소한다', async () => {

@@ -16,7 +16,8 @@ const close = () => { if (props.closable) emit('update:modelValue', false) }
 
 <template>
   <Teleport to="body">
-    <div v-if="modelValue" class="fixed inset-0 z-50" :data-testid="testid">
+    <!-- data-se-modal: 창이 열려 있다는 표시 — 큰 화면의 잡기 Esc 가 창의 Esc 를 가로채지 않는다(StepViewer) -->
+    <div v-if="modelValue" class="fixed inset-0 z-50" data-se-modal :data-testid="testid">
       <div class="absolute inset-0 bg-black/40" @click="close" />
       <div ref="modalRef" class="fixed bg-white dark:bg-dark-card rounded-xl shadow-2xl border border-gray-200 dark:border-dark-border flex flex-col overflow-hidden" :style="modalStyle">
         <div class="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-dark-border cursor-grab active:cursor-grabbing select-none shrink-0" @mousedown="startDrag">
