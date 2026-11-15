@@ -1,4 +1,5 @@
-// 스냅샷 목록·그림 통합 시험 — 로컬 Cassandra(my-cassandra-server, 키스페이스 ars)·Mongo·Redis 와 시험 데이터(seed reset)가 있어야 한다.
+// 스냅샷 목록·그림·이력 통합 시험 — 로컬 Cassandra(my-cassandra-server, 키스페이스 ars)·Mongo·Redis 와 시험 데이터(seed reset)가 있어야 한다.
+// 이력 시험은 로컬 이력 서버(HttpWebServer — infra/docker-compose.yml 의 http-web-server, server/.env 의 HTTP_WEB_SERVER_URL)도 있어야 한다.
 // 시험이 `SEWT_ETCH_*` 설비 파티션에 직접 넣고, 끝나면(실패해도) 넣은 줄만 지운다. seed 의 스냅샷(SEWT_PHOTO_A01·SEWT_CVD_A01)은 건드리지 않는다.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { createRequire } from 'node:module'
@@ -11,6 +12,8 @@ const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '../../../../..'
 const { seedSnapshots, removeSnapshots } = require(join(ROOT, 'tools/seed/lib/snapshots.js'))
 const { connectCassandra } = require(join(ROOT, 'tools/seed/lib/cassandra.js'))
 const { cleanupSewMemos } = require(join(ROOT, 'tools/infra/sew-w-cleanup.js'))
+const { seedHistory, cleanHistory } = require(join(ROOT, 'tools/seed/lib/history.js'))
+const { startFaultProxy } = require(join(ROOT, 'tools/infra/fault-proxy.js'))
 
 const DAY = 86400000
 const KST = 9 * 3600000
@@ -382,6 +385,108 @@ describe('권한', () => {
   it('없는 설비도 403 EQP_FORBIDDEN', async () => {
     const res = await get(`/snapshots?eqpId=SEWT_NOPE&date=${TODAY}`)
     expect([res.status, (await res.json()).code]).toEqual([403, 'EQP_FORBIDDEN'])
+  })
+})
+
+// 이력(P3-D) — 실제 이력 서버가 AppendHistory 로 받아 Cassandra historylog 에 쓴 것을 웹 API 로 읽는다.
+describe('이력 (P3-D)', () => {
+  const TXN = String(t.start) // 위 하루 목록의 시작 태그 줄의 txn
+  const STEPS = [
+    { eqpId: EQP_TODAY, txn: t.start, step: 1, text: '로그인 창 확인', screen: png('screen-1'), screenSize: [640, 360], ref: png('ref-1'), refSize: [40, 20] },
+    { eqpId: EQP_TODAY, txn: t.start, step: 2, text: "A<B & 'x' <b>누르기</b>", screen: png('screen-2'), screenSize: [640, 360], ref: png('ref-2'), refSize: [40, 20] }
+  ]
+  const onlyMine = (id) => id === EQP_TODAY
+  const historyPath = (eqpId, txn) => `/history/${enc(eqpId)}/${enc(txn)}`
+  const bytesOf = (src) => Buffer.from(src.replace('data:image/png;base64,', ''), 'base64')
+  let hwsUrl
+  let proxy
+
+  beforeAll(async () => {
+    hwsUrl = process.env.HTTP_WEB_SERVER_URL
+    if (!hwsUrl) throw new Error('server/.env 에 HTTP_WEB_SERVER_URL 이 없습니다 — 로컬 이력 서버(tools/infra/prepare-hws.sh, docker compose up -d)')
+    await cleanHistory(cassandra, onlyMine) // 앞 실행이 남긴 것
+    await seedHistory(hwsUrl, STEPS)
+    proxy = await startFaultProxy({ target: hwsUrl })
+  })
+  afterAll(async () => {
+    process.env.HTTP_WEB_SERVER_URL = hwsUrl
+    try { if (proxy) await proxy.close() } finally { if (cassandra) await cleanHistory(cassandra, onlyMine) }
+  })
+
+  it('하루 목록의 태그 줄 txn 으로 부르면 스텝·설명·그림이 온다 — 설명은 넣은 글 그대로, 그림은 넣은 바이트 그대로', async () => {
+    const list = await data(await get(`/snapshots?eqpId=${EQP_TODAY}&date=${TODAY}`))
+    const tag = list.items.find((i) => i.hasHistory)
+    expect(tag.txn).toBe(TXN)
+    const res = await get(historyPath(EQP_TODAY, tag.txn))
+    expect(res.status).toBe(200)
+    const out = await data(res)
+    expect(out).toMatchObject({ eqpId: EQP_TODAY, txn: TXN })
+    expect(out.steps.map((s) => [s.no, s.text])).toEqual([[1, '로그인 창 확인'], [2, "A<B & 'x' <b>누르기</b>"]])
+    for (const [i, s] of out.steps.entries()) {
+      expect(s.images.map((im) => im.kind)).toEqual(['ref', 'screen'])
+      expect(bytesOf(s.images[0].src).equals(STEPS[i].ref)).toBe(true)
+      expect(bytesOf(s.images[1].src).equals(STEPS[i].screen)).toBe(true)
+    }
+    // 이력 서버의 HTML·스크립트는 응답에 없다(설명 글 안의 것만 글자로 남는다)
+    const raw = JSON.stringify(out)
+    for (const bad of ['<table', '<img', 'jquery', 'magnify']) expect(raw).not.toContain(bad)
+  })
+
+  it('이력이 없는 txn 은 404 HISTORY_NOT_FOUND', async () => {
+    const res = await get(historyPath(EQP_TODAY, '100000'))
+    expect([res.status, (await res.json()).code]).toEqual([404, 'HISTORY_NOT_FOUND'])
+  })
+
+  it('범위 밖·없는 설비는 403 EQP_FORBIDDEN, txn 이 99999 보다 작거나 숫자가 아니면 400', async () => {
+    const forbidden = await get(historyPath(EQP_TODAY, TXN), 'sew_cvd')
+    expect([forbidden.status, (await forbidden.json()).code]).toEqual([403, 'EQP_FORBIDDEN'])
+    const none = await get(historyPath('SEWT_NOPE', TXN))
+    expect([none.status, (await none.json()).code]).toEqual([403, 'EQP_FORBIDDEN'])
+    for (const txn of ['99998', 'abc']) {
+      const res = await get(historyPath(EQP_TODAY, txn))
+      expect([res.status, (await res.json()).code], txn).toEqual([400, 'BAD_REQUEST'])
+    }
+  })
+
+  // Review Focus 2: 이력 서버가 없거나 느려도 이력 보기만 안 된다.
+  it('이력 서버에 닿지 못하면 503 HISTORY_DOWN, 답이 없으면 504 HISTORY_TIMEOUT — 그동안 하루 목록은 그대로다', async () => {
+    const deps = require('../../deps').getDeps()
+    const { createHistoryClient } = require('../../clients/historyClient')
+    const { createHistoryService } = require('../../service/historyService')
+    const original = deps.history
+    try {
+      process.env.HTTP_WEB_SERVER_URL = proxy.url
+      const through = await get(historyPath(EQP_TODAY, TXN))
+      expect(through.status).toBe(200) // 중계를 거쳐도 같은 답
+      await proxy.setMode('down')
+      const down = await get(historyPath(EQP_TODAY, TXN))
+      const downBody = await down.json()
+      expect([down.status, downBody.code]).toEqual([503, 'HISTORY_DOWN'])
+      expect(JSON.stringify(downBody)).not.toContain(new URL(proxy.url).port)
+      await proxy.setMode('hang')
+      deps.history = createHistoryService({ client: createHistoryClient({ env: process.env, timeoutMs: 700 }), scopes: deps.scopes })
+      const t0 = Date.now()
+      const hang = await get(historyPath(EQP_TODAY, TXN))
+      expect([hang.status, (await hang.json()).code]).toEqual([504, 'HISTORY_TIMEOUT'])
+      expect(Date.now() - t0).toBeLessThan(5000)
+      expect((await get(`/snapshots?eqpId=${EQP_TODAY}&date=${TODAY}`)).status).toBe(200)
+    } finally {
+      deps.history = original
+      await proxy.setMode('pass')
+      process.env.HTTP_WEB_SERVER_URL = hwsUrl
+    }
+  })
+
+  it('주소가 비어 있으면 503 HISTORY_UNSET 이고 목록·그림은 그대로다', async () => {
+    try {
+      process.env.HTTP_WEB_SERVER_URL = ''
+      const res = await get(historyPath(EQP_TODAY, TXN))
+      expect([res.status, (await res.json()).code]).toEqual([503, 'HISTORY_UNSET'])
+      expect((await get(`/snapshots?eqpId=${EQP_TODAY}&date=${TODAY}`)).status).toBe(200)
+      expect((await get(imagePath(EQP_TODAY, ROWS_TODAY[0].fileName))).status).toBe(200)
+    } finally {
+      process.env.HTTP_WEB_SERVER_URL = hwsUrl
+    }
   })
 })
 
