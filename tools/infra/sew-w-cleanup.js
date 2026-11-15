@@ -84,4 +84,11 @@ async function cleanupSewW({ env, db, webDb, redis, GridFSBucket, users = TEST_U
   return r
 }
 
-module.exports = { cleanupSewW, assertLocalTargets, TEST_USERS, WEB_DB }
+// 시험 설비(SEWT_)의 스냅샷 메모(ARS_USER_MEMO)만 지운다 — 메모 통합 시험·E2E 가 함께 쓴다. 컬렉션은 그대로 둔다(문서만).
+// 연결 주소가 루프백이 아니면 아무것도 지우지 않고 던진다(운영 메모를 지우지 않게).
+async function cleanupSewMemos({ env, db }) {
+  assertLocalTargets(env)
+  return (await db.collection('ARS_USER_MEMO').deleteMany({ eqpid: /^SEWT_/ })).deletedCount
+}
+
+module.exports = { cleanupSewW, cleanupSewMemos, assertLocalTargets, TEST_USERS, WEB_DB }

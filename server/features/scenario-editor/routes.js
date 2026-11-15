@@ -40,5 +40,9 @@ router.get('/snapshots/presence', asyncHandler(c.snapshotPresence)) // 설비마
 router.get('/snapshots/days', asyncHandler(c.snapshotDays))
 router.get('/snapshots', asyncHandler(c.snapshotList))
 router.get('/snapshots/:eqpId/:fileName/image', asyncHandler(c.snapshotImage))
+// 스냅샷 메모(P3-C) — WRITE 권한을 보지 않는다(그 설비의 스냅샷을 볼 수 있으면 쓴다). 서버가 쓰기를 받지 않을 때만 막는다.
+router.put('/snapshots/:eqpId/:fileName/memo', c.requireMemoWrite, asyncHandler(c.saveMemo))
+router.delete('/snapshots/:eqpId/:fileName/memo', c.requireMemoWrite, asyncHandler(c.removeMemo))
+router.get('/memos', asyncHandler(c.memoList))
 
 module.exports = router

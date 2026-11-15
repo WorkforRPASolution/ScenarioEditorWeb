@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { writeDenial, reviewDenial, copiesPerformanceToNewTarget } from '../../domain/writePolicy'
-import { requireWrite, requireReviewer } from '../../controller'
+import { writeDenial, reviewDenial, memoDenial, copiesPerformanceToNewTarget } from '../../domain/writePolicy'
+import { requireWrite, requireReviewer, requireMemoWrite } from '../../controller'
 
 describe('writePolicy', () => {
   it('비루프백이면 먼저 WRITE_DISABLED', () => {
@@ -16,6 +16,10 @@ describe('writePolicy', () => {
     expect(reviewDenial({ canWrite: true, authorityManager: 0 }, { writeDisabled: false }).code).toBe('GRADE_FORBIDDEN')
     expect(reviewDenial({ canWrite: true }, { writeDisabled: false }).code).toBe('GRADE_FORBIDDEN')
     expect(reviewDenial({ canWrite: true, authorityManager: 1 }, { writeDisabled: true }).code).toBe('WRITE_DISABLED')
+  })
+  it('메모는 WRITE·등급을 보지 않는다 — 서버가 쓰기를 받지 않을 때만 막는다', () => {
+    expect(memoDenial({ canWrite: false, authorityManager: 0 }, { writeDisabled: false })).toBe(null)
+    expect(memoDenial({ canWrite: true }, { writeDisabled: true })).toMatchObject({ status: 403, code: 'WRITE_DISABLED' })
   })
   it('새 대상 성과 복사', () => {
     expect([0, 1, 2, 3].map((a) => copiesPerformanceToNewTarget({ authorityManager: a }))).toEqual([false, true, true, false])
@@ -41,5 +45,13 @@ describe('requireWrite·requireReviewer', () => {
     expect(run(requireWrite, { canWrite: false }).err).toMatchObject({ statusCode: 403, code: 'WRITE_FORBIDDEN' })
     expect(run(requireReviewer, { canWrite: false, authorityManager: 2 }).err).toBeUndefined()
     expect(run(requireReviewer, { canWrite: true, authorityManager: 3 }).err).toMatchObject({ statusCode: 403, code: 'GRADE_FORBIDDEN' })
+  })
+})
+
+describe('requireMemoWrite', () => {
+  it('seWriteDisabled 일 때만 403, 아니면 WRITE 가 없어도 지나간다', () => {
+    expect(run(requireMemoWrite, { canWrite: false }, { seWriteDisabled: true }).err).toMatchObject({ statusCode: 403, code: 'WRITE_DISABLED' })
+    const n = run(requireMemoWrite, { canWrite: false })
+    expect([n.called, n.err]).toEqual([true, undefined])
   })
 })

@@ -10,6 +10,7 @@ const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '../../../../..'
 // 시험만 tools 를 읽는다 — 스냅샷 서버와 같은 꼴로 넣는 도구
 const { seedSnapshots, removeSnapshots } = require(join(ROOT, 'tools/seed/lib/snapshots.js'))
 const { connectCassandra } = require(join(ROOT, 'tools/seed/lib/cassandra.js'))
+const { cleanupSewMemos } = require(join(ROOT, 'tools/infra/sew-w-cleanup.js'))
 
 const DAY = 86400000
 const KST = 9 * 3600000
@@ -174,6 +175,154 @@ describe('설비마다 스냅샷 유무', () => {
     const r = await data(await get(`/snapshots/presence?after=${enc(mid)}`))
     expect([r.checked, r.total, r.next]).toEqual([all.length, all.length, null])
     expect(r.items.every(([id]) => id > mid)).toBe(true)
+  })
+})
+
+// 메모는 로컬 Mongo `ARS_USER_MEMO` 에 SEWT_ 설비의 것만 만들고, 끝나면(실패해도) 그것만 지운다. 컬렉션은 지우지 않는다.
+describe('메모 (P3-C)', () => {
+  const J = { 'Content-Type': 'application/json' }
+  const CLICK = ROWS_TODAY[0].fileName
+  const START = ROWS_TODAY[1].fileName
+  const NIGHT = ROWS_TODAY[3].fileName
+  const memoUrl = (eqpId, fileName) => `${base}/snapshots/${enc(eqpId)}/${enc(fileName)}/memo`
+  const put = (fileName, body, user = 'sew_master', eqpId = EQP_TODAY) => fetch(memoUrl(eqpId, fileName), { method: 'PUT', headers: { ...J, 'X-SE-User': user }, body: JSON.stringify(body) })
+  const del = (fileName, body, user = 'sew_master', eqpId = EQP_TODAY) => fetch(memoUrl(eqpId, fileName), { method: 'DELETE', headers: { ...J, 'X-SE-User': user }, body: JSON.stringify(body) })
+  const col = () => earsDb.collection('ARS_USER_MEMO')
+  const docsOf = (fileName) => col().find({ eqpid: EQP_TODAY, filename: fileName }).toArray()
+  const listToday = async (user = 'sew_master') => data(await get(`/snapshots?eqpId=${EQP_TODAY}&date=${TODAY}`, user))
+  const STAMP = expect.stringMatching(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/)
+  const clean = () => cleanupSewMemos({ env: process.env, db: earsDb })
+  beforeAll(clean)
+  afterAll(clean)
+
+  it('새 메모: 데스크톱이 읽는 일곱 필드 문서가 생기고, 하루 목록의 그 줄에 붙는다', async () => {
+    const before = Date.now()
+    const res = await put(CLICK, { memo: '  알람 창이 가려짐  ', expect: null })
+    expect(res.status).toBe(200)
+    const saved = (await data(res)).memo
+    expect(saved).toEqual({ text: '알람 창이 가려짐', author: 'sew_master', authorName: expect.any(String), writtenAt: STAMP, editedBy: null, editedAt: null })
+    const docs = await docsOf(CLICK)
+    expect(docs).toHaveLength(1)
+    const { _id, ...doc } = docs[0]
+    expect(Object.keys(doc).sort()).toEqual(['eqpid', 'filename', 'hiddensnapshot', 'memo', 'process', 'singleid', 'snapshotTimestamp'])
+    expect(doc).toMatchObject({ singleid: 'sew_master', eqpid: EQP_TODAY, process: 'SEWETCH', memo: '알람 창이 가려짐', filename: CLICK, hiddensnapshot: '0' })
+    expect(doc.snapshotTimestamp).toBeInstanceOf(Date)
+    expect(doc.snapshotTimestamp.getTime()).toBeGreaterThanOrEqual(before)
+    const out = await listToday()
+    expect(out.memoFailed).toBe(false)
+    expect(out.items.map((i) => i.memo && i.memo.text)).toEqual(['알람 창이 가려짐', null, null, null])
+    expect(out.items[0].memo).toEqual(saved)
+  })
+
+  it('같은 스냅샷에 새 메모를 또 쓰면 409 MEMO_CONFLICT 와 지금 값 — 덮어쓰지 않는다', async () => {
+    const res = await put(CLICK, { memo: '내 것', expect: null }, 'sew_multi')
+    const body = await res.json()
+    expect([res.status, body.code, body.details.current.text, body.details.current.author]).toEqual([409, 'MEMO_CONFLICT', '알람 창이 가려짐', 'sew_master'])
+    expect((await docsOf(CLICK)).map((d) => d.memo)).toEqual(['알람 창이 가려짐'])
+  })
+
+  it('고치기: 본 글이 맞으면 글과 고친 사람·때만 바뀌고 나머지 일곱 필드는 그대로다', async () => {
+    const [before] = await docsOf(CLICK)
+    const res = await put(CLICK, { memo: '고친 글', expect: '알람 창이 가려짐' }, 'sew_multi')
+    expect(res.status).toBe(200)
+    expect((await data(res)).memo).toMatchObject({ text: '고친 글', author: 'sew_master', editedBy: 'sew_multi', editedAt: STAMP })
+    const [after] = await docsOf(CLICK)
+    expect(after.webEditedAt).toBeInstanceOf(Date)
+    const { webEditedBy, webEditedAt, ...rest } = after
+    expect(webEditedBy).toBe('sew_multi')
+    expect(rest).toEqual({ ...before, memo: '고친 글' })
+  })
+
+  it('고치기·지우기: 본 글이 지금 값과 다르면 409 와 지금 값 — 바꾸지 않는다', async () => {
+    const stalePut = await put(CLICK, { memo: '늦은 글', expect: '알람 창이 가려짐' })
+    const a = await stalePut.json()
+    expect([stalePut.status, a.code, a.details.current.text]).toEqual([409, 'MEMO_CONFLICT', '고친 글'])
+    const staleDel = await del(CLICK, { expect: '알람 창이 가려짐' })
+    const b = await staleDel.json()
+    expect([staleDel.status, b.code, b.details.current.text]).toEqual([409, 'MEMO_CONFLICT', '고친 글'])
+    expect((await docsOf(CLICK)).map((d) => d.memo)).toEqual(['고친 글'])
+  })
+
+  it('데스크톱이 쓴 문서(웹 필드 없음, 옛 공정)를 읽고 고쳐도 나머지 필드가 그대로다', async () => {
+    const desktop = { singleid: 'sew_cvd', eqpid: EQP_TODAY, snapshotTimestamp: new Date(t.start + 60000), process: 'SEWOLD', memo: '데스크톱 메모', filename: START, hiddensnapshot: '0' }
+    await col().insertOne({ ...desktop })
+    const row = (await listToday()).items.find((i) => i.fileName === START)
+    expect(row.memo).toMatchObject({ text: '데스크톱 메모', author: 'sew_cvd', editedBy: null })
+    expect((await put(START, { memo: '웹이 고침', expect: '데스크톱 메모' })).status).toBe(200)
+    const [after] = await docsOf(START)
+    const { _id, webEditedBy, webEditedAt, ...rest } = after
+    expect(rest).toEqual({ ...desktop, memo: '웹이 고침' })
+    expect(webEditedBy).toBe('sew_master')
+  })
+
+  it('틀린 문서가 섞여 있어도 하루 목록·메모 목록이 읽힌다(DC-082)', async () => {
+    await col().insertMany([
+      { singleid: 'x', eqpid: EQP_TODAY, memo: 7, filename: NIGHT, hiddensnapshot: '0' },
+      { singleid: 'x', eqpid: EQP_TODAY, memo: '이름이 이상함', filename: `${t.night}_broken`, hiddensnapshot: '0' },
+      { eqpid: EQP_TODAY, filename: `${t.night + 1}_[1][1].png` }
+    ])
+    const out = await listToday()
+    expect(out.memoFailed).toBe(false)
+    expect(out.items.map((i) => i.memo && i.memo.text)).toEqual(['고친 글', '웹이 고침', null, null])
+    const memos = await data(await get('/memos'))
+    expect(memos.items.filter((m) => m.eqpId === EQP_TODAY).map((m) => m.memo.text).sort()).toEqual(['고친 글', '웹이 고침'])
+  })
+
+  it('숨김("1") 메모의 스냅샷은 하루 목록에서 빠진다', async () => {
+    const r = await col().insertOne({ singleid: 'x', eqpid: EQP_TODAY, snapshotTimestamp: new Date(), process: 'SEWETCH', memo: '숨김', filename: ROWS_TODAY[2].fileName, hiddensnapshot: '1' })
+    try {
+      const out = await listToday()
+      expect(out.items.map((i) => i.fileName)).toEqual([CLICK, START, NIGHT])
+    } finally {
+      await col().deleteOne({ _id: r.insertedId })
+    }
+    expect((await listToday()).items).toHaveLength(4)
+  })
+
+  it('메모 목록: 내 범위 설비의 메모만 — 설비의 지금 공정·모델과 스냅샷 표시 시각', async () => {
+    const all = await data(await get('/memos'))
+    expect(all.truncated).toBe(false)
+    const mine = all.items.find((m) => m.eqpId === EQP_TODAY && m.fileName === CLICK)
+    expect(mine).toEqual({
+      eqpId: EQP_TODAY, process: 'SEWETCH', model: 'SEWMODELB', fileName: CLICK, date: TODAY, time: '09:13:02', daysLeft: expect.any(Number),
+      memo: { text: '고친 글', author: 'sew_master', authorName: expect.any(String), writtenAt: STAMP, editedBy: 'sew_multi', editedAt: STAMP }
+    })
+    // 옛 공정(SEWOLD)이 적힌 메모도 설비의 지금 공정으로 보인다
+    expect(all.items.find((m) => m.fileName === START)).toMatchObject({ process: 'SEWETCH' })
+    const cvd = await data(await get('/memos', 'sew_cvd'))
+    expect(cvd.items.some((m) => m.eqpId === EQP_TODAY)).toBe(false)
+  })
+
+  it('범위 밖 설비에는 메모를 쓰지도 지우지도 못한다(403 EQP_FORBIDDEN)', async () => {
+    const w = await put(NIGHT, { memo: '남의 공정', expect: null }, 'sew_cvd')
+    expect([w.status, (await w.json()).code]).toEqual([403, 'EQP_FORBIDDEN'])
+    const d = await del(CLICK, { expect: '고친 글' }, 'sew_cvd')
+    expect([d.status, (await d.json()).code]).toEqual([403, 'EQP_FORBIDDEN'])
+    expect((await docsOf(CLICK)).map((x) => x.memo)).toEqual(['고친 글'])
+    expect((await docsOf(NIGHT)).filter((x) => x.memo === '남의 공정')).toEqual([])
+  })
+
+  it('글 규칙과 스냅샷 이름: 작은따옴표·129자·빈 글·꼴이 아닌 이름·보관 기간 밖', async () => {
+    const codeOf = async (res) => [res.status, (await res.json()).code]
+    expect(await codeOf(await put(NIGHT, { memo: "it's", expect: null }))).toEqual([400, 'MEMO_QUOTE'])
+    expect(await codeOf(await put(NIGHT, { memo: '가'.repeat(129), expect: null }))).toEqual([400, 'MEMO_TOO_LONG'])
+    expect(await codeOf(await put(NIGHT, { memo: '   ', expect: null }))).toEqual([400, 'MEMO_EMPTY'])
+    expect(await codeOf(await put('memo.bin', { memo: '글', expect: null }))).toEqual([400, 'SNAPSHOT_BAD_NAME'])
+    expect(await codeOf(await put(`${Date.now() - 16 * DAY}_[1][1].png`, { memo: '글', expect: null }))).toEqual([404, 'SNAPSHOT_NOT_FOUND'])
+    expect(await col().countDocuments({ eqpid: EQP_TODAY, singleid: 'sew_master', filename: NIGHT })).toBe(0)
+  })
+
+  it('지우기: 본 글이 맞으면 그 문서가 사라지고, 다시 지우면 404 MEMO_GONE', async () => {
+    const res = await del(CLICK, { expect: '고친 글' })
+    expect(res.status).toBe(200)
+    expect(await data(res)).toEqual({ removed: true, memo: null })
+    expect(await docsOf(CLICK)).toEqual([])
+    const again = await del(CLICK, { expect: '고친 글' })
+    expect([again.status, (await again.json()).code]).toEqual([404, 'MEMO_GONE'])
+    const gonePut = await put(CLICK, { memo: '늦은 고치기', expect: '고친 글' })
+    const body = await gonePut.json()
+    expect([gonePut.status, body.code, body.details]).toEqual([409, 'MEMO_CONFLICT', { current: null }])
+    expect((await listToday()).items[0].memo).toBeNull()
   })
 })
 

@@ -32,6 +32,11 @@ export const MESSAGES = {
   SEW_ERR_SNAPSHOT_FAILED: '스냅샷 저장소 조회가 실패했습니다. 잠시 뒤 다시 해 보세요.',
   SEW_ERR_SNAPSHOT_NOT_FOUND: '이 스냅샷의 그림이 서버에 없습니다. 보관 기간(15일)이 지났거나 저장되지 않았습니다.',
   SEW_ERR_SNAPSHOT_BAD_NAME: '스냅샷 파일 이름이 올바르지 않습니다.',
+  SEW_ERR_MEMO_CONFLICT: '그 사이 메모가 바뀌었습니다. 지금 내용을 확인하세요.',
+  SEW_ERR_MEMO_GONE: '메모가 이미 지워졌습니다.',
+  SEW_ERR_MEMO_QUOTE: "메모에 작은따옴표(')는 쓸 수 없습니다.",
+  SEW_ERR_MEMO_TOO_LONG: '메모는 128자까지 쓸 수 있습니다.',
+  SEW_ERR_MEMO_EMPTY: '메모가 비어 있습니다.',
 
   SEW_NOTE_CONDITION_UNKNOWN: '해석할 수 없는 조건 종류입니다(Variable 등). 원래 값을 그대로 둡니다.',
   SEW_NOTE_ACTION_INVALID: '알 수 없는 동작 번호입니다. 에이전트가 이 시나리오를 거부할 수 있습니다.',

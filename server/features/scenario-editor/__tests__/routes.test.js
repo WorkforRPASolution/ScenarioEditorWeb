@@ -543,3 +543,83 @@ describe('스냅샷 (P3-A)', () => {
     expect((await fetch(`${base}/scopes`)).status).toBe(200)
   })
 })
+
+describe('메모 (P3-C)', () => {
+  const NAME = '1762820000123_[412][388].png'
+  const J = { 'Content-Type': 'application/json' }
+  const url = (eqpId = 'E 1', name = NAME) => `${base}/snapshots/${encodeURIComponent(eqpId)}/${encodeURIComponent(name)}/memo`
+  const MEMO = { text: '글', author: 'sew_multi', authorName: 'M', writtenAt: '2026-11-11 12:00', editedBy: null, editedAt: null }
+  let calls
+  beforeEach(() => {
+    calls = []
+    fake.memos = {
+      save: async (u, eqpId, fileName, body) => { calls.push(['save', u.singleid, eqpId, fileName, body]); return { memo: MEMO } },
+      remove: async (u, eqpId, fileName, body) => { calls.push(['remove', u.singleid, eqpId, fileName, body]); return { removed: true, memo: null } },
+      list: async (u) => { calls.push(['list', u.singleid]); return { items: [], truncated: false } }
+    }
+  })
+  afterEach(() => { delete require('../../../app').locals.seWriteDisabled })
+  const put = (body, headers = {}, u = url()) => fetch(u, { method: 'PUT', headers: { ...J, ...headers }, body: typeof body === 'string' ? body : JSON.stringify(body) })
+  const del = (body, headers = {}, u = url()) => fetch(u, { method: 'DELETE', headers: { ...J, ...headers }, body: typeof body === 'string' ? body : JSON.stringify(body) })
+
+  it('PUT …/memo — 설비·파일 이름은 풀어서, 본문의 memo·expect 만 넘긴다(expect 가 없으면 null)', async () => {
+    const res = await put({ memo: '글', expect: '옛 글', extra: 1 })
+    expect(res.status).toBe(200)
+    expect((await res.json()).data).toEqual({ memo: MEMO })
+    await put({ memo: '글' })
+    await put({ memo: '글', expect: null })
+    expect(calls).toEqual([
+      ['save', 'sew_multi', 'E 1', NAME, { memo: '글', expect: '옛 글' }],
+      ['save', 'sew_multi', 'E 1', NAME, { memo: '글', expect: null }],
+      ['save', 'sew_multi', 'E 1', NAME, { memo: '글', expect: null }]
+    ])
+  })
+
+  it('DELETE …/memo — 본문의 expect 를 넘긴다', async () => {
+    const res = await del({ expect: '글' })
+    expect(res.status).toBe(200)
+    expect((await res.json()).data).toEqual({ removed: true, memo: null })
+    expect(calls).toEqual([['remove', 'sew_multi', 'E 1', NAME, { expect: '글' }]])
+  })
+
+  it('본문 꼴이 틀리면 400 BAD_REQUEST 이고 서비스를 부르지 않는다', async () => {
+    for (const body of ['[]', '{"memo":7}', '{"expect":"a"}', '{"memo":"a","expect":7}', '{"memo":"a","expect":["x"]}']) {
+      const res = await put(body)
+      expect([res.status, (await res.json()).code], body).toEqual([400, 'BAD_REQUEST'])
+    }
+    for (const body of ['[]', '{}', '{"expect":null}', '{"expect":7}']) {
+      const res = await del(body)
+      expect([res.status, (await res.json()).code], body).toEqual([400, 'BAD_REQUEST'])
+    }
+    expect(calls).toEqual([])
+  })
+
+  it('WRITE 권한이 없는 사용자도 메모를 쓰고 지운다(스냅샷을 볼 수 있으면 된다)', async () => {
+    expect((await put({ memo: '글' }, { 'X-SE-User': 'sew_reader' })).status).toBe(200)
+    expect((await del({ expect: '글' }, { 'X-SE-User': 'sew_reader' })).status).toBe(200)
+    expect(calls.map((c) => [c[0], c[1]])).toEqual([['save', 'sew_reader'], ['remove', 'sew_reader']])
+  })
+
+  it('seWriteDisabled 면 쓰기 둘은 403 WRITE_DISABLED, 메모 목록은 읽힌다', async () => {
+    require('../../../app').locals.seWriteDisabled = true
+    for (const res of [await put({ memo: '글' }), await del({ expect: '글' })]) expect([res.status, (await res.json()).code]).toEqual([403, 'WRITE_DISABLED'])
+    expect(calls).toEqual([])
+    expect((await fetch(`${base}/memos`)).status).toBe(200)
+  })
+
+  it('GET /memos → { items, truncated }', async () => {
+    const res = await fetch(`${base}/memos`)
+    expect(res.status).toBe(200)
+    expect((await res.json()).data).toEqual({ items: [], truncated: false })
+    expect(calls).toEqual([['list', 'sew_multi']])
+  })
+
+  it('미등록 사용자는 403 USER_NOT_REGISTERED', async () => {
+    const h = { 'X-SE-User': 'sew_none' }
+    for (const res of [await put({ memo: '글' }, h), await del({ expect: '글' }, h), await fetch(`${base}/memos`, { headers: h })]) {
+      expect([res.status, (await res.json()).code]).toEqual([403, 'USER_NOT_REGISTERED'])
+    }
+    expect(calls).toEqual([])
+  })
+})
+

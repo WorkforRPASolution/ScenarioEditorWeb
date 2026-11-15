@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
-const { cleanupSewW, assertLocalTargets, TEST_USERS, WEB_DB } = require('../sew-w-cleanup')
+const { cleanupSewW, cleanupSewMemos, assertLocalTargets, TEST_USERS, WEB_DB } = require('../sew-w-cleanup')
 
 // 로컬 개발 프로필(server/.env.example 과 같은 꼴)
 const LOCAL = {
@@ -125,5 +125,20 @@ describe('cleanupSewW — EARS·웹 DB·Redis·InterfaceServer 가 루프백이 
     const { p, touched } = run(LOCAL)
     await p
     expect(touched().length).toBeGreaterThan(0)
+  })
+})
+
+describe('cleanupSewMemos — 시험 설비(SEWT_)의 스냅샷 메모만 지운다', () => {
+  it('ARS_USER_MEMO 에서 eqpid 가 SEWT_ 로 시작하는 문서만 — 컬렉션은 그대로 둔다', async () => {
+    const db = fakeDb('EARS')
+    expect(await cleanupSewMemos({ env: LOCAL, db })).toBe(1)
+    expect(db.calls).toHaveLength(1)
+    expect([db.calls[0].c, db.calls[0].op, Object.keys(db.calls[0].filter), String(db.calls[0].filter.eqpid)]).toEqual(['ARS_USER_MEMO', 'deleteMany', ['eqpid'], '/^SEWT_/'])
+  })
+  it('EARS 가 루프백이 아니거나 env 를 받지 못하면 아무것도 지우지 않고 던진다', async () => {
+    const db = fakeDb('EARS')
+    await expect(cleanupSewMemos({ env: { ...LOCAL, MONGODB_URI: 'mongodb://ears-prod.example:27017/EARS' }, db })).rejects.toThrow(/루프백/)
+    await expect(cleanupSewMemos({ db })).rejects.toThrow()
+    expect(db.calls).toEqual([])
   })
 })

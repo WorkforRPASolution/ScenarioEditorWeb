@@ -19,9 +19,14 @@ function reviewDenial(user, { writeDisabled }) {
   return null
 }
 
+// 스냅샷 메모는 WRITE·등급을 보지 않는다 — 그 설비의 스냅샷을 볼 수 있으면 쓴다(P3 설계 §4.4, 사내와 같다). 설비 범위는 서비스가 본다.
+function memoDenial(user, { writeDisabled }) {
+  return writeDisabled ? DISABLED() : null
+}
+
 // 새 대상 저장 때 성과를 복사하는가(13 §2.6 표): 등급 0·3 은 복사하지 않는다.
 function copiesPerformanceToNewTarget(user) {
   return user.authorityManager !== 0 && user.authorityManager !== 3
 }
 
-module.exports = { writeDenial, reviewDenial, copiesPerformanceToNewTarget, REVIEWER_LEVELS }
+module.exports = { writeDenial, reviewDenial, memoDenial, copiesPerformanceToNewTarget, REVIEWER_LEVELS }

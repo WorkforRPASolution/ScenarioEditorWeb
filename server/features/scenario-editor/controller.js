@@ -2,7 +2,7 @@
 const { getDeps } = require('./deps')
 const { seError } = require('./errors')
 const { hasFullScope } = require('./domain/processPermission')
-const { writeDenial, reviewDenial } = require('./domain/writePolicy')
+const { writeDenial, reviewDenial, memoDenial } = require('./domain/writePolicy')
 const { linksFromEnv } = require('./domain/links')
 
 const ok = (res, data) => res.json({ success: true, data })
@@ -112,6 +112,11 @@ function requireWrite(req, res, next) {
 
 function requireReviewer(req, res, next) {
   const denial = reviewDenial(req.seUser, { writeDisabled: writeDisabled(req) })
+  return denial ? denyWith(denial, next) : next()
+}
+
+function requireMemoWrite(req, res, next) {
+  const denial = memoDenial(req.seUser, { writeDisabled: writeDisabled(req) })
   return denial ? denyWith(denial, next) : next()
 }
 
@@ -231,6 +236,29 @@ async function snapshotList(req, res) {
   ok(res, await getDeps().snapshots.list(req.seUser, need(req.query.eqpId, 'eqpId'), need(req.query.date, 'date')))
 }
 
+// ── 스냅샷 메모 (P3-C) ── 설비 범위·글 규칙·충돌은 서비스가 본다. 여기서는 본문 꼴만 본다.
+const bodyObject = (req) => {
+  const b = req.body
+  if (!b || typeof b !== 'object' || Array.isArray(b)) throw badBody('body', '객체여야 합니다')
+  return b
+}
+// expect = 화면이 본 메모 글(없으면 null — 새 메모)
+async function saveMemo(req, res) {
+  const b = bodyObject(req)
+  if (typeof b.memo !== 'string') throw badBody('memo', '문자열이어야 합니다')
+  const expect = b.expect === undefined ? null : b.expect
+  if (expect !== null && typeof expect !== 'string') throw badBody('expect', '본 메모 글이거나 null 이어야 합니다')
+  ok(res, await getDeps().memos.save(req.seUser, req.params.eqpId, req.params.fileName, { memo: b.memo, expect }))
+}
+async function removeMemo(req, res) {
+  const b = bodyObject(req)
+  if (typeof b.expect !== 'string') throw badBody('expect', '본 메모 글이어야 합니다')
+  ok(res, await getDeps().memos.remove(req.seUser, req.params.eqpId, req.params.fileName, { expect: b.expect }))
+}
+async function memoList(req, res) {
+  ok(res, await getDeps().memos.list(req.seUser))
+}
+
 // 남은 보관 기간만큼만 캐시한다 — 파일 이름이 곧 내용이라 주소가 바뀌지 않고, 보관이 끝난 그림을 브라우저가 계속 보이지 않게 한다.
 // 머리글은 그림을 받은 뒤에 붙인다(오류 JSON 에 PNG·캐시 머리글이 남지 않게).
 async function snapshotImage(req, res) {
@@ -239,4 +267,4 @@ async function snapshotImage(req, res) {
   res.send(png)
 }
 
-module.exports = { equipment, snapshotPresence, snapshotDays, snapshotList, snapshotImage, links, reviewScenario, savePerformance, sameName, searchUsers, nameRule, setEnabled, removeScenario, deploy, deployVerify, deployFinish, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, counts, versions, open, dataCheck, image }
+module.exports = { saveMemo, removeMemo, memoList, requireMemoWrite, equipment, snapshotPresence, snapshotDays, snapshotList, snapshotImage, links, reviewScenario, savePerformance, sameName, searchUsers, nameRule, setEnabled, removeScenario, deploy, deployVerify, deployFinish, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, counts, versions, open, dataCheck, image }
