@@ -6,12 +6,13 @@ import { createRequire } from 'node:module'
 import { createServer } from 'node:net'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { randomUUID } from 'node:crypto'
 const require = createRequire(import.meta.url)
 const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '../../../../..')
 // 시험만 tools 를 읽는다 — 스냅샷 서버와 같은 꼴로 넣는 도구
 const { seedSnapshots, removeSnapshots } = require(join(ROOT, 'tools/seed/lib/snapshots.js'))
 const { connectCassandra } = require(join(ROOT, 'tools/seed/lib/cassandra.js'))
-const { cleanupSewMemos } = require(join(ROOT, 'tools/infra/sew-w-cleanup.js'))
+const { cleanupSewMemos, cleanupSewW, assertLocalTargets } = require(join(ROOT, 'tools/infra/sew-w-cleanup.js'))
 const { seedHistory, cleanHistory } = require(join(ROOT, 'tools/seed/lib/history.js'))
 const { startFaultProxy } = require(join(ROOT, 'tools/infra/fault-proxy.js'))
 
@@ -488,6 +489,57 @@ describe('이력 (P3-D)', () => {
       process.env.HTTP_WEB_SERVER_URL = hwsUrl
     }
   })
+})
+
+// P3-E 스냅샷에서 스텝 만들기(설계 §4.8): 화면은 떠 있는 스냅샷 그림의 바이트를 올린 그림(from: 'upload')으로 기준 화면에 넣어 배포한다.
+// 서버는 이 길을 이미 받는다 — 여기서는 스냅샷 그림 API 가 준 바이트가 배포를 거쳐 다시 연 기준 화면에 그대로 남는지 본다.
+// 시드 시나리오는 읽기만 하고 SEW_W_ 이름으로 배포한다(끝나면 지운다 — 배포 통합 시험과 같은 정리). 스텝이 없는 새 시나리오는 E2E ⑦ 이 본다.
+describe('스냅샷을 기준 화면으로 배포 (P3-E)', () => {
+  const SOURCE = { process: 'SEWCVD', model: 'SEWMODELA', name: 'ALL_CONDITIONS' } // 1 이미지 · 2 OCR · 3 대기 · 4 설비 상태
+  const TARGET = { process: SOURCE.process, model: SOURCE.model, name: `SEW_W_${Date.now().toString(36).toUpperCase()}_SNAPSTEP` }
+  const ENV_KEYS = ['MONGODB_URI', 'WEBMANAGER_DB_URI', 'SE_WEB_DB_URI', 'REDIS_URL', 'EARS_INTERFACE_URL']
+  const pathOf = (k) => `/scenarios/${enc(k.process)}/${enc(k.model)}/${enc(k.name)}`
+  const clean = async () => {
+    const env = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]))
+    assertLocalTargets(env) // 루프백이 아니면 던진다
+    const webDb = require('../../../../shared/db/connection').webManagerConnection.db
+    if (webDb.databaseName !== 'SE_WEB_DEV') throw new Error(`웹 전용 DB 가 SE_WEB_DEV 가 아니다: ${webDb.databaseName}`)
+    const { getRedisClient } = require('../../../../shared/db/redisConnection')
+    await cleanupSewW({ env, db: earsDb, webDb, redis: getRedisClient(), GridFSBucket: require('mongoose').mongo.GridFSBucket })
+  }
+  afterAll(clean)
+
+  it('스냅샷 그림 API 의 바이트를 두 스텝의 기준 화면으로 한 번만 올려 배포하면, 다시 연 두 스텝의 기준 화면이 그 바이트다', async () => {
+    const snap = await get(imagePath(EQP_TODAY, ROWS_TODAY[0].fileName))
+    expect(snap.status).toBe(200)
+    const bytes = Buffer.from(await snap.arrayBuffer())
+
+    const sk = await data(await get(`${pathOf(SOURCE)}/versions/current`))
+    const scenario = structuredClone(sk.edited)
+    const withBase = scenario.steps.filter((s) => s.images.base && s.images.base.from === 'source')
+    expect(withBase.map((s) => s.condition.kind)).toEqual(['image', 'ocr'])
+    for (const s of withBase) s.images.base = { from: 'upload', tempId: 'snap1' }
+    const form = new FormData()
+    form.append('meta', JSON.stringify({ target: TARGET, propertyRev: sk.propertyRev, scenario, requestId: randomUUID() }))
+    form.append('img:snap1', new Blob([bytes], { type: 'image/png' }), 'snap1.png')
+    const res = await fetch(`${base}/deploy`, { method: 'POST', headers: { 'X-SE-User': 'sew_master' }, body: form })
+    const out = await res.json()
+    expect(res.status, JSON.stringify(out)).toBe(200)
+    expect(out.data.result).toBe('ok')
+
+    const back = await data(await get(`${pathOf(TARGET)}/versions/current`))
+    expect(back.steps).toHaveLength(sk.steps.length)
+    const shown = back.steps.filter((s) => s.baseImage.state === 'present')
+    expect(shown.map((s) => s.condition.kind)).toEqual(['image', 'ocr'])
+    for (const s of shown) {
+      const img = await get(s.baseImage.url.replace(/^\/scenario-editor/, ''))
+      expect(img.status, s.baseImage.url).toBe(200)
+      expect(Buffer.from(await img.arrayBuffer()).equals(bytes), `스텝 ${s.no}`).toBe(true)
+    }
+    // 원본은 그대로다
+    const src = await data(await get(`${pathOf(SOURCE)}/versions/current`))
+    expect(src.headCrtime).toBe(sk.headCrtime)
+  }, 60_000)
 })
 
 describe('고장 (Review Focus 1)', () => {
