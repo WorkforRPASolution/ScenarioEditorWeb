@@ -3,15 +3,18 @@
 // 그림은 저장소가 받은 것(object URL)을 띄운다. 번호·클릭 점은 그림과 같은 스냅샷의 것이다 —
 // 고른 것이 바뀌면 그림 크기를 지워, 새 그림이 불러와질 때까지 점·크기를 그리지 않는다(DC-034).
 // 메모 줄(P3-C): 메모가 있으면 글·작성자·[고치기]·[지우기], 없으면 [메모 쓰기]. 메모 창은 창을 연 스냅샷(파일 이름)에 쓴다.
-// [이력 보기]·[받기]·[새 스텝] 은 P3-D~E 에서 더한다.
-import { ref, computed, watch } from 'vue'
+// [받기 ▾](P3-D): 목록에서 고른 줄(하나 또는 여러 줄)을 그림만·좌표 포함으로 받는다 — 진행·결과는 받기 저장소와 DownloadDialog.
+// [이력 보기]·[새 스텝] 은 P3-D~E 에서 더한다.
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useSnapshotStore } from '../../stores/snapshotStore'
 import { useEditorStore } from '../../stores/editorStore'
+import { useSnapshotDownloadStore } from '../../stores/snapshotDownloadStore'
 import { usePanZoom } from '../../composables/usePanZoom'
 import { clickPoint } from '../../editor/snapshotList'
 import { t } from '../../messages'
 import ViewerModeTabs from './ViewerModeTabs.vue'
 import MemoDialog from './MemoDialog.vue'
+import DownloadDialog from './DownloadDialog.vue'
 import '../../pills.css'
 import './snapshot.css'
 
@@ -50,6 +53,24 @@ const memoDialog = ref({ open: false, fileName: '', mode: 'edit' })
 function openMemo(mode) {
   if (item.value) memoDialog.value = { open: true, fileName: item.value.fileName, mode }
 }
+
+// ── 받기 ──
+const dl = useSnapshotDownloadStore()
+const dlBox = ref(null)
+const dlOpen = ref(false)
+const dlCount = computed(() => snap.pickedItems.length)
+const dlLabel = computed(() => (dlCount.value > 1 ? t('SEW_SNAP_DL_N', { n: dlCount.value }) : t('SEW_SNAP_DL')))
+const dlOff = computed(() => !dlCount.value || dl.job.status === 'running')
+function download(withCircle) {
+  dlOpen.value = false
+  dl.start(withCircle)
+}
+// 메뉴 바깥을 누르거나 Esc 를 누르면 닫는다
+function onDocDown(e) { if (dlOpen.value && !dlBox.value?.contains(e.target)) dlOpen.value = false }
+function onDocKey(e) { if (e.key === 'Escape' && dlOpen.value) dlOpen.value = false }
+onMounted(() => { document.addEventListener('mousedown', onDocDown); document.addEventListener('keydown', onDocKey) })
+onBeforeUnmount(() => { document.removeEventListener('mousedown', onDocDown); document.removeEventListener('keydown', onDocKey) })
+watch(dlOff, (off) => { if (off) dlOpen.value = false })
 
 const count = computed(() => snap.shown.length)
 const atFirst = computed(() => !count.value || snap.position === 0)
@@ -111,8 +132,18 @@ defineExpose({ onLoad, fit })
       <span class="w-2" />
       <button type="button" :class="btn" :disabled="noList" data-testid="se-snap-memo-prev" @click="snap.moveMemo(-1)">{{ t('SEW_SNAP_MEMO_PREV') }}</button>
       <button type="button" :class="btn" :disabled="noList" data-testid="se-snap-memo-next" @click="snap.moveMemo(1)">{{ t('SEW_SNAP_MEMO_NEXT') }}</button>
+      <span class="w-2" />
+      <span ref="dlBox" class="relative shrink-0">
+        <button type="button" :class="btn" :disabled="dlOff" :aria-expanded="dlOpen ? 'true' : 'false'" aria-haspopup="menu" data-testid="se-snap-download" @click="dlOpen = !dlOpen">{{ dlLabel }} ▾</button>
+        <!-- 이동 줄이 화면 아래쪽이라 위로 연다 -->
+        <span v-if="dlOpen" class="se-snap-menu" role="menu">
+          <button type="button" role="menuitem" data-testid="se-snap-download-plain" @click="download(false)">{{ t('SEW_SNAP_DL_PLAIN') }}</button>
+          <button type="button" role="menuitem" :title="t('SEW_SNAP_DL_XY_HINT')" data-testid="se-snap-download-xy" @click="download(true)">{{ t('SEW_SNAP_DL_XY') }}</button>
+        </span>
+      </span>
       <span v-if="snap.notice" class="ml-3 text-xs text-amber-700 dark:text-amber-300 truncate" role="status" data-testid="se-snap-notice">{{ snap.notice }}</span>
     </div>
     <MemoDialog v-model="memoDialog.open" :file-name="memoDialog.fileName" :mode="memoDialog.mode" :me="editor.me?.singleid ?? ''" />
+    <DownloadDialog />
   </div>
 </template>

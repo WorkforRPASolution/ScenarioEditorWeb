@@ -8,6 +8,7 @@ vi.mock('../api', async (importOriginal) => ({ ...(await importOriginal()), scen
 import SnapshotViewer from '../components/snapshot/SnapshotViewer.vue'
 import { useSnapshotStore } from '../stores/snapshotStore'
 import { useEditorStore } from '../stores/editorStore'
+import { useSnapshotDownloadStore } from '../stores/snapshotDownloadStore'
 import { MESSAGES } from '../messages'
 
 enableAutoUnmount(afterEach)
@@ -296,6 +297,49 @@ describe('SnapshotViewer', () => {
       await s.setDate('2026-11-10')
       await tid(w, 'se-snap-memo-next').trigger('click')
       expect(tid(w, 'se-snap-notice').text()).toBe(MESSAGES.SEW_SNAP_NO_MEMO)
+    })
+  })
+
+  describe('받기 (P3-D)', () => {
+    it('고른 것이 없으면 [받기] 가 꺼져 있다. 하나면 "받기", 여러 줄이면 "받기 (n)"', async () => {
+      const { w, s } = await mountSized()
+      expect(tid(w, 'se-snap-download').attributes('disabled')).toBeDefined()
+      await show(w, s, 1)
+      expect(tid(w, 'se-snap-download').attributes('disabled')).toBeUndefined()
+      expect(tid(w, 'se-snap-download').text()).toBe(`${MESSAGES.SEW_SNAP_DL} ▾`)
+      s.pickRange(name(3))
+      await flushPromises()
+      expect(tid(w, 'se-snap-download').text()).toBe(`${MESSAGES.SEW_SNAP_DL_N.replace('{n}', '3')} ▾`)
+    })
+    it('[받기 ▾] 를 누르면 그림만·좌표 포함이 열리고, 고르면 닫히며 그 방식으로 받기를 시작한다', async () => {
+      const { w, s } = await mountSized()
+      await show(w, s, 1)
+      const d = useSnapshotDownloadStore()
+      const start = vi.spyOn(d, 'start').mockResolvedValue()
+      expect(tid(w, 'se-snap-download-plain').exists()).toBe(false)
+      await tid(w, 'se-snap-download').trigger('click')
+      expect(tid(w, 'se-snap-download').attributes('aria-expanded')).toBe('true')
+      await tid(w, 'se-snap-download-xy').trigger('click')
+      expect(start).toHaveBeenLastCalledWith(true)
+      expect(tid(w, 'se-snap-download-xy').exists()).toBe(false)
+      await tid(w, 'se-snap-download').trigger('click')
+      await tid(w, 'se-snap-download-plain').trigger('click')
+      expect(start).toHaveBeenLastCalledWith(false)
+    })
+    it('메뉴는 Esc 나 바깥을 누르면 닫힌다. 받는 중에는 [받기] 가 꺼진다', async () => {
+      const { w, s } = await mountSized()
+      await show(w, s, 1)
+      await tid(w, 'se-snap-download').trigger('click')
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+      await w.vm.$nextTick()
+      expect(tid(w, 'se-snap-download-plain').exists()).toBe(false)
+      await tid(w, 'se-snap-download').trigger('click')
+      document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+      await w.vm.$nextTick()
+      expect(tid(w, 'se-snap-download-plain').exists()).toBe(false)
+      useSnapshotDownloadStore().job = { status: 'running', done: 0, total: 1, failed: [], saved: null }
+      await w.vm.$nextTick()
+      expect(tid(w, 'se-snap-download').attributes('disabled')).toBeDefined()
     })
   })
 
