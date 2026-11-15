@@ -77,7 +77,8 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
 
   const persist = () => safeStorage.set(KEY, JSON.stringify({ open: open.value, eqpId: eqpId.value ?? pendingEqp ?? null }))
 
-  // ── 그림: 기억(이름 → { url }, 덜 쓴 것이 앞)과 진행 중 요청 ──
+  // ── 그림: 기억(이름 → { url, blob }, 덜 쓴 것이 앞)과 진행 중 요청 ──
+  // blob = 서버가 준 바이트 그대로 — 스냅샷으로 스텝을 만들 때 기준 화면으로 올린다(P3-E). object URL 이 이미 쥐고 있는 것이라 메모리가 늘지 않는다.
   const cache = new Map()
   const inflight = new Map()
   const touch = (name) => { const v = cache.get(name); cache.delete(name); cache.set(name, v) }
@@ -104,7 +105,7 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
     const promise = api.snapshotImage(owner, name, controller.signal)
       .then((res) => {
         if (eqpId.value !== owner) throw new Error('equipment changed') // 설비가 바뀐 뒤에 온 그림은 기억하지 않는다
-        cache.set(name, { url: URL.createObjectURL(res.data) })
+        cache.set(name, { url: URL.createObjectURL(res.data), blob: res.data })
         evict()
         return cache.get(name)
       })
@@ -142,6 +143,16 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
       if (selectedName.value !== name) return
       image.value = { name, status: 'error', url: null, code: errorCode(err), error: errorMessage(err) }
     }
+  }
+
+  // 지금 큰 화면에 떠 있는 그림(P3-E 스냅샷에서 스텝 만들기) — 받는 중·실패·고른 줄 없음이면 null.
+  // 화면이 그리는 object URL 과 같은 기억에서 꺼내므로 보이는 그림과 같은 바이트다(DC-071·DC-075).
+  function shownImage() {
+    const im = image.value
+    if (im.status !== 'ready' || !im.name) return null
+    const hit = cache.get(im.name)
+    if (!hit || hit.url !== im.url || !(hit.blob instanceof Blob)) return null
+    return { eqpId: eqpId.value, fileName: im.name, blob: hit.blob }
   }
 
   function clearSelection() {
@@ -533,6 +544,6 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
   return {
     mode, open, equipment, presence, eqpId, range, date, list, filter, selectedName, picked, calendar, image, notice, memoList,
     shown, selected, position, pickedItems, minDate, maxDate,
-    restore, setOpen, loadEquipment, refreshPresence, pickEquipment, setDate, moveDate, refresh, setFilter, select, togglePick, pickRange, moveRange, move, moveTag, moveMemo, saveMemo, removeMemo, loadMemoList, goToMemo, openCalendar, showStep, showSnapshot, say
+    restore, setOpen, loadEquipment, refreshPresence, pickEquipment, setDate, moveDate, refresh, setFilter, select, togglePick, pickRange, moveRange, move, moveTag, moveMemo, saveMemo, removeMemo, loadMemoList, goToMemo, openCalendar, showStep, showSnapshot, say, shownImage
   }
 })

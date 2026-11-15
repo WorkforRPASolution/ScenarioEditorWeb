@@ -506,6 +506,41 @@ describe('snapshotStore', () => {
     })
   })
 
+  describe('떠 있는 그림(P3-E) — 스냅샷으로 스텝을 만들 때 쓰는 바이트', () => {
+    it('그림이 뜨면 그 설비·파일 이름과 서버가 준 바로 그 Blob 을 준다', async () => {
+      const blobs = new Map()
+      api.snapshotImage.mockImplementation((eqpId, fileName) => { const b = new Blob([fileName]); blobs.set(fileName, b); return Promise.resolve({ data: b }) })
+      const s = await ready()
+      expect(s.shownImage()).toBe(null) // 고른 줄이 없다
+      s.select(name(2))
+      await flushPromises()
+      const shown = s.shownImage()
+      expect(shown).toEqual({ eqpId: 'A', fileName: name(2), blob: blobs.get(name(2)) })
+      expect(shown.blob).toBe(blobs.get(name(2)))
+      s.select(name(3)) // 미리 받아 둔 이웃 — 그 줄의 Blob
+      await flushPromises()
+      expect(s.shownImage().blob).toBe(blobs.get(name(3)))
+      expect(s.shownImage().fileName).toBe(name(3))
+    })
+    it('받는 중이거나 받지 못했으면 없다', async () => {
+      const slow = defer()
+      api.snapshotImage.mockImplementationOnce(() => slow.promise)
+      const s = await ready()
+      s.select(name(2))
+      await flushPromises()
+      expect(s.image.status).toBe('loading')
+      expect(s.shownImage()).toBe(null)
+      slow.resolve({ data: new Blob(['x']) })
+      await flushPromises()
+      expect(s.shownImage()).not.toBe(null)
+      api.snapshotImage.mockImplementation(() => Promise.reject(blobFail(404, 'SNAPSHOT_NOT_FOUND')))
+      s.select(name(5))
+      await flushPromises()
+      expect(s.image.status).toBe('error')
+      expect(s.shownImage()).toBe(null)
+    })
+  })
+
   describe('그림 기억', () => {
     it('여섯 장까지 기억하고, 넘치면 가장 오래 안 쓴 것부터 놓는다 — 고른 그림은 늘 가장 최근에 쓴 것이라 남는다', async () => {
       const many = Array.from({ length: 12 }, (_, i) => click(100 + i))
