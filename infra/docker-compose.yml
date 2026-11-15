@@ -1,4 +1,4 @@
-# ScenarioEditorWeb 로컬 인프라 — InterfaceServer(DEBUG 모드) 하나. Mongo·Redis 는 이미 떠 있는 OrbStack 컨테이너를 쓴다.
+# ScenarioEditorWeb 로컬 인프라 — InterfaceServer(DEBUG 모드)와 이력 서버(HttpWebServer + 전용 ZooKeeper). Mongo·Redis·Cassandra 는 이미 떠 있는 컨테이너를 쓴다.
 # 프로필 ss(평소에는 뜨지 않는다): 스냅샷 서버 맞춤 확인용 ARSSnapShotServer + 전용 ZooKeeper — `docker compose -f infra/docker-compose.yml --profile ss up -d`
 # 선례: ARSAgent tools/integration 의 is 프로필.
 name: sew-infra
@@ -30,6 +30,40 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     mem_limit: 2g
+
+  # ── 이력 서버(P3-D): HttpWebServer — 스냅샷 이력 보기(GET /ARS/History/{설비}/{txn})와 시험 이력 넣기(POST /ARS/AppendHistory) ──
+  # 실행 파일은 tools/infra/prepare-hws.sh 가 HttpWebServer 의 커밋된 판을 저장소 밖에서 빌드해 infra/hws/dist 에 둔다.
+  # 뜰 때 ZooKeeper 에 자기 주소를 올린다 — 공유 로컬 ZooKeeper(ars-zookeeper)에 올리지 않도록 전용으로 하나 둔다.
+  # Cassandra 는 my-cassandra-server(호스트 9042, 계정은 HttpWebServer 코드값). Mongo 는 뜰 때 메일 틀 한 건을 읽기만 하고, Redis 에는 ping 만 보낸다
+  # (메일·팝업 경로는 부르지 않는다 — 이 서버는 127.0.0.1 에만 열린다).
+  hws-zookeeper:
+    image: zookeeper:3.5.5
+  http-web-server:
+    image: eclipse-temurin:8-jre
+    depends_on: [hws-zookeeper]
+    environment:
+      HOST_IP: 127.0.0.1
+      HTTP_PORT: "8082"
+      TZ: Asia/Seoul
+    volumes:
+      - ./hws/dist:/ears/parcels/HttpWebServer:ro
+      - ./hws/conf:/ears/conf/HttpWebServer:ro
+    command:
+      - java
+      - -Xmx512m
+      - -Duser.timezone=Asia/Seoul
+      - -Dfile.encoding=UTF-8
+      - -DEEG_BASE=/ears
+      - -Dlog4j.configuration=file:/ears/conf/HttpWebServer/log4j.properties
+      - -cp
+      - /ears/parcels/HttpWebServer/HttpWebServer.jar:/ears/parcels/HttpWebServer/lib/*
+      - com.sec.eeg.ars.actor.Master
+      - start
+    ports:
+      - "127.0.0.1:8082:8082"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    mem_limit: 1g
 
   # ── 프로필 ss: 스냅샷 서버 맞춤 확인(tools/infra/check-ss-compat.js) ──
   # 스냅샷 서버는 뜰 때 ZooKeeper 에 자기 주소를 올린다. 공유 로컬 ZooKeeper(ars-zookeeper)에 올리지 않도록 전용으로 하나 둔다.

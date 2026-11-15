@@ -13,6 +13,7 @@ const users = require('./data/users')
 const { connectCassandra } = require('./lib/cassandra')
 const { planSnapshots, seedSnapshots, cleanSnapshots } = require('./lib/snapshots')
 const { planBig, seedBig, BIG_EQP, IDLE_EQP } = require('./lib/snapshotsBig')
+const { planHistory, seedHistory, cleanHistory, historyUrl } = require('./lib/history')
 
 const SNAPSHOT_EQP = [...new Set(equipment.map((e) => e.eqpId))] // 스냅샷을 지울 설비 = 시험 설비 전부(SEWT_)
 
@@ -68,6 +69,11 @@ async function seedSnapshotData() {
     const now = Date.now()
     console.log('스냅샷 지움:', await cleanSnapshots(client, SNAPSHOT_EQP, now))
     console.log('스냅샷 넣음:', await seedSnapshots(client, planSnapshots(now)))
+    // 이력(P3-D) — 시험 태그 묶음의 txn 에 스텝 셋. 이력 서버(HttpWebServer)가 Cassandra historylog 에 쓴다.
+    console.log('이력 지움:', await cleanHistory(client))
+    const url = historyUrl()
+    if (!url) console.log('이력 넣기 건너뜀: server/.env 에 HTTP_WEB_SERVER_URL 이 없습니다(이력 보기 시험에 필요)')
+    else console.log('이력 넣음:', await seedHistory(url, planHistory(now)))
   }, { required: true })
 }
 
@@ -92,7 +98,10 @@ async function main() {
   try {
     if (cmd === 'clean' || cmd === 'reset') {
       console.log('지움:', await clean(ctx))
-      await withCassandra(async (client) => console.log('스냅샷 지움:', await cleanSnapshots(client, SNAPSHOT_EQP, Date.now())), { required: false })
+      await withCassandra(async (client) => {
+        console.log('스냅샷 지움:', await cleanSnapshots(client, SNAPSHOT_EQP, Date.now()))
+        console.log('이력 지움:', await cleanHistory(client))
+      }, { required: false })
     }
     if (cmd === 'reset') await seedBase(ctx)
     const toLoad = cmd === 'reset' ? sets : cmd === 'big' ? ['big'] : []

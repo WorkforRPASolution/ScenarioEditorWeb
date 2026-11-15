@@ -1,0 +1,13 @@
+{
+  "ZookeeperQuorum": "hws-zookeeper:2181",
+  "VirtualPublicIpAddress": "127.0.0.1",
+  "RedisSentinelConnection": "host.docker.internal:6379",
+  "CassandraAddress": "host.docker.internal#9042",
+  "CassandraAuthenticationEnable": true,
+  "EmailTemplateImportLocation": "/tmp/sew-hws/email",
+  "PopupTemplateImportLocation": "/tmp/sew-hws/popup",
+  "EmailWorkerCount": 1,
+  "HttpWorkerCount": 1,
+  "MongoDBUrl": "mongodb://host.docker.internal:27017",
+  "RedisPingInterval": "20 seconds"
+}

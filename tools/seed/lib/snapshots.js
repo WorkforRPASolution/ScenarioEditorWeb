@@ -124,4 +124,4 @@ async function removeSnapshots(client, rows) {
   return { rows: rows.length }
 }
 
-module.exports = { planSnapshots, seedSnapshots, cleanSnapshots, removeSnapshots, partitionOf, assertTestEquipment }
+module.exports = { planSnapshots, seedSnapshots, cleanSnapshots, removeSnapshots, partitionOf, kstMs: at, assertTestEquipment }
