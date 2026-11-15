@@ -182,6 +182,18 @@ describe('snapshotDownloadStore', () => {
     expect(saved().at(-1).fileName).toBe('A_2026-11-11_snapshots_300.zip')
   })
 
+  // 독립 검토 4: 묶거나 저장하다 던지면 창이 "받는 중" 에 멈춰 새로고침해야 했다
+  it('묶거나 저장하다 실패해도 창이 받는 중에 멈추지 않는다 — 알리고 끝낸다', async () => {
+    const { s, d } = await ready([0, 1])
+    side.saveBlob.mockImplementation(() => { throw new Error('disk') })
+    await d.start(false)
+    expect(d.job.status).toBe('idle')
+    expect(s.notice).toBe(t('SEW_SNAP_DL_FAILED'))
+    side.saveBlob.mockReset()
+    await d.start(false) // 다시 받을 수 있다
+    expect(saved()).toHaveLength(1)
+  })
+
   it('고른 것이 없으면 아무 일도 없다', async () => {
     const s = useSnapshotStore()
     await s.pickEquipment('A', { select: false })

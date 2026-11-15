@@ -47,12 +47,22 @@ function assertLocalHistoryServer(url) {
   if (!ok) throw new Error(`시험 이력은 이 PC(루프백)의 이력 서버에만 넣습니다 — 루프백이 아닌 주소: ${host ?? '(읽을 수 없는 주소)'} (server/.env 의 HTTP_WEB_SERVER_URL)`)
 }
 
+// 이력 서버에 닿지 못하면 무엇을 띄워야 하는지 알린다(fetch 의 "fetch failed" 만으로는 알 수 없다)
+async function post(fetch, target, init) {
+  try {
+    return await fetch(target, init)
+  } catch (e) {
+    const cause = e && e.cause ? e.cause.code || e.cause.message || String(e.cause) : e && e.name
+    throw new Error(`이력 서버에 연결하지 못했습니다 (${cause}) — tools/infra/prepare-hws.sh && docker compose -f infra/docker-compose.yml up -d, 확인 tools/infra/smoke-hws.sh`)
+  }
+}
+
 async function seedHistory(url, rows, { fetch = globalThis.fetch } = {}) {
   assertLocalHistoryServer(url)
   assertTestEquipment(rows.map((r) => r.eqpId))
   const target = `${String(url).replace(/\/+$/, '')}/ARS/AppendHistory`
   for (const r of rows) {
-    const res = await fetch(target, {
+    const res = await post(fetch, target, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

@@ -155,6 +155,7 @@ export const MESSAGES = {
   SEW_SNAP_DL_CLOSE: '닫기',
   SEW_SNAP_DL_DONE: '{n}장을 받았습니다.',
   SEW_SNAP_DL_CANCELED: '받기를 취소했습니다.',
+  SEW_SNAP_DL_FAILED: '받기를 끝내지 못했습니다. 장 수를 줄여 다시 해 보세요.',
   SEW_SNAP_DL_LIMIT: '한 번에 {max}장까지 받을 수 있습니다(고른 것 {n}장).',
   SEW_SNAP_DL_PARTIAL: '{n}장을 받아 {name} 으로 저장했습니다. 받지 못한 것 {failed}장:',
   SEW_SNAP_DL_NONE: '받지 못했습니다({failed}장). 저장한 파일이 없습니다.',

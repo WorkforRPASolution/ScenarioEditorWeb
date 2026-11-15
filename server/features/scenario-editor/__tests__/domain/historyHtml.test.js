@@ -58,6 +58,33 @@ describe('parseHistoryHtml — 조각', () => {
     expect(s.images.map((i) => i.kind)).toEqual(['ref', 'screen'])
   })
 
+  // 독립 검토 3: 설명에 <table·</th> 가 있으면 그 스텝이 통째로 사라졌다
+  it('설명 안의 <table>·</th>·</td> 도 글자다 — 스텝이 사라지지 않는다', () => {
+    const texts = ['press <table> cell', '머리 </th> 칸', '<Table bgColor=red><tbody>', '끝 </td></tr></tbody></table><br>']
+    const steps = parseHistoryHtml(page(texts.map((t, i) => piece(i + 1, t)).join('')))
+    expect(steps.map((s) => [s.no, s.text])).toEqual(texts.map((t, i) => [i + 1, t]))
+    for (const s of steps) expect(s.images.map((i) => i.kind)).toEqual(['ref', 'screen'])
+  })
+
+  // 독립 검토 2: 닫히지 않는 <img 가 많은 글 하나가 서버를 몇 초씩 멈췄다(40만 자 10초)
+  it('닫히지 않는 태그가 많은 글도 곧 끝난다(글 길이에 비례)', () => {
+    // 조각의 머리는 그대로이고 그 뒤로 닫는 꺾쇠가 하나도 없다
+    const hostile = (n) => `<body><table bgColor=#308cfc><tbody><tr><th><strong>1.x</strong>${'<img '.repeat(n)}`
+    const t0 = performance.now()
+    parseHistoryHtml(hostile(60000))
+    parseHistoryHtml(`${hostile(30000)}</th>${'<img src="'.repeat(30000)}`)
+    parseHistoryHtml(page(`${'<table '.repeat(100000)}${piece(1, 'a')}`))
+    parseHistoryHtml(page(piece(1, 'a'.repeat(200000) + '</strong>'.repeat(50000) + '</th>'.repeat(50000))))
+    expect(performance.now() - t0).toBeLessThan(1500)
+  })
+
+  it('큰 정상 응답(스텝 20개·그림 1MB 씩)을 읽는다', () => {
+    const big = 'iVBORw0KGgo' + 'A'.repeat(1024 * 1024)
+    const steps = parseHistoryHtml(page(Array.from({ length: 20 }, (_, i) => piece(i + 1, `스텝 ${i + 1}`, B64, big)).join('')))
+    expect(steps).toHaveLength(20)
+    expect(steps[19].images[1].src.length).toBe('data:image/png;base64,'.length + big.length)
+  })
+
   it('그림이 없거나(null·빈 값) base64 가 아니면 그 그림만 뺀다', () => {
     expect(parseHistoryHtml(page(piece(1, 'a', 'null', B64_2)))[0].images).toEqual([{ kind: 'screen', src: `data:image/png;base64,${B64_2}` }])
     expect(parseHistoryHtml(page(piece(1, 'a', B64, '')))[0].images).toEqual([{ kind: 'ref', src: `data:image/png;base64,${B64}` }])

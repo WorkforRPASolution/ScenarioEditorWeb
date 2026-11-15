@@ -100,7 +100,8 @@ async function main() {
       console.log('지움:', await clean(ctx))
       await withCassandra(async (client) => {
         console.log('스냅샷 지움:', await cleanSnapshots(client, SNAPSHOT_EQP, Date.now()))
-        console.log('이력 지움:', await cleanHistory(client))
+        // 이력 표가 없는 Cassandra 여도 reset 이 Mongo 를 비운 채 멈추지 않게 — 알리고 넘어간다
+        try { console.log('이력 지움:', await cleanHistory(client)) } catch (e) { console.log(`이력 정리 건너뜀: ${e.message}`) }
       }, { required: false })
     }
     if (cmd === 'reset') await seedBase(ctx)

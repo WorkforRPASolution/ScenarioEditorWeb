@@ -38,21 +38,27 @@ export const useSnapshotDownloadStore = defineStore('scenarioEditorSnapshotDownl
     const total = items.length
     job.value = { status: 'running', done: 0, total, failed: [], saved: null }
     const canceled = () => { job.value = idleJob(); snap.say(t('SEW_SNAP_DL_CANCELED')) }
-    const out = await runDownload({
-      eqpId, date, items, withCircle, signal: own.signal, reasonOf, drawCircle,
-      fetchBlob: async (fileName, signal) => (await api.snapshotImage(eqpId, fileName, signal)).data,
-      onProgress: (done) => { job.value = { ...job.value, done } }
-    })
-    if (out.canceled) { canceled(); return }
-    const packed = await packDownload({ eqpId, date, requested: total, files: out.files })
-    if (own.signal.aborted) { canceled(); return } // 묶는 사이에 취소했다
-    if (packed) saveBlob(packed.blob, packed.name)
-    if (!out.failed.length) {
+    try {
+      const out = await runDownload({
+        eqpId, date, items, withCircle, signal: own.signal, reasonOf, drawCircle,
+        fetchBlob: async (fileName, signal) => (await api.snapshotImage(eqpId, fileName, signal)).data,
+        onProgress: (done) => { job.value = { ...job.value, done } }
+      })
+      if (out.canceled) { canceled(); return }
+      const packed = await packDownload({ eqpId, date, requested: total, files: out.files })
+      if (own.signal.aborted) { canceled(); return } // 묶는 사이에 취소했다
+      if (packed) saveBlob(packed.blob, packed.name)
+      if (!out.failed.length) {
+        job.value = idleJob()
+        snap.say(t('SEW_SNAP_DL_DONE', { n: out.files.length }))
+        return
+      }
+      job.value = { status: 'done', done: total, total, failed: out.failed, saved: packed ? { name: packed.name, count: out.files.length } : null }
+    } catch {
+      // 묶거나 저장하다 실패했다(메모리 등) — 창이 "받는 중" 에 멈추지 않게 끝내고 알린다
       job.value = idleJob()
-      snap.say(t('SEW_SNAP_DL_DONE', { n: out.files.length }))
-      return
+      snap.say(t('SEW_SNAP_DL_FAILED'))
     }
-    job.value = { status: 'done', done: total, total, failed: out.failed, saved: packed ? { name: packed.name, count: out.files.length } : null }
   }
 
   function cancel() {

@@ -5,7 +5,20 @@ const require = createRequire(import.meta.url)
 const { createHistoryClient } = require('../clients/historyClient')
 
 const URL_OK = 'http://10.1.2.3:8080'
-const reply = (status, body, headers = {}) => ({ status, headers: { get: (k) => headers[k.toLowerCase()] ?? null }, text: async () => body })
+// 실제 Response — 본문은 흘려 읽는다(204·302 같은 본문 없는 상태는 null)
+const reply = (status, body, headers = {}) => new Response([204, 205, 304].includes(status) ? null : body, { status, headers })
+// 조각을 하나씩 내는 본문. pulled = 읽어 간 조각 수
+function chunked(chunks) {
+  const state = { pulled: 0, canceled: false }
+  const stream = new ReadableStream({
+    pull(controller) {
+      if (state.pulled >= chunks.length) { controller.close(); return }
+      controller.enqueue(new TextEncoder().encode(chunks[state.pulled++]))
+    },
+    cancel() { state.canceled = true }
+  }, { highWaterMark: 0 })
+  return { stream, state }
+}
 function make({ env = { HTTP_WEB_SERVER_URL: URL_OK }, respond = () => reply(200, '<html></html>'), ...rest } = {}) {
   const calls = []
   const logs = []
@@ -67,7 +80,8 @@ describe('historyClient.fetchHtml', () => {
   })
 
   it('본문을 읽다 끊겨도 504 HISTORY_TIMEOUT', async () => {
-    const { client } = make({ respond: () => ({ ...reply(200, ''), text: async () => { throw new TypeError('terminated') } }) })
+    const broken = new ReadableStream({ pull(controller) { controller.error(new TypeError('terminated')) } })
+    const { client } = make({ respond: () => new Response(broken, { status: 200 }) })
     expect((await caught(client.fetchHtml('E1', '100000'))).code).toBe('HISTORY_TIMEOUT')
   })
 
@@ -98,14 +112,39 @@ describe('historyClient.fetchHtml', () => {
   })
 
   it('본문이 한도를 넘으면 502 HISTORY_UNREADABLE — 머리글로 알 수 있으면 본문을 읽지 않는다', async () => {
-    let read = 0
-    const big = make({ maxBytes: 10, respond: () => ({ ...reply(200, 'x', { 'content-length': '11' }), text: async () => { read++; return 'x'.repeat(11) } }) })
+    const withHeader = chunked(['x'.repeat(11)])
+    const big = make({ maxBytes: 10, respond: () => new Response(withHeader.stream, { status: 200, headers: { 'content-length': '11' } }) })
     expect((await caught(big.client.fetchHtml('E1', '100000'))).code).toBe('HISTORY_UNREADABLE')
-    expect(read).toBe(0)
-    const noHeader = make({ maxBytes: 10, respond: () => reply(200, 'x'.repeat(11)) })
-    expect((await caught(noHeader.client.fetchHtml('E1', '100000'))).code).toBe('HISTORY_UNREADABLE')
+    expect(withHeader.state.pulled).toBe(0)
     const fits = make({ maxBytes: 10, respond: () => reply(200, 'x'.repeat(10), { 'content-length': '10' }) })
     expect(await fits.client.fetchHtml('E1', '100000')).toBe('x'.repeat(10))
+  })
+
+  // 독립 검토 1: 길이 머리글이 없으면(chunked) 다 받은 뒤에야 한도를 봤다 — 서버 메모리가 묶이지 않았다
+  it('길이 머리글이 없는 본문은 한도를 넘는 순간 읽기를 멈춘다(끝까지 받지 않는다)', async () => {
+    const body = chunked(Array.from({ length: 100 }, () => 'x'.repeat(8)))
+    const { client } = make({ maxBytes: 20, respond: () => new Response(body.stream, { status: 200 }) })
+    const e = await caught(client.fetchHtml('E1', '100000'))
+    expect([e.statusCode, e.code]).toEqual([502, 'HISTORY_UNREADABLE'])
+    expect(body.state.pulled).toBeLessThan(10)
+    expect(body.state.canceled).toBe(true)
+  })
+
+  it('한도는 바이트로 센다. 조각 경계에 걸친 한글도 깨지지 않는다', async () => {
+    const bytes = new TextEncoder().encode('가나다') // 9바이트
+    const split = new ReadableStream({ start(c) { c.enqueue(bytes.slice(0, 4)); c.enqueue(bytes.slice(4)); c.close() } })
+    expect(await make({ maxBytes: 9, respond: () => new Response(split, { status: 200 }) }).client.fetchHtml('E1', '100000')).toBe('가나다')
+    const over = make({ maxBytes: 8, respond: () => reply(200, '가나다') })
+    expect((await caught(over.client.fetchHtml('E1', '100000'))).code).toBe('HISTORY_UNREADABLE')
+  })
+
+  // 독립 검토 6: 이력 서버가 다른 주소로 돌려보내도 따라가지 않는다
+  it('리다이렉트를 따라가지 않는다 — 3xx 는 502 HISTORY_UNREADABLE', async () => {
+    const { client, calls } = make({ respond: () => reply(302, '', { location: 'http://other.example/secret' }) })
+    const e = await caught(client.fetchHtml('E1', '100000'))
+    expect([e.statusCode, e.code]).toEqual([502, 'HISTORY_UNREADABLE'])
+    expect(calls).toHaveLength(1)
+    expect(calls[0].init.redirect).toBe('manual')
   })
 
   it('오류 문구에 주소를 싣지 않는다', async () => {

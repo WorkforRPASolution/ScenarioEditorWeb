@@ -83,6 +83,11 @@ describe('seedHistory — AppendHistory 로 넣는다', () => {
     expect(f.calls).toHaveLength(0)
   })
 
+  it('이력 서버에 닿지 못하면 무엇을 띄워야 하는지 알린다', async () => {
+    const down = async () => { throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED' } }) }
+    await expect(seedHistory(URL_OK, planHistory(NOW), { fetch: down })).rejects.toThrow(/이력 서버.*ECONNREFUSED.*prepare-hws/s)
+  })
+
   it('이력 서버가 실패로 답하면 던진다', async () => {
     const bad = fakeFetch(() => ({ status: 200, body: '(false,boom)' }))
     await expect(seedHistory(URL_OK, planHistory(NOW), { fetch: bad.fetch })).rejects.toThrow(/AppendHistory/)

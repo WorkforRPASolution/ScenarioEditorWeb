@@ -4,7 +4,8 @@
 // - 주소가 비어 있음 503 HISTORY_UNSET, 주소 꼴이 틀리거나 연결하지 못함 503 HISTORY_DOWN
 // - 시간 초과·응답(본문) 도중 끊김 504 HISTORY_TIMEOUT
 // - 500 "There is no data"(보관 15일이 지났거나 기록되지 않음) 404 HISTORY_NOT_FOUND
-// - 그 밖의 응답·한도를 넘는 본문 502 HISTORY_UNREADABLE
+// - 그 밖의 응답(리다이렉트 포함 — 따라가지 않는다)·한도를 넘는 본문 502 HISTORY_UNREADABLE
+// 본문은 흘려 읽으며 바이트를 세고, 한도를 넘는 순간 읽기를 멈춘다 — 길이 머리글이 없는(chunked) 큰 응답이 서버 메모리를 다 쓰지 않게.
 // 사용자 문구에는 주소·서버가 준 글을 싣지 않는다 — 로그와 오류의 upstream { status, text } 에만 남긴다.
 const { seError } = require('../errors')
 
@@ -25,6 +26,25 @@ function createHistoryClient({ env = process.env, fetch = globalThis.fetch, time
   const down = (status, text) => failure(503, 'HISTORY_DOWN', '이력 서버에 연결하지 못했습니다', status, text)
   const unreadable = (status, text) => failure(502, 'HISTORY_UNREADABLE', '이력 서버의 응답을 읽지 못했습니다', status, text)
 
+  // 본문을 조각마다 읽어 UTF-8 로 풀며 바이트를 센다. 한도를 넘으면 남은 본문을 버리고 던진다.
+  async function readCapped(res, status) {
+    if (!res.body) return ''
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let bytes = 0
+    let out = ''
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) return out + decoder.decode()
+      bytes += value.byteLength
+      if (bytes > maxBytes) {
+        reader.cancel().catch(() => {})
+        throw unreadable(status, `본문이 한도 ${maxBytes}바이트를 넘습니다`)
+      }
+      out += decoder.decode(value, { stream: true })
+    }
+  }
+
   // 주소는 부를 때마다 읽는다(시험이 고장 주입 중계로 바꿨다가 되돌린다)
   async function fetchHtml(eqpId, txn) {
     const base = typeof env.HTTP_WEB_SERVER_URL === 'string' ? env.HTTP_WEB_SERVER_URL.trim() : ''
@@ -33,21 +53,21 @@ function createHistoryClient({ env = process.env, fetch = globalThis.fetch, time
     let status = 0
     let text
     try {
-      const res = await fetch(`${base.replace(/\/+$/, '')}/ARS/History/${enc(eqpId)}/${enc(txn)}`, { signal: AbortSignal.timeout(timeoutMs) })
+      const res = await fetch(`${base.replace(/\/+$/, '')}/ARS/History/${enc(eqpId)}/${enc(txn)}`, { redirect: 'manual', signal: AbortSignal.timeout(timeoutMs) })
       status = res.status
       const length = Number(res.headers.get('content-length'))
-      if (Number.isFinite(length) && length > maxBytes) throw unreadable(status, `본문 ${length}바이트 — 한도 ${maxBytes}`)
-      text = await res.text()
+      if (Number.isFinite(length) && length > maxBytes) {
+        if (res.body) res.body.cancel().catch(() => {})
+        throw unreadable(status, `본문 ${length}바이트 — 한도 ${maxBytes}`)
+      }
+      text = await readCapped(res, status)
     } catch (e) {
       if (e && e.code === 'HISTORY_UNREADABLE') throw e
       const cause = e && e.cause ? ` (${e.cause.code || e.cause.message || e.cause})` : ''
       if (e && e.cause && NOT_SENT_CODES.has(e.cause.code)) throw down(status, `${e}${cause}`)
       throw failure(504, 'HISTORY_TIMEOUT', '이력 서버가 응답하지 않습니다', status, `${e}${cause}`)
     }
-    if (status === 200) {
-      if (text.length > maxBytes) throw unreadable(status, `본문 ${text.length}자 — 한도 ${maxBytes}`)
-      return text
-    }
+    if (status === 200) return text
     if (status === 500 && text.includes(NO_DATA)) throw seError(404, 'HISTORY_NOT_FOUND', '이력이 없습니다. 15일이 지났거나 기록되지 않았습니다')
     throw unreadable(status, text)
   }

@@ -160,8 +160,9 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
   const sameRange = (d) => ({ latest: d.latest ?? null, today: d.today ?? null, oldest: d.oldest ?? null })
 
   // ── 목록 ──
-  // seq = 이 요청의 번호(마지막 요청만 반영). keep = 새 목록에 있으면 지킬 선택, keepItems = 받는 동안 앞 목록을 그대로 둔다(새로 고침).
-  async function loadList(seq, { selectLast = false, keep = null, keepItems = false } = {}) {
+  // seq = 이 요청의 번호(마지막 요청만 반영). keepItems = 받는 동안 앞 목록을 그대로 둔다(새로 고침).
+  // 받은 뒤에는 **지금** 고른 줄을 새 목록과 맞춘다(받는 사이에 고른 것 포함) — 뜬 줄이 없어졌으면 비우고, 있으면 고른 줄 가운데 없는 것만 뺀다.
+  async function loadList(seq, { selectLast = false, keepItems = false } = {}) {
     const id = eqpId.value
     const day = date.value
     list.value = keepItems ? { ...list.value, status: 'loading', error: '' } : emptyList('loading')
@@ -175,8 +176,9 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
         return
       }
       list.value = { status: 'ready', items: Array.isArray(r.items) ? r.items : [], truncated: !!r.truncated, memoFailed: !!r.memoFailed, error: '' }
-      if (keep) {
-        if (!list.value.items.some((i) => i.fileName === keep)) clearSelection()
+      const current = selectedName.value
+      if (current) {
+        if (!list.value.items.some((i) => i.fileName === current)) clearSelection()
         else {
           // 지킨 줄이 거른 목록에 없게 됐다('메모' 거르기인데 그 사이 메모가 지워짐) — 고른 줄이 목록에서 사라지지 않게
           if (position.value < 0) filter.value = 'all'
@@ -249,7 +251,7 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
         const day = clampDate(date.value, minDate.value, maxDate.value) // 날이 지나 보관 기간 밖이 됐을 수 있다
         if (day !== date.value) { date.value = day; clearSelection(); sameDay = false }
       }
-      await loadList(seq, { keep: sameDay ? selectedName.value : null, keepItems: sameDay })
+      await loadList(seq, { keepItems: sameDay })
     } catch (e) {
       if (seq !== listSeq) return
       clearSelection()
@@ -295,6 +297,7 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
     picked.value = next
     if (name === selectedName.value) {
       const to = nearestName(shown.value, next, name)
+      if (!to) { clearSelection(); return } // 남은 고른 줄이 거른 목록에 없다
       anchor = to
       show(to)
     } else if (name === anchor) {

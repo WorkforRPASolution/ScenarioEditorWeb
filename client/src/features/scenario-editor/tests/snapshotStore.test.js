@@ -1008,6 +1008,30 @@ describe('snapshotStore', () => {
       expect([picked(s), s.selectedName]).toEqual([[], null])
     })
 
+    // 독립 검토 7: 고른 것 없이 새로 고치는 사이에 고른 줄이 새 목록에 없으면, 없는 줄을 고른 채로 남았다
+    it('새로 고치는 사이에 고른 줄도 새 목록과 맞춘다 — 없어졌으면 비우고, 있으면 남긴다', async () => {
+      const s = await ready()
+      const gate = defer()
+      api.snapshots.mockImplementationOnce(() => gate.promise)
+      const run = s.refresh()
+      await flushPromises()
+      s.select(name(2))
+      s.togglePick(name(5)) // 뜬 줄 = 5
+      gate.resolve({ data: { data: listOf('A', '2026-11-11', ITEMS.filter((_, i) => i !== 5)) } })
+      await run
+      expect([picked(s), s.selectedName, s.image.status]).toEqual([[], null, 'idle'])
+      // 남아 있는 줄을 골랐으면 그대로다
+      const again = defer()
+      api.snapshots.mockImplementationOnce(() => again.promise)
+      const run2 = s.refresh()
+      await flushPromises()
+      s.select(name(1))
+      s.togglePick(name(3))
+      again.resolve({ data: { data: listOf('A', '2026-11-11', ITEMS.filter((_, i) => i !== 1)) } })
+      await run2
+      expect([picked(s), s.selectedName]).toEqual([names(3), name(3)])
+    })
+
     it('날짜·설비를 바꾸면 비운다', async () => {
       const s = await ready()
       s.select(name(0))
