@@ -623,3 +623,31 @@ describe('메모 (P3-C)', () => {
   })
 })
 
+describe('이력 (P3-D)', () => {
+  let calls
+  beforeEach(() => {
+    calls = []
+    fake.history = { get: async (u, eqpId, txn) => { calls.push([u.singleid, eqpId, txn]); return { eqpId, txn, steps: [{ no: 1, text: '확인', images: [] }] } } }
+  })
+
+  it('GET /history/:eqpId/:txn — 설비는 풀어서, txn 은 글자 그대로 넘긴다', async () => {
+    const res = await fetch(`${base}/history/${encodeURIComponent('E 1')}/1763254800000`)
+    expect(res.status).toBe(200)
+    expect((await res.json()).data).toEqual({ eqpId: 'E 1', txn: '1763254800000', steps: [{ no: 1, text: '확인', images: [] }] })
+    expect(calls).toEqual([['sew_multi', 'E 1', '1763254800000']])
+  })
+
+  it('서비스 오류는 status·code 그대로', async () => {
+    const { seError } = require('../errors')
+    fake.history.get = async () => { throw seError(404, 'HISTORY_NOT_FOUND', '이력이 없습니다') }
+    const res = await fetch(`${base}/history/E1/100000`)
+    expect([res.status, (await res.json()).code]).toEqual([404, 'HISTORY_NOT_FOUND'])
+  })
+
+  it('WRITE 권한이 없어도 보고, 미등록 사용자는 403 USER_NOT_REGISTERED', async () => {
+    expect((await fetch(`${base}/history/E1/100000`, { headers: { 'X-SE-User': 'sew_reader' } })).status).toBe(200)
+    const res = await fetch(`${base}/history/E1/100000`, { headers: { 'X-SE-User': 'sew_none' } })
+    expect([res.status, (await res.json()).code]).toEqual([403, 'USER_NOT_REGISTERED'])
+    expect(calls.map((c) => c[0])).toEqual(['sew_reader'])
+  })
+})

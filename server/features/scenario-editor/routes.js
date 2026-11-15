@@ -44,5 +44,7 @@ router.get('/snapshots/:eqpId/:fileName/image', asyncHandler(c.snapshotImage))
 router.put('/snapshots/:eqpId/:fileName/memo', c.requireMemoWrite, asyncHandler(c.saveMemo))
 router.delete('/snapshots/:eqpId/:fileName/memo', c.requireMemoWrite, asyncHandler(c.removeMemo))
 router.get('/memos', asyncHandler(c.memoList))
+// 자동 복구 이력(P3-D) — 이력 서버(HttpWebServer)의 HTML 에서 뽑은 스텝·설명·그림. 태그 스냅샷의 txn(99999 이상)으로 부른다.
+router.get('/history/:eqpId/:txn', asyncHandler(c.history))
 
 module.exports = router

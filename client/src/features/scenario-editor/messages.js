@@ -38,6 +38,11 @@ export const MESSAGES = {
   SEW_ERR_MEMO_TOO_LONG: '메모는 128자까지 쓸 수 있습니다.',
   SEW_ERR_MEMO_EMPTY: '메모가 비어 있습니다.',
   SEW_ERR_MEMO_BLOCKED: '이 스냅샷에 읽을 수 없는 메모 문서가 있어 메모를 쓸 수 없습니다. 관리자에게 알리세요.',
+  SEW_ERR_HISTORY_NOT_FOUND: '이력이 없습니다. 15일이 지났거나 기록되지 않았습니다.',
+  SEW_ERR_HISTORY_UNSET: '이력 서버 주소가 설정되지 않았습니다.',
+  SEW_ERR_HISTORY_DOWN: '이력 서버에 연결하지 못했습니다.',
+  SEW_ERR_HISTORY_TIMEOUT: '이력 서버가 응답하지 않습니다. 잠시 뒤 다시 해 보세요.',
+  SEW_ERR_HISTORY_UNREADABLE: '이력 서버의 응답을 읽지 못했습니다.',
 
   SEW_NOTE_CONDITION_UNKNOWN: '해석할 수 없는 조건 종류입니다(Variable 등). 원래 값을 그대로 둡니다.',
   SEW_NOTE_ACTION_INVALID: '알 수 없는 동작 번호입니다. 에이전트가 이 시나리오를 거부할 수 있습니다.',

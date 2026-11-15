@@ -259,6 +259,11 @@ async function memoList(req, res) {
   ok(res, await getDeps().memos.list(req.seUser))
 }
 
+// ── 자동 복구 이력 (P3-D) ── 설비 범위·txn 검사는 서비스가 본다. 이력 서버의 HTML 이 아니라 뽑은 스텝만 나간다.
+async function history(req, res) {
+  ok(res, await getDeps().history.get(req.seUser, req.params.eqpId, req.params.txn))
+}
+
 // 남은 보관 기간만큼만 캐시한다 — 파일 이름이 곧 내용이라 주소가 바뀌지 않고, 보관이 끝난 그림을 브라우저가 계속 보이지 않게 한다.
 // 머리글은 그림을 받은 뒤에 붙인다(오류 JSON 에 PNG·캐시 머리글이 남지 않게).
 async function snapshotImage(req, res) {
@@ -267,4 +272,4 @@ async function snapshotImage(req, res) {
   res.send(png)
 }
 
-module.exports = { saveMemo, removeMemo, memoList, requireMemoWrite, equipment, snapshotPresence, snapshotDays, snapshotList, snapshotImage, links, reviewScenario, savePerformance, sameName, searchUsers, nameRule, setEnabled, removeScenario, deploy, deployVerify, deployFinish, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, counts, versions, open, dataCheck, image }
+module.exports = { history, saveMemo, removeMemo, memoList, requireMemoWrite, equipment, snapshotPresence, snapshotDays, snapshotList, snapshotImage, links, reviewScenario, savePerformance, sameName, searchUsers, nameRule, setEnabled, removeScenario, deploy, deployVerify, deployFinish, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, counts, versions, open, dataCheck, image }

@@ -64,6 +64,10 @@ function build(env = process.env) {
   out.snapshotRepo = createSnapshotRepository({ env, driver: require('cassandra-driver'), log })
   out.memos = createMemoService({ repo, scopes, now, env, log })
   out.snapshots = createSnapshotService({ snapshotRepo: out.snapshotRepo, scopes, now, env, log, memos: out.memos })
+  // 이력(P3-D) — 이력 서버(HttpWebServer) 주소는 부를 때 읽는다. 비어 있으면 이력 보기만 503 이다.
+  const { createHistoryClient } = require('./clients/historyClient')
+  const { createHistoryService } = require('./service/historyService')
+  out.history = createHistoryService({ client: createHistoryClient({ env, log }), scopes })
   return out
 }
 

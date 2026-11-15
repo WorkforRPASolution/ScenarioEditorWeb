@@ -26,4 +26,4 @@ function parseSnapshotName(fileName) {
   return { fileName, ms, kind: 'click', tag: null, x, y: Number(m[3]), txn: null, hasHistory: false }
 }
 
-module.exports = { isSnapshotName, parseSnapshotName }
+module.exports = { isSnapshotName, parseSnapshotName, HISTORY_MIN_TXN }
