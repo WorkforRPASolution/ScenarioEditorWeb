@@ -620,6 +620,25 @@ test.describe('스냅샷에서 스텝 만들기', () => {
     await expect(newBtn).toBeDisabled()
     await expect(newBtn).toHaveAttribute('title', /시나리오를 열거나 새로 만들면/)
 
+    // ── 가운데가 좁아도 [새 스텝] 이 잘리지 않는다: 여러 줄을 골라 [받기 (n)] 가 길어지고 스냅샷 패널을 넓힌 채 ──
+    await snapRow(page, '00:30:10').click({ modifiers: ['Shift'] })
+    await expect(page.getByTestId('se-snap-download')).toContainText('받기 (')
+    const gutter = await page.getByTestId('se-gutter-l').boundingBox()
+    await page.mouse.move(gutter.x + gutter.width / 2, gutter.y + 120)
+    await page.mouse.down()
+    await page.mouse.move(gutter.x + gutter.width / 2 + 210, gutter.y + 120, { steps: 5 })
+    await page.mouse.up()
+    const fits = async () => {
+      const v = await page.getByTestId('se-snap-viewer').boundingBox()
+      const b = await newBtn.boundingBox()
+      return b.x >= v.x && b.x + b.width <= v.x + v.width + 0.5 && b.y >= v.y && b.y + b.height <= v.y + v.height + 0.5
+    }
+    await expect.poll(fits).toBe(true)
+    await expect(page.getByTestId('se-snap-image')).toBeVisible() // 줄이 늘어도 그림 자리는 남는다
+    await page.getByTestId('se-gutter-l').dblclick() // 폭을 기본값으로
+    await snapRow(page, '09:13:02').click()
+    await expect(page.getByTestId('se-snap-download')).toHaveText('받기 ▾')
+
     // ── 스텝이 없는 새 시나리오 ──
     await page.getByTestId('se-new').click()
     const dlg = page.getByTestId('se-new-dialog')

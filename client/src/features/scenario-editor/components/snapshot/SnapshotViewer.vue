@@ -164,7 +164,8 @@ defineExpose({ onLoad, fit })
       </template>
       <button v-else type="button" :class="btn" data-testid="se-snap-memo-write" @click="openMemo('edit')">{{ t('SEW_SNAP_MEMO_WRITE') }}</button>
     </div>
-    <div class="h-10 px-3 flex items-center gap-1.5 border-t border-gray-200 dark:border-dark-border shrink-0">
+    <!-- 이동 줄: 가운데가 좁으면(스냅샷 패널을 넓힘·[받기 (n)] 이 길어짐) 줄을 바꾼다 — 한 줄로 두면 맨 끝의 [새 스텝] 부터 잘려 보이지 않는다 -->
+    <div class="min-h-10 px-3 py-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 border-t border-gray-200 dark:border-dark-border shrink-0" data-testid="se-snap-bar">
       <button type="button" :class="btn" :disabled="atFirst" data-testid="se-snap-prev" @click="snap.move(-1)">{{ t('SEW_SNAP_PREV') }}</button>
       <button type="button" :class="btn" :disabled="atLast" data-testid="se-snap-next" @click="snap.move(1)">{{ t('SEW_SNAP_NEXT') }}</button>
       <span class="w-2" />
