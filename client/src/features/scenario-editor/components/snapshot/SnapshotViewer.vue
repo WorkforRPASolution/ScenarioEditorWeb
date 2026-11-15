@@ -1,19 +1,23 @@
 <script setup>
-// 큰 화면 스냅샷 모드(P3 설계 §4.3) — 고른 스냅샷의 그림·클릭 점·정보 줄, 확대·이동·맞춤·1:1, 이전·다음·태그 이동.
+// 큰 화면 스냅샷 모드(P3 설계 §4.3) — 고른 스냅샷의 그림·클릭 점·정보 줄, 확대·이동·맞춤·1:1, 이전·다음·태그 이동·메모 이동, 메모 줄.
 // 그림은 저장소가 받은 것(object URL)을 띄운다. 번호·클릭 점은 그림과 같은 스냅샷의 것이다 —
 // 고른 것이 바뀌면 그림 크기를 지워, 새 그림이 불러와질 때까지 점·크기를 그리지 않는다(DC-034).
-// 메모 줄·[이력 보기]·[받기]·[새 스텝] 은 P3-C~E 에서 더한다.
+// 메모 줄(P3-C): 메모가 있으면 글·작성자·[고치기]·[지우기], 없으면 [메모 쓰기]. 메모 창은 창을 연 스냅샷(파일 이름)에 쓴다.
+// [이력 보기]·[받기]·[새 스텝] 은 P3-D~E 에서 더한다.
 import { ref, computed, watch } from 'vue'
 import { useSnapshotStore } from '../../stores/snapshotStore'
+import { useEditorStore } from '../../stores/editorStore'
 import { usePanZoom } from '../../composables/usePanZoom'
 import { clickPoint } from '../../editor/snapshotList'
 import { t } from '../../messages'
 import ViewerModeTabs from './ViewerModeTabs.vue'
+import MemoDialog from './MemoDialog.vue'
 import '../../pills.css'
 import './snapshot.css'
 
 defineOptions({ name: 'SnapshotViewer' })
 const snap = useSnapshotStore()
+const editor = useEditorStore()
 const box = ref(null)
 const natural = ref(null)
 const broken = ref(false) // 받았는데 브라우저가 그림으로 읽지 못했다
@@ -33,6 +37,19 @@ const dotStyle = computed(() => point.value && {
   marginLeft: `${-DOT / 2 / view.scale}px`, marginTop: `${-DOT / 2 / view.scale}px`, borderWidth: `${2 / view.scale}px`
 })
 const error = computed(() => (snap.image.status === 'error' ? snap.image.error : broken.value ? t('SEW_SNAP_IMAGE_FAILED') : ''))
+
+// ── 메모 ──
+const memo = computed(() => item.value?.memo ?? null)
+const memoMeta = computed(() => {
+  const m = memo.value
+  if (!m) return ''
+  const base = { name: m.authorName || t('SEW_SNAP_MEMO_SOMEONE'), at: m.writtenAt ?? '-' }
+  return m.editedBy ? t('SEW_SNAP_MEMO_META_EDITED', { ...base, by: m.editedBy, editedAt: m.editedAt ?? '-' }) : t('SEW_SNAP_MEMO_META', base)
+})
+const memoDialog = ref({ open: false, fileName: '', mode: 'edit' })
+function openMemo(mode) {
+  if (item.value) memoDialog.value = { open: true, fileName: item.value.fileName, mode }
+}
 
 const count = computed(() => snap.shown.length)
 const atFirst = computed(() => !count.value || snap.position === 0)
@@ -73,13 +90,29 @@ defineExpose({ onLoad, fit })
         <div v-if="dotStyle" class="absolute rounded-full bg-red-600 border-solid border-white pointer-events-none" :style="dotStyle" :title="t('SEW_SNAP_DOT')" data-testid="se-snap-dot" />
       </div>
     </div>
+    <div v-if="item" class="min-h-9 px-3 py-1 flex items-center gap-2 border-t border-gray-200 dark:border-dark-border text-xs shrink-0" :class="memo ? 'se-snap-memo-bar' : ''" data-testid="se-snap-memo">
+      <template v-if="memo">
+        <span class="se-snap-memo-ic shrink-0" aria-hidden="true">✎</span>
+        <span class="min-w-0 truncate text-gray-800 dark:text-gray-100" :title="memo.text" data-testid="se-snap-memo-text">{{ memo.text }}</span>
+        <span class="shrink-0 text-gray-500 dark:text-gray-400" :title="memoMeta" data-testid="se-snap-memo-author">— {{ memo.authorName || t('SEW_SNAP_MEMO_SOMEONE') }}</span>
+        <span class="ml-auto flex gap-1.5 shrink-0">
+          <button type="button" :class="btn" data-testid="se-snap-memo-edit" @click="openMemo('edit')">{{ t('SEW_SNAP_MEMO_EDIT') }}</button>
+          <button type="button" :class="btn" data-testid="se-snap-memo-remove" @click="openMemo('delete')">{{ t('SEW_SNAP_MEMO_REMOVE') }}</button>
+        </span>
+      </template>
+      <button v-else type="button" :class="btn" data-testid="se-snap-memo-write" @click="openMemo('edit')">{{ t('SEW_SNAP_MEMO_WRITE') }}</button>
+    </div>
     <div class="h-10 px-3 flex items-center gap-1.5 border-t border-gray-200 dark:border-dark-border shrink-0">
       <button type="button" :class="btn" :disabled="atFirst" data-testid="se-snap-prev" @click="snap.move(-1)">{{ t('SEW_SNAP_PREV') }}</button>
       <button type="button" :class="btn" :disabled="atLast" data-testid="se-snap-next" @click="snap.move(1)">{{ t('SEW_SNAP_NEXT') }}</button>
       <span class="w-2" />
       <button type="button" :class="btn" :disabled="noList" data-testid="se-snap-tag-prev" @click="snap.moveTag(-1)">{{ t('SEW_SNAP_TAG_PREV') }}</button>
       <button type="button" :class="btn" :disabled="noList" data-testid="se-snap-tag-next" @click="snap.moveTag(1)">{{ t('SEW_SNAP_TAG_NEXT') }}</button>
+      <span class="w-2" />
+      <button type="button" :class="btn" :disabled="noList" data-testid="se-snap-memo-prev" @click="snap.moveMemo(-1)">{{ t('SEW_SNAP_MEMO_PREV') }}</button>
+      <button type="button" :class="btn" :disabled="noList" data-testid="se-snap-memo-next" @click="snap.moveMemo(1)">{{ t('SEW_SNAP_MEMO_NEXT') }}</button>
       <span v-if="snap.notice" class="ml-3 text-xs text-amber-700 dark:text-amber-300 truncate" role="status" data-testid="se-snap-notice">{{ snap.notice }}</span>
     </div>
+    <MemoDialog v-model="memoDialog.open" :file-name="memoDialog.fileName" :mode="memoDialog.mode" :me="editor.me?.singleid ?? ''" />
   </div>
 </template>

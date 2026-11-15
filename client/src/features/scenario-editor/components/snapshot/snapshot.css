@@ -10,6 +10,8 @@
 .se-snap-tag-stop { background: #e5e7eb; color: #374151; }
 .se-snap-tag-fail { background: #fee2e2; color: #991b1b; }
 .se-snap-tag-skip { background: #fef3c7; color: #92400e; }
+.se-snap-memo-ic { color: #b45309; font-size: 12px; cursor: default; }
+.se-snap-memo-bar { background: #fffbeb; }
 .se-snap-list:focus-visible { box-shadow: inset 0 0 0 2px #93c5fd; }
 
 .se-snap-eqp-list { position: absolute; left: 0; right: 0; top: calc(100% + 2px); z-index: 30; max-height: 280px; overflow-y: auto; background: #fff; border: 1px solid #d1d5db; border-radius: 6px; box-shadow: 0 8px 20px rgba(0, 0, 0, .15); }
@@ -47,6 +49,8 @@
 .dark .se-snap-tag-stop { background: #374151; color: #d1d5db; }
 .dark .se-snap-tag-fail { background: rgba(153, 27, 27, .35); color: #fca5a5; }
 .dark .se-snap-tag-skip { background: rgba(146, 64, 14, .35); color: #fcd34d; }
+.dark .se-snap-memo-ic { color: #fcd34d; }
+.dark .se-snap-memo-bar { background: rgba(146, 64, 14, .2); }
 .dark .se-snap-eqp-list, .dark .se-snap-cal { background: #1e293b; border-color: #475569; }
 .dark .se-snap-eqp-list button:hover, .dark .se-snap-eqp-list button.first, .dark .se-snap-cal-grid button:enabled:hover { background: #334155; }
 .dark .se-snap-eqp-list button.first { box-shadow: inset 3px 0 0 #60a5fa; }

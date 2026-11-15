@@ -1,12 +1,13 @@
 // 큰 화면 스냅샷 모드 — 그림·클릭 점·정보 줄·이동·확대 (P3 설계 §4.3)
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
+import { mount, flushPromises, enableAutoUnmount, DOMWrapper } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 
 const api = vi.hoisted(() => ({ equipment: vi.fn(), snapshotDays: vi.fn(), snapshots: vi.fn(), snapshotImage: vi.fn() }))
 vi.mock('../api', async (importOriginal) => ({ ...(await importOriginal()), scenarioEditorApi: api }))
 import SnapshotViewer from '../components/snapshot/SnapshotViewer.vue'
 import { useSnapshotStore } from '../stores/snapshotStore'
+import { useEditorStore } from '../stores/editorStore'
 import { MESSAGES } from '../messages'
 
 enableAutoUnmount(afterEach)
@@ -226,8 +227,75 @@ describe('SnapshotViewer', () => {
     it('목록이 비어 있으면 이동 버튼이 모두 꺼진다', async () => {
       const s = useSnapshotStore()
       const w = mount(SnapshotViewer)
-      for (const id of ['se-snap-prev', 'se-snap-next', 'se-snap-tag-prev', 'se-snap-tag-next']) expect(tid(w, id).attributes('disabled'), id).toBeDefined()
+      for (const id of ['se-snap-prev', 'se-snap-next', 'se-snap-tag-prev', 'se-snap-tag-next', 'se-snap-memo-prev', 'se-snap-memo-next']) expect(tid(w, id).attributes('disabled'), id).toBeDefined()
       expect(s.selectedName).toBeNull()
+    })
+  })
+
+  describe('메모 줄·메모 이동 (P3-C)', () => {
+    const memo = (text, author = 'kim', authorName = '김철수', more = {}) => ({ text, author, authorName, writtenAt: '2026-11-11 09:14', editedBy: null, editedAt: null, ...more })
+    // 0 메모 없음 · 1 내 메모 · 2 태그 · 3 남의 메모(웹에서 고침) · 4 메모 없음
+    const WITH = ITEMS.map((it, i) => (i === 1 ? { ...it, memo: memo('내 메모') } : i === 3 ? { ...it, memo: memo('남의 메모', 'lee', '이영희', { editedBy: 'park', editedAt: '2026-11-11 10:02' }) } : it))
+    const body = () => new DOMWrapper(document.body)
+    const mountMemo = async () => {
+      api.snapshots.mockImplementation((eqpId, date) => ok({ eqpId, date, timeDiff: 0, items: WITH, skipped: 0, truncated: false }))
+      useEditorStore().me = { singleid: 'kim' }
+      return mountSized()
+    }
+
+    it('고른 스냅샷이 없으면 메모 줄이 없다. 메모가 없으면 [메모 쓰기] 만', async () => {
+      const { w, s } = await mountMemo()
+      expect(tid(w, 'se-snap-memo').exists()).toBe(false)
+      await show(w, s, 0)
+      expect(tid(w, 'se-snap-memo-write').exists()).toBe(true)
+      expect(tid(w, 'se-snap-memo-text').exists()).toBe(false)
+      expect(tid(w, 'se-snap-memo-edit').exists()).toBe(false)
+    })
+    it('메모가 있으면 글과 작성자 이름, [고치기]·[지우기] — 쓴 때와 고친 사람은 도움말에', async () => {
+      const { w, s } = await mountMemo()
+      await show(w, s, 1)
+      expect(tid(w, 'se-snap-memo-text').text()).toBe('내 메모')
+      expect(tid(w, 'se-snap-memo-author').text()).toBe('— 김철수')
+      expect(tid(w, 'se-snap-memo-author').attributes('title')).toBe('김철수 · 2026-11-11 09:14')
+      expect(tid(w, 'se-snap-memo-write').exists()).toBe(false)
+      expect(tid(w, 'se-snap-memo-edit').exists()).toBe(true)
+      expect(tid(w, 'se-snap-memo-remove').exists()).toBe(true)
+      await show(w, s, 3)
+      expect(tid(w, 'se-snap-memo-author').text()).toBe('— 이영희')
+      expect(tid(w, 'se-snap-memo-author').attributes('title')).toBe('이영희 · 2026-11-11 09:14 (고침: park 2026-11-11 10:02)')
+    })
+    it('[메모 쓰기]·[고치기] 는 메모 창을, [지우기] 는 지울지 묻는 창을 연다 — 내 아이디를 넘겨 남의 메모를 가린다', async () => {
+      const { w, s } = await mountMemo()
+      await show(w, s, 0)
+      await tid(w, 'se-snap-memo-write').trigger('click')
+      expect(body().find('[data-testid="se-memo-input"]').element.value).toBe('')
+      await body().find('[data-testid="se-memo-cancel"]').trigger('click')
+      expect(body().find('[data-testid="se-memo-dialog"]').exists()).toBe(false)
+      await show(w, s, 1)
+      await tid(w, 'se-snap-memo-edit').trigger('click')
+      expect(body().find('[data-testid="se-memo-input"]').element.value).toBe('내 메모')
+      expect(body().find('[data-testid="se-memo-others"]').exists()).toBe(false) // 내 메모
+      await body().find('[data-testid="se-memo-cancel"]').trigger('click')
+      await show(w, s, 3)
+      await tid(w, 'se-snap-memo-remove').trigger('click')
+      expect(body().find('[data-testid="se-memo-confirm"]').text()).toContain('남의 메모')
+      expect(body().find('[data-testid="se-memo-others"]').text()).toBe('이영희 님이 쓴 메모입니다.')
+    })
+    it('[◀ 메모]·[메모 ▶] 는 그 날의 메모가 있는 스냅샷으로 간다(끝에서 돌아감). 없으면 알림 줄에 알린다', async () => {
+      const { w, s } = await mountMemo()
+      await show(w, s, 0)
+      await tid(w, 'se-snap-memo-next').trigger('click')
+      expect(s.selectedName).toBe(name(1))
+      await tid(w, 'se-snap-memo-next').trigger('click')
+      expect(s.selectedName).toBe(name(3))
+      await tid(w, 'se-snap-memo-next').trigger('click')
+      expect(s.selectedName).toBe(name(1))
+      await tid(w, 'se-snap-memo-prev').trigger('click')
+      expect(s.selectedName).toBe(name(3))
+      api.snapshots.mockImplementation((eqpId, date) => ok({ eqpId, date, timeDiff: 0, items: ITEMS, skipped: 0, truncated: false }))
+      await s.setDate('2026-11-10')
+      await tid(w, 'se-snap-memo-next').trigger('click')
+      expect(tid(w, 'se-snap-notice').text()).toBe(MESSAGES.SEW_SNAP_NO_MEMO)
     })
   })
 

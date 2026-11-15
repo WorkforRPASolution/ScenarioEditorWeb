@@ -66,6 +66,7 @@ function onKey(e) {
           <span class="se-snap-time">{{ it.time }}</span>
           <span class="se-snap-shift">{{ it.shift }}</span>
           <span v-if="it.kind === 'tag'" class="se-pill" :class="`se-snap-tag-${it.tag}`" data-testid="se-snap-tag">{{ t(`SEW_SNAP_TAG_${it.tag}`) }}</span>
+          <span v-if="it.memo" class="se-snap-memo-ic" :title="it.memo.text" :aria-label="t('SEW_SNAP_MEMO_MARK')" data-testid="se-snap-memo-mark">✎</span>
           <span v-if="expiryDays(it) !== null" class="se-snap-expires" data-testid="se-snap-expires">{{ t('SEW_SNAP_EXPIRES', { n: expiryDays(it) }) }}</span>
         </div>
       </div>

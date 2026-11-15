@@ -561,6 +561,25 @@ describe('SnapshotPanel', () => {
   })
 
   describe('거르기·상태 글', () => {
+    it("'메모' 거르기는 메모가 있는 줄만 — 없으면 \"이 날에는 메모가 있는 스냅샷이 없습니다.\"", async () => {
+      const memo = { text: '글', author: 'kim', authorName: '김', writtenAt: '2026-11-11 09:14', editedBy: null, editedAt: null }
+      api.snapshots.mockImplementation((eqpId, date) => ok(listOf(eqpId, date, [click(1), { ...click(2), memo }, tag(3)])))
+      const { w, s } = await mountPanel({ pick: 'SEWT_CVD_A01' })
+      expect(tids(w, 'se-snap-memo-mark')).toHaveLength(1)
+      await tid(w, 'se-snap-filter-memo').trigger('click')
+      expect([s.filter, tid(w, 'se-snap-count').text(), tids(w, 'se-snap-row').length]).toEqual(['memo', '1장', 1])
+      expect(tid(w, 'se-snap-filter-memo').text()).toBe('메모')
+      api.snapshots.mockImplementation((eqpId, date) => ok(listOf(eqpId, date, [click(1), tag(3)])))
+      await s.refresh()
+      await flushPromises()
+      expect(tid(w, 'se-snap-state').text()).toBe(MESSAGES.SEW_SNAP_NO_MEMO)
+    })
+    it('서버가 메모를 읽지 못했으면(memoFailed) 목록 위에 한 줄로 알린다 — 목록은 그대로 보인다', async () => {
+      api.snapshots.mockImplementation((eqpId, date) => ok(listOf(eqpId, date, ITEMS, { memoFailed: true })))
+      const { w } = await mountPanel({ pick: 'SEWT_CVD_A01' })
+      expect(tid(w, 'se-snap-memo-failed').text()).toBe(MESSAGES.SEW_SNAP_MEMO_FAILED_READ)
+      expect(tids(w, 'se-snap-row')).toHaveLength(5)
+    })
     it('전체·태그 거르기와 보이는 개수', async () => {
       const { w, s } = await mountPanel({ pick: 'SEWT_CVD_A01' })
       expect(tid(w, 'se-snap-count').text()).toBe('5장')

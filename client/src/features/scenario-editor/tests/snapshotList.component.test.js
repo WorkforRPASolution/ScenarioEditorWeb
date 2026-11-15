@@ -82,6 +82,14 @@ describe('SnapshotList', () => {
     expect(r[2].find('[data-testid="se-snap-expires"]').text()).toBe('2일 뒤 삭제')
     expect(r[3].find('[data-testid="se-snap-expires"]').exists()).toBe(false)
   })
+  it('메모가 있는 줄에는 ✎ 표시 — 올리면 메모 글이 보인다', async () => {
+    const { w } = await mountList([item(1), item(2, { memo: { text: '알람 창이 가려짐', author: 'kim', authorName: '김' } }), item(3, { memo: { text: '', author: 'kim', authorName: '김' } })])
+    const r = rows(w)
+    expect(r[0].find('[data-testid="se-snap-memo-mark"]').exists()).toBe(false)
+    const mark = r[1].find('[data-testid="se-snap-memo-mark"]')
+    expect([mark.text(), mark.attributes('title'), mark.attributes('aria-label')]).toEqual(['✎', '알람 창이 가려짐', '메모'])
+    expect(r[2].find('[data-testid="se-snap-memo-mark"]').exists()).toBe(true) // 빈 글 메모도 메모다
+  })
   it('줄을 누르면 고르고, 고른 줄에 표시가 붙는다', async () => {
     const items = [item(1), item(2), item(3)]
     const { w, s } = await mountList(items)

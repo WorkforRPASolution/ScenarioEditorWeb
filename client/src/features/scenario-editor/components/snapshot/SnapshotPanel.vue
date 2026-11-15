@@ -1,6 +1,6 @@
 <script setup>
-// 스냅샷 왼쪽 패널(P3 설계 §4.2) — 설비 고르기, 날짜(◀ ▶·달력), 거르기(전체·태그), 하루 목록, [새로 고침].
-// 상태(설비·날짜·목록·고른 것)는 저장소가 갖는다. 메모 거르기·[메모 목록] 은 P3-C 에서 더한다.
+// 스냅샷 왼쪽 패널(P3 설계 §4.2) — 설비 고르기, 날짜(◀ ▶·달력), 거르기(전체·태그·메모), 하루 목록, [새로 고침].
+// 상태(설비·날짜·목록·고른 것)는 저장소가 갖는다.
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useSnapshotStore } from '../../stores/snapshotStore'
 import { FILTERS } from '../../editor/snapshotList'
@@ -42,7 +42,7 @@ const state = computed(() => {
     const failed = t('SEW_SNAP_LIST_FAILED')
     return { text: l.error && l.error !== failed ? `${failed} ${l.error}` : failed, retry: true }
   }
-  if (l.items.length) return snap.shown.length ? null : { text: t('SEW_SNAP_NO_TAG') }
+  if (l.items.length) return snap.shown.length ? null : { text: t(snap.filter === 'memo' ? 'SEW_SNAP_NO_MEMO' : 'SEW_SNAP_NO_TAG') }
   if (l.status === 'ready') return { text: snap.date ? t('SEW_SNAP_EMPTY_DAY') : t('SEW_SNAP_NO_RECENT') }
   return { text: t('SEW_SNAP_LOADING') }
 })
@@ -73,6 +73,8 @@ const btn = 'h-7 px-2 rounded-md text-xs bg-gray-200 dark:bg-gray-700 text-gray-
       </div>
     </div>
     <p v-if="snap.list.truncated && !state" class="px-3 py-1.5 text-[11px] bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200 shrink-0" data-testid="se-snap-truncated">{{ t('SEW_SNAP_TRUNCATED', { n: snap.list.items.length }) }}</p>
+    <!-- 서버가 메모를 읽지 못했다 — 스냅샷은 메모 없이 보인다 -->
+    <p v-if="snap.list.memoFailed && snap.list.items.length" class="px-3 py-1.5 text-[11px] bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200 shrink-0" data-testid="se-snap-memo-failed">{{ t('SEW_SNAP_MEMO_FAILED_READ') }}</p>
     <div class="flex-1 min-h-0">
       <div v-if="state" class="h-full flex flex-col items-center justify-center gap-2 px-4 text-center text-xs text-gray-500 dark:text-gray-400">
         <p data-testid="se-snap-state">{{ state.text }}</p>
