@@ -12,6 +12,7 @@ import { cropPng, imageDataOf } from '../editor/crop'
 import { locate } from '../editor/locate'
 import { spotKey } from '../editor/trainView'
 import { CAP_FLOWS, MIN_CAPTURE, LOCATE_MS, isRect, clipRect, nextStage, newStepDraft, baseRefFor, firstTrainRef } from '../editor/capture'
+import { snapshotKey, snapshotBaseProblem } from '../editor/snapshotStep'
 import { newScenarioOf } from '../editor/newScenario'
 import { t } from '../messages'
 import { useEditorStore } from './editorStore'
@@ -41,6 +42,8 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   const windowClip = shallowRef([])
   // 올릴 그림(tempId → Blob). Blob 을 반응형으로 감싸지 않게 shallowRef 이고, 바꿀 때마다 새 Map 으로 바꾼다(setUpload).
   const uploads = shallowRef(new Map())
+  // 기준 화면으로 올린 스냅샷(설비·파일 이름 → tempId, P3-E) — 같은 스냅샷으로 만든 스텝들이 그림 하나를 함께 쓴다. 올릴 그림과 함께 비운다.
+  let snapshotBases = new Map()
   // 큰 화면 잡기(목업 S.cap): { flow, stage, why, before, train } — before = 잡기 전 패널 초안(Esc 로 되돌린다),
   // train = 누를 곳의 기준(찾을 그림 사각형: 이번에 잡은 것 또는 [다시 찍기]가 기준 화면에서 찾은 자리).
   const capture = shallowRef(null)
@@ -78,6 +81,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     undo.value = []
     redo.value = []
     uploads.value = new Map()
+    snapshotBases = new Map()
     capture.value = null
     locating.value = false
     viewReq.value = null
@@ -748,17 +752,35 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   }
   // 종류를 고르면 패널이 새 스텝 초안을 연다. 이미지·OCR 은 고른 스텝(없으면 기준 화면이 있는 첫 스텝)의 기준 화면에서 잡기를 시작한다.
   // 패널에 적용 안 한 변경이 있으면 먼저 묻는다(다른 스텝으로 가는 것과 같은 이동).
-  function startNew(kind) {
+  // opts.snapshot(P3-E, 스냅샷 보기의 [새 스텝]) = { eqpId, fileName, blob }: 그 그림을 기준 화면으로 쓴다 — 스텝이 없는 시나리오에서도 된다.
+  // 누를 때 떠 있던 그림을 쥐고 간다(확인 창을 거치는 사이 다른 스냅샷을 골라도 바뀌지 않는다). 그림이 없거나 너무 크면 시작하지 않고 알린다.
+  function startNew(kind, opts = {}) {
     if (!editable.value || (!CAP_FLOWS[kind] && kind !== 'none')) return false
-    if (!panelDirty()) return openNew(kind)
-    return guard(() => openNew(kind), { action: 'move' })
+    const fromSnapshot = !!CAP_FLOWS[kind] && 'snapshot' in opts
+    if (fromSnapshot) {
+      const problem = snapshotBaseProblem(opts.snapshot)
+      if (problem) { notify(t(problem === 'tooLarge' ? 'SEW_SNAP_STEP_TOO_LARGE' : 'SEW_SNAP_STEP_NO_IMAGE')); return false }
+    }
+    const open = () => openNew(kind, fromSnapshot ? opts.snapshot : null)
+    if (!panelDirty()) return open()
+    return guard(open, { action: 'move' })
   }
-  function openNew(kind) {
+  // 스냅샷 그림을 올릴 그림으로 넣고 그 참조를 준다. 이 세션에서 같은 스냅샷을 이미 넣었으면(그 그림이 아직 있으면) 그것을 다시 쓴다.
+  function snapshotBaseRef(snapshot) {
+    const key = snapshotKey(snapshot.eqpId, snapshot.fileName)
+    const known = snapshotBases.get(key)
+    if (known && uploads.value.has(known)) return { from: 'upload', tempId: known }
+    const tempId = newTempId()
+    setUpload(tempId, snapshot.blob)
+    snapshotBases.set(key, tempId)
+    return { from: 'upload', tempId }
+  }
+  function openNew(kind, snapshot = null) {
     const s = session.value
     if (!s?.working) return false
     if (s.working.steps.length >= STEP_MAX) { refused('STEP_LIMIT'); return false }
     const anchor = insertAnchor()
-    const base = kind === 'none' ? null : baseRefFor(s.working, anchor)
+    const base = kind === 'none' ? null : snapshot ? snapshotBaseRef(snapshot) : baseRefFor(s.working, anchor)
     if (kind !== 'none' && !base) { notify(t('SEW_EDIT_NEW_NO_BASE')); return false }
     const [uid, next] = nextUid(s, 'n')
     session.value = next

@@ -1718,3 +1718,171 @@ describe('editStore — 되돌려 열기(beginRestore)·초안 이어서 열기(
 import { buildMeta } from '../editor/request'
 import { flushPromises } from '@vue/test-utils'
 import { toRaw } from 'vue'
+
+// ── P3-E 스냅샷에서 스텝 만들기(P3 설계 §4.8) ──
+import { SNAPSHOT_BASE_MAX_BYTES } from '../editor/snapshotStep'
+describe('editStore — 스냅샷을 새 스텝의 기준 화면으로(P3-E)', () => {
+  const BITMAP = { width: 640, height: 360 }
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    Object.values(api).forEach((f) => f.mockReset())
+    Object.values(fx).forEach((f) => f.mockReset())
+    fx.loadBitmap.mockResolvedValue(BITMAP)
+    fx.cropPng.mockImplementation(async () => new Blob(['crop'], { type: 'image/png' }))
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(() => 'blob:snap')
+  })
+  const snapOf = (fileName = '1763254800000_[412][288].png', eqpId = 'SEWT_PHOTO_A01') => ({ eqpId, fileName, blob: new Blob([fileName], { type: 'image/png' }) })
+  const params = { process: 'P', model: 'M2', name: 'NEW_ONE', type: 1, description: '새 메일', timeoutLimit: '240' }
+  // 스텝이 없는 새 시나리오
+  const blank = () => {
+    const s = useEditorStore()
+    s.me = { singleid: 'u', canWrite: true, authorityManager: 3 }
+    const e = useEditStore()
+    e.beginNew(params)
+    return { s, e }
+  }
+  // 잡기를 끝내고 맨 끝에 넣는다
+  const addImage = async (e) => {
+    await e.captureNext({ x: 10, y: 20, w: 300, h: 200 })
+    await e.captureNext({ x: 50, y: 60, w: 40, h: 30 })
+    await e.captureNext({ x: 60, y: 70 })
+    e.updateDraft((d) => ({ ...d, descriptionToEmail: '스냅샷 스텝' }))
+    expect(e.addNew('end')).toBe(true)
+  }
+
+  it('스텝이 없는 새 시나리오: 스냅샷 그림이 올릴 그림으로 들어가고 그 참조가 새 이미지 스텝의 기준 화면이다 — 검색 영역 잡기부터', () => {
+    const { e } = blank()
+    const snap = snapOf()
+    expect(e.startNew('image', { snapshot: snap })).toBe(true)
+    const base = e.panel.draft.images.base
+    expect(base.from).toBe('upload')
+    expect(e.uploads.get(base.tempId)).toBe(snap.blob) // 화면에 떠 있던 바로 그 바이트
+    expect(e.uploads.size).toBe(1)
+    expect(e.panel).toMatchObject({ isNew: true, insertBefore: null })
+    expect(e.capture).toMatchObject({ flow: ['area', 'train', 'click'], stage: 'area' })
+    expect(e.session.working.steps).toEqual([])
+  })
+  it('OCR 스텝도 같다 — OCR 영역 잡기부터', () => {
+    const { e } = blank()
+    expect(e.startNew('ocr', { snapshot: snapOf() })).toBe(true)
+    expect(e.panel.draft.condition.kind).toBe('ocr')
+    expect(e.panel.draft.images.base.from).toBe('upload')
+    expect(e.capture).toMatchObject({ flow: ['ocr'], stage: 'ocr' })
+  })
+  it('잡아서 넣으면 작업본 스텝의 기준 화면이 그 올릴 그림이고, 찾을 그림은 그 그림에서 자른다', async () => {
+    const { e } = blank()
+    const snap = snapOf()
+    e.startNew('image', { snapshot: snap })
+    await addImage(e)
+    expect(fx.loadBitmap).toHaveBeenCalledWith('blob:snap')
+    const [st] = e.session.working.steps
+    expect(e.uploads.get(st.images.base.tempId)).toBe(snap.blob)
+    expect(st.images.train['0'].from).toBe('upload')
+    expect(st.images.train['0'].tempId).not.toBe(st.images.base.tempId)
+  })
+  it('같은 스냅샷으로 스텝을 여러 개 만들면 그림은 하나만 올린다, 다른 스냅샷은 따로', async () => {
+    const { e } = blank()
+    const a = snapOf()
+    e.startNew('image', { snapshot: a })
+    await addImage(e)
+    const first = e.session.working.steps[0].images.base.tempId
+    // 같은 스냅샷을 다시 받아 Blob 객체가 달라도(그림 기억에서 밀려났다가 다시 받음) 같은 그림이다
+    expect(e.startNew('ocr', { snapshot: { ...a, blob: new Blob([a.fileName]) } })).toBe(true)
+    expect(e.panel.draft.images.base).toEqual({ from: 'upload', tempId: first })
+    expect(e.uploads.get(first)).toBe(a.blob)
+    await e.captureNext({ x: 5, y: 5, w: 100, h: 40 })
+    e.updateDraft((d) => ({ ...d, descriptionToEmail: 'OCR', condition: { ...d.condition, ocr: { ...d.condition.ocr, op: 1, opName: 'TextEqual', type: 1, text: 'IDLE' } } }))
+    expect(e.addNew('end')).toBe(true)
+    expect(e.session.working.steps.map((s) => s.images.base.tempId)).toEqual([first, first])
+    const { uploadsUsed } = buildMeta(toRaw(e.session))
+    expect(uploadsUsed.filter((id) => id === first)).toHaveLength(1)
+    expect(uploadsUsed).toHaveLength(2) // 기준 화면 하나 + 찾을 그림 하나
+    // 다른 스냅샷(같은 이름의 다른 설비 포함)은 다른 그림
+    const b = snapOf('1763254900000_[10][20].png')
+    e.startNew('image', { snapshot: b })
+    expect(e.panel.draft.images.base.tempId).not.toBe(first)
+    e.cancelNew()
+    e.startNew('image', { snapshot: snapOf(a.fileName, 'SEWT_CVD_A01') })
+    expect(e.panel.draft.images.base.tempId).not.toBe(first)
+  })
+  it('스텝을 고른 채 스냅샷으로 만들면 기준 화면은 고른 스텝의 것이 아니라 스냅샷이고, 넣을 자리는 고른 줄 앞이다', () => {
+    const { s, e } = panelFixture([imageStep(0), imageStep(1), noneStep(2)])
+    s.select('s1')
+    const snap = snapOf()
+    expect(e.startNew('image', { snapshot: snap })).toBe(true)
+    expect(e.panel.draft.images.base.from).toBe('upload')
+    expect(e.panel.insertBefore).toBe('s1')
+    // 스냅샷을 주지 않으면 지금까지처럼 고른 스텝의 기준 화면
+    e.cancelNew()
+    e.startNew('image')
+    expect(e.panel.draft.images.base).toEqual({ from: 'source', id: 's1-bi' })
+  })
+  it('조건 없는 스텝은 스냅샷을 쓰지 않는다', () => {
+    const { e } = blank()
+    expect(e.startNew('none', { snapshot: snapOf() })).toBe(true)
+    expect(e.panel.draft.images.base).toEqual({ literal: 'AA==' })
+    expect(e.uploads.size).toBe(0)
+  })
+  it('그림이 서버가 받는 한 장 크기(10MB)를 넘으면 만들지 않고 알린다 — 올릴 그림에 넣지 않는다', () => {
+    const { e } = blank()
+    const big = snapOf()
+    Object.defineProperty(big.blob, 'size', { value: SNAPSHOT_BASE_MAX_BYTES + 1 })
+    expect(e.startNew('image', { snapshot: big })).toBe(false)
+    expect(e.toast.text).toBe(t('SEW_SNAP_STEP_TOO_LARGE'))
+    expect(e.panel.isNew).toBe(false)
+    expect(e.uploads.size).toBe(0)
+  })
+  it('그림이 없는 스냅샷(받는 중·실패)으로는 만들지 않는다 — 고른 스텝의 기준 화면으로 넘어가지도 않는다', () => {
+    const { s, e } = panelFixture([imageStep(0)])
+    s.select('s0')
+    expect(e.startNew('image', { snapshot: null })).toBe(false)
+    expect(e.startNew('image', { snapshot: { eqpId: 'E', fileName: 'f.png', blob: undefined } })).toBe(false)
+    expect(e.panel.isNew).toBe(false)
+    expect(e.toast.text).toBe(t('SEW_SNAP_STEP_NO_IMAGE'))
+  })
+  it('스텝이 200개면 막고, 올릴 그림에 넣지 않는다', () => {
+    const { e } = panelFixture(Array.from({ length: STEP_MAX }, (_, i) => noneStep(i)))
+    expect(e.startNew('image', { snapshot: snapOf() })).toBe(false)
+    expect(e.toast.text).toBe(t('SEW_CMD_REFUSED_STEP_LIMIT'))
+    expect(e.uploads.size).toBe(0)
+  })
+  it('읽기 전용 세션에서는 만들지 않는다', () => {
+    const { e } = panelFixture([imageStep(0)], { canWrite: false })
+    expect(e.startNew('image', { snapshot: snapOf() })).toBe(false)
+    expect(e.uploads.size).toBe(0)
+  })
+  it('패널에 적용 안 한 변경이 있으면 먼저 묻고, [버리고 이동] 뒤에는 누를 때 떠 있던 그림으로 만든다', () => {
+    const { e } = panelFixture([imageStep(0), imageStep(1)])
+    e.updateDraft((d) => ({ ...d, descriptionToEmail: '바뀜' }))
+    const snap = snapOf()
+    expect(e.startNew('image', { snapshot: snap })).toBe(false)
+    expect(e.dialog).toMatchObject({ kind: 'guard', action: 'move' })
+    expect(e.uploads.size).toBe(0) // 아직 넣지 않았다
+    e.guardDrop()
+    expect(e.panel.isNew).toBe(true)
+    expect(e.uploads.get(e.panel.draft.images.base.tempId)).toBe(snap.blob)
+  })
+  it('다른 시나리오를 열면 올릴 그림이 비워지므로 같은 스냅샷도 새 그림으로 넣는다', () => {
+    const { e } = blank()
+    const snap = snapOf()
+    e.startNew('image', { snapshot: snap })
+    const first = e.panel.draft.images.base.tempId
+    e.beginNew({ ...params, name: 'NEW_TWO' })
+    expect(e.uploads.size).toBe(0)
+    e.startNew('image', { snapshot: snap })
+    const second = e.panel.draft.images.base.tempId
+    expect(second).not.toBe(first)
+    expect(e.uploads.get(second)).toBe(snap.blob)
+  })
+  it('스냅샷으로 만든 스텝을 복사하면 묶음에 기준 화면 그림이 함께 든다(다른 시나리오에 붙일 수 있게)', async () => {
+    const { e } = blank()
+    const snap = snapOf()
+    e.startNew('image', { snapshot: snap })
+    await addImage(e)
+    const st = e.session.working.steps[0]
+    e.setSelection({ uids: [st.uid], anchor: st.uid })
+    expect(e.copySelection(false)).toBeTruthy()
+    expect(e.clip.uploads.get(st.images.base.tempId)).toBe(snap.blob)
+    expect(e.clip.uploads.size).toBe(2)
+  })
+})
