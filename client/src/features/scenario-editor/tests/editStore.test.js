@@ -1741,13 +1741,13 @@ describe('editStore — 스냅샷을 새 스텝의 기준 화면으로(P3-E)', (
     e.beginNew(params)
     return { s, e }
   }
-  // 잡기를 끝내고 맨 끝에 넣는다
+  // 잡기를 끝내고 패널의 [넣기] 처럼 넣는다(넣을 자리 = 패널이 고른 자리)
   const addImage = async (e) => {
     await e.captureNext({ x: 10, y: 20, w: 300, h: 200 })
     await e.captureNext({ x: 50, y: 60, w: 40, h: 30 })
     await e.captureNext({ x: 60, y: 70 })
     e.updateDraft((d) => ({ ...d, descriptionToEmail: '스냅샷 스텝' }))
-    expect(e.addNew('end')).toBe(true)
+    expect(e.addNew()).toBe(true)
   }
 
   it('스텝이 없는 새 시나리오: 스냅샷 그림이 올릴 그림으로 들어가고 그 참조가 새 이미지 스텝의 기준 화면이다 — 검색 영역 잡기부터', () => {
@@ -1792,7 +1792,7 @@ describe('editStore — 스냅샷을 새 스텝의 기준 화면으로(P3-E)', (
     expect(e.uploads.get(first)).toBe(a.blob)
     await e.captureNext({ x: 5, y: 5, w: 100, h: 40 })
     e.updateDraft((d) => ({ ...d, descriptionToEmail: 'OCR', condition: { ...d.condition, ocr: { ...d.condition.ocr, op: 1, opName: 'TextEqual', type: 1, text: 'IDLE' } } }))
-    expect(e.addNew('end')).toBe(true)
+    expect(e.addNew()).toBe(true)
     expect(e.session.working.steps.map((s) => s.images.base.tempId)).toEqual([first, first])
     const { uploadsUsed } = buildMeta(toRaw(e.session))
     expect(uploadsUsed.filter((id) => id === first)).toHaveLength(1)
@@ -1805,17 +1805,34 @@ describe('editStore — 스냅샷을 새 스텝의 기준 화면으로(P3-E)', (
     e.startNew('image', { snapshot: snapOf(a.fileName, 'SEWT_CVD_A01') })
     expect(e.panel.draft.images.base.tempId).not.toBe(first)
   })
-  it('스텝을 고른 채 스냅샷으로 만들면 기준 화면은 고른 스텝의 것이 아니라 스냅샷이고, 넣을 자리는 고른 줄 앞이다', () => {
+  it('스텝을 고른 채 스냅샷으로 만들면 기준 화면은 고른 스텝의 것이 아니라 스냅샷이고, 넣을 자리는 맨 끝이다(자리는 바꿀 수 있다)', () => {
     const { s, e } = panelFixture([imageStep(0), imageStep(1), noneStep(2)])
     s.select('s1')
     const snap = snapOf()
     expect(e.startNew('image', { snapshot: snap })).toBe(true)
     expect(e.panel.draft.images.base.from).toBe('upload')
-    expect(e.panel.insertBefore).toBe('s1')
-    // 스냅샷을 주지 않으면 지금까지처럼 고른 스텝의 기준 화면
+    // 스냅샷을 시각 순서로 넘기며 스텝을 이어 만들 때 순서대로 쌓이게 — 고른 줄(흔히 방금 넣은 스텝) 앞이 아니다
+    expect(e.panel).toMatchObject({ insertBefore: null, origin: 's1' })
+    expect(e.setInsertBefore('s0')).toBe(true)
+    expect(e.panel.insertBefore).toBe('s0')
+    // [취소] 하면 시작할 때 고른 줄로 돌아간다
     e.cancelNew()
+    expect(e.selection).toEqual({ uids: ['s1'], anchor: 's1' })
+    // 스냅샷을 주지 않으면 지금까지처럼 고른 스텝의 기준 화면·고른 줄 앞
     e.startNew('image')
     expect(e.panel.draft.images.base).toEqual({ from: 'source', id: 's1-bi' })
+    expect(e.panel.insertBefore).toBe('s1')
+  })
+  it('스냅샷으로 이어 만든 스텝은 만든 순서대로 쌓인다', async () => {
+    const { e } = blank()
+    e.startNew('image', { snapshot: snapOf() })
+    await addImage(e)
+    const first = e.session.working.steps[0].uid
+    expect(e.selection.anchor).toBe(first) // 방금 넣은 스텝이 골라져 있다
+    e.startNew('image', { snapshot: snapOf('1763254900000_[10][20].png') })
+    await addImage(e)
+    expect(e.session.working.steps.map((x) => x.uid)[0]).toBe(first)
+    expect(e.session.working.steps).toHaveLength(2)
   })
   it('조건 없는 스텝은 스냅샷을 쓰지 않는다', () => {
     const { e } = blank()

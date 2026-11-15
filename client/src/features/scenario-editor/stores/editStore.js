@@ -787,7 +787,8 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     const draft = newStepDraft(kind, { uid, base })
     capture.value = null
     // insertBefore = 넣을 자리(그 줄 앞, null 이면 맨 끝 — 만드는 중에 바꿀 수 있다). origin = 시작할 때 고른 줄(기준 화면을 빌린 줄, 취소·되돌리기가 돌아갈 곳).
-    panel.value = { uid, isNew: true, draft, base: draft, insertBefore: anchor, origin: anchor, tried: false }
+    // 스냅샷으로 만드는 스텝은 맨 끝이 기본이다 — 스냅샷을 시각 순서로 넘기며 이어 만들 때 만든 순서대로 쌓인다(고른 줄은 흔히 방금 넣은 스텝이다. 사내 [추가] 도 끝에 붙인다).
+    panel.value = { uid, isNew: true, draft, base: draft, insertBefore: snapshot ? null : anchor, origin: anchor, tried: false }
     // 표에서 고른 줄을 비운다(새 스텝은 아직 표에 없다). 패널을 먼저 바꿔 두어 초점 감시가 초안을 지우지 않는다.
     selection.value = emptySelection()
     useEditorStore().selectedUid = null
