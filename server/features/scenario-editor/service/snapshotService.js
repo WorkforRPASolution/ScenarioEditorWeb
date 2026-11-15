@@ -2,7 +2,7 @@
 // 스냅샷 — 내 범위 설비, 있는 날, 하루 목록, 그림 한 장 (P3 설계 §5.2~§5.4).
 // - 설비는 내 공정 범위의 유효 설비만(scopes.equipmentOf). 저장소(Cassandra)는 검사를 지난 뒤에만 부른다.
 // - 목록은 표시 날짜 하루의 이름 범위로 읽는다. 표시 시각 = 파일 ms + 설비 보정(분)을 표시 시간대로 읽은 시각.
-// - 메모(`memo`)는 P3-C 가 채운다.
+// - 줄의 메모(`memo`)는 메모 서비스(memos.forRange)가 준다. 메모를 읽지 못해도 목록은 준다(memoFailed). 숨김 메모의 스냅샷은 뺀다.
 // - 설비마다 가장 늦은 날짜(presence)는 설비 고르기의 "스냅샷 있는 설비" 표시용이다. 설비 한 대에 한두 줄만 읽고,
 //   한꺼번에 보내는 조회 수를 묶고(이 서버 프로세스 안에서 한 요청씩 차례로), 한 요청은 5초까지만 묻고, 받은 값은 10분 기억한다.
 const { seError } = require('../errors')
@@ -26,7 +26,9 @@ const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0
 const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
 const nextDate = (date) => new Date(Date.parse(`${date}T00:00:00Z`) + DAY).toISOString().slice(0, 10)
 
-function createSnapshotService({ snapshotRepo, scopes, now, env = {}, log = null }) {
+const NO_MEMOS = { byName: new Map(), hidden: new Set(), failed: false }
+
+function createSnapshotService({ snapshotRepo, scopes, now, env = {}, log = null, memos = null }) {
   const displayTz = zoneOf(env, 'SE_DISPLAY_TZ', log)
   const partitionTz = zoneOf(env, 'SE_SNAPSHOT_PARTITION_TZ', log)
   // 설비별 스냅샷 유무를 볼 때 한꺼번에 보내는 조회 수. 0 이면 끈다. 숫자가 아니면 기본값으로 돌리고 한 번 알린다.
@@ -74,18 +76,23 @@ function createSnapshotService({ snapshotRepo, scopes, now, env = {}, log = null
     const timeDiff = timeDiffOf(eqp.snapshotTimeDiff)
     const range = dayRange(date, timeDiff, displayTz)
     if (!range) throw seError(400, 'BAD_REQUEST', 'date 는 YYYY-MM-DD 꼴의 날짜여야 합니다', { path: 'date' })
-    const { parsed, skipped, truncated } = await readRange(eqpId, range.from, range.to, DAY_LIMIT)
+    // 메모는 목록과 같은 이름 범위로 함께 읽는다(forRange 는 던지지 않는다)
+    const [{ parsed, skipped, truncated }, memo] = await Promise.all([
+      readRange(eqpId, range.from, range.to, DAY_LIMIT),
+      memos ? memos.forRange(eqpId, nameBound(range.from), nameBound(range.to)) : NO_MEMOS
+    ])
     const at = now()
     const items = parsed
+      .filter((p) => !memo.hidden.has(p.fileName))
       .sort((a, b) => a.ms - b.ms || cmp(a.fileName, b.fileName))
       .map((p) => {
         const d = displayOf(p.ms, timeDiff, displayTz)
         return {
           fileName: p.fileName, ms: p.ms, time: d.time, shift: d.shift, kind: p.kind, tag: p.tag, x: p.x, y: p.y, txn: p.txn,
-          hasHistory: p.hasHistory, memo: null, daysLeft: daysLeft(p.ms, at)
+          hasHistory: p.hasHistory, memo: memo.byName.get(p.fileName) ?? null, daysLeft: daysLeft(p.ms, at)
         }
       })
-    return { eqpId, date, timeDiff, items, skipped, truncated }
+    return { eqpId, date, timeDiff, items, skipped, truncated, memoFailed: memo.failed }
   }
 
   // 보관 기간 안에서 가장 늦은 한 장의 원본 ms. 늦은 달부터 한 줄씩 본다.

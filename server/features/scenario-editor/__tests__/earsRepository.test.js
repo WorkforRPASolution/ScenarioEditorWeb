@@ -160,6 +160,7 @@ describe('earsRepository 메모 (ARS_USER_MEMO)', () => {
     const calls = []
     const cursor = (op) => ({
       maxTimeMS: (ms) => { op.maxTimeMS = ms; return cursor(op) },
+      sort: (v) => { op.sort = v; return cursor(op) },
       limit: (n) => { op.limit = n; return cursor(op) },
       toArray: async () => rows
     })
@@ -177,6 +178,7 @@ describe('earsRepository 메모 (ARS_USER_MEMO)', () => {
     const f = memoDb({ rows: [{ _id: 1 }] })
     expect(await repoOf(f).findMemos({ eqpId: 'E1', fromName: '1762700000000', toName: '1762800000000' }, 10)).toEqual([{ _id: 1 }])
     expect(f.calls[0]).toMatchObject({ name: 'ARS_USER_MEMO', op: 'find', filter: { eqpid: 'E1', filename: { $gte: '1762700000000', $lt: '1762800000000' } }, limit: 10, maxTimeMS: 20000 })
+    expect(f.calls[0].sort).toEqual({ filename: -1 }) // 한도에서 잘릴 때 늦은 스냅샷의 메모가 남게
     await repoOf(f).findMemos({ fromName: '1762700000000' }, 5001)
     expect(f.calls[1].filter).toEqual({ filename: { $gte: '1762700000000' } })
     expect(f.calls[1].limit).toBe(5001)

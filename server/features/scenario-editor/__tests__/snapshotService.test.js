@@ -105,12 +105,41 @@ describe('snapshotService.list — 하루 목록', () => {
     const repo = fakeRepo({ months: { '2026-11': [click(ms, 412, 388), `${ms + 1000}_[9990][${txn}].png`] } })
     const out = await service(repo).list(USER, 'E1', '2026-11-11')
     expect(out).toEqual({
-      eqpId: 'E1', date: '2026-11-11', timeDiff: 0, skipped: 0, truncated: false,
+      eqpId: 'E1', date: '2026-11-11', timeDiff: 0, skipped: 0, truncated: false, memoFailed: false,
       items: [
         { fileName: click(ms, 412, 388), ms, time: '09:13:02', shift: 'DAY', kind: 'click', tag: null, x: 412, y: 388, txn: null, hasHistory: false, memo: null, daysLeft: 15 },
         { fileName: `${ms + 1000}_[9990][${txn}].png`, ms: ms + 1000, time: '09:13:03', shift: 'DAY', kind: 'tag', tag: 'success', x: null, y: null, txn: String(txn), hasHistory: true, memo: null, daysLeft: 15 }
       ]
     })
+  })
+
+  it('메모 서비스가 있으면 그 날의 이름 범위로 메모를 받아 줄에 붙이고, 숨김 스냅샷은 목록에서 뺀다', async () => {
+    const ms = kst(2026, 11, 11, 9)
+    const repo = fakeRepo({ months: { '2026-11': [click(ms), click(ms + 1000), click(ms + 2000)] } })
+    const memo = { text: '글', author: 'kim', authorName: '김', writtenAt: '2026-11-11 09:14', editedBy: null, editedAt: null }
+    const asked = []
+    const memos = { forRange: async (...args) => { asked.push(args); return { byName: new Map([[click(ms), memo]]), hidden: new Set([click(ms + 1000)]), failed: false } } }
+    const out = await createSnapshotService({ snapshotRepo: repo, scopes: fakeScopes(), now: () => NOW, env: {}, memos }).list(USER, 'E2', '2026-11-11')
+    expect(out.items.map((i) => [i.fileName, i.memo])).toEqual([[click(ms), memo], [click(ms + 2000), null]])
+    expect(out.memoFailed).toBe(false)
+    // E2 는 보정 +30분 — 메모도 목록과 같은 이름 범위로 읽는다
+    expect(asked).toEqual([['E2', String(kst(2026, 11, 10, 23, 30)), String(kst(2026, 11, 11, 23, 30))]])
+  })
+
+  it('메모를 읽지 못해도 목록은 준다 — memoFailed 로 알린다', async () => {
+    const repo = fakeRepo({ months: { '2026-11': [click(kst(2026, 11, 11, 9))] } })
+    const memos = { forRange: async () => ({ byName: new Map(), hidden: new Set(), failed: true }) }
+    const out = await createSnapshotService({ snapshotRepo: repo, scopes: fakeScopes(), now: () => NOW, env: {}, memos }).list(USER, 'E1', '2026-11-11')
+    expect([out.items.length, out.items[0].memo, out.memoFailed]).toEqual([1, null, true])
+  })
+
+  it('범위 밖 설비·틀린 날짜면 메모도 읽지 않는다', async () => {
+    let asked = 0
+    const memos = { forRange: async () => { asked++; return { byName: new Map(), hidden: new Set(), failed: false } } }
+    const s = createSnapshotService({ snapshotRepo: fakeRepo(), scopes: fakeScopes(), now: () => NOW, env: {}, memos })
+    await caught(s.list(USER, 'NOPE', '2026-11-11'))
+    await caught(s.list(USER, 'E1', 'x'))
+    expect(asked).toBe(0)
   })
 
   it('꼴이 아닌 이름은 버리고 세며, 범위 밖 ms 는 조용히 뺀다', async () => {
@@ -571,5 +600,6 @@ describe('deps 배선', () => {
     expect(out.snapshotRepo.configured()).toBe(false)
     expect(typeof out.snapshots.list).toBe('function')
     expect(typeof out.snapshots.image).toBe('function')
+    expect(typeof out.memos.save).toBe('function')
   })
 })
