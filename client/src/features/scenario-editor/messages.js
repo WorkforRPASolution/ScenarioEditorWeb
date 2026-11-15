@@ -151,6 +151,8 @@ export const MESSAGES = {
   SEW_SNAP_STEP_OCR_HINT: '이 화면의 글자를 읽어 비교합니다',
   SEW_SNAP_STEP_NO_SCENARIO: '시나리오를 열거나 새로 만들면 이 화면으로 새 스텝을 만들 수 있습니다.',
   SEW_SNAP_STEP_READ_ONLY: '읽기 전용으로 연 시나리오에는 스텝을 만들 수 없습니다.',
+  SEW_SNAP_STEP_NO_WRITE: '쓰기 권한이 없어 스텝을 만들 수 없습니다.',
+  SEW_SNAP_STEP_DELETED: '지워진 시나리오에는 스텝을 만들 수 없습니다.',
   SEW_SNAP_STEP_NO_IMAGE: '스냅샷 그림이 화면에 떠 있을 때만 새 스텝을 만들 수 있습니다.',
   SEW_SNAP_STEP_TOO_LARGE: '이 스냅샷 그림은 10MB 를 넘어 기준 화면으로 쓸 수 없습니다.',
   SEW_SNAP_STEP_TOTAL_TOO_LARGE: '이 스냅샷까지 넣으면 새로 올릴 그림의 합계가 50MB 를 넘어 저장할 수 없게 됩니다. 지금까지 만든 것을 먼저 배포한 뒤 이어서 만드세요(배포된 그림은 다시 보내지 않습니다).',

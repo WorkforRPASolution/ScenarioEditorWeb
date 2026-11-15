@@ -428,12 +428,33 @@ describe('SnapshotViewer', () => {
       expect(off(w)).toBe(true)
       expect(btn(w).attributes('title')).toBe(MESSAGES.SEW_SNAP_STEP_NO_SCENARIO)
     })
-    it('읽기 전용으로 연 시나리오에서는 꺼져 있다', async () => {
+    it('읽기 전용으로 연 시나리오(옛 버전)에서는 꺼져 있다', async () => {
       const { w, s } = await mountSized()
-      panelFixture([imageStep(0)], { canWrite: false })
+      panelFixture([imageStep(0)], { isCurrent: false })
       await show(w, s, 1)
       expect(off(w)).toBe(true)
       expect(btn(w).attributes('title')).toBe(MESSAGES.SEW_SNAP_STEP_READ_ONLY)
+    })
+    it('쓰기 권한이 없으면 시나리오를 열었든 아니든 권한이 없다고 알린다 — "열면 만들 수 있다" 고 하지 않는다', async () => {
+      const { w, s } = await mountSized()
+      useEditorStore().me = { singleid: 'u', canWrite: false }
+      await show(w, s, 1)
+      expect(off(w)).toBe(true)
+      expect(btn(w).attributes('title')).toBe(MESSAGES.SEW_SNAP_STEP_NO_WRITE)
+      panelFixture([imageStep(0)], { canWrite: false })
+      await w.vm.$nextTick()
+      expect(off(w)).toBe(true)
+      expect(btn(w).attributes('title')).toBe(MESSAGES.SEW_SNAP_STEP_NO_WRITE)
+    })
+    it('지워진 시나리오에서는 지워졌다고 알린다', async () => {
+      const { w, s } = await mountSized()
+      const { e } = panelFixture([imageStep(0)])
+      await show(w, s, 1)
+      expect(off(w)).toBe(false)
+      e.markDeleted()
+      await w.vm.$nextTick()
+      expect(off(w)).toBe(true)
+      expect(btn(w).attributes('title')).toBe(MESSAGES.SEW_SNAP_STEP_DELETED)
     })
     it('고칠 수 있는 시나리오여도 그림이 떠 있지 않으면(고른 줄 없음·받는 중·그려지기 전·실패) 꺼져 있다(DC-038)', async () => {
       const { w, s } = await mountSized()

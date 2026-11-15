@@ -89,10 +89,11 @@ function download(withCircle) {
 // ── 새 스텝(스냅샷을 기준 화면으로) ──
 const edit = useEditStore()
 const newBox = ref(null)
-// 꺼진 까닭(없으면 켜짐): 시나리오 없음(여는 중 포함) → 읽기 전용 → 그림이 그려져 있지 않음
+// 꺼진 까닭(없으면 켜짐): 쓰기 권한 없음 → 시나리오 없음(여는 중 포함) → 지워짐·읽기 전용 → 그림이 그려져 있지 않음
 const newWhy = computed(() => {
+  if (editor.me && !editor.me.canWrite) return t('SEW_SNAP_STEP_NO_WRITE')
   if (!edit.session?.working || editor.opening) return t('SEW_SNAP_STEP_NO_SCENARIO')
-  if (!edit.editable) return t('SEW_SNAP_STEP_READ_ONLY')
+  if (!edit.editable) return t(edit.session.readOnly === 'deleted' ? 'SEW_SNAP_STEP_DELETED' : edit.session.readOnly === 'noWrite' ? 'SEW_SNAP_STEP_NO_WRITE' : 'SEW_SNAP_STEP_READ_ONLY')
   if (!src.value || !natural.value) return t('SEW_SNAP_STEP_NO_IMAGE')
   return undefined
 })

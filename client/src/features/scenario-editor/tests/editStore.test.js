@@ -1729,8 +1729,11 @@ describe('editStore — 스냅샷을 새 스텝의 기준 화면으로(P3-E)', (
     Object.values(fx).forEach((f) => f.mockReset())
     fx.loadBitmap.mockResolvedValue(BITMAP)
     fx.cropPng.mockImplementation(async () => new Blob(['crop'], { type: 'image/png' }))
-    vi.spyOn(URL, 'createObjectURL').mockImplementation(() => 'blob:snap')
+    // Blob 마다 다른 주소 — 어느 그림에서 자르는지 가른다
+    urlOf = new Map()
+    vi.spyOn(URL, 'createObjectURL').mockImplementation((b) => { if (!urlOf.has(b)) urlOf.set(b, `blob:${urlOf.size + 1}`); return urlOf.get(b) })
   })
+  let urlOf
   const snapOf = (fileName = '1763254800000_[412][288].png', eqpId = 'SEWT_PHOTO_A01') => ({ eqpId, fileName, blob: new Blob([fileName], { type: 'image/png' }) })
   const params = { process: 'P', model: 'M2', name: 'NEW_ONE', type: 1, description: '새 메일', timeoutLimit: '240' }
   // 스텝이 없는 새 시나리오
@@ -1773,8 +1776,12 @@ describe('editStore — 스냅샷을 새 스텝의 기준 화면으로(P3-E)', (
     const { e } = blank()
     const snap = snapOf()
     e.startNew('image', { snapshot: snap })
+    const other = snapOf('1763254900000_[10][20].png') // 올릴 그림에 다른 스냅샷도 있다
+    e.setUpload('tOther', other.blob)
+    URL.createObjectURL(other.blob)
     await addImage(e)
-    expect(fx.loadBitmap).toHaveBeenCalledWith('blob:snap')
+    expect(urlOf.get(snap.blob)).toBeTruthy()
+    expect(fx.loadBitmap.mock.calls.map((c) => c[0])).toEqual([urlOf.get(snap.blob)]) // 그 스냅샷의 그림에서만 자른다
     const [st] = e.session.working.steps
     expect(e.uploads.get(st.images.base.tempId)).toBe(snap.blob)
     expect(st.images.train['0'].from).toBe('upload')
