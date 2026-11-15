@@ -1,4 +1,4 @@
-// 스냅샷 하루 목록 규칙(P3 설계 §4.2·§4.3) — 거르기, 이전·다음, 태그·메모 이동, 클릭 점, 보이는 줄.
+// 스냅샷 하루 목록 규칙(P3 설계 §4.2·§4.3) — 거르기, 이전·다음, 태그·메모 이동, 여러 줄 고르기의 범위, 클릭 점, 보이는 줄.
 // items = 서버 하루 목록의 줄({ fileName, ms, time, shift, kind, tag, x, y, txn, hasHistory, memo, daysLeft }), 시각 오름차순.
 
 export const FILTERS = ['all', 'tag', 'memo']
@@ -32,6 +32,28 @@ export function nextMatch(items, fileName, dir, pred) {
   for (let k = 1; k <= n; k++) {
     const j = (((from + dir * k) % n) + n) % n
     if (pred(items[j])) return items[j].fileName
+  }
+  return null
+}
+
+// 여러 줄 고르기(P3-D): fromName 줄부터 toName 줄까지의 이름(양 끝 포함, 목록 순서). 기준 줄이 목록에 없으면 갈 줄 하나, 갈 줄이 없으면 빈 배열.
+export function rangeNames(items, fromName, toName) {
+  const j = indexOfName(items, toName)
+  if (j < 0) return []
+  const i = indexOfName(items, fromName)
+  if (i < 0) return [items[j].fileName]
+  return items.slice(Math.min(i, j), Math.max(i, j) + 1).map((x) => x.fileName)
+}
+
+// names(Set) 가운데 fromName 줄에서 가장 가까운 줄의 이름 — 같은 거리면 아래 줄. fromName 이 목록에 없으면 목록에서 맨 앞의 것. 없으면 null.
+export function nearestName(items, names, fromName) {
+  if (!names.size) return null
+  const i = indexOfName(items, fromName)
+  if (i < 0) return items.find((x) => names.has(x.fileName))?.fileName ?? null
+  for (let d = 0; d < items.length; d++) {
+    for (const j of d === 0 ? [i] : [i + d, i - d]) {
+      if (j >= 0 && j < items.length && names.has(items[j].fileName)) return items[j].fileName
+    }
   }
   return null
 }

@@ -1,7 +1,10 @@
 /* 스냅샷 패널·목록·달력(P3 설계 §4.2). 알약 바탕은 pills.css 의 .se-pill 을 쓴다. */
 .se-snap-row { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; font-size: 12px; cursor: default; white-space: nowrap; border-left: 3px solid transparent; }
 .se-snap-row:hover { background: #f3f4f6; }
-.se-snap-row[aria-selected='true'] { background: #dbeafe; border-left-color: #2563eb; }
+/* 고른 줄(여러 줄일 수 있다)은 바탕, 큰 화면에 뜬 줄은 왼쪽 띠까지 */
+.se-snap-list { user-select: none; }
+.se-snap-row[aria-selected='true'] { background: #dbeafe; }
+.se-snap-row[data-current='true'] { border-left-color: #2563eb; }
 .se-snap-time { font-variant-numeric: tabular-nums; color: #111827; }
 .se-snap-shift { width: 40px; font-size: 10px; color: #6b7280; }
 .se-snap-expires { margin-left: auto; font-size: 10px; color: #b45309; }
@@ -51,7 +54,8 @@
 .se-snap-cal p { margin: 6px 0 0; color: #6b7280; line-height: 1.4; }
 
 .dark .se-snap-row:hover { background: #334155; }
-.dark .se-snap-row[aria-selected='true'] { background: rgba(30, 64, 175, .4); border-left-color: #60a5fa; }
+.dark .se-snap-row[aria-selected='true'] { background: rgba(30, 64, 175, .4); }
+.dark .se-snap-row[data-current='true'] { border-left-color: #60a5fa; }
 .dark .se-snap-time { color: #e2e8f0; }
 .dark .se-snap-shift { color: #94a3b8; }
 .dark .se-snap-expires { color: #fcd34d; }

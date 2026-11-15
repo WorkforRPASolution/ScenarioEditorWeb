@@ -5,13 +5,14 @@
 // - 설비마다 스냅샷 유무(가장 늦은 날짜)는 설비 고르기 칸에 들어갈 때 뒤에서 나눠 받는다 — 패널을 펴기만 해서는 받지 않고, 설비 목록·고르기를 기다리게 하지 않는다.
 // - 메모(P3-C): 줄의 메모는 하루 목록이 준다. 쓰기·고치기·지우기 뒤에는 그 줄만 바꾼 새 배열로 갈아 끼운다. 화면이 본 글을 함께 보내
 //   그 사이 남이 바꿨으면(409) 덮어쓰지 않고 지금 값을 보인다. 갈 줄·고른 줄이 거른 목록에 없게 되면 거르기를 '전체' 로 돌린다.
-// 여러 줄 고르기(다운로드)는 P3-D 에서 더한다.
+// - 여러 줄 고르기(P3-D): 고른 줄 집합(picked)은 늘 큰 화면에 뜬 줄(selectedName)을 포함한다. 그냥 고르기·이동은 그 줄 하나,
+//   Ctrl 은 더하기·빼기, Shift 는 기준 줄부터의 범위. 거른 목록에 없는 줄은 고른 것에서 뺀다(받을 대상 = 화면에 보이는 고른 줄).
 import { defineStore } from 'pinia'
 import { ref, shallowRef, computed } from 'vue'
 import { scenarioEditorApi as api, blobError } from '../api'
 import { t, errorCode, errorMessage } from '../messages'
 import { safeStorage } from '../composables/useSafeStorage'
-import { FILTERS, filterItems, stepName, nextMatch, isTag, hasMemo } from '../editor/snapshotList'
+import { FILTERS, filterItems, stepName, nextMatch, isTag, hasMemo, rangeNames, nearestName } from '../editor/snapshotList'
 import { isDate, addDays, clampDate, laterOf } from '../editor/snapshotDates'
 
 const KEY = 'se-snapshot'
@@ -51,6 +52,8 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
   const list = shallowRef(emptyList('idle'))
   const filter = ref('all')
   const selectedName = ref(null)
+  // 고른 줄(파일 이름) — 통째로 갈아 끼운다. 하나를 골랐으면 그 줄 하나다
+  const picked = shallowRef(new Set())
   const calendar = ref(idleCalendar())
   // 메모 목록 창 — 통째로 갈아 끼운다
   const memoList = shallowRef(idleMemoList())
@@ -60,11 +63,14 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
   const shown = computed(() => filterItems(list.value.items, filter.value))
   const selected = computed(() => (selectedName.value ? list.value.items.find((i) => i.fileName === selectedName.value) ?? null : null))
   const position = computed(() => (selectedName.value ? shown.value.findIndex((i) => i.fileName === selectedName.value) : -1))
+  // 고른 줄 — 거른 목록의 순서로(받기의 대상)
+  const pickedItems = computed(() => (picked.value.size ? shown.value.filter((i) => picked.value.has(i.fileName)) : []))
   const minDate = computed(() => range.value?.oldest ?? null)
   // 설비 시계가 앞서 가장 늦은 날이 오늘보다 뒤일 수 있다
   const maxDate = computed(() => (range.value ? laterOf(range.value.today, range.value.latest) : null))
 
   let pendingEqp = null // 기억해 둔 설비 — 설비 목록을 받은 뒤에 되살린다
+  let anchor = null // 범위 고르기(Shift)의 기준 줄
   let listSeq = 0
   let calSeq = 0
   let noticeTimer = null
@@ -76,7 +82,7 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
   const inflight = new Map()
   const touch = (name) => { const v = cache.get(name); cache.delete(name); cache.set(name, v) }
   // 고른 그림은 고를 때 맨 뒤로 가고 그 뒤에 더해지는 것은 이웃 둘뿐이라 넘쳐도 놓이지 않는다.
-  // 고르기와 상관없이 여러 장을 받는 길(P3-D 다운로드)이 생기면 화면에 뜬 그림을 건너뛰는 규칙을 시험과 함께 더한다.
+  // 받기(P3-D)는 이 기억을 쓰지 않는다 — 그림 API 를 따로 불러 Blob 으로 든다(stores/snapshotDownloadStore.js).
   function evict() {
     for (const name of [...cache.keys()]) {
       if (cache.size <= IMAGE_KEEP) break
@@ -141,6 +147,15 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
   function clearSelection() {
     selectedName.value = null
     image.value = idleImage()
+    picked.value = new Set()
+    anchor = null
+  }
+  // 거른 목록에 없는 줄은 고른 것에서 뺀다(뜬 줄은 거른 목록에 있다고 본다 — 없으면 부르는 쪽이 먼저 비운다)
+  function prunePicked() {
+    if (!picked.value.size) return
+    const kept = shown.value.filter((i) => picked.value.has(i.fileName)).map((i) => i.fileName)
+    if (kept.length !== picked.value.size) picked.value = new Set(kept)
+    if (anchor && !picked.value.has(anchor)) anchor = selectedName.value
   }
   const sameRange = (d) => ({ latest: d.latest ?? null, today: d.today ?? null, oldest: d.oldest ?? null })
 
@@ -162,8 +177,11 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
       list.value = { status: 'ready', items: Array.isArray(r.items) ? r.items : [], truncated: !!r.truncated, memoFailed: !!r.memoFailed, error: '' }
       if (keep) {
         if (!list.value.items.some((i) => i.fileName === keep)) clearSelection()
-        // 지킨 줄이 거른 목록에 없게 됐다('메모' 거르기인데 그 사이 메모가 지워짐) — 고른 줄이 목록에서 사라지지 않게
-        else if (position.value < 0) filter.value = 'all'
+        else {
+          // 지킨 줄이 거른 목록에 없게 됐다('메모' 거르기인데 그 사이 메모가 지워짐) — 고른 줄이 목록에서 사라지지 않게
+          if (position.value < 0) filter.value = 'all'
+          prunePicked() // 새 목록에 없는 줄은 고른 것에서 뺀다
+        }
       } else if (selectLast && shown.value.length) {
         select(shown.value[shown.value.length - 1].fileName)
       }
@@ -243,13 +261,59 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
     if (!FILTERS.includes(next)) return
     filter.value = next
     if (selectedName.value && position.value < 0) clearSelection()
+    else prunePicked()
   }
 
-  function select(name) {
-    if (!list.value.items.some((i) => i.fileName === name)) return
+  // 큰 화면에 띄운다(고른 줄 집합은 건드리지 않는다)
+  function show(name) {
     selectedName.value = name
     mode.value = 'snapshot'
     showImage(name)
+  }
+  // 그 줄 하나를 고른다
+  function select(name) {
+    if (!list.value.items.some((i) => i.fileName === name)) return
+    picked.value = new Set([name])
+    anchor = name
+    show(name)
+  }
+  const inShown = (name) => shown.value.some((i) => i.fileName === name)
+  // 더하기·빼기(Ctrl) — 더한 줄이 뜬다. 뜬 줄을 빼면 가장 가까운 남은 줄이 뜬다. 하나만 남으면 빼지 않는다.
+  function togglePick(name) {
+    if (!inShown(name)) return
+    if (!selectedName.value) { select(name); return }
+    const next = new Set(picked.value)
+    if (!next.has(name)) {
+      next.add(name)
+      picked.value = next
+      anchor = name
+      show(name)
+      return
+    }
+    if (next.size === 1) return
+    next.delete(name)
+    picked.value = next
+    if (name === selectedName.value) {
+      const to = nearestName(shown.value, next, name)
+      anchor = to
+      show(to)
+    } else if (name === anchor) {
+      anchor = selectedName.value
+    }
+  }
+  // 범위(Shift) — 기준 줄부터 그 줄까지(지금 거른 목록 안에서). 앞서 고른 것은 갈아 치우고, 기준 줄은 그대로 둔다.
+  function pickRange(name) {
+    if (!inShown(name)) return
+    const from = anchor && inShown(anchor) ? anchor : selectedName.value
+    const names = rangeNames(shown.value, from, name)
+    picked.value = new Set(names)
+    anchor = from && names.includes(from) ? from : name
+    show(name)
+  }
+  // Shift+↑↓ — 뜬 줄을 한 줄 옮기며 범위를 늘리거나 줄인다
+  function moveRange(delta) {
+    const next = stepName(shown.value, selectedName.value, delta)
+    if (next) pickRange(next)
   }
   function move(delta) {
     const next = stepName(shown.value, selectedName.value, delta)
@@ -277,6 +341,7 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
     list.value = { ...list.value, items }
     // '메모' 거르기에서 고른 줄의 메모를 지웠다 — 고른 줄이 목록에서 사라지지 않게
     if (selectedName.value && position.value < 0) filter.value = 'all'
+    else prunePicked() // 뜨지 않은 고른 줄이 거른 목록에서 빠졌으면 고른 것에서도 뺀다
     // 목록을 다시 받는 중이었다 — 먼저 떠난 요청의 답(이 메모가 없던 때의 목록)이 방금 바꾼 줄을 덮지 않게 다시 받는다
     if (list.value.status === 'loading') refresh()
   }
@@ -463,8 +528,8 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
   }
 
   return {
-    mode, open, equipment, presence, eqpId, range, date, list, filter, selectedName, calendar, image, notice, memoList,
-    shown, selected, position, minDate, maxDate,
-    restore, setOpen, loadEquipment, refreshPresence, pickEquipment, setDate, moveDate, refresh, setFilter, select, move, moveTag, moveMemo, saveMemo, removeMemo, loadMemoList, goToMemo, openCalendar, showStep, showSnapshot, say
+    mode, open, equipment, presence, eqpId, range, date, list, filter, selectedName, picked, calendar, image, notice, memoList,
+    shown, selected, position, pickedItems, minDate, maxDate,
+    restore, setOpen, loadEquipment, refreshPresence, pickEquipment, setDate, moveDate, refresh, setFilter, select, togglePick, pickRange, moveRange, move, moveTag, moveMemo, saveMemo, removeMemo, loadMemoList, goToMemo, openCalendar, showStep, showSnapshot, say
   }
 })

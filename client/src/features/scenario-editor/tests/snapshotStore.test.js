@@ -859,6 +859,181 @@ describe('snapshotStore', () => {
     })
   })
 
+  describe('여러 줄 고르기 (P3-D)', () => {
+    const picked = (s) => [...s.picked].sort()
+    const names = (...idx) => idx.map(name).sort()
+
+    it('그냥 고르면 그 줄 하나다. 고른 줄 집합은 통째로 갈아 끼운다', async () => {
+      const s = await ready()
+      expect(picked(s)).toEqual([])
+      const before = s.picked
+      s.select(name(2))
+      expect(picked(s)).toEqual(names(2))
+      expect(s.picked).not.toBe(before)
+      expect(isReactive(s.picked)).toBe(false)
+      s.select(name(4))
+      expect(picked(s)).toEqual(names(4))
+      expect(s.pickedItems.map((i) => i.fileName)).toEqual([name(4)])
+    })
+
+    it('더하기(Ctrl) — 더한 줄이 큰 화면에 뜬다. 고른 줄은 목록 순서로 준다', async () => {
+      const s = await ready()
+      s.select(name(4))
+      s.togglePick(name(1))
+      await flushPromises()
+      expect(picked(s)).toEqual(names(1, 4))
+      expect(s.selectedName).toBe(name(1))
+      expect(s.image).toMatchObject({ name: name(1), status: 'ready' })
+      expect(s.pickedItems.map((i) => i.fileName)).toEqual([name(1), name(4)])
+    })
+
+    it('빼기 — 뜨지 않은 줄을 빼면 뜬 줄은 그대로다', async () => {
+      const s = await ready()
+      s.select(name(1))
+      s.togglePick(name(3))
+      s.togglePick(name(5))
+      s.togglePick(name(1))
+      expect(picked(s)).toEqual(names(3, 5))
+      expect(s.selectedName).toBe(name(5))
+    })
+
+    it('빼기 — 뜬 줄을 빼면 가장 가까운 남은 줄이 뜬다', async () => {
+      const s = await ready()
+      s.select(name(0))
+      s.togglePick(name(4))
+      s.togglePick(name(2))
+      s.togglePick(name(2)) // 뜬 줄(2)을 뺀다 — 남은 0·4 는 같은 거리, 아래 줄
+      await flushPromises()
+      expect(picked(s)).toEqual(names(0, 4))
+      expect(s.selectedName).toBe(name(4))
+      expect(s.image.name).toBe(name(4))
+    })
+
+    it('하나만 남으면 빼지 않는다. 고른 것이 없을 때의 더하기는 그냥 고르기다', async () => {
+      const s = await ready()
+      s.togglePick(name(3))
+      expect([picked(s), s.selectedName, s.mode]).toEqual([names(3), name(3), 'snapshot'])
+      s.togglePick(name(3))
+      expect([picked(s), s.selectedName]).toEqual([names(3), name(3)])
+      s.togglePick('nope.png')
+      expect(picked(s)).toEqual(names(3))
+    })
+
+    it('범위(Shift) — 기준 줄부터 그 줄까지. 기준 줄은 그대로 남아 범위를 다시 잡는다', async () => {
+      const s = await ready()
+      s.select(name(2))
+      s.pickRange(name(4))
+      expect([picked(s), s.selectedName]).toEqual([names(2, 3, 4), name(4)])
+      s.pickRange(name(0))
+      expect([picked(s), s.selectedName]).toEqual([names(0, 1, 2), name(0)])
+      s.pickRange('nope.png')
+      expect(picked(s)).toEqual(names(0, 1, 2))
+    })
+
+    it('더하기를 한 줄이 새 기준 줄이다. 범위는 앞서 고른 것을 갈아 치운다', async () => {
+      const s = await ready()
+      s.select(name(0))
+      s.togglePick(name(3))
+      s.pickRange(name(5))
+      expect([picked(s), s.selectedName]).toEqual([names(3, 4, 5), name(5)])
+    })
+
+    it('고른 것이 없을 때의 범위는 그 줄 하나다', async () => {
+      const s = await ready()
+      s.pickRange(name(3))
+      expect([picked(s), s.selectedName]).toEqual([names(3), name(3)])
+    })
+
+    it('범위는 지금 거른 목록 안에서 잡는다', async () => {
+      const s = await ready()
+      s.setFilter('tag')
+      s.select(name(1))
+      s.pickRange(name(4))
+      expect(picked(s)).toEqual(names(1, 4))
+    })
+
+    it('Shift+↑↓ — 기준 줄에서 늘리고 줄인다. 끝에서는 그대로', async () => {
+      const s = await ready()
+      s.select(name(2))
+      s.moveRange(1)
+      expect([picked(s), s.selectedName]).toEqual([names(2, 3), name(3)])
+      s.moveRange(-1)
+      expect([picked(s), s.selectedName]).toEqual([names(2), name(2)])
+      s.moveRange(-1)
+      s.moveRange(-1)
+      s.moveRange(-1)
+      expect([picked(s), s.selectedName]).toEqual([names(0, 1, 2), name(0)])
+    })
+
+    it('이전·다음·태그 이동은 그 줄 하나로 되돌린다', async () => {
+      const s = await ready()
+      s.select(name(0))
+      s.pickRange(name(3))
+      s.move(1)
+      expect([picked(s), s.selectedName]).toEqual([names(4), name(4)])
+      s.pickRange(name(2))
+      s.moveTag(1)
+      expect(picked(s)).toEqual([s.selectedName])
+    })
+
+    it('거르기를 바꾸면 거른 목록에 없는 줄은 고른 것에서 빠진다', async () => {
+      const s = await ready()
+      s.select(name(0))
+      s.togglePick(name(1))
+      s.togglePick(name(4))
+      s.setFilter('tag')
+      expect([picked(s), s.selectedName]).toEqual([names(1, 4), name(4)])
+      s.setFilter('all')
+      expect(picked(s)).toEqual(names(1, 4))
+    })
+
+    it('거르기를 바꿔 뜬 줄이 빠지면 고른 것을 모두 비운다', async () => {
+      const s = await ready()
+      s.select(name(1))
+      s.togglePick(name(0)) // 뜬 줄 = 0(클릭)
+      s.setFilter('tag')
+      expect([picked(s), s.selectedName]).toEqual([[], null])
+    })
+
+    it('새로 고침 — 새 목록에 있는 줄만 남는다. 뜬 줄이 없어졌으면 모두 비운다', async () => {
+      const s = await ready()
+      s.select(name(0))
+      s.togglePick(name(2))
+      s.togglePick(name(5))
+      api.snapshots.mockImplementation((eqpId, date) => ok(listOf(eqpId, date, ITEMS.filter((_, i) => i !== 2))))
+      await s.refresh()
+      expect([picked(s), s.selectedName]).toEqual([names(0, 5), name(5)])
+      api.snapshots.mockImplementation((eqpId, date) => ok(listOf(eqpId, date, ITEMS.slice(0, 2))))
+      await s.refresh()
+      expect([picked(s), s.selectedName]).toEqual([[], null])
+    })
+
+    it('날짜·설비를 바꾸면 비운다', async () => {
+      const s = await ready()
+      s.select(name(0))
+      s.pickRange(name(2))
+      await s.setDate('2026-11-10')
+      expect(picked(s)).toEqual([])
+      s.select(name(1))
+      s.pickRange(name(3))
+      await s.pickEquipment('B', { select: false })
+      expect(picked(s)).toEqual([])
+    })
+
+    it("'메모' 거르기에서 고른 줄의 메모를 지우면 그 줄은 고른 것에서 빠진다(뜬 줄이 아닐 때)", async () => {
+      const memo = { text: '글', author: 'kim', authorName: '김', writtenAt: '2026-11-11 09:00', editedBy: null, editedAt: null }
+      const withMemo = ITEMS.map((it, i) => (i === 1 || i === 3 ? { ...it, memo } : it))
+      api.snapshots.mockImplementation((eqpId, date) => ok(listOf(eqpId, date, withMemo)))
+      api.removeMemo.mockImplementation(() => ok({ removed: true, memo: null }))
+      const s = await ready()
+      s.setFilter('memo')
+      s.select(name(1))
+      s.togglePick(name(3)) // 뜬 줄 = 3
+      expect((await s.removeMemo(name(1))).ok).toBe(true)
+      expect([s.filter, picked(s), s.selectedName]).toEqual(['memo', names(3), name(3)])
+    })
+  })
+
   describe('설비마다 스냅샷 유무', () => {
     const part = (items, checked, next, total = 4) => ({ enabled: true, items, checked, total, next })
     // 패널을 펴고 설비 고르기에 들어간 저장소

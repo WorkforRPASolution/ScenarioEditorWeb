@@ -1,6 +1,6 @@
 // 스냅샷 하루 목록 규칙 — 거르기·이웃·태그 이동·클릭 점·보이는 줄 (P3 설계 §4.2·§4.3)
 import { describe, it, expect } from 'vitest'
-import { FILTERS, isTag, hasMemo, filterItems, stepName, nextMatch, clickPoint, expiryDays, rowWindow, scrollFor } from '../editor/snapshotList'
+import { FILTERS, isTag, hasMemo, filterItems, stepName, nextMatch, clickPoint, expiryDays, rowWindow, scrollFor, rangeNames, nearestName } from '../editor/snapshotList'
 
 const click = (n, x = 1, y = 2) => ({ fileName: `${n}_[${x}][${y}].png`, ms: n, kind: 'click', tag: null, x, y, txn: null, daysLeft: 15 })
 const tag = (n, t = 'start') => ({ fileName: `${n}_[9999][${n}].png`, ms: n, kind: 'tag', tag: t, x: null, y: null, txn: String(n), daysLeft: 15 })
@@ -133,4 +133,27 @@ describe('scrollFor — 고른 줄이 보이게', () => {
   it('위로 벗어난 줄은 맨 위에', () => expect(scrollFor(2, 100, 280, 28)).toBe(56))
   it('아래로 벗어난 줄은 맨 아래에', () => expect(scrollFor(20, 100, 280, 28)).toBe(20 * 28 + 28 - 280))
   it('고른 것이 없으면(-1) 그대로', () => expect(scrollFor(-1, 100, 280, 28)).toBe(100))
+})
+
+describe('여러 줄 고르기 (P3-D)', () => {
+  const list = ['a', 'b', 'c', 'd', 'e'].map((n) => ({ fileName: n }))
+  it('rangeNames — 두 줄 사이(양 끝 포함), 거꾸로 줘도 목록 순서', () => {
+    expect(rangeNames(list, 'b', 'd')).toEqual(['b', 'c', 'd'])
+    expect(rangeNames(list, 'd', 'b')).toEqual(['b', 'c', 'd'])
+    expect(rangeNames(list, 'c', 'c')).toEqual(['c'])
+  })
+  it('rangeNames — 기준 줄이 목록에 없으면 그 줄 하나, 갈 줄이 없으면 빈 배열', () => {
+    expect(rangeNames(list, 'zz', 'd')).toEqual(['d'])
+    expect(rangeNames(list, null, 'd')).toEqual(['d'])
+    expect(rangeNames(list, 'b', 'zz')).toEqual([])
+  })
+  it('nearestName — 그 줄에서 가장 가까운 고른 줄(같은 거리면 아래 줄)', () => {
+    expect(nearestName(list, new Set(['a', 'e']), 'b')).toBe('a')
+    expect(nearestName(list, new Set(['a', 'e']), 'd')).toBe('e')
+    expect(nearestName(list, new Set(['a', 'e']), 'c')).toBe('e')
+    expect(nearestName(list, new Set(['c']), 'c')).toBe('c')
+    expect(nearestName(list, new Set(), 'c')).toBeNull()
+    expect(nearestName(list, new Set(['zz']), 'c')).toBeNull()
+    expect(nearestName(list, new Set(['a']), 'zz')).toBe('a')
+  })
 })

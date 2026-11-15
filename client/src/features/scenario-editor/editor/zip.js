@@ -35,7 +35,7 @@ function dosDateTime(d) {
 
 // entries = [{ name, blob(Blob 또는 Uint8Array), crc, size }] → 이어 붙이면 ZIP 이 되는 조각들
 export function zipParts(entries, date = new Date()) {
-  if (entries.length > MAX_ENTRIES) throw new Error(`ZIP 항목이 너무 많습니다: ${entries.length}`)
+  if (entries.length > MAX_ENTRIES) throw new Error(`zip: too many entries (${entries.length})`)
   const encoder = new TextEncoder()
   const { time, date: day } = dosDateTime(date)
   const parts = []
@@ -77,10 +77,10 @@ export function zipParts(entries, date = new Date()) {
     parts.push(local, e.blob)
     central.push(entry)
     offset += local.length + e.size
-    if (offset > MAX_32) throw new Error('ZIP 이 4GB 를 넘습니다')
+    if (offset > MAX_32) throw new Error('zip: larger than 4GB')
   }
   const centralSize = central.reduce((n, c) => n + c.length, 0)
-  if (offset + centralSize > MAX_32) throw new Error('ZIP 이 4GB 를 넘습니다')
+  if (offset + centralSize > MAX_32) throw new Error('zip: larger than 4GB')
   const end = new Uint8Array(22)
   const ev = new DataView(end.buffer)
   ev.setUint32(0, 0x06054b50, true)

@@ -73,7 +73,9 @@ const btn = 'h-7 px-2 rounded-md text-xs bg-gray-200 dark:bg-gray-700 text-gray-
         <span class="se-seg">
           <button v-for="f in FILTERS" :key="f" type="button" :disabled="!snap.eqpId" :aria-pressed="snap.filter === f ? 'true' : 'false'" :data-testid="`se-snap-filter-${f}`" @click="snap.setFilter(f)">{{ t(`SEW_SNAP_FILTER_${f}`) }}</button>
         </span>
-        <span v-if="snap.eqpId && snap.list.items.length" class="ml-auto text-xs text-gray-500 dark:text-gray-400 tabular-nums" data-testid="se-snap-count">{{ t('SEW_SNAP_COUNT', { n: snap.shown.length }) }}</span>
+        <!-- 여러 줄을 골랐을 때만(받기의 대상) -->
+        <span v-if="snap.pickedItems.length > 1" class="ml-auto text-xs font-medium text-primary-600 dark:text-primary-300 tabular-nums" data-testid="se-snap-picked">{{ t('SEW_SNAP_PICKED', { n: snap.pickedItems.length }) }}</span>
+        <span v-if="snap.eqpId && snap.list.items.length" class="text-xs text-gray-500 dark:text-gray-400 tabular-nums" :class="snap.pickedItems.length > 1 ? '' : 'ml-auto'" data-testid="se-snap-count">{{ t('SEW_SNAP_COUNT', { n: snap.shown.length }) }}</span>
       </div>
     </div>
     <p v-if="snap.list.truncated && !state" class="px-3 py-1.5 text-[11px] bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200 shrink-0" data-testid="se-snap-truncated">{{ t('SEW_SNAP_TRUNCATED', { n: snap.list.items.length }) }}</p>

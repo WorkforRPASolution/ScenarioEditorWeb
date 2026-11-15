@@ -129,6 +129,7 @@ export const MESSAGES = {
   SEW_SNAP_FILTER_tag: '태그',
   SEW_SNAP_FILTER_memo: '메모',
   SEW_SNAP_COUNT: '{n}장',
+  SEW_SNAP_PICKED: '{n}장 고름',
   SEW_SNAP_LOADING: '목록을 받는 중…',
   SEW_SNAP_LIST_FAILED: '목록을 받지 못했습니다.',
   SEW_SNAP_EMPTY_DAY: '스냅샷이 없습니다.',

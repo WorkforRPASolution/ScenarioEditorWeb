@@ -612,6 +612,16 @@ describe('SnapshotPanel', () => {
       expect(tid(w, 'se-snap-filter-tag').attributes('aria-pressed')).toBe('true')
       expect(tids(w, 'se-snap-row')).toHaveLength(2)
     })
+    it('여러 줄을 고르면 개수 옆에 "n장 고름" 이 보인다(P3-D) — 하나일 때는 없다', async () => {
+      const { w, s } = await mountPanel({ pick: 'SEWT_CVD_A01' })
+      s.select(ITEMS[0].fileName)
+      await flushPromises()
+      expect(tid(w, 'se-snap-picked').exists()).toBe(false)
+      s.pickRange(ITEMS[2].fileName)
+      await flushPromises()
+      expect(tid(w, 'se-snap-picked').text()).toBe(t('SEW_SNAP_PICKED', { n: 3 }))
+      expect(tid(w, 'se-snap-picked').text()).toContain('3')
+    })
     it('받는 중', async () => {
       const { w, s } = await mountPanel()
       const gate = defer()
