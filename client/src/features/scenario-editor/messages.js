@@ -148,6 +148,7 @@ export const MESSAGES = {
   SEW_SNAP_MEMO_OTHERS: '{name} 님이 쓴 메모입니다. 고치면 그 메모가 바뀝니다.',
   SEW_SNAP_MEMO_OTHERS_REMOVE: '{name} 님이 쓴 메모입니다.',
   SEW_SNAP_MEMO_NOW: '지금 내용: {text} — {name}',
+  SEW_SNAP_MEMO_NOW_EDITED: '지금 내용: {text} — {name} (고침: {by})',
   SEW_SNAP_MEMO_NOW_NONE: '지금은 메모가 없습니다(지워졌습니다). 저장하면 새 메모로 씁니다.',
   SEW_SNAP_MEMO_CONFIRM: '이 메모를 지울까요?',
   SEW_SNAP_MEMO_SAVE: '저장',

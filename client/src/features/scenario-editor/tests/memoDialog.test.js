@@ -140,6 +140,15 @@ describe('MemoDialog', () => {
     expect(api.saveMemo).toHaveBeenLastCalledWith('SEWT_A01', name(1), '내가 고친 글', '남이 바꾼 글')
     expect(closed(w)).toBe(true)
   })
+  it('지금 내용에는 고친 사람도 보인다(작성자는 처음 쓴 사람이라, 바꾼 사람을 알 수 있게)', async () => {
+    const current = { ...memo('남이 바꾼 글'), editedBy: 'lee', editedAt: '2026-11-11 10:02' }
+    api.saveMemo.mockImplementationOnce(() => Promise.reject(fail(409, 'MEMO_CONFLICT', { current })))
+    await open(1)
+    await type('내가 고친 글')
+    await tid('se-memo-save').trigger('click')
+    await flushPromises()
+    expect(tid('se-memo-conflict').text()).toContain('지금 내용: 남이 바꾼 글 — 김철수 (고침: lee)')
+  })
   it('그 사이 지워졌으면 "지금은 메모가 없습니다" — 다시 저장하면 새 메모로 보낸다', async () => {
     api.saveMemo.mockImplementationOnce(() => Promise.reject(fail(409, 'MEMO_CONFLICT', { current: null })))
     await open(1)

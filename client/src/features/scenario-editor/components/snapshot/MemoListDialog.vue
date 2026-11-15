@@ -73,15 +73,15 @@ const btnP = 'h-8 px-3 rounded-lg text-sm bg-primary-500 hover:enabled:bg-primar
   <ModalShell :model-value="modelValue" :title="t('SEW_SNAP_MEMO_LIST')" :width="900" :height="540" testid="se-memo-list" @update:model-value="close">
     <div class="h-full flex flex-col min-h-0 text-gray-800 dark:text-gray-100">
       <div class="px-5 py-2.5 flex flex-wrap items-center gap-2 border-b border-gray-200 dark:border-dark-border shrink-0 text-xs">
-        <select v-model="process" class="se-inp w-40" :aria-label="t('SEW_SNAP_EQP_ALL_PROCESS')" data-testid="se-memo-list-process">
+        <select v-model="process" class="se-inp se-memo-filter" :aria-label="t('SEW_SNAP_EQP_ALL_PROCESS')" data-testid="se-memo-list-process">
           <option value="">{{ t('SEW_SNAP_EQP_ALL_PROCESS') }}</option>
           <option v-for="p in options.processes" :key="p" :value="p">{{ p }}</option>
         </select>
-        <select v-model="model" class="se-inp w-40" :aria-label="t('SEW_SNAP_EQP_ALL_MODEL')" data-testid="se-memo-list-model">
+        <select v-model="model" class="se-inp se-memo-filter" :aria-label="t('SEW_SNAP_EQP_ALL_MODEL')" data-testid="se-memo-list-model">
           <option value="">{{ t('SEW_SNAP_EQP_ALL_MODEL') }}</option>
           <option v-for="m in options.models" :key="m" :value="m">{{ m }}</option>
         </select>
-        <select v-model="eqpId" class="se-inp w-48" :aria-label="t('SEW_SNAP_MEMO_LIST_ALL_EQP')" data-testid="se-memo-list-eqp">
+        <select v-model="eqpId" class="se-inp se-memo-filter se-memo-filter-wide" :aria-label="t('SEW_SNAP_MEMO_LIST_ALL_EQP')" data-testid="se-memo-list-eqp">
           <option value="">{{ t('SEW_SNAP_MEMO_LIST_ALL_EQP') }}</option>
           <option v-for="e in options.eqpIds" :key="e" :value="e">{{ e }}</option>
         </select>

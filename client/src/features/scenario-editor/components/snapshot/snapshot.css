@@ -12,6 +12,9 @@
 .se-snap-tag-skip { background: #fef3c7; color: #92400e; }
 .se-snap-memo-ic { color: #b45309; font-size: 12px; cursor: default; }
 .se-snap-memo-bar { background: #fffbeb; }
+/* 메모 목록 창의 거르기 — 입력 칸 기본 폭(100%)을 눌러 한 줄에 놓는다 */
+.se-inp.se-memo-filter { width: 160px; flex: none; }
+.se-inp.se-memo-filter.se-memo-filter-wide { width: 200px; }
 /* 메모 목록 창의 표 */
 .se-memo-table { border-collapse: collapse; }
 .se-memo-table th { position: sticky; top: 0; z-index: 1; padding: 6px 12px; text-align: left; font-weight: 600; white-space: nowrap; background: #f9fafb; color: #4b5563; border-bottom: 1px solid #e5e7eb; }

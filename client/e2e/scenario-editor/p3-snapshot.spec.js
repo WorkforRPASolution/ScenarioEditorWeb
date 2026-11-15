@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { asUser, openFromDialog, rowAt } from './helpers'
+import { cleanupMemos, memosLeft, closeDb } from './sew'
+import { API_URL } from '../env.js'
 
 // P3-B 스냅샷 화면(설계 §4.1~§4.3, §12 E2E ①). 시험 데이터: `npm run seed -- snapshots`(tools/seed/data/snapshots.js) —
 // SEWT_PHOTO_A01 의 "오늘" 20줄(클릭 12 · 태그 5 · 같은 ms 의 클릭+태그 · 목록에만 있는 한 줄), 어제 3줄, SEWT_CVD_A01 오늘 2줄. 그림은 640×360.
@@ -319,3 +321,121 @@ test('④ 스냅샷 유무 표시 — 공정·모델 옆 "있는 설비 수 / �
   await pickEquipment(page, 'sewt_photo_a01', 'SEWT_PHOTO_A01')
   await expect(page.getByTestId('se-snap-date')).toContainText(`-${monthDay}`)
 })
+
+// ── 메모(P3-C) ── 운영과 같은 컬렉션(로컬 EARS 의 ARS_USER_MEMO)에 시험 설비 SEWT_ 의 메모만 쓰고, 시험마다 끝나면(실패해도) 지운다.
+test.describe('메모', () => {
+  test.beforeEach(async () => { await cleanupMemos() })
+  test.afterEach(async () => { await cleanupMemos() })
+  test.afterAll(async () => {
+    expect(await memosLeft()).toBe(0)
+    await closeDb()
+  })
+  // 다른 사용자가 한 일은 서버 API 로 만든다(개발용 사용자 머리글)
+  const callAs = async (user, method, path, body) => {
+    const res = await fetch(`${API_URL}${path}`, { method, headers: { 'X-SE-User': user, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined })
+    expect(res.status, `${method} ${path}`).toBe(200)
+    return (await res.json()).data
+  }
+  const memoPath = (name) => `snapshots/SEWT_PHOTO_A01/${encodeURIComponent(name)}/memo`
+
+  test('⑤ 메모 쓰기 → 거르기 → 새로고침 뒤에도 보임 → 그 사이 남이 고침(충돌) → 고치기 → 메모 목록에서 다른 날로 가기 → 지우기', async ({ page }) => {
+    await asUser(page, 'sew_master')
+    await page.goto('/scenario-editor')
+    await page.getByTestId('se-snapshot-rail').click()
+    await pickEquipment(page, 'photo_a', 'SEWT_PHOTO_A01')
+    await expect(count(page)).toHaveText('20장')
+    const memoBar = page.getByTestId('se-snap-memo')
+    const dialog = page.getByTestId('se-memo-dialog')
+    const input = page.getByTestId('se-memo-input')
+
+    // ── 쓰기: 작은따옴표는 막히고, Enter 로 저장하면 그림 아래 메모 줄과 목록 줄의 ✎ 에 보인다 ──
+    await snapRow(page, '09:13:02').click()
+    await expect(page.getByTestId('se-snap-memo-text')).toHaveCount(0)
+    await page.getByTestId('se-snap-memo-write').click()
+    await expect(dialog).toContainText('메모 — SEWT_PHOTO_A01 · 09:13:02')
+    await expect(input).toBeFocused()
+    await input.fill("it's")
+    await expect(page.getByTestId('se-memo-problem')).toHaveText("메모에 작은따옴표(')는 쓸 수 없습니다.")
+    await expect(page.getByTestId('se-memo-save')).toBeDisabled()
+    await input.fill('알람 창이 가려짐')
+    await expect(page.getByTestId('se-memo-count')).toHaveText('9 / 128자')
+    await input.press('Enter')
+    await expect(dialog).toHaveCount(0)
+    await expect(page.getByTestId('se-snap-memo-text')).toHaveText('알람 창이 가려짐')
+    await expect(page.getByTestId('se-snap-memo-author')).toContainText('—')
+    await expect(snapRow(page, '09:13:02').getByTestId('se-snap-memo-mark')).toHaveAttribute('title', '알람 창이 가려짐')
+    await expect(page.getByTestId('se-snap-memo-mark')).toHaveCount(1)
+
+    // ── '메모' 거르기와 메모 이동 ──
+    await page.getByTestId('se-snap-filter-memo').click()
+    await expect(count(page)).toHaveText('1장')
+    await expect(info(page)).toContainText('1 / 1')
+    await page.getByTestId('se-snap-filter-all').click()
+    await snapRow(page, '22:00:00').click()
+    await page.getByTestId('se-snap-memo-next').click()
+    await expect(snapRow(page, '09:13:02')).toHaveAttribute('aria-selected', 'true')
+
+    // ── 새로고침 뒤에도 서버에서 읽어 보인다 ──
+    await page.reload()
+    await expect(count(page)).toHaveText('20장')
+    await page.getByTestId('se-snap-filter-memo').click()
+    await expect(count(page)).toHaveText('1장')
+    await snapRow(page, '09:13:02').click()
+    await expect(page.getByTestId('se-snap-memo-text')).toHaveText('알람 창이 가려짐')
+    const fileName = await snapRow(page, '09:13:02').getAttribute('data-name')
+
+    // ── 그 사이 다른 사람이 고쳤다: 내 저장은 덮어쓰지 않고 지금 내용을 보인다. 다시 저장하면 된다 ──
+    await callAs('sew_longgrade', 'PUT', memoPath(fileName), { memo: '다른 사람이 고침', expect: '알람 창이 가려짐' }) // SEWPHOTO 공정 사용자
+    await page.getByTestId('se-snap-memo-edit').click()
+    await expect(input).toHaveValue('알람 창이 가려짐')
+    await expect(page.getByTestId('se-memo-others')).toHaveCount(0) // 화면은 아직 내 메모로 알고 있다
+    await input.fill('내가 고침')
+    await page.getByTestId('se-memo-save').click()
+    await expect(page.getByTestId('se-memo-conflict')).toContainText('그 사이 메모가 바뀌었습니다.')
+    await expect(page.getByTestId('se-memo-conflict')).toContainText('지금 내용: 다른 사람이 고침')
+    await expect(page.getByTestId('se-memo-conflict')).toContainText('(고침: sew_longgrade)') // 누가 바꿨는지
+    await expect(input).toHaveValue('내가 고침')
+    await expect(page.getByTestId('se-snap-memo-text')).toHaveText('다른 사람이 고침') // 뒤의 화면도 지금 값으로 바뀌었다
+    await page.getByTestId('se-memo-save').click()
+    await expect(dialog).toHaveCount(0)
+    await expect(page.getByTestId('se-snap-memo-text')).toHaveText('내가 고침')
+
+    // ── 메모 목록: 다른 날의 메모(다른 사람이 씀)로 간다 — 설비·날짜가 바뀌고 그 줄이 골라진다 ──
+    const days = await callAs('sew_master', 'GET', 'snapshots/days?eqpId=SEWT_PHOTO_A01')
+    const yesterday = new Date(Date.parse(`${days.latest}T00:00:00Z`) - 86400000).toISOString().slice(0, 10)
+    const old = (await callAs('sew_master', 'GET', `snapshots?eqpId=SEWT_PHOTO_A01&date=${yesterday}`)).items[0]
+    await callAs('sew_longgrade', 'PUT', memoPath(old.fileName), { memo: '어제 메모', expect: null })
+    await pickEquipment(page, 'cvd_a', 'SEWT_CVD_A01') // 다른 설비를 보다가
+    await expect(page.getByTestId('se-snap-current')).toHaveText('SEWT_CVD_A01')
+    await page.getByTestId('se-snap-memo-list-open').click()
+    const listRows = page.getByTestId('se-memo-list-row')
+    await expect(listRows).toHaveCount(2)
+    await expect(page.getByTestId('se-memo-list-go')).toBeDisabled()
+    // 거르기 셋(공정·모델·설비)은 한 줄에 놓인다
+    const filterBoxes = await Promise.all(['process', 'model', 'eqp'].map((k) => page.getByTestId(`se-memo-list-${k}`).boundingBox()))
+    expect(new Set(filterBoxes.map((b) => Math.round(b.y))).size).toBe(1)
+    await page.getByTestId('se-memo-list-mine').check()
+    await expect(listRows).toHaveCount(1) // 내가 처음 쓴 메모만 — 남이 고쳐도 작성자는 처음 쓴 사람이다
+    await expect(listRows).toContainText('내가 고침')
+    await page.getByTestId('se-memo-list-mine').uncheck()
+    await listRows.filter({ hasText: '어제 메모' }).click()
+    await page.getByTestId('se-memo-list-go').click()
+    await expect(page.getByTestId('se-memo-list')).toHaveCount(0)
+    await expect(page.getByTestId('se-snap-current')).toHaveText('SEWT_PHOTO_A01')
+    await expect(page.getByTestId('se-snap-date')).toContainText(yesterday)
+    await expect(count(page)).toHaveText('3장')
+    await expect(page.getByTestId('se-snap-memo-text')).toHaveText('어제 메모')
+    await expect(page.locator('[data-testid="se-snap-row"][aria-selected="true"]')).toHaveAttribute('data-name', old.fileName)
+
+    // ── 지우기: 남의 메모라 누구 것인지 보이고, 지우면 메모 줄이 [메모 쓰기] 로 돌아간다 ──
+    await page.getByTestId('se-snap-memo-remove').click()
+    await expect(page.getByTestId('se-memo-confirm')).toContainText('어제 메모')
+    await expect(page.getByTestId('se-memo-others')).toContainText('님이 쓴 메모입니다.')
+    await page.getByTestId('se-memo-delete').click()
+    await expect(dialog).toHaveCount(0)
+    await expect(page.getByTestId('se-snap-memo-write')).toBeVisible()
+    await expect(page.getByTestId('se-snap-memo-mark')).toHaveCount(0)
+    expect((await callAs('sew_master', 'GET', `snapshots?eqpId=SEWT_PHOTO_A01&date=${yesterday}`)).items[0].memo).toBeNull()
+  })
+})
+

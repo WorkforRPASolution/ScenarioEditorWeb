@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto'
 import { ROOT, API_URL, FAULT_CONTROL_URL, serverEnv } from '../env.js'
 
 const requireTools = createRequire(join(ROOT, 'tools/package.json'))
-const { cleanupSewW, assertLocalTargets, TEST_USERS } = requireTools('./infra/sew-w-cleanup.js')
+const { cleanupSewW, cleanupSewMemos, assertLocalTargets, TEST_USERS } = requireTools('./infra/sew-w-cleanup.js')
 
 export const CVD = { process: 'SEWCVD', model: 'SEWMODELA' }
 export const SOURCE = { ...CVD, name: 'ALL_CONDITIONS' } // 1 이미지 · 2 OCR · 3 대기 · 4 설비 상태, 손대지 않고 배포해도 막힘이 없다
@@ -83,6 +83,16 @@ export async function db() {
 export async function cleanup() {
   const c = await db()
   return cleanupSewW({ env: serverEnv(), db: c.db, webDb: c.webDb, redis: c.redis, GridFSBucket: c.GridFSBucket })
+}
+
+// 스냅샷 메모 E2E(p3-snapshot ⑤): 시험 설비(SEWT_)의 메모만 지운다 — 루프백이 아니면 던진다. 남은 수도 센다.
+export async function cleanupMemos() {
+  const c = await db()
+  return cleanupSewMemos({ env: serverEnv(), db: c.db })
+}
+export async function memosLeft() {
+  const c = await db()
+  return c.db.collection('ARS_USER_MEMO').countDocuments({ eqpid: /^SEWT_/ })
 }
 
 // 정리 뒤 남은 SEW_W_ 데이터(0 이어야 한다)

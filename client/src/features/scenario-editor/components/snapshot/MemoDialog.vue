@@ -51,7 +51,9 @@ const others = computed(() => (memo.value && !isMine(memo.value, props.me) ? t(a
 const now = computed(() => {
   if (!conflict.value) return ''
   const c = conflict.value.current
-  return c ? t('SEW_SNAP_MEMO_NOW', { text: c.text, name: nameOf(c) }) : t('SEW_SNAP_MEMO_NOW_NONE')
+  if (!c) return t('SEW_SNAP_MEMO_NOW_NONE')
+  // 작성자는 처음 쓴 사람이다 — 웹에서 고친 사람이 있으면 함께 보인다(데스크톱에서 고친 것은 남지 않는다)
+  return c.editedBy ? t('SEW_SNAP_MEMO_NOW_EDITED', { text: c.text, name: nameOf(c), by: c.editedBy }) : t('SEW_SNAP_MEMO_NOW', { text: c.text, name: nameOf(c) })
 })
 
 async function save() {
