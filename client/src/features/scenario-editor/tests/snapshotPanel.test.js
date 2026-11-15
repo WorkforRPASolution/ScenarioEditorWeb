@@ -1,12 +1,13 @@
 // 스냅샷 왼쪽 패널 — 설비 고르기·날짜·달력·거르기·상태 글 (P3 설계 §4.2)
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
+import { mount, flushPromises, enableAutoUnmount, DOMWrapper } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 
-const api = vi.hoisted(() => ({ equipment: vi.fn(), snapshotPresence: vi.fn(), snapshotDays: vi.fn(), snapshots: vi.fn(), snapshotImage: vi.fn() }))
+const api = vi.hoisted(() => ({ equipment: vi.fn(), snapshotPresence: vi.fn(), snapshotDays: vi.fn(), snapshots: vi.fn(), snapshotImage: vi.fn(), memos: vi.fn() }))
 vi.mock('../api', async (importOriginal) => ({ ...(await importOriginal()), scenarioEditorApi: api }))
 import SnapshotPanel from '../components/snapshot/SnapshotPanel.vue'
 import { useSnapshotStore } from '../stores/snapshotStore'
+import { useEditorStore } from '../stores/editorStore'
 import SearchSelect from '../components/snapshot/SearchSelect.vue'
 import { MESSAGES, t } from '../messages'
 
@@ -579,6 +580,27 @@ describe('SnapshotPanel', () => {
       const { w } = await mountPanel({ pick: 'SEWT_CVD_A01' })
       expect(tid(w, 'se-snap-memo-failed').text()).toBe(MESSAGES.SEW_SNAP_MEMO_FAILED_READ)
       expect(tids(w, 'se-snap-row')).toHaveLength(5)
+    })
+    it('[메모 목록] 은 설비를 고르기 전에도 열린다 — 열 때 메모 목록을 받고, 내 아이디를 넘긴다', async () => {
+      api.memos.mockImplementation(() => ok({ items: [
+        { eqpId: 'SEWT_CVD_A01', process: 'SEWCVD', model: 'SEWMODELA', fileName: '10_[1][2].png', date: '2026-11-11', time: '09:00:00', daysLeft: 15, memo: { text: '내 것', author: 'kim', authorName: '김', writtenAt: '2026-11-11 10:02' } },
+        { eqpId: 'SEWT_CVD_A01', process: 'SEWCVD', model: 'SEWMODELA', fileName: '11_[1][2].png', date: '2026-11-11', time: '09:00:01', daysLeft: 15, memo: { text: '남의 것', author: 'lee', authorName: '이', writtenAt: '2026-11-11 10:03' } }
+      ], truncated: false }))
+      useEditorStore().me = { singleid: 'kim' }
+      const { w, s } = await mountPanel()
+      const body = new DOMWrapper(document.body)
+      expect(body.find('[data-testid="se-memo-list"]').exists()).toBe(false)
+      expect(api.memos).not.toHaveBeenCalled()
+      await tid(w, 'se-snap-memo-list-open').trigger('click')
+      await flushPromises()
+      expect(body.findAll('[data-testid="se-memo-list-row"]')).toHaveLength(2)
+      await body.find('[data-testid="se-memo-list-mine"]').setValue(true)
+      expect(body.findAll('[data-testid="se-memo-list-row"]')).toHaveLength(1)
+      // 그 스냅샷으로 가면 창이 닫히고 그 설비가 골라진다
+      await body.find('[data-testid="se-memo-list-row"]').trigger('dblclick')
+      await flushPromises()
+      expect(body.find('[data-testid="se-memo-list"]').exists()).toBe(false)
+      expect([s.eqpId, s.date]).toEqual(['SEWT_CVD_A01', '2026-11-11'])
     })
     it('전체·태그 거르기와 보이는 개수', async () => {
       const { w, s } = await mountPanel({ pick: 'SEWT_CVD_A01' })

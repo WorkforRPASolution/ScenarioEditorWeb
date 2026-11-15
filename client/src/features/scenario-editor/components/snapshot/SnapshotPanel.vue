@@ -1,20 +1,24 @@
 <script setup>
-// 스냅샷 왼쪽 패널(P3 설계 §4.2) — 설비 고르기, 날짜(◀ ▶·달력), 거르기(전체·태그·메모), 하루 목록, [새로 고침].
+// 스냅샷 왼쪽 패널(P3 설계 §4.2) — 설비 고르기, 날짜(◀ ▶·달력), 거르기(전체·태그·메모), 하루 목록, [메모 목록]·[새로 고침].
 // 상태(설비·날짜·목록·고른 것)는 저장소가 갖는다.
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useSnapshotStore } from '../../stores/snapshotStore'
+import { useEditorStore } from '../../stores/editorStore'
 import { FILTERS } from '../../editor/snapshotList'
 import { weekdayOf } from '../../editor/snapshotDates'
 import { t } from '../../messages'
 import EquipmentPicker from './EquipmentPicker.vue'
 import SnapshotCalendar from './SnapshotCalendar.vue'
 import SnapshotList from './SnapshotList.vue'
+import MemoListDialog from './MemoListDialog.vue'
 import '../panel/panel.css'
 import './snapshot.css'
 
 defineOptions({ name: 'SnapshotPanel' })
 defineProps({ prefer: { type: Object, default: null } })
 const snap = useSnapshotStore()
+const editor = useEditorStore()
+const memoListOpen = ref(false) // 메모 목록 창 — 설비를 고르기 전에도 연다(다른 설비의 메모로 갈 수 있다)
 
 // ── 날짜 ──
 const dateRow = ref(null)
@@ -83,7 +87,9 @@ const btn = 'h-7 px-2 rounded-md text-xs bg-gray-200 dark:bg-gray-700 text-gray-
       <SnapshotList v-else />
     </div>
     <div class="px-2.5 py-2 flex gap-1.5 border-t border-gray-200 dark:border-dark-border shrink-0">
+      <button type="button" :class="btn" data-testid="se-snap-memo-list-open" @click="memoListOpen = true">{{ t('SEW_SNAP_MEMO_LIST') }}</button>
       <button type="button" :class="btn" :disabled="!snap.eqpId" data-testid="se-snap-refresh" @click="snap.refresh()">{{ t('SEW_SNAP_REFRESH') }}</button>
     </div>
+    <MemoListDialog v-model="memoListOpen" :me="editor.me?.singleid ?? ''" />
   </div>
 </template>
