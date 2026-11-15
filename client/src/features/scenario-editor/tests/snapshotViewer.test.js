@@ -9,6 +9,8 @@ import SnapshotViewer from '../components/snapshot/SnapshotViewer.vue'
 import { useSnapshotStore } from '../stores/snapshotStore'
 import { useEditorStore } from '../stores/editorStore'
 import { useSnapshotDownloadStore } from '../stores/snapshotDownloadStore'
+import { useEditStore } from '../stores/editStore'
+import { panelFixture, imageStep } from './panelFixture'
 import { MESSAGES } from '../messages'
 
 enableAutoUnmount(afterEach)
@@ -415,5 +417,85 @@ describe('SnapshotViewer', () => {
     expect(s.selectedName).toBe(name(1))
     await tid(w, 'se-mode-snapshot').trigger('click')
     expect(s.mode).toBe('snapshot')
+  })
+
+  describe('새 스텝 (P3-E 스냅샷에서 스텝 만들기)', () => {
+    const btn = (w) => tid(w, 'se-snap-new')
+    const off = (w) => btn(w).attributes('disabled') !== undefined
+    it('시나리오를 열지 않았으면 그림이 떠 있어도 꺼져 있고 까닭을 알린다', async () => {
+      const { w, s } = await mountSized()
+      await show(w, s, 1)
+      expect(off(w)).toBe(true)
+      expect(btn(w).attributes('title')).toBe(MESSAGES.SEW_SNAP_STEP_NO_SCENARIO)
+    })
+    it('읽기 전용으로 연 시나리오에서는 꺼져 있다', async () => {
+      const { w, s } = await mountSized()
+      panelFixture([imageStep(0)], { canWrite: false })
+      await show(w, s, 1)
+      expect(off(w)).toBe(true)
+      expect(btn(w).attributes('title')).toBe(MESSAGES.SEW_SNAP_STEP_READ_ONLY)
+    })
+    it('고칠 수 있는 시나리오여도 그림이 떠 있지 않으면(고른 줄 없음·받는 중·그려지기 전·실패) 꺼져 있다(DC-038)', async () => {
+      const { w, s } = await mountSized()
+      panelFixture([imageStep(0)])
+      await w.vm.$nextTick()
+      expect(off(w)).toBe(true) // 고른 줄 없음
+      expect(btn(w).attributes('title')).toBe(MESSAGES.SEW_SNAP_STEP_NO_IMAGE)
+      const slow = defer()
+      api.snapshotImage.mockImplementationOnce(() => slow.promise)
+      s.select(name(1))
+      await flushPromises()
+      expect(off(w)).toBe(true) // 받는 중
+      slow.resolve({ data: new Blob(['x']) })
+      await flushPromises()
+      expect(off(w)).toBe(true) // 받았지만 아직 그려지지 않았다
+      w.vm.onLoad(IMG)
+      await w.vm.$nextTick()
+      expect(off(w)).toBe(false)
+      expect(btn(w).attributes('title')).toBeUndefined()
+      api.snapshotImage.mockImplementation(() => Promise.reject(blobFail(404, 'SNAPSHOT_NOT_FOUND')))
+      s.select(name(4))
+      await flushPromises()
+      expect(off(w)).toBe(true) // 그림이 서버에 없다
+    })
+    it('[새 스텝 ▾] → 이미지 스텝·OCR 스텝: 떠 있는 그림의 바이트로 새 스텝을 시작하고 메뉴를 닫는다', async () => {
+      const blobs = new Map()
+      api.snapshotImage.mockImplementation((eqpId, fileName) => { const b = new Blob([fileName]); blobs.set(fileName, b); return Promise.resolve({ data: b }) })
+      const { w, s } = await mountSized()
+      panelFixture([imageStep(0)])
+      const startNew = vi.spyOn(useEditStore(), 'startNew').mockReturnValue(true)
+      await show(w, s, 1)
+      expect(tid(w, 'se-snap-new-image').exists()).toBe(false)
+      await btn(w).trigger('click')
+      expect(btn(w).attributes('aria-expanded')).toBe('true')
+      await tid(w, 'se-snap-new-image').trigger('click')
+      expect(startNew).toHaveBeenCalledTimes(1)
+      const [kind, opts] = startNew.mock.calls[0]
+      expect(kind).toBe('image')
+      expect(opts.snapshot).toEqual({ eqpId: 'SEWT_A01', fileName: name(1), blob: blobs.get(name(1)) })
+      expect(opts.snapshot.blob).toBe(blobs.get(name(1)))
+      expect(tid(w, 'se-snap-new-image').exists()).toBe(false)
+      await btn(w).trigger('click')
+      await tid(w, 'se-snap-new-ocr').trigger('click')
+      expect(startNew.mock.calls[1][0]).toBe('ocr')
+      expect(startNew.mock.calls[1][1].snapshot.fileName).toBe(name(1))
+    })
+    it('메뉴는 Esc·바깥 누르기로 닫히고, 받기 메뉴와 함께 열리지 않는다', async () => {
+      const { w, s } = await mountSized()
+      panelFixture([imageStep(0)])
+      await show(w, s, 1)
+      await btn(w).trigger('click')
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+      await w.vm.$nextTick()
+      expect(tid(w, 'se-snap-new-image').exists()).toBe(false)
+      await btn(w).trigger('click')
+      document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+      await w.vm.$nextTick()
+      expect(tid(w, 'se-snap-new-image').exists()).toBe(false)
+      await btn(w).trigger('click')
+      await tid(w, 'se-snap-download').trigger('click')
+      expect(tid(w, 'se-snap-download-plain').exists()).toBe(true)
+      expect(tid(w, 'se-snap-new-image').exists()).toBe(false)
+    })
   })
 })

@@ -211,7 +211,7 @@ function onKey(e) {
           {{ t('SEW_EDIT_EMPTY_PASTE') }}<span v-if="clipCount" class="ml-1 text-gray-500 dark:text-gray-400">{{ t('SEW_EDIT_PASTE_COUNT', { n: clipCount }) }}</span>
         </button>
       </div>
-      <small class="text-xs leading-relaxed text-gray-400 dark:text-gray-500">{{ t('SEW_EDIT_EMPTY_HELP') }}<br>{{ t('SEW_EDIT_EMPTY_HELP_PASTE') }}</small>
+      <small class="text-xs leading-relaxed text-gray-400 dark:text-gray-500">{{ t('SEW_EDIT_EMPTY_HELP') }}<br>{{ t('SEW_EDIT_EMPTY_HELP_SNAPSHOT') }}<br>{{ t('SEW_EDIT_EMPTY_HELP_PASTE') }}</small>
     </div>
     <div v-else-if="!rows.length" class="h-full flex items-center justify-center text-sm text-gray-400">{{ t('SEW_UI_NO_STEPS') }}</div>
     <AgGridVue v-else :theme="theme" :row-data="rows" :column-defs="columnDefs" :get-row-id="(p) => p.data.uid" :suppress-cell-focus="true"

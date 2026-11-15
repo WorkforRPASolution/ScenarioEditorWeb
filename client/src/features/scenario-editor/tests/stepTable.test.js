@@ -444,6 +444,8 @@ describe('StepTable — 빈 시나리오·미해결 갈 곳(Task 8)', () => {
     const empty = w.find('[data-testid="se-table-empty"]')
     expect(empty.text()).toContain('스텝이 아직 없습니다.')
     expect(empty.text()).toContain(t('SEW_EDIT_EMPTY_HELP'))
+    expect(empty.text()).toContain(t('SEW_EDIT_EMPTY_HELP_SNAPSHOT')) // 스냅샷에서 첫 스텝을 만들 수 있다(P3-E)
+    expect(t('SEW_EDIT_EMPTY_HELP_SNAPSHOT')).toContain('스냅샷')
     expect(w.findComponent({ name: 'AgGridVue' }).exists()).toBe(false)
     const paste = w.find('[data-testid="se-empty-paste"]')
     expect(paste.attributes('disabled')).toBeDefined()

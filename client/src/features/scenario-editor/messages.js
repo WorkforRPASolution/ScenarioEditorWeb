@@ -539,7 +539,7 @@ export const MESSAGES = {
   SEW_EDIT_NEW_OCR_HINT: '화면의 글자를 읽어 비교합니다',
   SEW_EDIT_NEW_NONE: '조건 없는 스텝',
   SEW_EDIT_NEW_NONE_HINT: '화면을 보지 않고 바로 동작합니다',
-  SEW_EDIT_NEW_NO_BASE: '기준 화면이 있는 스텝이 없습니다',
+  SEW_EDIT_NEW_NO_BASE: '기준 화면이 있는 스텝이 없습니다 — 스냅샷 화면의 [새 스텝] 으로 만들 수 있습니다',
   SEW_EDIT_COPY: '복사',
   SEW_EDIT_CUT: '잘라내기',
   SEW_EDIT_PASTE: '붙여넣기',
@@ -604,7 +604,8 @@ export const MESSAGES = {
   SEW_EDIT_EMPTY_PASTE_NONE: '다른 시나리오를 열어 스텝을 복사한 뒤 붙여넣을 수 있습니다.',
   SEW_EDIT_EMPTY_HELP: '이미지·OCR 스텝은 기준 화면이 있어야 만들 수 있습니다.',
   SEW_EDIT_EMPTY_HELP_PASTE: '다른 시나리오에서 스텝을 복사해 붙이면 그 기준 화면도 함께 옵니다.',
-  SEW_EDIT_VIEWER_EMPTY: '기준 화면이 아직 없습니다.',
+  SEW_EDIT_EMPTY_HELP_SNAPSHOT: '왼쪽 스냅샷에서 화면을 골라 [새 스텝] 을 누르면 그 화면을 기준 화면으로 씁니다.',
+  SEW_EDIT_VIEWER_EMPTY: '기준 화면이 아직 없습니다. 왼쪽 스냅샷에서 화면을 골라 [새 스텝] 으로 시작할 수 있습니다.',
   // 적용 안 한 변경 확인(목업 dlgHtml guard, 조작판 16 guard·22 saveguard)
   SEW_EDIT_GUARD_TITLE: '{no}번 스텝에 적용하지 않은 변경이 있습니다',
   SEW_EDIT_GUARD_BODY_MOVE: '{n}개 값이 바뀌었습니다. 다른 스텝으로 가기 전에 정하세요.',
