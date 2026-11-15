@@ -1863,6 +1863,35 @@ describe('editStore — 스냅샷을 새 스텝의 기준 화면으로(P3-E)', (
     expect(e.toast.text).toBe(t('SEW_CMD_REFUSED_STEP_LIMIT'))
     expect(e.uploads.size).toBe(0)
   })
+  it('이 그림을 더 올리면 한 번의 저장이 합계 50MB 를 넘게 되면 만들지 않고 먼저 배포하라고 알린다 — 쓰는 그림만 세고, 이미 올린 같은 스냅샷은 된다', async () => {
+    const MB = 1048576
+    const sizedSnap = (n, mb) => { const sn = snapOf(`176325480000${n}_[1][1].png`); Object.defineProperty(sn.blob, 'size', { value: mb * MB }); return sn }
+    const { e } = blank()
+    const first = sizedSnap(0, 10)
+    for (const sn of [first, sizedSnap(1, 10), sizedSnap(2, 10), sizedSnap(3, 10)]) { // 넣은 스텝 넷: 40MB + 찾을 그림 넷
+      expect(e.startNew('image', { snapshot: sn })).toBe(true)
+      await addImage(e)
+    }
+    expect(e.startNew('image', { snapshot: sizedSnap(4, 9) })).toBe(true) // 49MB 남짓 — 된다
+    e.cancelNew()
+    const before = e.uploads.size
+    expect(e.startNew('image', { snapshot: sizedSnap(5, 10) })).toBe(false) // 40MB + 찾을 그림 + 10MB > 50MB
+    expect(e.toast.text).toBe(t('SEW_SNAP_STEP_TOTAL_TOO_LARGE'))
+    expect(e.panel.isNew).toBe(false)
+    expect(e.uploads.size).toBe(before)
+    // 만들다 그만둔 스냅샷(9MB)은 올릴 그림에 남아 있어도 보내지 않으므로 세지 않는다 — 셌다면 40 + 9 + 9 > 50 으로 막혔다
+    expect(e.startNew('image', { snapshot: sizedSnap(6, 9) })).toBe(true)
+    e.cancelNew()
+    expect(e.startNew('ocr', { snapshot: first })).toBe(true) // 이미 올린 스냅샷 — 더 올리는 것이 없다
+  })
+  it('올릴 그림이 200장을 넘게 되면 만들지 않고 알린다', () => {
+    const steps = Array.from({ length: 100 }, (_, i) => imageStep(i, { images: { train: { 0: { from: 'upload', tempId: `t${i}` } }, base: { from: 'upload', tempId: `b${i}` } } }))
+    const { e } = panelFixture(steps)
+    for (let i = 0; i < 100; i++) { e.setUpload(`t${i}`, new Blob(['t'])); e.setUpload(`b${i}`, new Blob(['b'])) }
+    expect(e.startNew('image', { snapshot: snapOf() })).toBe(false)
+    expect(e.toast.text).toBe(t('SEW_SNAP_STEP_TOO_MANY_FILES'))
+    expect(e.uploads.size).toBe(200)
+  })
   it('읽기 전용 세션에서는 만들지 않는다', () => {
     const { e } = panelFixture([imageStep(0)], { canWrite: false })
     expect(e.startNew('image', { snapshot: snapOf() })).toBe(false)

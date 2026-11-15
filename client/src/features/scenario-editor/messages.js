@@ -153,6 +153,8 @@ export const MESSAGES = {
   SEW_SNAP_STEP_READ_ONLY: '읽기 전용으로 연 시나리오에는 스텝을 만들 수 없습니다.',
   SEW_SNAP_STEP_NO_IMAGE: '스냅샷 그림이 화면에 떠 있을 때만 새 스텝을 만들 수 있습니다.',
   SEW_SNAP_STEP_TOO_LARGE: '이 스냅샷 그림은 10MB 를 넘어 기준 화면으로 쓸 수 없습니다.',
+  SEW_SNAP_STEP_TOTAL_TOO_LARGE: '이 스냅샷까지 넣으면 새로 올릴 그림의 합계가 50MB 를 넘어 저장할 수 없게 됩니다. 지금까지 만든 것을 먼저 배포한 뒤 이어서 만드세요(배포된 그림은 다시 보내지 않습니다).',
+  SEW_SNAP_STEP_TOO_MANY_FILES: '새로 올릴 그림이 200장을 넘어 저장할 수 없게 됩니다. 지금까지 만든 것을 먼저 배포한 뒤 이어서 만드세요(배포된 그림은 다시 보내지 않습니다).',
   SEW_SNAP_DL: '받기',
   SEW_SNAP_DL_N: '받기 ({n})',
   SEW_SNAP_DL_PLAIN: '그림만',
@@ -1019,7 +1021,7 @@ export const MESSAGES = {
   // 413(서버 upload details.limit 별 — 없으면 공통). 서버 한도: 그림 한 장 10MB·합계 50MB·본문(meta) 10MB
   SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE: '보낼 내용이 서버가 한 번에 받는 크기(새로 잡은 그림 한 장 10MB·합계 50MB, 시나리오 본문 10MB)를 넘었습니다. 영역을 작게 다시 잡아 그림을 줄이거나, 고친 스텝을 나눠 여러 번 배포하세요(배포된 그림은 다시 보내지 않습니다).',
   SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE_image: '새로 잡은 그림 한 장이 10MB 를 넘습니다. 그 그림을 더 작은 영역으로 다시 잡으세요.',
-  SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE_imageTotal: '새로 잡은 그림의 합계가 50MB 를 넘습니다. 영역을 작게 다시 잡아 그림을 줄이거나, 고친 스텝을 나눠 여러 번 배포하세요(배포된 그림은 다시 보내지 않습니다).',
+  SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE_imageTotal: '새로 올릴 그림(새로 잡은 그림·스냅샷으로 넣은 기준 화면)의 합계가 50MB 를 넘습니다. 영역을 작게 다시 잡아 그림을 줄이거나, 스텝 일부를 잘라 두고 먼저 배포한 뒤 붙여 넣어 다시 배포하세요(배포된 그림은 다시 보내지 않습니다).',
   SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE_meta: '시나리오 본문(스텝·설명·스크립트)이 10MB 를 넘습니다. 긴 설명·스크립트나 스텝 수를 줄여야 보낼 수 있습니다.',
   // 이름 만들기 칸 오류(editor/nameRule buildName code)
   SEW_NAME_MAJOR_REQUIRED: '대분류를 고르세요.',

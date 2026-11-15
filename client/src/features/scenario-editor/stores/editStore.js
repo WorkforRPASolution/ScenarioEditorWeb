@@ -12,7 +12,7 @@ import { cropPng, imageDataOf } from '../editor/crop'
 import { locate } from '../editor/locate'
 import { spotKey } from '../editor/trainView'
 import { CAP_FLOWS, MIN_CAPTURE, LOCATE_MS, isRect, clipRect, nextStage, newStepDraft, baseRefFor, firstTrainRef } from '../editor/capture'
-import { snapshotKey, snapshotBaseProblem } from '../editor/snapshotStep'
+import { snapshotKey, snapshotBaseProblem, uploadBudgetProblem } from '../editor/snapshotStep'
 import { newScenarioOf } from '../editor/newScenario'
 import { t } from '../messages'
 import { useEditorStore } from './editorStore'
@@ -766,10 +766,14 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     return guard(open, { action: 'move' })
   }
   // 스냅샷 그림을 올릴 그림으로 넣고 그 참조를 준다. 이 세션에서 같은 스냅샷을 이미 넣었으면(그 그림이 아직 있으면) 그것을 다시 쓴다.
-  function snapshotBaseRef(snapshot) {
+  // 새로 넣어야 하는데 작업본이 쓰는 올릴 그림과 합쳐 한 번의 저장 한도(합계 50MB·200장)를 넘게 되면 넣지 않고 알린다(null) —
+  // 넘은 채로는 초안 저장도 배포도 막혀 만든 스텝을 저장할 길이 없다(P3-E 독립 검토).
+  function snapshotBaseRef(snapshot, working) {
     const key = snapshotKey(snapshot.eqpId, snapshot.fileName)
     const known = snapshotBases.get(key)
     if (known && uploads.value.has(known)) return { from: 'upload', tempId: known }
+    const over = uploadBudgetProblem(snapshot.blob, uploadIdsOf(working.steps).map((id) => uploads.value.get(id)))
+    if (over) { notify(t(over === 'files' ? 'SEW_SNAP_STEP_TOO_MANY_FILES' : 'SEW_SNAP_STEP_TOTAL_TOO_LARGE')); return null }
     const tempId = newTempId()
     setUpload(tempId, snapshot.blob)
     snapshotBases.set(key, tempId)
@@ -780,8 +784,8 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     if (!s?.working) return false
     if (s.working.steps.length >= STEP_MAX) { refused('STEP_LIMIT'); return false }
     const anchor = insertAnchor()
-    const base = kind === 'none' ? null : snapshot ? snapshotBaseRef(snapshot) : baseRefFor(s.working, anchor)
-    if (kind !== 'none' && !base) { notify(t('SEW_EDIT_NEW_NO_BASE')); return false }
+    const base = kind === 'none' ? null : snapshot ? snapshotBaseRef(snapshot, s.working) : baseRefFor(s.working, anchor)
+    if (kind !== 'none' && !base) { if (!snapshot) notify(t('SEW_EDIT_NEW_NO_BASE')); return false }
     const [uid, next] = nextUid(s, 'n')
     session.value = next
     const draft = newStepDraft(kind, { uid, base })

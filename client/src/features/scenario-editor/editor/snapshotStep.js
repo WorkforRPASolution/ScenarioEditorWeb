@@ -13,3 +13,17 @@ export function snapshotBaseProblem(snapshot) {
   if (!snapshot || !snapshot.eqpId || !snapshot.fileName || !(b instanceof Blob) || !(b.size > 0)) return 'none'
   return b.size > SNAPSHOT_BASE_MAX_BYTES ? 'tooLarge' : null
 }
+
+// 서버가 한 요청(초안 저장·배포)에 받는 올릴 그림의 합계와 장 수(server upload.js MAX_TOTAL·MAX_FILES).
+export const UPLOAD_TOTAL_MAX_BYTES = 50 * 1048576
+export const UPLOAD_MAX_FILES = 200
+
+// 이 그림(blob)을 더 올리면 한 번의 저장이 서버 한도를 넘는가. used = 작업본이 지금 쓰는 올릴 그림 Blob 들 —
+// Blob 이 아닌 것(서버 초안에만 있는 그림, 다시 보내지 않는다)은 세지 않는다. 'total' = 합계, 'files' = 장 수, 괜찮으면 null.
+// 넘은 채로 만들면 초안 저장도 배포도 413 으로 막혀 만든 것을 저장할 길이 없다 — 만들기 전에 알려 먼저 배포하게 한다(배포된 그림은 다시 보내지 않는다).
+export function uploadBudgetProblem(blob, used) {
+  const blobs = (used ?? []).filter((b) => b instanceof Blob)
+  if (blobs.length + 1 > UPLOAD_MAX_FILES) return 'files'
+  const total = blobs.reduce((sum, b) => sum + b.size, 0) + (blob?.size ?? 0)
+  return total > UPLOAD_TOTAL_MAX_BYTES ? 'total' : null
+}
