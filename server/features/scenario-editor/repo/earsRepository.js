@@ -2,6 +2,7 @@
 // EARS 읽기 + 쓰기(공통 설계 §3.3). 운영 데이터 쓰기 필드는 이 파일에만 둔다.
 // 쓰는 필드(SC_PROPERTY): scCategory·trCategory(Int64), property.Owners, property.IsEnabled,
 // performance(새 대상은 전체, 심의·성과 수정은 performance.* 필드). 본문·BI·property 전체는 setscenario 로만 쓴다.
+// 쓰는 문서(ARS_USER_MEMO): 새 메모(일곱 필드)·memo·webEditedBy·webEditedAt, 지우기.
 const { withMongoErrors } = require('../errors')
 
 const MAX = 20000
@@ -76,6 +77,31 @@ function createEarsRepository(getDb, mongo) {
       const models = await col('SC_PROPERTY').distinct('eqpModel', { process, scname: name, property: { $exists: true } }, { maxTimeMS: MAX })
       return [...models].sort()
     },
+    // ── 스냅샷 메모(P3 설계 §5.5) ── 데스크톱 편집기와 함께 쓰는 컬렉션이다. 키는 (eqpid, filename)이고 유일 인덱스가 없다.
+    // 파일 이름이 13자리 ms 로 시작해 글자 범위가 곧 시각 범위다(메모는 지워지지 않고 쌓이므로 범위로 자른다).
+    findMemos: ({ eqpId, fromName, toName }, limit) => {
+      const filename = toName === undefined ? { $gte: fromName } : { $gte: fromName, $lt: toName }
+      return col('ARS_USER_MEMO').find(eqpId === undefined ? { filename } : { eqpid: eqpId, filename }).limit(limit).maxTimeMS(MAX).toArray()
+    },
+    findMemosByKey: (eqpId, fileName) => col('ARS_USER_MEMO').find({ eqpid: eqpId, filename: fileName }).maxTimeMS(MAX).toArray(),
+    // 같은 키 문서가 없을 때만 넣는다 — 찾고 넣기를 한 번에(유일 인덱스가 없어 동시에 둘이 넣는 것을 완전히 막지는 못한다)
+    insertMemoIfAbsent: async (doc) => {
+      const r = await col('ARS_USER_MEMO').updateOne({ eqpid: doc.eqpid, filename: doc.filename }, { $setOnInsert: doc }, { upsert: true, maxTimeMS: MAX })
+      return { inserted: r.upsertedCount === 1 }
+    },
+    // 본 글(expect)이 그대로일 때만 글과 웹 전용 필드 둘을 바꾼다. singleid·snapshotTimestamp·process·hiddensnapshot 은 그대로 둔다(사내와 같다).
+    updateMemoText: async (id, expect, { memo, webEditedBy, webEditedAt }) => {
+      const r = await col('ARS_USER_MEMO').updateOne({ _id: id, memo: expect }, { $set: { memo, webEditedBy, webEditedAt } }, { maxTimeMS: MAX })
+      return { matched: r.matchedCount }
+    },
+    // 본 글이 그대로인 그 문서 하나만 지운다. process 를 조건에 넣지 않는다(설비 공정이 바뀌면 사내에서는 지워지지 않는다 — DC-081).
+    deleteMemo: async (id, expect) => {
+      const r = await col('ARS_USER_MEMO').deleteOne({ _id: id, memo: expect }, { maxTimeMS: MAX })
+      return { deleted: r.deletedCount }
+    },
+    findUserNames: (singleids) => (singleids.length
+      ? col('ARS_USER_INFO').find({ singleid: { $in: singleids } }, { projection: { _id: 0, singleid: 1, name: 1 } }).maxTimeMS(MAX).toArray()
+      : Promise.resolve([])),
     hasNameRule: async () => (await getDb().listCollections({ name: 'SC_NAME_RULE' }, { nameOnly: true }).toArray()).length > 0,
     findNameRule: () => col('SC_NAME_RULE').find({}, { projection: { _id: 0 } }).maxTimeMS(MAX).toArray()
   })

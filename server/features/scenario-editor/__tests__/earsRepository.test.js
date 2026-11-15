@@ -152,3 +152,80 @@ describe('earsRepository countScenarios', () => {
     expect(f.calls).toEqual([])
   })
 })
+
+describe('earsRepository 메모 (ARS_USER_MEMO)', () => {
+  const NAME = '1762820000123_[412][388].png'
+  // 받은 호출을 기록하고 정해 둔 결과를 주는 가짜 컬렉션
+  function memoDb({ rows = [], update = { matchedCount: 1, upsertedCount: 0 }, deleted = 1 } = {}) {
+    const calls = []
+    const cursor = (op) => ({
+      maxTimeMS: (ms) => { op.maxTimeMS = ms; return cursor(op) },
+      limit: (n) => { op.limit = n; return cursor(op) },
+      toArray: async () => rows
+    })
+    const db = {
+      collection: (name) => ({
+        find: (filter, options) => { const op = { name, op: 'find', filter, options }; calls.push(op); return cursor(op) },
+        updateOne: async (filter, upd, options) => { calls.push({ name, op: 'updateOne', filter, update: upd, options }); return update },
+        deleteOne: async (filter, options) => { calls.push({ name, op: 'deleteOne', filter, options }); return { deletedCount: deleted } }
+      })
+    }
+    return { db, calls }
+  }
+
+  it('findMemos: 설비와 파일 이름 범위로 — 위 끝은 줄 때만, 한도까지', async () => {
+    const f = memoDb({ rows: [{ _id: 1 }] })
+    expect(await repoOf(f).findMemos({ eqpId: 'E1', fromName: '1762700000000', toName: '1762800000000' }, 10)).toEqual([{ _id: 1 }])
+    expect(f.calls[0]).toMatchObject({ name: 'ARS_USER_MEMO', op: 'find', filter: { eqpid: 'E1', filename: { $gte: '1762700000000', $lt: '1762800000000' } }, limit: 10, maxTimeMS: 20000 })
+    await repoOf(f).findMemos({ fromName: '1762700000000' }, 5001)
+    expect(f.calls[1].filter).toEqual({ filename: { $gte: '1762700000000' } })
+    expect(f.calls[1].limit).toBe(5001)
+  })
+
+  it('findMemosByKey: (설비, 파일 이름)의 문서 모두', async () => {
+    const f = memoDb({ rows: [{ _id: 1 }, { _id: 2 }] })
+    expect(await repoOf(f).findMemosByKey('E1', NAME)).toHaveLength(2)
+    expect(f.calls[0]).toMatchObject({ name: 'ARS_USER_MEMO', filter: { eqpid: 'E1', filename: NAME }, maxTimeMS: 20000 })
+  })
+
+  it('insertMemoIfAbsent: 같은 키가 없을 때만 받은 문서 그대로 넣는다', async () => {
+    const doc = { singleid: 'kim', eqpid: 'E1', snapshotTimestamp: new Date(5), process: 'CVD', memo: '글', filename: NAME, hiddensnapshot: '0' }
+    const f = memoDb({ update: { matchedCount: 0, upsertedCount: 1 } })
+    expect(await repoOf(f).insertMemoIfAbsent(doc)).toEqual({ inserted: true })
+    const c = f.calls[0]
+    expect([c.name, c.op]).toEqual(['ARS_USER_MEMO', 'updateOne'])
+    expect(c.filter).toEqual({ eqpid: 'E1', filename: NAME })
+    expect(c.update).toEqual({ $setOnInsert: doc })
+    expect(c.options).toMatchObject({ upsert: true, maxTimeMS: 20000 })
+    const had = memoDb({ update: { matchedCount: 1, upsertedCount: 0 } })
+    expect(await repoOf(had).insertMemoIfAbsent(doc)).toEqual({ inserted: false })
+  })
+
+  it('updateMemoText: 본 글이 그대로일 때만 memo·webEditedBy·webEditedAt 셋만 바꾼다', async () => {
+    const f = memoDb()
+    const at = new Date(9)
+    expect(await repoOf(f).updateMemoText('id1', '옛 글', { memo: '새 글', webEditedBy: 'lee', webEditedAt: at, singleid: 'x', process: 'y' })).toEqual({ matched: 1 })
+    const c = f.calls[0]
+    expect(c.filter).toEqual({ _id: 'id1', memo: '옛 글' })
+    expect(c.update).toEqual({ $set: { memo: '새 글', webEditedBy: 'lee', webEditedAt: at } })
+    expect(c.options).toMatchObject({ maxTimeMS: 20000 })
+    expect(c.options.upsert).toBeUndefined()
+    expect(await repoOf(memoDb({ update: { matchedCount: 0 } })).updateMemoText('id1', 'a', { memo: 'b', webEditedBy: 'l', webEditedAt: at })).toEqual({ matched: 0 })
+  })
+
+  it('deleteMemo: 본 글이 그대로인 그 문서 하나만 — process 를 조건에 넣지 않는다', async () => {
+    const f = memoDb()
+    expect(await repoOf(f).deleteMemo('id1', '글')).toEqual({ deleted: 1 })
+    expect(f.calls[0]).toMatchObject({ name: 'ARS_USER_MEMO', op: 'deleteOne', filter: { _id: 'id1', memo: '글' } })
+    expect(Object.keys(f.calls[0].filter)).toEqual(['_id', 'memo'])
+    expect(await repoOf(memoDb({ deleted: 0 })).deleteMemo('id1', '글')).toEqual({ deleted: 0 })
+  })
+
+  it('findUserNames: 아이디 목록의 이름만 — 빈 목록이면 DB 를 부르지 않는다', async () => {
+    const f = memoDb({ rows: [{ singleid: 'kim', name: '김' }] })
+    expect(await repoOf(f).findUserNames(['kim', 'lee'])).toEqual([{ singleid: 'kim', name: '김' }])
+    expect(f.calls[0]).toMatchObject({ name: 'ARS_USER_INFO', filter: { singleid: { $in: ['kim', 'lee'] } }, options: { projection: { _id: 0, singleid: 1, name: 1 } } })
+    expect(await repoOf(f).findUserNames([])).toEqual([])
+    expect(f.calls).toHaveLength(1)
+  })
+})
