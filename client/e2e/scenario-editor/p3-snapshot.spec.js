@@ -1,7 +1,13 @@
 import { test, expect } from '@playwright/test'
 import { asUser, openFromDialog, rowAt } from './helpers'
 import { cleanupMemos, memosLeft, closeDb } from './sew'
-import { API_URL } from '../env.js'
+import { API_URL, ROOT } from '../env.js'
+import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { join } from 'node:path'
+import { joinParts, unzip } from '../../src/features/scenario-editor/tests/helpers/unzip.js'
+
+const { PNG } = createRequire(join(ROOT, 'tools/package.json'))('pngjs')
 
 // P3-B 스냅샷 화면(설계 §4.1~§4.3, §12 E2E ①). 시험 데이터: `npm run seed -- snapshots`(tools/seed/data/snapshots.js) —
 // SEWT_PHOTO_A01 의 "오늘" 20줄(클릭 12 · 태그 5 · 같은 ms 의 클릭+태그 · 목록에만 있는 한 줄), 어제 3줄, SEWT_CVD_A01 오늘 2줄. 그림은 640×360.
@@ -439,3 +445,121 @@ test.describe('메모', () => {
   })
 })
 
+// P3-D 받기·이력(설계 §4.6·§4.7, §12 E2E ③). 이력은 `npm run seed -- snapshots` 가 로컬 이력 서버(HttpWebServer)에 넣은 스텝 셋(tools/seed/data/history.js).
+test('⑥ 여러 줄 고르기(Ctrl·Shift) → 좌표 포함으로 ZIP 받기(못 받은 것 목록) → 한 장은 PNG → 태그 스냅샷의 이력 창', async ({ page }) => {
+  await asUser(page, 'sew_master')
+  await page.goto('/scenario-editor')
+  await page.getByTestId('se-snapshot-rail').click()
+  await pickEquipment(page, 'photo_a', 'SEWT_PHOTO_A01')
+  await expect(count(page)).toHaveText('20장')
+  const date = /\d{4}-\d{2}-\d{2}/.exec(await page.getByTestId('se-snap-date').innerText())[0]
+  const dl = page.getByTestId('se-snap-download')
+  const picked = page.locator('[data-testid="se-snap-row"][aria-selected="true"]')
+  const imageBytes = async (fileName) => {
+    const res = await fetch(`${API_URL}snapshots/SEWT_PHOTO_A01/${encodeURIComponent(fileName)}/image`, { headers: { 'X-SE-User': 'sew_master' } })
+    expect(res.status, fileName).toBe(200)
+    return Buffer.from(await res.arrayBuffer())
+  }
+  const pixel = (png, x, y) => { const i = (y * png.width + x) * 4; return [png.data[i], png.data[i + 1], png.data[i + 2]] }
+  const save = async (click) => {
+    const [download] = await Promise.all([page.waitForEvent('download'), click()])
+    return { name: download.suggestedFilename(), bytes: readFileSync(await download.path()) }
+  }
+
+  // ── Ctrl(⌘): 더하고 빼기 — 고른 줄 수가 패널과 [받기] 에 보인다 ──
+  await expect(dl).toHaveText('받기 ▾')
+  await snapRow(page, '09:13:02').click()
+  await expect(page.getByTestId('se-snap-picked')).toHaveCount(0)
+  await snapRow(page, '11:45:30').click({ modifiers: ['ControlOrMeta'] })
+  await expect(picked).toHaveCount(2)
+  await expect(page.getByTestId('se-snap-picked')).toHaveText('2장 고름')
+  await expect(dl).toHaveText('받기 (2) ▾')
+  await expect(info(page)).toContainText('클릭 (520, 200)') // 더한 줄이 큰 화면에 뜬다
+  await snapRow(page, '09:13:02').click({ modifiers: ['ControlOrMeta'] })
+  await expect(picked).toHaveCount(1)
+  await expect(dl).toHaveText('받기 ▾')
+
+  // ── Shift: 범위 — 14:00:00 부터 17:20:40 까지 다섯 줄(같은 시각의 클릭·태그 두 장, 목록에만 있는 16:00:00 포함) ──
+  await snapRow(page, '14:00:00').click()
+  await snapRow(page, '17:20:40').click({ modifiers: ['Shift'] })
+  await expect(picked).toHaveCount(5)
+  await expect(page.getByTestId('se-snap-picked')).toHaveText('5장 고름')
+  await expect(dl).toHaveText('받기 (5) ▾')
+  const tagName = await snapRow(page, '15:30:00').nth(1).getAttribute('data-name')
+
+  // ── 좌표 포함으로 받기: ZIP 하나. 못 받은 한 장은 건너뛰고 창에 남는다 ──
+  await dl.click()
+  await expect(page.getByTestId('se-snap-download-plain')).toBeVisible()
+  const zip = await save(() => page.getByTestId('se-snap-download-xy').click())
+  expect(zip.name).toBe(`SEWT_PHOTO_A01_${date}_snapshots_4.zip`)
+  const entries = unzip(await joinParts([new Uint8Array(zip.bytes)]))
+  expect(entries.map((e) => e.name)).toEqual([
+    `SEWT_PHOTO_A01_${date}_14-00-00-000.png`, `SEWT_PHOTO_A01_${date}_15-30-00-000.png`,
+    `SEWT_PHOTO_A01_${date}_15-30-00-000_2.png`, `SEWT_PHOTO_A01_${date}_17-20-40-600.png`
+  ])
+  // 클릭 (80, 260) 의 원: 반지름 6 자리는 빨강이고 그림 크기는 그대로다. 받기 전 그림의 그 자리는 빨강이 아니다
+  const circled = PNG.sync.read(Buffer.from(entries[0].data))
+  expect([circled.width, circled.height]).toEqual([640, 360])
+  for (const [x, y] of [[86, 260], [74, 260], [80, 266], [80, 254]]) expect(pixel(circled, x, y), `${x},${y}`).toEqual([255, 0, 0])
+  // 태그 스냅샷에는 원을 그리지 않는다 — 서버가 준 바이트 그대로
+  expect(Buffer.from(entries[2].data).equals(await imageBytes(tagName))).toBe(true)
+  const dialog = page.getByTestId('se-download-dialog')
+  await expect(page.getByTestId('se-download-summary')).toContainText('4장을 받아')
+  await expect(page.getByTestId('se-download-failed')).toHaveCount(1)
+  await expect(page.getByTestId('se-download-failed')).toContainText('16:00:00')
+  await expect(page.getByTestId('se-download-failed')).toContainText('그림이 서버에 없습니다')
+  await page.getByTestId('se-download-close').click()
+  await expect(dialog).toHaveCount(0)
+
+  // ── 한 장은 PNG 그대로(그림만) — 창 없이 알림만 ──
+  await snapRow(page, '09:13:02').click()
+  const plainName = await picked.getAttribute('data-name')
+  await dl.click()
+  const one = await save(() => page.getByTestId('se-snap-download-plain').click())
+  expect(one.name).toBe(`SEWT_PHOTO_A01_${date}_09-13-02-004.png`)
+  expect(one.bytes.equals(await imageBytes(plainName))).toBe(true)
+  const before = PNG.sync.read(await imageBytes(await snapRow(page, '14:00:00').getAttribute('data-name')))
+  expect(pixel(before, 86, 260)).not.toEqual([255, 0, 0])
+  await expect(page.getByTestId('se-snap-notice')).toHaveText('1장을 받았습니다.')
+  await expect(dialog).toHaveCount(0)
+
+  // ── 이력: 클릭 스냅샷에서는 꺼져 있고, 태그 스냅샷에서 스텝 카드가 열린다 ──
+  const history = page.getByTestId('se-snap-history')
+  await expect(history).toBeDisabled()
+  await expect(history).toHaveAttribute('title', '태그 스냅샷에서만 이력을 볼 수 있습니다.')
+  await snapRow(page, '10:00:00').click()
+  await expect(history).toBeEnabled()
+  await history.click()
+  const hd = page.getByTestId('se-history-dialog')
+  await expect(page.getByTestId('se-history-head')).toContainText('SEWT_PHOTO_A01')
+  await expect(page.getByTestId('se-history-head')).toContainText('시작')
+  await expect(page.getByTestId('se-history-count')).toHaveText('스텝 3개')
+  const steps = page.getByTestId('se-history-step')
+  await expect(steps).toHaveCount(3)
+  await expect(page.getByTestId('se-history-no')).toHaveText(['1', '2', '3'])
+  // 이력 서버가 이스케이프 없이 넣은 글이 글자 그대로 보인다(태그로 풀리지 않는다)
+  await expect(page.getByTestId('se-history-text')).toHaveText(['로그인 창 확인', "A<B & 'x' 버튼 누르기", '완료 화면 확인'])
+  for (const id of ['se-history-ref', 'se-history-screen']) {
+    await expect(page.getByTestId(id)).toHaveCount(3)
+    expect(await page.getByTestId(id).evaluateAll((els) => els.every((el) => el.complete && el.naturalWidth > 0))).toBe(true)
+  }
+  expect(await page.getByTestId('se-history-screen').first().evaluate((el) => [el.naturalWidth, el.naturalHeight])).toEqual([320, 180])
+  // 그림을 누르면 크게, Esc 는 크게 본 것만 닫는다
+  await page.getByTestId('se-history-screen').nth(1).click()
+  await expect(page.getByTestId('se-history-zoom')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('se-history-zoom')).toHaveCount(0)
+  await expect(hd).toBeVisible()
+  await page.getByTestId('se-history-close').click()
+  await expect(hd).toHaveCount(0)
+
+  // ── 이력이 남지 않은 태그(같은 시각의 태그 — 넣은 이력이 없다): 안내만, 다시 시도는 없다 ──
+  await snapRow(page, '15:30:00').nth(1).click()
+  await history.click()
+  await expect(page.getByTestId('se-history-state')).toHaveText('이력이 없습니다. 15일이 지났거나 기록되지 않았습니다.')
+  await expect(page.getByTestId('se-history-retry')).toHaveCount(0)
+  await page.keyboard.press('Escape')
+  await expect(hd).toHaveCount(0)
+  // 이력 창을 닫아도 스냅샷은 그대로다
+  await expect(page.getByTestId('se-snap-image')).toBeVisible()
+})

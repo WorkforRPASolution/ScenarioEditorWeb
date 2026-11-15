@@ -20,9 +20,10 @@
 .se-history-ref { max-width: 120px; max-height: 32px; border: 2px solid #fff; border-radius: 3px; background: #fff; cursor: zoom-in; }
 .se-history-screen-box { display: flex; justify-content: center; padding: 10px; background: #f9fafb; }
 .se-history-screen-box > img { max-width: 100%; max-height: 260px; border: 1px solid #d1d5db; cursor: zoom-in; }
-.se-history-zoom { position: absolute; inset: 0; z-index: 5; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px; background: rgba(17, 24, 39, .88); cursor: zoom-out; }
-.se-history-zoom-label { flex: none; font-size: 12px; color: #e5e7eb; }
-.se-history-zoom > img { flex: none; max-width: none; background: #fff; }
+/* 크게 보기 — 그림을 제 크기로. 창보다 큰 그림은 왼쪽 위부터 보이고 스크롤한다(가운데 맞춤은 맞을 때만) */
+.se-history-zoom { position: absolute; inset: 0; z-index: 5; overflow: auto; padding: 16px; text-align: center; background: rgba(17, 24, 39, .95); cursor: zoom-out; }
+.se-history-zoom-label { display: block; margin-bottom: 8px; font-size: 12px; color: #e5e7eb; }
+.se-history-zoom > img { display: inline-block; max-width: none; background: #fff; }
 /* 큰 화면 이동 줄의 펼침 메뉴(받기) — 위로 연다 */
 .se-snap-menu { position: absolute; left: 0; bottom: calc(100% + 4px); z-index: 20; display: flex; flex-direction: column; min-width: 120px; padding: 4px; border-radius: 8px; background: #fff; border: 1px solid #e5e7eb; box-shadow: 0 8px 24px rgba(0, 0, 0, .15); }
 .se-snap-menu > button { height: 28px; padding: 0 10px; border-radius: 6px; font-size: 12px; text-align: left; white-space: nowrap; color: #374151; }
