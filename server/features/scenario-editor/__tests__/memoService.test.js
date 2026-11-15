@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
-const { createMemoService, MEMO_LIST_LIMIT } = require('../service/memoService')
+const { createMemoService, MEMO_LIST_LIMIT, MEMO_DAY_BUDGET_MS } = require('../service/memoService')
 const { seError } = require('../errors')
 
 const DAY = 86400000
@@ -29,8 +29,9 @@ function fakeRepo(initial = [], { users = { kim: '김철수', lee: '이영희' }
   const calls = []
   const repo = {
     docs, calls,
-    findMemos: async ({ eqpId, fromName, toName }, limit) => {
+    findMemos: async ({ eqpId, fromName, toName, maxTimeMs }, limit) => {
       calls.push(['findMemos', { eqpId, fromName, toName }, limit])
+      repo.lastMaxTimeMs = maxTimeMs
       if (fail.findMemos) throw fail.findMemos
       return docs
         .filter((d) => (eqpId === undefined || d.eqpid === eqpId) && typeof d.filename === 'string' && d.filename >= fromName && (toName === undefined || d.filename < toName))
@@ -68,14 +69,18 @@ function fakeRepo(initial = [], { users = { kim: '김철수', lee: '이영희' }
   }
   return repo
 }
-function fakeScopes(valid = EQP) {
+// byUser = { 아이디: 설비 목록 } 을 주면 사용자마다 범위가 다르다
+function fakeScopes(all = EQP, byUser = null) {
+  const of = (user) => (byUser ? byUser[user.singleid] ?? [] : all)
   return {
+    scopeForUser: of,
     equipmentOf: async (user, eqpId) => {
+      const valid = of(user)
       const e = valid.find((v) => v.eqpId === eqpId)
       if (!e) throw seError(403, 'EQP_FORBIDDEN', 'x')
       return e
     },
-    scopeFor: async () => ({ valid })
+    scopeFor: async (user) => ({ valid: of(user) })
   }
 }
 const service = (repo, { now = () => NOW, scopes = fakeScopes(), env = {}, log = null } = {}) => createMemoService({ repo, scopes, now, env, log })
@@ -116,6 +121,30 @@ describe('memoService.forRange — 하루치 메모', () => {
     const r = await service(repo).forRange('E1', ...range)
     expect([...r.hidden]).toEqual([N1])
     expect([...r.byName.keys()]).toEqual([name(T1 + 5)])
+  })
+  it('같은 키의 옛 문서가 숨김이어도 가장 늦게 쓴 문서가 숨김이 아니면 보인다', async () => {
+    const repo = fakeRepo([memoDoc({ memo: '옛 숨김', hiddensnapshot: '1', snapshotTimestamp: new Date(T1) }), memoDoc({ memo: '새 메모', snapshotTimestamp: new Date(T1 + 5000) })])
+    const r = await service(repo).forRange('E1', ...range)
+    expect([r.hidden.size, r.byName.get(N1).text]).toEqual([0, '새 메모'])
+  })
+  it('메모 조회는 짧게만 기다린다 — 늦으면 failed 로 넘기고 목록은 간다', async () => {
+    const repo = fakeRepo([memoDoc()])
+    await service(repo).forRange('E1', ...range)
+    expect(repo.lastMaxTimeMs).toBe(MEMO_DAY_BUDGET_MS)
+    expect(MEMO_DAY_BUDGET_MS).toBe(4000)
+    const slow = await service(fakeRepo([], { fail: { findMemos: seError(504, 'UPSTREAM_TIMEOUT', 'x') } })).forRange('E1', ...range)
+    expect(slow.failed).toBe(true)
+  })
+  it('틀린 문서 알림은 설비마다 건수가 바뀔 때만 남긴다(목록을 볼 때마다 쌓이지 않게)', async () => {
+    const warned = []
+    const repo = fakeRepo([memoDoc({ memo: 7 })])
+    const s = service(repo, { log: { warn: (m) => warned.push(m) } })
+    await s.forRange('E1', ...range)
+    await s.forRange('E1', ...range)
+    expect(warned).toHaveLength(1)
+    repo.docs.push({ _id: 'x', ...memoDoc({ memo: 8, filename: name(T1 + 9) }) })
+    await s.forRange('E1', ...range)
+    expect(warned).toHaveLength(2)
   })
   it('읽지 못하면 던지지 않고 failed — 이름을 못 찾아도 메모는 준다(아이디로)', async () => {
     const warned = []
@@ -166,6 +195,27 @@ describe('memoService.save — 새 메모', () => {
     expect([old.statusCode, old.code]).toEqual([404, 'SNAPSHOT_NOT_FOUND'])
     await s.save(LEE, 'E1', name(NOW - 15 * DAY), { memo: '경계', expect: null })
     expect(repo.calls.map((c) => c[0])).toEqual(['insertMemoIfAbsent'])
+  })
+  it('스냅샷 서버가 만드는 꼴이 아닌 이름(자릿수·앞자리 0)과 앞날의 스냅샷에는 쓰지 않는다 — 데스크톱의 메모 읽기를 깨뜨리지 않게', async () => {
+    const repo = fakeRepo()
+    const s = service(repo)
+    for (const bad of [`000${T1}_[1][2].png`, `${T1}9_[1][2].png`, '999999999999999_[1][1].png', `${T1}_[01][2].png`]) {
+      const e = await caught(s.save(LEE, 'E1', bad, { memo: '글', expect: null }))
+      expect([e.statusCode, e.code], bad).toEqual([400, 'SNAPSHOT_BAD_NAME'])
+    }
+    // 설비 시계가 앞서 있을 수 있어 하루(+ 그 설비의 보정)까지는 받는다
+    const future = await caught(s.save(LEE, 'E1', name(NOW + DAY + 1), { memo: '글', expect: null }))
+    expect([future.statusCode, future.code]).toEqual([404, 'SNAPSHOT_NOT_FOUND'])
+    await s.save(LEE, 'E1', name(NOW + DAY), { memo: '경계', expect: null })
+    await s.save(LEE, 'E2', name(NOW + DAY + 30 * 60000), { memo: '보정 30분 설비', expect: null })
+    expect((await caught(s.save(LEE, 'E2', name(NOW + DAY + 30 * 60000 + 1), { memo: '글', expect: null }))).code).toBe('SNAPSHOT_NOT_FOUND')
+    expect(repo.docs.map((d) => d.memo)).toEqual(['경계', '보정 30분 설비'])
+  })
+  it('같은 키에 읽을 수 없는 문서(메모가 글자가 아님)만 있으면 409 MEMO_BLOCKED — "지금은 메모가 없다" 고 알리지 않는다', async () => {
+    const repo = fakeRepo([memoDoc({ memo: 7 })])
+    const e = await caught(service(repo).save(LEE, 'E1', N1, { memo: '글', expect: null }))
+    expect([e.statusCode, e.code]).toEqual([409, 'MEMO_BLOCKED'])
+    expect(repo.docs).toHaveLength(1)
   })
 })
 
@@ -246,6 +296,16 @@ describe('memoService.remove — 지우기', () => {
     expect([r.removed, r.memo.text]).toEqual([true, '먼저'])
     expect(repo.docs.map((d) => d._id)).toEqual(['old'])
   })
+  it('남은 옛 문서가 숨김이면 돌려주지 않는다. 지운 뒤 다시 읽기가 실패해도 지운 것은 성공으로 답한다', async () => {
+    const repo = fakeRepo([memoDoc({ _id: 'old', memo: '숨김', hiddensnapshot: '1', snapshotTimestamp: new Date(T1) }), memoDoc({ _id: 'new', memo: '나중', snapshotTimestamp: new Date(T1 + 5000) })])
+    expect(await service(repo).remove(LEE, 'E1', N1, { expect: '나중' })).toEqual({ removed: true, memo: null })
+    const flaky = fakeRepo([memoDoc()])
+    const find = flaky.findMemosByKey
+    let n = 0
+    flaky.findMemosByKey = async (...a) => { if (++n > 1) throw seError(503, 'UPSTREAM_DOWN', 'x'); return find(...a) }
+    expect(await service(flaky).remove(LEE, 'E1', N1, { expect: '알람 창이 가려짐' })).toEqual({ removed: true, memo: null })
+    expect(flaky.docs).toHaveLength(0)
+  })
   it('범위 밖 설비 403 · 파일 이름 꼴 아님 400 · expect 가 글자가 아니면 400 BAD_REQUEST', async () => {
     const s = service(fakeRepo([memoDoc()]))
     expect((await caught(s.remove(LEE, 'NOPE', N1, { expect: 'x' }))).code).toBe('EQP_FORBIDDEN')
@@ -270,6 +330,16 @@ describe('memoService.list — 메모 목록', () => {
         memo: { text: '알람 창이 가려짐', author: 'kim', authorName: '김철수', writtenAt: '2026-11-11 09:14', editedBy: null, editedAt: null } }
     ])
     expect(repo.calls[0]).toEqual(['findMemos', { eqpId: undefined, fromName: String(NOW - 15 * DAY), toName: undefined }, MEMO_LIST_LIMIT + 1])
+  })
+  it('범위는 요청한 사용자의 것이다 — 좁은 사용자에게 다른 공정 설비의 메모가 가지 않는다', async () => {
+    const repo = fakeRepo([memoDoc({ memo: 'E1 것' }), memoDoc({ eqpid: 'E2', memo: 'E2 것' })])
+    const s = service(repo, { scopes: fakeScopes(EQP, { kim: EQP, lee: [EQP[1]] }) })
+    expect((await s.list(KIM)).items.map((i) => i.eqpId).sort()).toEqual(['E1', 'E2'])
+    expect((await s.list(LEE)).items.map((i) => i.eqpId)).toEqual(['E2'])
+  })
+  it('앞날 이름의 문서(직접 넣은 것)는 싣지 않는다', async () => {
+    const repo = fakeRepo([memoDoc({ filename: name(NOW + 400 * DAY), memo: '앞날' }), memoDoc({ memo: '정상' })])
+    expect((await service(repo).list(KIM)).items.map((i) => i.memo.text)).toEqual(['정상'])
   })
   it('스냅샷 시각이 15일을 넘은 메모는 싣지 않는다(쓴 때가 아니라 스냅샷 시각 — 결정)', async () => {
     const repo = fakeRepo([

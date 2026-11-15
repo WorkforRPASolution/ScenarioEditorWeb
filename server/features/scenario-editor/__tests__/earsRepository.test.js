@@ -182,6 +182,9 @@ describe('earsRepository 메모 (ARS_USER_MEMO)', () => {
     await repoOf(f).findMemos({ fromName: '1762700000000' }, 5001)
     expect(f.calls[1].filter).toEqual({ filename: { $gte: '1762700000000' } })
     expect(f.calls[1].limit).toBe(5001)
+    // 기다릴 시간을 주면 그만큼만(하루 목록이 메모 조회에 매이지 않게)
+    await repoOf(f).findMemos({ eqpId: 'E1', fromName: 'a', toName: 'b', maxTimeMs: 4000 }, 10)
+    expect(f.calls[2].maxTimeMS).toBe(4000)
   })
 
   it('findMemosByKey: (설비, 파일 이름)의 문서 모두', async () => {

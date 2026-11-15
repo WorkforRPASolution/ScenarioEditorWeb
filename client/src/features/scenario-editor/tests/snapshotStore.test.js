@@ -670,6 +670,37 @@ describe('snapshotStore', () => {
       await s.saveMemo(name(1), '내 글')
       expect(api.saveMemo).toHaveBeenLastCalledWith('A', name(1), '내 글', null)
     })
+    it('빈 글 메모(데스크톱이 남긴 것)를 고칠 때는 본 값으로 빈 글자를 보낸다 — null(새 메모)이 아니다', async () => {
+      api.snapshots.mockImplementation((eqpId, date) => ok(listOf(eqpId, date, [{ ...ITEMS[0], memo: memo('') }])))
+      const s = await ready()
+      api.saveMemo.mockImplementation(() => ok({ memo: memo('채움') }))
+      await s.saveMemo(name(0), '채움')
+      expect(api.saveMemo).toHaveBeenCalledWith('A', name(0), '채움', '')
+    })
+    it('목록을 다시 받는 사이에 메모를 쓰면, 먼저 떠난 목록 답이 그 메모를 지우지 않게 목록을 다시 받는다', async () => {
+      const s = await withMemos()
+      const stale = defer()
+      api.snapshots.mockImplementationOnce(() => stale.promise) // 저장 전에 떠난 새로 고침
+      const refreshing = s.refresh()
+      await flushPromises()
+      api.saveMemo.mockImplementation(() => ok({ memo: memo('방금 쓴 메모', 'me') }))
+      const fresh = WITH.map((it, i) => (i === 0 ? { ...it, memo: memo('방금 쓴 메모', 'me') } : it))
+      api.snapshots.mockImplementation((eqpId, date) => ok(listOf(eqpId, date, fresh)))
+      await s.saveMemo(name(0), '방금 쓴 메모')
+      stale.resolve({ data: { data: listOf('A', '2026-11-11', WITH) } }) // 메모가 없던 때의 목록
+      await refreshing
+      await flushPromises()
+      expect(s.list.items[0].memo.text).toBe('방금 쓴 메모')
+      expect(s.list.status).toBe('ready')
+    })
+    it("'메모' 거르기에서 새로 고쳤는데 고른 줄의 메모가 그 사이 지워졌으면 거르기를 전체로 돌린다", async () => {
+      const s = await withMemos()
+      s.setFilter('memo')
+      s.select(name(3))
+      api.snapshots.mockImplementation((eqpId, date) => ok(listOf(eqpId, date, WITH.map((it, i) => (i === 3 ? { ...it, memo: null } : it)))))
+      await s.refresh()
+      expect([s.filter, s.selectedName, s.position]).toEqual(['all', name(3), 3])
+    })
     it('그 밖의 실패는 문구와 code 를 돌려주고 줄은 그대로 둔다', async () => {
       const s = await withMemos()
       api.saveMemo.mockImplementation(() => Promise.reject(fail(400, 'MEMO_QUOTE')))
@@ -773,6 +804,41 @@ describe('snapshotStore', () => {
       expect([s.eqpId, s.date, s.selectedName]).toEqual(['B', '2026-11-09', null])
       expect(s.notice).toBe('스냅샷이 없습니다(보관 기간이 지났거나 지워졌습니다).')
       expect(s.list.items).toHaveLength(6)
+      expect(s.mode).toBe('snapshot') // 알림이 스냅샷 화면에 있다 — 스텝 그림을 보고 있었어도 보이게
+    })
+    it('메모로 가기: 달력 범위(있는 날)를 기다리지 않고 목록을 받자마자 고른다 — 늦게 온 범위는 그대로 든다', async () => {
+      const s = await ready()
+      const days = defer()
+      api.snapshotDays.mockImplementation(() => days.promise)
+      const going = s.goToMemo(row('B', '2026-11-09', name(3)))
+      await flushPromises()
+      expect([s.selectedName, s.range]).toEqual([name(3), null])
+      days.resolve({ data: { data: { eqpId: 'B', ...DAYS } } })
+      await going
+      expect(s.range).toEqual({ latest: '2026-11-11', today: '2026-11-11', oldest: '2026-10-27' })
+    })
+    it('메모로 가기: 늦게 온 달력 범위가 그 사이 고른 다른 설비의 범위를 덮지 않는다', async () => {
+      const s = await ready()
+      const days = defer()
+      api.snapshotDays.mockImplementationOnce(() => days.promise)
+      const going = s.goToMemo(row('B', '2026-11-09', name(3)))
+      await flushPromises()
+      api.snapshotDays.mockImplementation((eqpId) => ok({ eqpId, ...DAYS, oldest: '2026-11-01' }))
+      await s.pickEquipment('A', { select: false })
+      days.resolve({ data: { data: { eqpId: 'B', ...DAYS } } })
+      await going
+      expect(s.range.oldest).toBe('2026-11-01')
+    })
+    it('메모 목록: 두 번 청하면 늦게 온 앞의 답은 버린다', async () => {
+      const first = defer()
+      api.memos.mockImplementationOnce(() => first.promise)
+      const s = useSnapshotStore()
+      const a = s.loadMemoList()
+      api.memos.mockImplementation(() => ok({ items: [row('A', '2026-11-11', name(0), '새 답')], truncated: false }))
+      await s.loadMemoList()
+      first.resolve({ data: { data: { items: [], truncated: false } } })
+      await a
+      expect(s.memoList.items.map((m) => m.memo.text)).toEqual(['새 답'])
     })
     it('메모로 가기: 목록을 받지 못하면 그 실패를 목록 자리에 보인다(알림은 띄우지 않는다)', async () => {
       const s = await ready()

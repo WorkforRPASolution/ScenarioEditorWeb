@@ -162,6 +162,8 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
       list.value = { status: 'ready', items: Array.isArray(r.items) ? r.items : [], truncated: !!r.truncated, memoFailed: !!r.memoFailed, error: '' }
       if (keep) {
         if (!list.value.items.some((i) => i.fileName === keep)) clearSelection()
+        // 지킨 줄이 거른 목록에 없게 됐다('메모' 거르기인데 그 사이 메모가 지워짐) — 고른 줄이 목록에서 사라지지 않게
+        else if (position.value < 0) filter.value = 'all'
       } else if (selectLast && shown.value.length) {
         select(shown.value[shown.value.length - 1].fileName)
       }
@@ -275,6 +277,8 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
     list.value = { ...list.value, items }
     // '메모' 거르기에서 고른 줄의 메모를 지웠다 — 고른 줄이 목록에서 사라지지 않게
     if (selectedName.value && position.value < 0) filter.value = 'all'
+    // 목록을 다시 받는 중이었다 — 먼저 떠난 요청의 답(이 메모가 없던 때의 목록)이 방금 바꾼 줄을 덮지 않게 다시 받는다
+    if (list.value.status === 'loading') refresh()
   }
   const currentOf = (e) => e?.response?.data?.details?.current ?? null
   // 결과: { ok } · { conflict, current }(그 사이 바뀜 — 줄은 지금 값으로 바꿨다) · { gone }(지우려는데 이미 없음) · { error, code }
@@ -343,10 +347,12 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
     // 달력·날짜 이동의 범위는 따로 받는다(실패해도 목록은 보인다)
     const days = api.snapshotDays(m.eqpId).then((res) => { if (seq === listSeq) range.value = sameRange(res.data.data) }).catch(() => {})
     await loadList(seq)
+    // 범위를 기다리지 않고 목록을 받자마자 고른다(기다리는 사이 사용자가 고른 줄을 덮지 않게)
+    if (seq === listSeq && list.value.status === 'ready') {
+      if (list.value.items.some((i) => i.fileName === m.fileName)) select(m.fileName)
+      else { mode.value = 'snapshot'; say(t('SEW_SNAP_MEMO_SNAPSHOT_GONE')) } // 알림은 스냅샷 화면에 있다
+    }
     await days
-    if (seq !== listSeq || list.value.status !== 'ready') return
-    if (list.value.items.some((i) => i.fileName === m.fileName)) select(m.fileName)
-    else say(t('SEW_SNAP_MEMO_SNAPSHOT_GONE'))
   }
 
   // 달력을 열 때 날짜별 개수를 받는다(설비를 바꾸거나 새로 고치기 전까지 한 번)

@@ -79,10 +79,11 @@ function createEarsRepository(getDb, mongo) {
     },
     // ── 스냅샷 메모(P3 설계 §5.5) ── 데스크톱 편집기와 함께 쓰는 컬렉션이다. 키는 (eqpid, filename)이고 유일 인덱스가 없다.
     // 파일 이름이 13자리 ms 로 시작해 글자 범위가 곧 시각 범위다(메모는 지워지지 않고 쌓이므로 범위로 자른다).
-    findMemos: ({ eqpId, fromName, toName }, limit) => {
+    // maxTimeMs = 기다릴 시간(하루 목록에 붙일 때는 짧게 — 메모 조회가 늦어 목록이 늦지 않게)
+    findMemos: ({ eqpId, fromName, toName, maxTimeMs = MAX }, limit) => {
       const filename = toName === undefined ? { $gte: fromName } : { $gte: fromName, $lt: toName }
       // 이름 내림차순 — 한도에서 잘릴 때 늦은 스냅샷의 메모가 남는다
-      return col('ARS_USER_MEMO').find(eqpId === undefined ? { filename } : { eqpid: eqpId, filename }).sort({ filename: -1 }).limit(limit).maxTimeMS(MAX).toArray()
+      return col('ARS_USER_MEMO').find(eqpId === undefined ? { filename } : { eqpid: eqpId, filename }).sort({ filename: -1 }).limit(limit).maxTimeMS(maxTimeMs).toArray()
     },
     findMemosByKey: (eqpId, fileName) => col('ARS_USER_MEMO').find({ eqpid: eqpId, filename: fileName }).maxTimeMS(MAX).toArray(),
     // 같은 키 문서가 없을 때만 넣는다 — 찾고 넣기를 한 번에(유일 인덱스가 없어 동시에 둘이 넣는 것을 완전히 막지는 못한다)

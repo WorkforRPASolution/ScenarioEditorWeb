@@ -37,6 +37,7 @@ export const MESSAGES = {
   SEW_ERR_MEMO_QUOTE: "메모에 작은따옴표(')는 쓸 수 없습니다.",
   SEW_ERR_MEMO_TOO_LONG: '메모는 128자까지 쓸 수 있습니다.',
   SEW_ERR_MEMO_EMPTY: '메모가 비어 있습니다.',
+  SEW_ERR_MEMO_BLOCKED: '이 스냅샷에 읽을 수 없는 메모 문서가 있어 메모를 쓸 수 없습니다. 관리자에게 알리세요.',
 
   SEW_NOTE_CONDITION_UNKNOWN: '해석할 수 없는 조건 종류입니다(Variable 등). 원래 값을 그대로 둡니다.',
   SEW_NOTE_ACTION_INVALID: '알 수 없는 동작 번호입니다. 에이전트가 이 시나리오를 거부할 수 있습니다.',
@@ -163,7 +164,7 @@ export const MESSAGES = {
   SEW_SNAP_MEMO_LIST_FAILED: '메모 목록을 받지 못했습니다.',
   SEW_SNAP_MEMO_LIST_EMPTY: '최근 15일 스냅샷에 달린 메모가 없습니다.',
   SEW_SNAP_MEMO_LIST_NONE: '맞는 메모가 없습니다.',
-  SEW_SNAP_MEMO_LIST_TRUNCATED: '메모가 많아 늦은 스냅샷의 메모 {n}건까지만 받았습니다.',
+  SEW_SNAP_MEMO_LIST_TRUNCATED: '메모가 많아 늦은 스냅샷의 메모부터 일부만 받았습니다.',
   SEW_SNAP_MEMO_LIST_MORE: '{n}건 더 있습니다. 거르기로 좁히세요.',
   SEW_SNAP_MEMO_LIST_COL_AUTHOR: '작성자',
   SEW_SNAP_MEMO_LIST_COL_EQP: '설비',

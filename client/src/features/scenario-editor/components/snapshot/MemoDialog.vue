@@ -3,7 +3,9 @@
 // - 글 한 칸(128자, 작은따옴표 금지). 있던 메모를 비우고 저장하면 지울지 묻는다. 새 메모를 빈 채 저장하면 그냥 닫는다(사내와 같다).
 // - 남의 메모는 고치거나 지우기 전에 누구 것인지 보인다. 그 사이 다른 사람이 바꿨으면(409) 닫지 않고 지금 내용을 보인다 —
 //   저장소가 그 줄을 지금 값으로 바꿔 두므로, 다시 저장하면 그 내용을 본 것으로 보낸다.
-// - 대상은 창을 열 때의 파일 이름이다(고른 줄이 그 사이 바뀌어도 그 스냅샷에 쓴다).
+// - 대상은 창을 열 때의 파일 이름이다(고른 줄이 그 사이 바뀌어도 그 스냅샷에 쓴다). 대상·모드가 바뀌면 글·확인·충돌 상태를 처음부터 다시 잡고,
+//   열려 있는 동안 그 줄이 목록에서 사라지면 닫는다 — 숨은 채 열려 있다가 앞의 글로 다른 메모를 덮지 않게.
+// - Tab 은 창 안에서만 돈다(뒤의 날짜·목록 단추로 나가 목록을 바꾸지 않게).
 import { ref, computed, watch, nextTick } from 'vue'
 import { useSnapshotStore } from '../../stores/snapshotStore'
 import { MEMO_MAX, checkMemo, isMine } from '../../editor/snapshotMemo'
@@ -31,7 +33,7 @@ const box = ref(null)
 const input = ref(null)
 
 const close = () => emit('update:modelValue', false)
-watch(() => props.modelValue, async (open) => {
+watch(() => [props.modelValue, props.fileName, props.mode], async ([open]) => {
   if (!open) return
   if (!item.value) { close(); return } // 목록이 그 사이 바뀌었다
   text.value = memo.value?.text ?? ''
@@ -43,6 +45,8 @@ watch(() => props.modelValue, async (open) => {
   if (asking.value) box.value?.focus?.()
   else { input.value?.focus?.(); input.value?.select?.() }
 }, { immediate: true })
+// 열려 있는 동안 그 줄이 목록에서 사라졌다(새로 고침·목록 실패·다른 설비)
+watch(item, (it) => { if (props.modelValue && !it) close() })
 
 const checked = computed(() => checkMemo(text.value))
 const problem = computed(() => (checked.value.error ? t(`SEW_ERR_${checked.value.error}`) : ''))
@@ -63,7 +67,7 @@ async function save() {
     if (memo.value) { asking.value = true; error.value = '' } else close()
     return
   }
-  if (memo.value && c.text === memo.value.text) { close(); return } // 바뀐 것이 없다
+  if (memo.value && c.text === memo.value.text.trim()) { close(); return } // 바뀐 것이 없다(앞뒤 공백만 다른 것도)
   busy.value = true
   error.value = ''
   const r = await snap.saveMemo(props.fileName, c.text)
@@ -87,7 +91,14 @@ async function remove() {
 const cancel = () => { if (!busy.value) close() }
 const back = () => { if (!busy.value) { asking.value = false; nextTick(() => input.value?.focus?.()) } }
 function onKey(e) {
-  if (e.key === 'Escape') { e.stopPropagation(); cancel() }
+  if (e.key === 'Escape') { e.stopPropagation(); cancel(); return }
+  if (e.key !== 'Tab' || !box.value) return
+  const stops = [...box.value.querySelectorAll('input, button')].filter((el) => !el.disabled)
+  if (!stops.length) { e.preventDefault(); return }
+  const i = stops.indexOf(document.activeElement)
+  const next = e.shiftKey ? (i <= 0 ? stops.length - 1 : i - 1) : (i < 0 || i === stops.length - 1 ? 0 : i + 1)
+  e.preventDefault()
+  stops[next].focus()
 }
 // 한글 조합 중의 Enter 는 글자를 확정하는 것이다
 function onEnter(e) {

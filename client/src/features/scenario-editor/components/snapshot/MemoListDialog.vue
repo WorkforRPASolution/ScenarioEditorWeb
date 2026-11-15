@@ -88,7 +88,7 @@ const btnP = 'h-8 px-3 rounded-lg text-sm bg-primary-500 hover:enabled:bg-primar
         <label class="flex items-center gap-1.5 select-none"><input v-model="mine" type="checkbox" data-testid="se-memo-list-mine" />{{ t('SEW_SNAP_MEMO_LIST_MINE') }}</label>
         <span v-if="snap.memoList.items.length" class="ml-auto tabular-nums text-gray-500 dark:text-gray-400" data-testid="se-memo-list-count">{{ t('SEW_SNAP_MEMO_LIST_COUNT', { n: filtered.length }) }}</span>
       </div>
-      <p v-if="snap.memoList.truncated" class="px-5 py-1.5 text-[11px] bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200 shrink-0" data-testid="se-memo-list-truncated">{{ t('SEW_SNAP_MEMO_LIST_TRUNCATED', { n: snap.memoList.items.length }) }}</p>
+      <p v-if="snap.memoList.truncated" class="px-5 py-1.5 text-[11px] bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200 shrink-0" data-testid="se-memo-list-truncated">{{ t('SEW_SNAP_MEMO_LIST_TRUNCATED') }}</p>
       <div class="flex-1 min-h-0 overflow-auto">
         <div v-if="state" class="h-full flex flex-col items-center justify-center gap-2 px-6 text-center text-sm text-gray-500 dark:text-gray-400">
           <p data-testid="se-memo-list-state">{{ state.text }}</p>

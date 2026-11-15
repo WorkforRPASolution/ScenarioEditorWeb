@@ -6,6 +6,11 @@
 const { parseSnapshotName } = require('./snapshotName')
 
 const MEMO_MAX = 128 // 데스크톱 메모 창의 한도
+// 메모를 쓸 수 있는 파일 이름 — 스냅샷 서버가 만드는 꼴 그대로(13자리 ms, 앞자리 0 이 없는 수).
+// 읽는 쪽(snapshotName)은 너그럽지만 운영 컬렉션에 넣는 이름은 좁힌다: 자릿수가 다른 ms 는 데스크톱이 날짜로 바꾸다 멈출 수 있고
+// (메모 하나가 틀리면 데스크톱의 메모 읽기 전체가 실패한다 — DC-082), 앞자리 0 이 붙은 이름은 어느 목록에도 보이지 않는 문서가 된다.
+const PLAIN_NAME = /^[1-9]\d{12}_\[(0|[1-9]\d{0,8})\]\[(0|[1-9]\d{0,15})\]\.png$/
+const isPlainSnapshotName = (s) => typeof s === 'string' && !s.includes('\n') && PLAIN_NAME.test(s)
 const text = (v) => (typeof v === 'string' ? v : null)
 const dateMs = (v) => (v instanceof Date && Number.isFinite(v.getTime()) ? v.getTime() : null)
 
@@ -46,4 +51,4 @@ function pickLatest(records) {
   return out
 }
 
-module.exports = { MEMO_MAX, checkMemoText, readMemoDoc, pickLatest }
+module.exports = { MEMO_MAX, checkMemoText, readMemoDoc, pickLatest, isPlainSnapshotName }

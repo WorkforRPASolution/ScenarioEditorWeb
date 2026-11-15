@@ -144,7 +144,7 @@ describe('MemoListDialog', () => {
     await open()
     expect(tids('se-memo-list-row')).toHaveLength(300)
     expect(tid('se-memo-list-more').text()).toBe('20건 더 있습니다. 거르기로 좁히세요.')
-    expect(tid('se-memo-list-truncated').text()).toBe('메모가 많아 늦은 스냅샷의 메모 320건까지만 받았습니다.')
+    expect(tid('se-memo-list-truncated').text()).toBe(MESSAGES.SEW_SNAP_MEMO_LIST_TRUNCATED)
     expect(tid('se-memo-list-count').text()).toBe('320건')
   })
   it('닫았다 다시 열면 다시 받고 고르기·거르기는 처음으로 돌아간다. [닫기] 는 닫기만', async () => {

@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
-const { MEMO_MAX, checkMemoText, readMemoDoc, pickLatest } = require('../../domain/memoRules')
+const { MEMO_MAX, checkMemoText, readMemoDoc, pickLatest, isPlainSnapshotName } = require('../../domain/memoRules')
 
 const NAME = '1762820000123_[412][388].png'
 const doc = (over = {}) => ({
@@ -25,6 +25,18 @@ describe('checkMemoText — 메모 글 검사', () => {
   })
   it('빈 글·공백뿐·글자가 아닌 값은 MEMO_EMPTY', () => {
     for (const v of ['', '   ', '\n\t', null, undefined, 7, {}, ['a']]) expect(checkMemoText(v), JSON.stringify(v)).toEqual({ code: 'MEMO_EMPTY' })
+  })
+})
+
+describe('isPlainSnapshotName — 메모를 쓸 수 있는 파일 이름(스냅샷 서버가 만드는 꼴 그대로)', () => {
+  it('13자리 ms, 앞자리 0 이 없는 좌표·태그 값', () => {
+    for (const ok of ['1762820000123_[412][388].png', '1762820000123_[0][0].png', '1762820000123_[9999][1762820000000].png']) expect(isPlainSnapshotName(ok), ok).toBe(true)
+  })
+  it('ms 자릿수가 다르거나 앞자리 0, 좌표의 앞자리 0, 꼴이 아닌 이름은 아니다 — 데스크톱이 읽다 멈추거나 어느 목록에도 안 보이는 문서가 된다', () => {
+    for (const bad of [
+      '0001762820000123_[1][2].png', '17628200001239_[1][2].png', '999999999999999_[1][1].png', '176282000012_[1][2].png', '0762820000123_[1][2].png',
+      '1762820000123_[01][2].png', '1762820000123_[1][02].png', '1762820000123_[1][2].PNG', '1762820000123_[1][2].png\n', 'memo.bin', null, 7
+    ]) expect(isPlainSnapshotName(bad), String(bad)).toBe(false)
   })
 })
 
