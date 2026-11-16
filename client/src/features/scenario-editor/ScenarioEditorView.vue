@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted, onBeforeUnmount, onActivated, onDeactivated } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount, onActivated, onDeactivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useEditorStore } from './stores/editorStore'
 import { useEditStore } from './stores/editStore'
@@ -120,13 +120,19 @@ watch(() => (edit.panel?.isNew ? edit.panel.uid : null), (uid) => { if (uid) sna
 // 접어도 둘 다 그려 둔 채 숨긴다(패널에 적던 값·표의 스크롤이 남는다). 접힘은 크기와 함께 기억한다(se-layout).
 // - 스텝 목록을 넓게 펼친 채 접으면 넓게 보기를 푼다(큰 화면이 가려진 채 목록까지 사라지지 않게).
 // - 패널을 접은 채 새 스텝을 시작하면 패널을 편다 — 넣기·취소가 패널에 있다.
-function foldSteps() {
-  store.expanded = false
-  setFolded('steps', true)
+// 접고 펼 때 누른 단추가 사라진다 — 초점을 짝이 되는 단추(띠 ↔ 접기 단추)로 옮긴다
+const root = ref(null)
+async function fold(key, value, focusId) {
+  if (key === 'steps' && value) store.expanded = false
+  setFolded(key, value)
+  await nextTick()
+  root.value?.querySelector(`[data-testid="${focusId}"]`)?.focus?.()
 }
 watch(() => (edit.panel?.isNew ? edit.panel.uid : null), (uid) => { if (uid) setFolded('right', false) })
 // 패널의 칸으로 초점을 보내라는 요청(적용이 칸 오류로 막힘 등) — 접혀 있으면 오류 칸이 보이지 않으니 편다. 초점은 다음 틱에 간다(StepPanel)
 watch(() => edit.focusReq, (r) => { if (r) setFolded('right', false) })
+// 창에서 스텝으로 갔다(저장 창의 막힌 줄·갈 곳 목록) — 고칠 자리인 패널을 편다. 표에서 줄을 고르는 것만으로는 펴지 않는다
+watch(() => edit.revealReq, () => setFolded('right', false))
 // 스텝 표를 넓게 펼치면 큰 화면이 가려진다 — 그 상태에서 스냅샷을 고르면 넓게 보기를 푼다(시나리오 열기와 같은 규칙)
 watch(() => snap.selectedName, (name) => { if (name && snap.mode === 'snapshot') store.expanded = false })
 
@@ -137,7 +143,7 @@ const card = 'bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:
 </script>
 
 <template>
-  <div class="h-full flex flex-col min-h-0" style="height: calc(100vh - 144px)" data-testid="se-root">
+  <div ref="root" class="h-full flex flex-col min-h-0" style="height: calc(100vh - 144px)" data-testid="se-root">
     <StatePanel v-if="store.meError?.code === 'USER_NOT_REGISTERED'" kind="unregistered" :message="store.meError.message" />
     <StatePanel v-else-if="store.meError" kind="error" :message="store.meError.message" @retry="start" />
     <template v-else>
@@ -177,7 +183,7 @@ const card = 'bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:
           </section>
           <SplitGutter v-show="!store.expanded && !folded.steps" direction="h" testid="se-gutter-s" @start="startDrag('sh', $event, -1, 'y')" @reset="reset('sh')" />
           <!-- 접힌 스텝 목록: 띠를 누르면 펴진다 -->
-          <button v-if="folded.steps" type="button" :class="card" class="mt-3 h-9 shrink-0 flex items-center justify-center text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800" :title="t('SEW_UI_STEPS_EXPAND_HINT')" data-testid="se-steps-rail" @click="setFolded('steps', false)">{{ t('SEW_UI_STEPS_RAIL') }}</button>
+          <button v-if="folded.steps" type="button" :class="card" class="mt-3 h-9 shrink-0 flex items-center justify-center text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800" :title="t('SEW_UI_STEPS_EXPAND_HINT')" aria-expanded="false" data-testid="se-steps-rail" @click="fold('steps', false, 'se-fold-steps')">{{ t('SEW_UI_STEPS_RAIL') }}</button>
           <section v-show="!folded.steps" :class="card" class="flex flex-col min-h-0 shrink-0" :style="{ height: store.expanded ? '100%' : `${sizes.sh}px` }" data-testid="se-steps-section">
             <div class="flex items-center justify-between gap-1 px-3 h-10 border-b border-gray-200 dark:border-dark-border shrink-0">
               <div class="flex gap-1 bg-gray-100 dark:bg-dark-bg p-1 rounded-lg text-xs shrink-0">
@@ -188,7 +194,7 @@ const card = 'bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:
               <StepToolbar v-if="edit.editable" @new="edit.startNew" />
               <div class="flex gap-1 shrink-0">
                 <button data-testid="se-expand" class="shrink-0 text-xs px-2 h-7 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300" @click="store.expanded = !store.expanded">{{ store.expanded ? '⤡ 줄이기' : '⤢ 넓게' }}</button>
-                <button type="button" data-testid="se-fold-steps" class="shrink-0 text-xs px-2 h-7 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300" :title="t('SEW_UI_STEPS_FOLD_HINT')" @click="foldSteps">{{ t('SEW_UI_FOLD_DOWN') }}</button>
+                <button type="button" data-testid="se-fold-steps" class="shrink-0 text-xs px-2 h-7 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300" :title="t('SEW_UI_STEPS_FOLD_HINT')" aria-expanded="true" @click="fold('steps', true, 'se-steps-rail')">{{ t('SEW_UI_FOLD_DOWN') }}</button>
               </div>
             </div>
             <div class="flex-1 min-h-0" data-testid="se-steps-area" @click.capture="snap.showStep()">
@@ -201,11 +207,11 @@ const card = 'bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:
         <div v-if="!folded.right" class="relative flex min-h-0">
           <SplitGutter direction="v" testid="se-gutter-r" @start="startDrag('rw', $event, -1, 'x')" @reset="reset('rw')" />
           <button type="button" class="absolute z-10 top-1.5 -left-0.5 w-4 h-7 rounded flex items-center justify-center text-[10px] leading-none bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-primary-500 hover:text-white"
-            :title="t('SEW_UI_RIGHT_FOLD_HINT')" :aria-label="t('SEW_UI_RIGHT_FOLD_HINT')" data-testid="se-fold-right" @mousedown.stop @dblclick.stop @click="setFolded('right', true)">▶</button>
+            :title="t('SEW_UI_RIGHT_FOLD_HINT')" :aria-label="t('SEW_UI_RIGHT_FOLD_HINT')" aria-expanded="true" data-testid="se-fold-right" @mousedown.stop @dblclick.stop @click="fold('right', true, 'se-right-rail')">▶</button>
         </div>
         <div v-else />
         <!-- 오른쪽: 쓸 수 있는 세션은 편집 패널(여러 줄이면 묶음 칸), 읽기 전용·여는 중은 P1 상세. 접히면 띠 -->
-        <button v-if="folded.right" type="button" :class="card" class="flex items-center justify-center hover:bg-gray-50 dark:hover:bg-gray-800" :title="t('SEW_UI_RIGHT_EXPAND_HINT')" data-testid="se-right-rail" @click="setFolded('right', false)">
+        <button v-if="folded.right" type="button" :class="card" class="flex items-center justify-center hover:bg-gray-50 dark:hover:bg-gray-800" :title="t('SEW_UI_RIGHT_EXPAND_HINT')" aria-expanded="false" data-testid="se-right-rail" @click="fold('right', false, 'se-fold-right')">
           <span class="text-xs text-gray-500 dark:text-gray-400 [writing-mode:vertical-rl]">{{ t(edit.editable ? 'SEW_UI_RIGHT_RAIL_EDIT' : 'SEW_UI_RIGHT_RAIL_DETAIL') }}</span>
         </button>
         <section v-show="!folded.right" :class="card" class="min-h-0 overflow-hidden" data-testid="se-right-section">

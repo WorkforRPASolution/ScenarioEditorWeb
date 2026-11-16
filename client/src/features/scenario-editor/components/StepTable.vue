@@ -9,6 +9,7 @@ import { unsavedChanges } from '../editor/diff'
 import { acceptCode } from '../editor/fieldRules'
 import { t } from '../messages'
 import TargetPicker from './TargetPicker.vue'
+import { useShown } from '../composables/useShown'
 import '../pills.css'
 
 defineOptions({ name: 'StepTable' })
@@ -124,6 +125,8 @@ watch(() => [edit.panel.isNew ? edit.panel.uid : null, edit.panel.insertBefore ?
   })
 })
 function onReady(e) { gridApi.value = e.api; syncSelection() }
+// 접혀 있던 목록을 펴면(숨은 동안 고른 줄이 바뀌었을 수 있다) 고른 줄이 보이게 다시 맞춘다
+useShown(tableEl, () => nextTick(syncSelection))
 // 확인 창(적용 안 한 변경 등)이 닫히면 칸을 작업본 값으로 다시 그린다 — 묻는 동안 칸에 친 값·체크가 남지 않게.
 watch(() => edit.dialog, (now, before) => { if (before && !now) nextTick(() => gridApi.value?.refreshCells?.({ force: true })) })
 function onGone() { gridApi.value = null } // 스텝 0개 등으로 표가 지워지면 옛 api 를 놓는다

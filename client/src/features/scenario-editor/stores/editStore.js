@@ -55,6 +55,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   const moved = shallowRef(new Set())
   // 패널이 초점을 옮길 칸({ field, n } — n 은 같은 칸을 다시 요청해도 감시가 울리게)
   const focusReq = shallowRef(null)
+  const revealReq = ref(0) // 창(저장 창의 막힌 줄·갈 곳 목록)에서 스텝으로 갈 때마다 오른다 — 화면이 접힌 스텝 패널을 편다
   let movedTimer = null
   let bitmapCache = { url: null, promise: null } // 마지막으로 불러온 기준 화면 비트맵(잡기 중 여러 번 자를 때 다시 받지 않게)
   // 찾을 그림 위치 보기(찾을 그림 밖 누를 곳 B): 키(기준 화면·찾을 그림·검색 영역) → locateTrain 결과. 바꿀 때마다 새 Map.
@@ -356,6 +357,12 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     const go = () => setSelection({ uids: [uid], anchor: uid })
     if (uid === panel.value.uid) { go(); return true }
     return guard(go, { action: 'move', to: uid })
+  }
+
+  // 창에서 "이 스텝으로 가기": 그 줄을 고르고(패널에 적던 것이 있으면 먼저 묻는다) 고치는 자리인 스텝 패널이 보이게 알린다.
+  function jumpTo(uid) {
+    revealReq.value++
+    return requestSelect(uid)
   }
 
   // 표 줄 누르기(목업 select): 그냥 = 한 줄, Shift = 기준 줄부터 범위, Ctrl/Cmd = 더하기·빼기. 번호 순으로 둔다.
@@ -838,9 +845,9 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   }
 
   return {
-    session, selection, panel, undo, redo, clip, windowClip, uploads, capture, locating, viewReq, canCapture, toast, dialog, moved, focusReq, editable, draftId, spots, spotGen, areaDragging,
+    session, selection, panel, undo, redo, clip, windowClip, uploads, capture, locating, viewReq, canCapture, toast, dialog, moved, focusReq, revealReq, editable, draftId, spots, spotGen, areaDragging,
     begin, beginNew, beginRestore, beginFromDraft, markDeleted, markPropertyChanged, forgetDraft, end, rebase, markDraft, run, undoLast, redoLast,
-    setSelection, syncFocus, requestSelect, clickRow, panelDirty, notify,
+    setSelection, syncFocus, requestSelect, jumpTo, clickRow, panelDirty, notify,
     openPanel, syncPanel, updateDraft, panelErrors, applyPanel, discardPanel, requestFocus,
     guard, guardKeep, guardDrop, guardApply, setHeader, applyProperty, applyWindows, copyWindows, changeCount, unsavedCount, askLeave, leaveKeep, leaveDrop,
     undoCommand, redoCommand, copySelection, pasteClip, deleteSelection, moveSelected, editCell,

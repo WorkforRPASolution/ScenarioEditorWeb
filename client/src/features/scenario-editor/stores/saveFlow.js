@@ -438,7 +438,7 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
   // 검사 줄·바뀐 곳에서 스텝으로: 창을 닫고(대상은 남김) 그 줄을 고른다
   function jump(uid) {
     if (!close({ keep: true })) return false
-    edit.requestSelect(uid)
+    edit.jumpTo(uid)
     return true
   }
 

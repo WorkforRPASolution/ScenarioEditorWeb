@@ -40,7 +40,7 @@ const guardTitle = computed(() => (!guardCopy.value ? '' : dialog.value.isNew ? 
 const guardBody = computed(() => (guardCopy.value ? t(guardCopy.value.body, { n: changedFields(edit.panel.base, edit.panel.draft).length }) : ''))
 const guardBlocked = computed(() => dialog.value?.kind === 'guard' && Object.values(edit.panelErrors()).some((e) => e.level === 'error'))
 // 목록의 스텝으로 가서 갈 곳을 고치게 한다(목업 goref).
-function goRef(uid) { close(); edit.requestSelect(uid) }
+function goRef(uid) { close(); edit.jumpTo(uid) }
 function pasteAnyway() {
   const where = dialog.value.where
   close()

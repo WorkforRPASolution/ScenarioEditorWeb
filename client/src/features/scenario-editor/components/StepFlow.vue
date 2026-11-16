@@ -1,5 +1,5 @@
 <script setup>
-import { computed, watch, nextTick } from 'vue'
+import { computed, ref, watch, nextTick } from 'vue'
 import { VueFlow, useVueFlow, Handle, Position } from '@vue-flow/core'
 import { MiniMap } from '@vue-flow/minimap'
 import { Controls } from '@vue-flow/controls'
@@ -11,6 +11,7 @@ import { useEditorStore } from '../stores/editorStore'
 import { layoutFlow, FLOW } from '../layoutFlow'
 import { actionLabel, conditionLabel } from '../format'
 import { t } from '../messages'
+import { useShown } from '../composables/useShown'
 import '../pills.css'
 
 defineOptions({ name: 'StepFlow' })
@@ -26,6 +27,9 @@ const centerOn = (uid, duration = 300) => {
 
 // 표 탭에서 고른 뒤 순서도 탭으로 오면 이 컴포넌트가 새로 만들어진다: 처음 그릴 때 선택한 카드로 간다.
 onInit(() => centerOn(store.selectedUid, 0))
+// 접혀 있던 목록을 펴면 고른 카드로 다시 간다(숨은 동안에는 화면 크기가 0 이라 가운데 맞춤이 어긋난다)
+const flowEl = ref(null)
+useShown(flowEl, () => centerOn(store.selectedUid, 0))
 
 // 선택이 바뀌거나 다른 시나리오가 열리면(선택 uid 가 그대로여도) 선택한 카드로 간다.
 // 순서도 안에서 카드를 눌러 고른 경우는 이미 눈앞에 있으니 보던 위치·확대를 그대로 둔다.
@@ -51,7 +55,7 @@ const level = (s) => (s.notes.some((n) => n.level === 'warning') ? 'warning' : s
 </script>
 
 <template>
-  <div class="h-full" data-testid="se-flow">
+  <div ref="flowEl" class="h-full" data-testid="se-flow">
     <div v-if="!store.steps.length" class="h-full flex items-center justify-center text-sm text-gray-400">{{ t('SEW_UI_NO_STEPS') }}</div>
     <VueFlow v-else id="se-flow" :nodes="graph.nodes" :edges="graph.edges" :nodes-draggable="false" :nodes-connectable="false" :zoom-on-double-click="false"
       :min-zoom="0.1" :max-zoom="2" fit-view-on-init @node-click="onNodeClick">

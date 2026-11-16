@@ -532,7 +532,7 @@ test.describe('메모', () => {
 test('⑨ 스텝 목록·스텝 패널 접기 — 큰 화면이 그만큼 커지고, 새로고침 뒤에도 접힌 채이며, 띠를 누르면 펴진다. 접은 채 새 스텝을 시작하면 패널이 펴진다', async ({ page }) => {
   await asUser(page, 'sew_master')
   await page.goto('/scenario-editor')
-  await openFromDialog(page, 'SEWCVD', 'SEWMODELA', 'ALL_CONDITIONS')
+  await openFromDialog(page, 'SEWCVD', 'SEWMODELA', 'ALL_ACTIONS') // 18 스텝 — 표가 한 화면에 다 들지 않는다
   await expect(page.getByTestId('se-base-image')).toBeVisible()
   await page.getByTestId('se-snapshot-rail').click()
   await pickEquipment(page, 'photo_a', 'SEWT_PHOTO_A01')
@@ -566,6 +566,21 @@ test('⑨ 스텝 목록·스텝 패널 접기 — 큰 화면이 그만큼 커지
   await page.reload()
   await expect(page.getByTestId('se-right-rail')).toBeVisible()
   await expect(page.getByTestId('se-steps-rail')).toBeVisible()
+
+  // ── 목록을 접은 채 패널의 [다음 스텝] 으로 12번째 뒤로 간 뒤 목록을 펴면, 고른 줄이 보이는 자리에 와 있다 ──
+  await page.getByTestId('se-right-rail').click()
+  for (let i = 0; i < 12; i++) await page.getByTestId('se-panel-next').click()
+  await page.getByTestId('se-steps-rail').click()
+  const chosen = page.locator('[data-testid="se-steps-section"] .ag-row-selected')
+  await expect(chosen).toHaveCount(1)
+  await expect(chosen).toHaveAttribute('row-index', '12')
+  const sec = await page.getByTestId('se-steps-section').boundingBox()
+  const rowBox = await chosen.boundingBox()
+  expect(rowBox.y).toBeGreaterThan(sec.y)
+  expect(rowBox.y + rowBox.height).toBeLessThanOrEqual(sec.y + sec.height + 1)
+  await page.getByTestId('se-fold-steps').click()
+  await page.getByTestId('se-fold-right').click()
+  await expect(page.getByTestId('se-right-rail')).toBeVisible()
 
   // ── 접은 채 스냅샷으로 새 스텝을 시작하면 패널이 펴진다(넣기·취소가 패널에 있다). 스텝 목록은 접힌 채다 ──
   await snapRow(page, '09:13:02').click()
