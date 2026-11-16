@@ -94,10 +94,10 @@ export function scrollFor(index, scrollTop, viewHeight, rowHeight) {
 
 // ── 여러 날 목록의 날짜 구분 줄(사내 요청 2026-11-16) ──
 // 줄의 표시 날짜(date)가 둘 이상이면 날이 바뀌는 곳마다 { header, date, count } 를 넣는다. rows = 화면에 그릴 줄, at[i] = items[i] 의 화면 자리.
-// 하루뿐이면 받은 배열 그대로이고 at 은 null 이다(자리가 같다).
-export function dayRows(items) {
-  let mixed = false
-  for (let i = 1; i < items.length; i++) if (items[i].date !== items[0].date) { mixed = true; break }
+// 하루뿐이면 받은 배열 그대로이고 at 은 null 이다(자리가 같다). always = 하루뿐이어도 구분 줄을 넣는다(여러 날을 고른 채 줄이 하루치만 남았을 때).
+export function dayRows(items, always = false) {
+  let mixed = always && items.length > 0 && !!items[0].date // 날짜를 모르는 줄에는 적을 것이 없다
+  for (let i = 1; !mixed && i < items.length; i++) if (items[i].date !== items[0].date) mixed = true
   if (!mixed) return { rows: items, at: null }
   const rows = []
   const at = new Int32Array(items.length)

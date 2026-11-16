@@ -30,8 +30,9 @@ const dateText = computed(() => {
   return `${snap.date.slice(5)} ~ ${snap.dateTo.slice(5)} · ${t('SEW_SNAP_DATE_DAYS', { n: spanDays(snap.date, snap.dateTo) })}`
 })
 const canPick = computed(() => !!snap.eqpId && !!snap.minDate)
-const atFirst = computed(() => !snap.date || snap.date <= snap.minDate)
-const atLast = computed(() => !snap.date || (snap.dateTo ?? snap.date) >= snap.maxDate)
+// 설비가 없으면(패널 [초기화] 뒤 날짜만 남음) 옮길 범위를 모른다
+const atFirst = computed(() => !snap.date || !snap.minDate || snap.date <= snap.minDate)
+const atLast = computed(() => !snap.date || !snap.maxDate || (snap.dateTo ?? snap.date) >= snap.maxDate)
 function toggleCalendar() {
   calOpen.value = !calOpen.value
   if (calOpen.value) snap.openCalendar()
@@ -51,8 +52,9 @@ const state = computed(() => {
     const failed = t('SEW_SNAP_LIST_FAILED')
     return { text: l.error && l.error !== failed ? `${failed} ${l.error}` : failed, retry: true }
   }
-  if (l.items.length) return snap.shown.length ? null : { text: t(snap.filter === 'memo' ? 'SEW_SNAP_NO_MEMO' : 'SEW_SNAP_NO_TAG') }
-  if (l.status === 'ready') return { text: !snap.date ? t('SEW_SNAP_NO_RECENT') : t(snap.multiDay ? 'SEW_SNAP_EMPTY_RANGE' : 'SEW_SNAP_EMPTY_DAY') }
+  if (l.items.length) return snap.shown.length ? null : { text: t(`${snap.filter === 'memo' ? 'SEW_SNAP_NO_MEMO' : 'SEW_SNAP_NO_TAG'}${snap.multiDay ? '_RANGE' : ''}`) }
+  // 보관 기간 안에 스냅샷이 하나도 없는 설비(가장 늦은 날이 없다)는 고른 날짜가 남아 있어도 그렇게 알린다
+  if (l.status === 'ready') return { text: !snap.date || (snap.range && !snap.range.latest) ? t('SEW_SNAP_NO_RECENT') : t(snap.multiDay ? 'SEW_SNAP_EMPTY_RANGE' : 'SEW_SNAP_EMPTY_DAY') }
   return { text: t('SEW_SNAP_LOADING') }
 })
 const btn = 'h-7 px-2 rounded-md text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:enabled:bg-gray-300 dark:hover:enabled:bg-gray-600 disabled:opacity-50'

@@ -4,7 +4,7 @@
 // 여러 날(사내 요청 2026-11-16): 날짜를 누르면 그 하루, 날짜 위를 끌거나 Shift+누르기로 여러 날(목록에서 여러 줄을 고르는 방식과 같다).
 // - 끄는 동안에는 칠하기만 하고 손을 뗄 때 한 번 받는다. Shift 의 기준 날은 마지막으로 그냥 누른 날이다.
 // - [전체 n일]·[최근 7일]·[최근 3일] 로 한 번에, [초기화] 는 가장 늦은 날 하루로. 고른 뒤에도 열려 있다 — [닫기]·바깥 누름·Esc 로 닫는다.
-import { ref, computed, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useSnapshotStore } from '../../stores/snapshotStore'
 import { calendarWeeks, orderDates, spanDays, addDays } from '../../editor/snapshotDates'
 import { t } from '../../messages'
@@ -36,16 +36,19 @@ function choose(date, shift) {
 }
 // 포인터(마우스·터치): 누른 날부터 끌어 간 날까지. 제자리에서 떼면 그 하루.
 function onDown(e, date) {
-  if (e.button) return
+  // 꺼진 날(보관 기간 밖)에도 브라우저는 pointerdown 을 보낸다(click 만 막는다) — 여기서 거른다
+  if (e.button || !usable(date)) return
   if (e.shiftKey && anchor) { snap.setDates(anchor, date); return }
   anchor = date
   dragFrom = date
   preview.value = [date, date]
   window.addEventListener('pointerup', onUp)
-  window.addEventListener('pointercancel', onUp)
+  window.addEventListener('pointercancel', stopDrag)
 }
 function onMove(e) {
   if (!dragFrom) return
+  // 단추를 놓았는데 pointerup 을 받지 못했다(창 밖에서 뗌·메뉴가 뜸) — 끌기를 끝낸다(고르지 않는다)
+  if (e.buttons === 0) { stopDrag(); return }
   // 터치는 누른 칸이 계속 target 이라 손가락 아래의 칸을 찾는다
   const under = (typeof document.elementFromPoint === 'function' && Number.isFinite(e.clientX) ? document.elementFromPoint(e.clientX, e.clientY) : null) || e.target
   const date = under?.closest?.('[data-date]')?.getAttribute('data-date')
@@ -53,7 +56,7 @@ function onMove(e) {
 }
 function stopDrag() {
   window.removeEventListener('pointerup', onUp)
-  window.removeEventListener('pointercancel', onUp)
+  window.removeEventListener('pointercancel', stopDrag)
   dragFrom = null
   preview.value = null
 }
@@ -66,6 +69,8 @@ function onUp() {
 // 키보드(Enter·Space)는 click 으로 온다 — 포인터로 누른 것(detail > 0)은 위에서 이미 처리했다
 function onClick(e, date) { if (!e.detail) choose(date, e.shiftKey) }
 onBeforeUnmount(stopDrag)
+// 열려 있는 동안 새로 고침·설비 바꿈으로 날짜별 장 수가 비워지면 다시 받는다
+watch(() => snap.calendar.status, (status) => { if (status === 'idle') snap.openCalendar() })
 
 // ── 한 번에 고르기 ──
 const total = computed(() => (snap.minDate && snap.maxDate ? spanDays(snap.minDate, snap.maxDate) : 0))

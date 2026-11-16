@@ -20,7 +20,7 @@ const viewHeight = ref(0)
 let observer = null
 
 // 화면에 그릴 줄 — 여러 날이면 날짜 구분 줄이 끼어 있다(view.at = 목록의 줄 → 화면 자리)
-const view = computed(() => dayRows(snap.shown))
+const view = computed(() => dayRows(snap.shown, snap.multiDay))
 const win = computed(() => rowWindow(top.value, viewHeight.value, ROW, view.value.rows.length))
 const rows = computed(() => view.value.rows.slice(win.value.start, win.value.end))
 const dayText = (date) => `${date.slice(5)} (${t('SEW_SNAP_WEEKDAYS')[weekdayOf(date)]})`
@@ -37,11 +37,15 @@ function scrollTo(value) {
 }
 function reveal() {
   if (snap.position < 0 || !box.value) return
-  const index = view.value.at ? view.value.at[snap.position] : snap.position
-  let next = scrollFor(index, box.value.scrollTop, viewHeight.value, ROW)
-  // 위로 올라가 그 날의 첫 줄에 닿았으면 구분 줄까지 보인다(붙여 둔 날짜에 가려지지 않게)
-  if (next < box.value.scrollTop && view.value.rows[index - 1]?.header) next = (index - 1) * ROW
-  if (next !== box.value.scrollTop) scrollTo(next)
+  const now = box.value.scrollTop
+  let next
+  if (!view.value.at) next = scrollFor(snap.position, now, viewHeight.value, ROW)
+  else {
+    // 맨 위 한 줄은 붙여 둔 날짜가 덮는다 — 그 아래를 보이는 자리로 친다(위로 옮긴 줄이 그 밑에 숨지 않게)
+    const index = view.value.at[snap.position]
+    next = Math.max(0, scrollFor(index, now + ROW, viewHeight.value - ROW, ROW) - ROW)
+  }
+  if (next !== now) scrollTo(next)
 }
 onMounted(() => {
   measure()

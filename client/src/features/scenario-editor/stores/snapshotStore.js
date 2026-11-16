@@ -263,8 +263,9 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
   async function resetDates() {
     dateChosen.value = false
     const latest = eqpId.value ? range.value?.latest ?? null : null
-    if (!eqpId.value) { date.value = null; dateTo.value = null; return }
-    if (!latest || (latest === date.value && latest === (dateTo.value ?? date.value))) return
+    // 설비가 없거나 그 설비에 스냅샷이 없으면(가장 늦은 날이 없다) 날짜를 비운다
+    if (!eqpId.value || !latest) { date.value = null; dateTo.value = null; return }
+    if (latest === date.value && latest === (dateTo.value ?? date.value)) return
     date.value = latest
     dateTo.value = latest
     clearSelection()
@@ -387,8 +388,9 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
     if (!shown.value.some((i) => i.fileName === next)) filter.value = 'all'
     select(next)
   }
-  const moveTag = (dir) => jump(dir, isTag, 'SEW_SNAP_NO_TAG')
-  const moveMemo = (dir) => jump(dir, hasMemo, 'SEW_SNAP_NO_MEMO')
+  // 없을 때의 알림 — 여러 날을 보고 있으면 "이 기간에는"
+  const moveTag = (dir) => jump(dir, isTag, multiDay.value ? 'SEW_SNAP_NO_TAG_RANGE' : 'SEW_SNAP_NO_TAG')
+  const moveMemo = (dir) => jump(dir, hasMemo, multiDay.value ? 'SEW_SNAP_NO_MEMO_RANGE' : 'SEW_SNAP_NO_MEMO')
 
   // ── 메모 ──
   // 그 줄의 메모를 바꾼다(줄 하나만 새로 만든 새 배열). 그 사이 설비·날짜가 바뀌었으면(다른 목록) 아무것도 하지 않는다.

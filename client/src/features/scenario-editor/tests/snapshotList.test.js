@@ -169,6 +169,16 @@ describe('dayRows — 날짜 구분 줄', () => {
     expect(dayRows(none).rows).toBe(none)
     expect(dayRows([]).rows).toEqual([])
   })
+  it('always 면 하루뿐이어도 구분 줄을 넣는다(여러 날을 고른 채 줄이 하루치만 남았을 때). 줄이 없으면 넣지 않는다', () => {
+    const one = [it2('2026-11-16', 1), it2('2026-11-16', 2)]
+    const { rows, at } = dayRows(one, true)
+    expect(rows.map((r) => (r.header ? `# ${r.date} ${r.count}` : r.fileName))).toEqual(['# 2026-11-16 2', '2026-11-16-1.png', '2026-11-16-2.png'])
+    expect([...at]).toEqual([1, 2])
+    expect(dayRows([], true).rows).toEqual([])
+    // 날짜를 모르는 줄(옛 서버의 답)에는 넣지 않는다 — 적을 날짜가 없다
+    const undated = [{ fileName: 'a' }, { fileName: 'b' }]
+    expect(dayRows(undated, true).rows).toBe(undated)
+  })
   it('날이 바뀌는 곳마다 그 날의 구분 줄(날짜·그 날 줄 수)을 넣고, 줄마다 화면에서의 자리를 준다', () => {
     const items = [it2('2026-11-14', 1), it2('2026-11-15', 1), it2('2026-11-15', 2), it2('2026-11-16', 1)]
     const { rows, at } = dayRows(items)

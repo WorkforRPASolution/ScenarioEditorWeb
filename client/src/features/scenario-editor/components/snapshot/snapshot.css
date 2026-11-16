@@ -8,7 +8,7 @@
 /* 여러 날 목록의 날짜 구분 줄 — 줄과 같은 높이(28px). 붙여 둔 날짜(.se-snap-day-stick)는 자리를 차지하지 않고 맨 위에 겹친다 */
 .se-snap-day { display: flex; align-items: center; height: 28px; padding: 0 10px 0 13px; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; background: #f3f4f6; color: #4b5563; border-bottom: 1px solid #e5e7eb; }
 .se-snap-day-count { margin-left: auto; font-weight: 400; color: #6b7280; }
-.se-snap-day-stick { position: sticky; top: 0; z-index: 1; margin-bottom: -28px; }
+.se-snap-day-stick { position: sticky; top: 0; z-index: 1; margin-bottom: -28px; pointer-events: none; }
 .se-snap-time { font-variant-numeric: tabular-nums; color: #111827; }
 .se-snap-shift { width: 40px; font-size: 10px; color: #6b7280; }
 .se-snap-expires { margin-left: auto; font-size: 10px; color: #b45309; }
@@ -122,6 +122,8 @@
 .dark .se-snap-cal-grid button small { color: #94a3b8; }
 .dark .se-snap-cal-grid button.edge { background: #2563eb; color: #fff; }
 .dark .se-snap-cal-grid button.edge small { color: rgba(255, 255, 255, .9); }
+.dark .se-snap-cal-grid button.edge:enabled:hover { background: #1d4ed8; }
+.dark .se-snap-cal-grid button.edge[data-has]::after { background: #fff; }
 .dark .se-snap-cal-grid button[data-has]::after { background: #60a5fa; }
 /* 클릭한 곳(사내 요청 2026-11-16) — 점이 깜빡이고, 점에서 고리가 크게 퍼져 나간다. 고리는 점 크기를 따른다(점은 확대와 상관없이 화면에서 12px).
    움직임 줄이기 설정(OS 의 애니메이션 효과 끔 — 사내 PC·원격 접속에 흔하다)에서도 깜빡인다: 퍼지는 움직임만 빼고 고리가 제자리에서 밝아졌다 흐려진다. */

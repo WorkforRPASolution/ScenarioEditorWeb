@@ -955,6 +955,10 @@ test('⑩ 날짜 여러 날·전체 — 달력의 장 수·[전체]·Shift·끌�
   await expect(dateBtn).toContainText(`${yesterday.slice(5)} ~ ${today.slice(5)}`)
   await expect(dateBtn).toContainText('2일')
   await expect(cell(yesterday)).toHaveClass(/edge/)
+  // 꺼진 날(보관 기간 밖 — 내일)을 눌러도 아무 일도 없다: 고른 범위가 풀리지 않는다
+  await cell(day(1)).click({ force: true })
+  await cell(day(1)).click({ force: true, modifiers: ['Shift'] })
+  await expect(dateBtn).toContainText(`${yesterday.slice(5)} ~ ${today.slice(5)}`)
   const from = await cell(day(-4)).boundingBox()
   const to = await cell(day(-2)).boundingBox()
   await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)

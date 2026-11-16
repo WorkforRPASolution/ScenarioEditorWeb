@@ -236,6 +236,20 @@ describe('snapshotService.list — 하루 목록', () => {
     expect(out.truncated).toBe(true)
     expect(out.items.map((i) => i.fileName)).toEqual(names.slice(2))
   })
+  it('여러 날은 보관 기간(15일 + 하루 여유) 밖을 훑지 않는다 — 이름 하한을 당기고, 통째로 밖이면 저장소를 부르지 않는다(지워진 줄 한도, 독립 검토)', async () => {
+    const floor = NOW - 16 * DAY // 지금(11-11 12:00) − 16일 = 10-26 12:00
+    const repo = fakeRepo()
+    await service(repo).list(USER, 'E1', '2026-10-20', '2026-11-11')
+    expect(repo.calls.listNames.map((c) => [c.fromName, c.toName])).toEqual([[String(floor), String(kst(2026, 11, 12))], [String(floor), String(kst(2026, 11, 12))]])
+    const gone = fakeRepo()
+    const out = await service(gone).list(USER, 'E1', '2026-10-01', '2026-10-20')
+    expect(gone.calls.listNames).toHaveLength(0)
+    expect([out.date, out.to, out.items, out.truncated]).toEqual(['2026-10-01', '2026-10-20', [], false])
+    // 하루 요청은 앞과 같다 — 그 날 하루치만 훑는다
+    const day = fakeRepo()
+    await service(day).list(USER, 'E1', '2026-10-01')
+    expect(day.calls.listNames.every((c) => c.fromName === String(kst(2026, 10, 1)))).toBe(true)
+  })
   it('여러 날이면 메모도 그 범위 전체의 이름으로 읽는다', async () => {
     const asked = []
     const memos = { forRange: async (...args) => { asked.push(args); return { byName: new Map(), hidden: new Set(), failed: false } } }

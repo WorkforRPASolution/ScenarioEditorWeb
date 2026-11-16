@@ -87,7 +87,11 @@ function createSnapshotService({ snapshotRepo, scopes, now, env = {}, log = null
     if ((Date.parse(`${until}T00:00:00Z`) - Date.parse(`${date}T00:00:00Z`)) / DAY + 1 > MAX_SPAN_DAYS) {
       throw seError(400, 'BAD_REQUEST', `한 번에 ${MAX_SPAN_DAYS}일까지 볼 수 있습니다`, { path: 'to' })
     }
-    const range = { from: first.from, to: last.to }
+    // 여러 날은 보관 기간 밖을 훑지 않는다: 이름 하한을 지금 − 15일(− 하루 여유)로 당긴다. 그 앞은 지워진 줄뿐이고,
+    // 지워진 줄을 10만 줄 넘게 지나가면 Cassandra 가 조회를 실패시킨다(큰 달 측정 2026-11-12). 하루 요청은 앞과 같이 그 날만 훑는다(지워진 줄도 하루치).
+    const floor = until === date ? first.from : Math.max(first.from, now() - RETENTION_MS - DAY)
+    const range = { from: floor, to: last.to }
+    if (range.from >= range.to) return { eqpId, date, to: until, timeDiff, items: [], skipped: 0, truncated: false, memoFailed: false }
     // 메모는 목록과 같은 이름 범위로 함께 읽는다(forRange 는 던지지 않는다)
     const [{ parsed, skipped, truncated }, memo] = await Promise.all([
       readRange(eqpId, range.from, range.to, LIST_LIMIT, { latest: true }),
