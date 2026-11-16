@@ -62,7 +62,8 @@ export const scenarioEditorApi = {
   // 있는 날 → { eqpId, latest, today, oldest, days, truncated } — days 는 counts 일 때만 { 날짜: 개수 }
   snapshotDays: (eqpId, counts = false) => api.get('/scenario-editor/snapshots/days', { params: counts ? { eqpId, counts: 1 } : { eqpId }, timeout: SNAPSHOT_TIMEOUT_MS }),
   // 하루 목록 → { eqpId, date, timeDiff, items, skipped, truncated }
-  snapshots: (eqpId, date) => api.get('/scenario-editor/snapshots', { params: { eqpId, date }, timeout: SNAPSHOT_TIMEOUT_MS }),
+  // to 를 주면 date ~ to(끝 날 포함) — 줄마다 표시 날짜(date)가 온다. 응답에는 받은 끝 날 to 가 든다
+  snapshots: (eqpId, date, to = null) => api.get('/scenario-editor/snapshots', { params: to && to !== date ? { eqpId, date, to } : { eqpId, date }, timeout: SNAPSHOT_TIMEOUT_MS }),
   // 메모(P3-C) — expect = 화면이 본 메모 글(새 메모면 null). 그 사이 바뀌었으면 409 MEMO_CONFLICT(details.current = 지금 값)
   saveMemo: (eqpId, fileName, memo, expect = null) => api.put(`/scenario-editor/snapshots/${enc(eqpId)}/${enc(fileName)}/memo`, { memo, expect }, { timeout: SNAPSHOT_TIMEOUT_MS }),
   removeMemo: (eqpId, fileName, expect) => api.delete(`/scenario-editor/snapshots/${enc(eqpId)}/${enc(fileName)}/memo`, { data: { expect }, timeout: SNAPSHOT_TIMEOUT_MS }),

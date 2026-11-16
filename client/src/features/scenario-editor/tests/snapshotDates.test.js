@@ -1,6 +1,6 @@
 // 날짜 글자('YYYY-MM-DD') 계산 — 시간대 없이 (P3 설계 §4.2 날짜·달력)
 import { describe, it, expect } from 'vitest'
-import { isDate, addDays, laterOf, clampDate, weekdayOf, calendarWeeks } from '../editor/snapshotDates'
+import { isDate, addDays, laterOf, clampDate, weekdayOf, calendarWeeks, orderDates, spanDays, clampRange, shiftRange } from '../editor/snapshotDates'
 
 describe('isDate', () => {
   it('있는 날짜만', () => {
@@ -59,5 +59,30 @@ describe('calendarWeeks — 보관 기간만 고르는 달력', () => {
   it('날짜 꼴이 아니거나 거꾸로면 빈 달력', () => {
     expect(calendarWeeks(null, '2026-11-11')).toEqual([])
     expect(calendarWeeks('2026-11-12', '2026-11-11')).toEqual([])
+  })
+})
+
+// 여러 날 고르기(사내 요청 2026-11-16)
+describe('날짜 범위', () => {
+  it('orderDates 는 이른 날·늦은 날 순으로, spanDays 는 양 끝을 넣은 날 수', () => {
+    expect(orderDates('2026-11-16', '2026-11-10')).toEqual(['2026-11-10', '2026-11-16'])
+    expect(orderDates('2026-11-10', '2026-11-10')).toEqual(['2026-11-10', '2026-11-10'])
+    expect(spanDays('2026-11-10', '2026-11-16')).toBe(7)
+    expect(spanDays('2026-11-16', '2026-11-16')).toBe(1)
+    expect(spanDays('2026-10-30', '2026-11-02')).toBe(4)
+  })
+  it('clampRange 는 양 끝을 보관 기간 안으로 — 통째로 밖이면 가까운 끝 하루', () => {
+    expect(clampRange('2026-11-05', '2026-11-08', '2026-11-02', '2026-11-16')).toEqual(['2026-11-05', '2026-11-08'])
+    expect(clampRange('2026-10-28', '2026-11-04', '2026-11-02', '2026-11-16')).toEqual(['2026-11-02', '2026-11-04'])
+    expect(clampRange('2026-11-14', '2026-11-20', '2026-11-02', '2026-11-16')).toEqual(['2026-11-14', '2026-11-16'])
+    expect(clampRange('2026-10-20', '2026-10-25', '2026-11-02', '2026-11-16')).toEqual(['2026-11-02', '2026-11-02'])
+    expect(clampRange('2026-11-18', '2026-11-20', '2026-11-02', '2026-11-16')).toEqual(['2026-11-16', '2026-11-16'])
+  })
+  it('shiftRange 는 길이를 둔 채 옮긴다 — 한쪽이라도 보관 기간을 벗어나면 null', () => {
+    expect(shiftRange('2026-11-10', '2026-11-12', 1, '2026-11-02', '2026-11-16')).toEqual(['2026-11-11', '2026-11-13'])
+    expect(shiftRange('2026-11-10', '2026-11-12', -1, '2026-11-02', '2026-11-16')).toEqual(['2026-11-09', '2026-11-11'])
+    expect(shiftRange('2026-11-14', '2026-11-16', 1, '2026-11-02', '2026-11-16')).toBeNull()
+    expect(shiftRange('2026-11-02', '2026-11-02', -1, '2026-11-02', '2026-11-16')).toBeNull()
+    expect(shiftRange('2026-11-16', '2026-11-16', -1, '2026-11-02', '2026-11-16')).toEqual(['2026-11-15', '2026-11-15'])
   })
 })

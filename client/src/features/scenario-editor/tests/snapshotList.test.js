@@ -1,6 +1,6 @@
 // 스냅샷 하루 목록 규칙 — 거르기·이웃·태그 이동·클릭 점·보이는 줄 (P3 설계 §4.2·§4.3)
 import { describe, it, expect } from 'vitest'
-import { FILTERS, isTag, hasMemo, filterItems, stepName, nextMatch, clickPoint, expiryDays, rowWindow, scrollFor, rangeNames, nearestName } from '../editor/snapshotList'
+import { FILTERS, isTag, hasMemo, filterItems, stepName, nextMatch, clickPoint, expiryDays, rowWindow, scrollFor, rangeNames, nearestName, dayRows, dayOfRow } from '../editor/snapshotList'
 
 const click = (n, x = 1, y = 2) => ({ fileName: `${n}_[${x}][${y}].png`, ms: n, kind: 'click', tag: null, x, y, txn: null, daysLeft: 15 })
 const tag = (n, t = 'start') => ({ fileName: `${n}_[9999][${n}].png`, ms: n, kind: 'tag', tag: t, x: null, y: null, txn: String(n), daysLeft: 15 })
@@ -155,5 +155,33 @@ describe('여러 줄 고르기 (P3-D)', () => {
     expect(nearestName(list, new Set(), 'c')).toBeNull()
     expect(nearestName(list, new Set(['zz']), 'c')).toBeNull()
     expect(nearestName(list, new Set(['a']), 'zz')).toBe('a')
+  })
+})
+
+// 여러 날 목록의 날짜 구분 줄(사내 요청 2026-11-16)
+describe('dayRows — 날짜 구분 줄', () => {
+  const it2 = (date, n) => ({ fileName: `${date}-${n}.png`, date, time: '09:00:00' })
+  it('하루뿐이면(또는 날짜가 없으면) 줄을 더하지 않는다 — 받은 배열 그대로', () => {
+    const one = [it2('2026-11-16', 1), it2('2026-11-16', 2)]
+    expect(dayRows(one).rows).toBe(one)
+    expect(dayRows(one).at).toBeNull()
+    const none = [{ fileName: 'a' }, { fileName: 'b' }]
+    expect(dayRows(none).rows).toBe(none)
+    expect(dayRows([]).rows).toEqual([])
+  })
+  it('날이 바뀌는 곳마다 그 날의 구분 줄(날짜·그 날 줄 수)을 넣고, 줄마다 화면에서의 자리를 준다', () => {
+    const items = [it2('2026-11-14', 1), it2('2026-11-15', 1), it2('2026-11-15', 2), it2('2026-11-16', 1)]
+    const { rows, at } = dayRows(items)
+    expect(rows.map((r) => (r.header ? `# ${r.date} ${r.count}` : r.fileName))).toEqual([
+      '# 2026-11-14 1', '2026-11-14-1.png', '# 2026-11-15 2', '2026-11-15-1.png', '2026-11-15-2.png', '# 2026-11-16 1', '2026-11-16-1.png'
+    ])
+    expect([...at]).toEqual([1, 3, 4, 6])
+    expect(rows[1]).toBe(items[0])
+  })
+  it('dayOfRow 는 그 자리의 날짜 — 구분 줄이면 그 날, 범위를 벗어나면 null', () => {
+    const { rows } = dayRows([it2('2026-11-14', 1), it2('2026-11-15', 1)])
+    expect([0, 1, 2, 3].map((i) => dayOfRow(rows, i))).toEqual(['2026-11-14', '2026-11-14', '2026-11-15', '2026-11-15'])
+    expect(dayOfRow(rows, 9)).toBeNull()
+    expect(dayOfRow([], 0)).toBeNull()
   })
 })

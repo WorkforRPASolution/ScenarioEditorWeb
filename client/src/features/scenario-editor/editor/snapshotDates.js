@@ -27,3 +27,14 @@ export function calendarWeeks(min, max) {
   }
   return weeks
 }
+
+// ── 여러 날 고르기(사내 요청 2026-11-16) — 범위는 [이른 날, 늦은 날], 양 끝 포함 ──
+export const orderDates = (a, b) => (a <= b ? [a, b] : [b, a])
+export const spanDays = (from, to) => Math.round((toMs(to) - toMs(from)) / DAY) + 1
+// 양 끝을 [min, max] 안으로. 통째로 밖이면 가까운 끝 하루가 된다.
+export const clampRange = (from, to, min, max) => [clampDate(from, min, max), clampDate(to, min, max)]
+// 길이를 둔 채 delta 일 옮긴다. 한쪽이라도 [min, max] 를 벗어나면 null(옮기지 않는다).
+export function shiftRange(from, to, delta, min, max) {
+  const [a, b] = [addDays(from, delta), addDays(to, delta)]
+  return a < min || b > max ? null : [a, b]
+}

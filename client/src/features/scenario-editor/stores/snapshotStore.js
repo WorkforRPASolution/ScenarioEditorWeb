@@ -13,7 +13,7 @@ import { scenarioEditorApi as api, blobError } from '../api'
 import { t, errorCode, errorMessage } from '../messages'
 import { safeStorage } from '../composables/useSafeStorage'
 import { FILTERS, filterItems, stepName, nextMatch, isTag, hasMemo, rangeNames, nearestName } from '../editor/snapshotList'
-import { isDate, addDays, clampDate, laterOf } from '../editor/snapshotDates'
+import { isDate, laterOf, orderDates, clampRange, shiftRange } from '../editor/snapshotDates'
 
 const KEY = 'se-snapshot'
 const IMAGE_KEEP = 6 // 기억해 두는 그림 수(고른 것 + 앞뒤 + 방금 본 것)
@@ -47,7 +47,11 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
   const presence = shallowRef(idlePresence())
   const eqpId = ref(null)
   const range = ref(null) // { latest, today, oldest } — 표시 날짜
-  const date = ref(null)
+  const date = ref(null) // 보는 날(여러 날이면 첫 날)
+  // 끝 날 — 하루만 보면 date 와 같다(사내 요청 2026-11-16: 여러 날·전체를 한 번에)
+  const dateTo = ref(null)
+  // 달력에서 날짜를 직접 골랐다 — 설비를 바꿔도 그 날짜로 연다. 달력의 [초기화] 로 풀린다(그러면 설비의 가장 늦은 날을 연다)
+  const dateChosen = ref(false)
   // 통째로 갈아 끼우기만 한다 — 깊은 반응형으로 감싸면 5만 줄에서 고르기·이동이 줄마다 프록시를 만든다
   const list = shallowRef(emptyList('idle'))
   const filter = ref('all')
@@ -65,6 +69,7 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
   const position = computed(() => (selectedName.value ? shown.value.findIndex((i) => i.fileName === selectedName.value) : -1))
   // 고른 줄 — 거른 목록의 순서로(받기의 대상)
   const pickedItems = computed(() => (picked.value.size ? shown.value.filter((i) => picked.value.has(i.fileName)) : []))
+  const multiDay = computed(() => !!date.value && !!dateTo.value && dateTo.value !== date.value)
   const minDate = computed(() => range.value?.oldest ?? null)
   // 설비 시계가 앞서 가장 늦은 날이 오늘보다 뒤일 수 있다
   const maxDate = computed(() => (range.value ? laterOf(range.value.today, range.value.latest) : null))
@@ -176,12 +181,14 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
   async function loadList(seq, { selectLast = false, keepItems = false } = {}) {
     const id = eqpId.value
     const day = date.value
+    const until = dateTo.value ?? day
     list.value = keepItems ? { ...list.value, status: 'loading', error: '' } : emptyList('loading')
     try {
-      const r = (await api.snapshots(id, day)).data.data
+      // 하루면 to 를 보내지 않는다
+      const r = (await (until !== day ? api.snapshots(id, day, until) : api.snapshots(id, day))).data.data
       if (seq !== listSeq) return
-      // 답에 적힌 설비·날짜가 요청과 다르면 쓰지 않는다(DC-077)
-      if (r?.eqpId !== id || r?.date !== day) {
+      // 답에 적힌 설비·날짜(끝 날 포함)가 요청과 다르면 쓰지 않는다(DC-077)
+      if (r?.eqpId !== id || r?.date !== day || (r?.to ?? r?.date) !== until) {
         clearSelection()
         list.value = { ...emptyList('error'), error: t('SEW_SNAP_LIST_FAILED') }
         return
@@ -206,6 +213,7 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
   }
 
   // 설비를 고른다 — 가장 늦은 날을 열고(select) 마지막 줄을 고른다. 되살릴 때는 고르지 않는다.
+  // 달력에서 날짜를 직접 골라 두었으면(dateChosen) 가장 늦은 날이 아니라 그 날짜(범위)로 연다 — 보관 기간 밖이면 안으로 당긴다.
   async function pickEquipment(id, { select: pick = true } = {}) {
     const seq = ++listSeq
     calSeq++
@@ -214,7 +222,8 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
     pendingEqp = null
     persist()
     range.value = null
-    date.value = null
+    const keep = dateChosen.value && date.value ? [date.value, dateTo.value ?? date.value] : null
+    if (!keep) { date.value = null; dateTo.value = null }
     calendar.value = idleCalendar()
     clearSelection()
     list.value = emptyList('loading')
@@ -222,8 +231,9 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
       const d = (await api.snapshotDays(id)).data.data
       if (seq !== listSeq) return
       range.value = sameRange(d)
+      if (keep && minDate.value && maxDate.value) [date.value, dateTo.value] = clampRange(keep[0], keep[1], minDate.value, maxDate.value)
       if (!d.latest) { list.value = emptyList('ready'); return }
-      date.value = d.latest
+      if (!keep) { date.value = d.latest; dateTo.value = d.latest }
       await loadList(seq, { selectLast: pick })
     } catch (e) {
       if (seq !== listSeq) return
@@ -231,15 +241,49 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
     }
   }
 
-  async function setDate(next) {
-    if (!eqpId.value || !isDate(next) || !minDate.value || !maxDate.value) return
-    const day = clampDate(next, minDate.value, maxDate.value)
-    if (day === date.value) return
-    date.value = day
+  // 날짜(범위)를 고른다 — 어느 쪽을 먼저 주든 이른 날~늦은 날로 맞추고 보관 기간 안으로 당긴다. 같은 범위면 다시 받지 않는다.
+  async function setDates(a, b) {
+    if (!eqpId.value || !isDate(a) || !isDate(b) || !minDate.value || !maxDate.value) return
+    const [from, to] = clampRange(...orderDates(a, b), minDate.value, maxDate.value)
+    dateChosen.value = true
+    if (from === date.value && to === (dateTo.value ?? date.value)) return
+    date.value = from
+    dateTo.value = to
     clearSelection()
     await loadList(++listSeq)
   }
-  const moveDate = (delta) => (date.value ? setDate(addDays(date.value, delta)) : Promise.resolve())
+  const setDate = (next) => setDates(next, next)
+  // ◀ ▶ — 하루는 하루씩, 여러 날은 길이를 둔 채 하루씩. 한쪽이라도 보관 기간을 벗어나면 옮기지 않는다.
+  function moveDate(delta) {
+    if (!date.value || !minDate.value || !maxDate.value) return Promise.resolve()
+    const next = shiftRange(date.value, dateTo.value ?? date.value, delta, minDate.value, maxDate.value)
+    return next ? setDates(next[0], next[1]) : Promise.resolve()
+  }
+  // 달력의 [초기화] — 그 설비의 가장 늦은 날 하루로. 다음에 고르는 설비도 가장 늦은 날을 연다.
+  async function resetDates() {
+    dateChosen.value = false
+    const latest = eqpId.value ? range.value?.latest ?? null : null
+    if (!eqpId.value) { date.value = null; dateTo.value = null; return }
+    if (!latest || (latest === date.value && latest === (dateTo.value ?? date.value))) return
+    date.value = latest
+    dateTo.value = latest
+    clearSelection()
+    await loadList(++listSeq)
+  }
+  // 패널의 [초기화] — 설비(와 그 목록·고른 것)를 비운다. 날짜는 건드리지 않는다: 직접 고른 날짜는 남아 다음 설비에 쓰인다.
+  function clearEquipment() {
+    listSeq++
+    calSeq++
+    resetImages()
+    eqpId.value = null
+    pendingEqp = null
+    persist()
+    range.value = null
+    if (!dateChosen.value) { date.value = null; dateTo.value = null }
+    calendar.value = idleCalendar()
+    clearSelection()
+    list.value = emptyList('idle')
+  }
 
   // 같은 설비·날짜를 다시 받는다. 고른 줄이 새 목록에 있으면 지킨다.
   async function refresh() {
@@ -258,9 +302,11 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
       if (!date.value) {
         if (!d.latest) { list.value = emptyList('ready'); return }
         date.value = d.latest
+        dateTo.value = d.latest
       } else if (minDate.value && maxDate.value) {
-        const day = clampDate(date.value, minDate.value, maxDate.value) // 날이 지나 보관 기간 밖이 됐을 수 있다
-        if (day !== date.value) { date.value = day; clearSelection(); sameDay = false }
+        // 날이 지나 보관 기간 밖이 됐을 수 있다
+        const [from, to] = clampRange(date.value, dateTo.value ?? date.value, minDate.value, maxDate.value)
+        if (from !== date.value || to !== (dateTo.value ?? date.value)) { date.value = from; dateTo.value = to; clearSelection(); sameDay = false }
       }
       await loadList(seq, { keepItems: sameDay })
     } catch (e) {
@@ -346,8 +392,9 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
 
   // ── 메모 ──
   // 그 줄의 메모를 바꾼다(줄 하나만 새로 만든 새 배열). 그 사이 설비·날짜가 바뀌었으면(다른 목록) 아무것도 하지 않는다.
+  // day = 그 스냅샷의 표시 날짜 — 지금 보는 범위(date ~ dateTo) 안이어야 한다.
   function patchMemo(id, day, name, memo) {
-    if (eqpId.value !== id || date.value !== day) return
+    if (eqpId.value !== id || !date.value || day < date.value || day > (dateTo.value ?? date.value)) return
     const i = list.value.items.findIndex((x) => x.fileName === name)
     if (i < 0) return
     const items = list.value.items.slice()
@@ -364,7 +411,7 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
   async function saveMemo(name, text) {
     const item = list.value.items.find((i) => i.fileName === name)
     if (!item) return { error: t('SEW_SNAP_MEMO_SNAPSHOT_GONE'), code: 'SNAPSHOT_NOT_FOUND' }
-    const [id, day] = [eqpId.value, date.value]
+    const [id, day] = [eqpId.value, item.date ?? date.value]
     try {
       const r = (await api.saveMemo(id, name, text, item.memo ? item.memo.text : null)).data.data
       patchMemo(id, day, name, r?.memo ?? null)
@@ -380,7 +427,7 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
   async function removeMemo(name) {
     const item = list.value.items.find((i) => i.fileName === name)
     if (!item?.memo) return { gone: true }
-    const [id, day] = [eqpId.value, date.value]
+    const [id, day] = [eqpId.value, item.date ?? date.value]
     try {
       const r = (await api.removeMemo(id, name, item.memo.text)).data.data
       patchMemo(id, day, name, r?.memo ?? null) // 같은 키의 옛 메모가 남아 있으면 그것이 온다
@@ -485,6 +532,8 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
     persist()
     range.value = null
     date.value = m.date
+    dateTo.value = m.date
+    dateChosen.value = false // 메모를 따라간 것이지 달력에서 고른 것이 아니다 — 다음 설비는 가장 늦은 날을 연다
     calendar.value = idleCalendar()
     clearSelection()
     filter.value = 'all'
@@ -607,8 +656,8 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
   }
 
   return {
-    mode, open, equipment, presence, eqpId, range, date, list, filter, selectedName, picked, calendar, image, notice, memoList,
+    mode, open, equipment, presence, eqpId, range, date, dateTo, dateChosen, multiDay, list, filter, selectedName, picked, calendar, image, notice, memoList,
     shown, selected, position, pickedItems, minDate, maxDate,
-    restore, setOpen, loadEquipment, refreshPresence, pickEquipment, setDate, moveDate, refresh, setFilter, select, togglePick, pickRange, moveRange, move, moveTag, moveMemo, saveMemo, removeMemo, loadMemoList, saveMemoAt, removeMemoAt, removeMemos, goToMemo, openCalendar, showStep, showSnapshot, say, shownImage
+    restore, setOpen, loadEquipment, refreshPresence, pickEquipment, setDate, setDates, moveDate, resetDates, clearEquipment, refresh, setFilter, select, togglePick, pickRange, moveRange, move, moveTag, moveMemo, saveMemo, removeMemo, loadMemoList, saveMemoAt, removeMemoAt, removeMemos, goToMemo, openCalendar, showStep, showSnapshot, say, shownImage
   }
 })
