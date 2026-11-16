@@ -152,6 +152,8 @@ describe('SnapshotViewer', () => {
       const style = tid(w, 'se-snap-dot').attributes('style')
       expect(style).toContain('left: 412px')
       expect(style).toContain('top: 288px')
+      // 점에서 고리가 퍼져 나간다(사내 요청 — 스타일은 snapshot.css 의 .se-snap-dot, E2E 가 움직임을 본다)
+      expect(tid(w, 'se-snap-dot').classes()).toContain('se-snap-dot')
     })
     it('점은 확대해도 화면에서 같은 크기(지름 12px)다', async () => {
       const { w, s } = await mountSized()

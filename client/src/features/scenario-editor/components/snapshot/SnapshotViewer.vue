@@ -149,7 +149,7 @@ defineExpose({ onLoad, fit })
       <div v-if="item && src" class="absolute left-0 top-0 origin-top-left"
         :style="{ transform: `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`, width: natural ? `${natural.w}px` : 'auto', height: natural ? `${natural.h}px` : 'auto' }">
         <img :key="src" :src="src" alt="" class="block max-w-none shadow-md" data-testid="se-snap-image" draggable="false" @load="onLoad" @error="broken = true" />
-        <div v-if="dotStyle" class="absolute rounded-full bg-red-600 border-solid border-white pointer-events-none" :style="dotStyle" :title="t('SEW_SNAP_DOT')" data-testid="se-snap-dot" />
+        <div v-if="dotStyle" class="se-snap-dot absolute rounded-full bg-red-600 border-solid border-white pointer-events-none" :style="dotStyle" :title="t('SEW_SNAP_DOT')" data-testid="se-snap-dot" />
       </div>
     </div>
     <div v-if="item" class="min-h-9 px-3 py-1 flex items-center gap-2 border-t border-gray-200 dark:border-dark-border text-xs shrink-0" :class="memo ? 'se-snap-memo-bar' : ''" data-testid="se-snap-memo">

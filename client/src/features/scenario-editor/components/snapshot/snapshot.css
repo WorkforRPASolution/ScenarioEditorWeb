@@ -102,3 +102,8 @@
 .dark .se-snap-eqp-list small, .dark .se-snap-eqp-list p, .dark .se-snap-cal p, .dark .se-snap-cal-head { color: #94a3b8; }
 .dark .se-snap-cal-grid button[aria-pressed='true'] { background: rgba(30, 64, 175, .4); color: #93c5fd; }
 .dark .se-snap-cal-grid button[data-has]::after { background: #60a5fa; }
+/* 클릭한 곳 — 점에서 고리가 퍼져 나가 눈에 띈다(사내 요청 2026-11-16). 고리는 점 크기를 따른다(점은 확대와 상관없이 화면에서 12px).
+   움직임 줄이기 설정이면 퍼지지 않고 옅은 고리만 둔다. */
+.se-snap-dot::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: rgba(220, 38, 38, .6); pointer-events: none; animation: se-snap-dot-ping 1.2s cubic-bezier(0, 0, .2, 1) infinite; }
+@keyframes se-snap-dot-ping { 0% { transform: scale(1); opacity: .9; } 80%, 100% { transform: scale(4.5); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .se-snap-dot::after { animation: none; transform: scale(2.6); opacity: .3; } }
