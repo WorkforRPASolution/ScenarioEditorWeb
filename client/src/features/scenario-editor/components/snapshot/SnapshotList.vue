@@ -24,8 +24,9 @@ const view = computed(() => dayRows(snap.shown))
 const win = computed(() => rowWindow(top.value, viewHeight.value, ROW, view.value.rows.length))
 const rows = computed(() => view.value.rows.slice(win.value.start, win.value.end))
 const dayText = (date) => `${date.slice(5)} (${t('SEW_SNAP_WEEKDAYS')[weekdayOf(date)]})`
-// 맨 위에 붙여 둘 날짜 — 지금 맨 위에 걸린 줄의 날
-const stickDay = computed(() => (view.value.at ? dayOfRow(view.value.rows, Math.floor(top.value / ROW)) : null))
+// 맨 위에 붙여 둘 구분 줄 — 지금 맨 위에 걸린 줄의 날(구분 줄과 같은 내용이라 겹쳐도 줄 수가 가려지지 않는다)
+const heads = computed(() => new Map(view.value.at ? view.value.rows.filter((r) => r.header).map((r) => [r.date, r]) : []))
+const stickDay = computed(() => (view.value.at ? heads.value.get(dayOfRow(view.value.rows, Math.floor(top.value / ROW))) ?? null : null))
 
 const measure = () => { if (box.value) viewHeight.value = box.value.clientHeight }
 const onScroll = () => { top.value = box.value.scrollTop }
@@ -73,7 +74,9 @@ function onKey(e) {
 <template>
   <div ref="box" class="se-snap-list h-full overflow-y-auto outline-none" tabindex="0" role="listbox" aria-multiselectable="true" data-testid="se-snap-list" @scroll="onScroll" @keydown="onKey">
     <!-- 지금 보는 줄의 날짜 — 스크롤해도 맨 위에 붙어 있다(자리를 차지하지 않는다) -->
-    <div v-if="stickDay" class="se-snap-day se-snap-day-stick" aria-hidden="true" data-testid="se-snap-day-stick">{{ dayText(stickDay) }}</div>
+    <div v-if="stickDay" class="se-snap-day se-snap-day-stick" aria-hidden="true" data-testid="se-snap-day-stick">
+      <span>{{ dayText(stickDay.date) }}</span><span class="se-snap-day-count">{{ t('SEW_SNAP_COUNT', { n: stickDay.count }) }}</span>
+    </div>
     <div data-testid="se-snap-rows" :style="{ height: `${win.height}px`, position: 'relative' }">
       <div :style="{ transform: `translateY(${win.offset}px)` }">
         <template v-for="it in rows" :key="it.header ? `day:${it.date}` : it.fileName">

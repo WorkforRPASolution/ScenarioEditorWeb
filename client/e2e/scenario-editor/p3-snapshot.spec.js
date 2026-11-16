@@ -118,9 +118,12 @@ test('① 설비 고르기 → 하루 목록 → 그림·클릭 점 → 그림 �
   await expect(cal.locator('[data-testid="se-snap-cal-day"][data-has="1"]').nth(1)).toBeVisible()
   expect(await cal.locator('[data-testid="se-snap-cal-day"]:disabled').count()).toBeGreaterThan(0)
   await cal.locator('[data-testid="se-snap-cal-day"][data-has="1"]:enabled').last().click()
-  await expect(cal).toHaveCount(0)
   await expect(count(page)).toHaveText('20장')
   await expect(page.getByTestId('se-snap-date')).toHaveText(latest)
+  // 고른 뒤에도 달력은 열려 있다(여러 날을 이어 고를 수 있게) — [닫기] 로 닫는다
+  await expect(cal).toBeVisible()
+  await page.getByTestId('se-snap-cal-close').click()
+  await expect(cal).toHaveCount(0)
 
   // ── 새로고침: 패널·설비를 기억해 목록까지 받지만 스냅샷을 고르지는 않는다 — 큰 화면은 스텝 그림 ──
   await page.reload()
@@ -897,4 +900,103 @@ test.describe('스냅샷에서 스텝 만들기', () => {
       await api.dispose()
     }
   })
+})
+
+// 사내 요청(2026-11-16): 날짜를 하루만이 아니라 여러 날·전체(보관 15일)로 고른다. 패널의 [초기화] 는 공정·모델·설비만 비운다
+test('⑩ 날짜 여러 날·전체 — 달력의 장 수·[전체]·Shift·끌기 → 목록의 날짜 구분 줄 → ◀ ▶ → 설비를 바꿔도 날짜 유지 → 패널 [초기화]·달력 [초기화]', async ({ page }) => {
+  await asUser(page, 'sew_master')
+  await page.goto('/scenario-editor')
+  await page.getByTestId('se-snapshot-rail').click()
+  await pickEquipment(page, 'photo_a', 'SEWT_PHOTO_A01')
+  await expect(count(page)).toHaveText('20장')
+  const dateBtn = page.getByTestId('se-snap-date')
+  const today = /\d{4}-\d{2}-\d{2}/.exec(await dateBtn.innerText())[0]
+  const day = (n) => new Date(Date.parse(`${today}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10)
+  const yesterday = day(-1)
+  const cal = page.getByTestId('se-snap-calendar')
+  const cell = (date) => cal.locator(`[data-testid="se-snap-cal-day"][data-date="${date}"]`)
+  const heads = page.getByTestId('se-snap-day')
+
+  // ── 달력: 날짜 아래에 그날의 장 수. [전체 n일] 을 누르면 보관 기간 전체를 한 번에 받는다 ──
+  await dateBtn.click()
+  await expect(cell(today).locator('small')).toHaveText('20')
+  await expect(cell(yesterday).locator('small')).toHaveText('3')
+  await expect(heads).toHaveCount(0) // 하루만 볼 때는 구분 줄이 없다
+  await page.getByTestId('se-snap-cal-all').click()
+  await expect(count(page)).toHaveText('24장') // 오늘 20 + 어제 3 + 보관 기간 끝 무렵의 한 장
+  await expect(dateBtn).toContainText(`~ ${today.slice(5)}`)
+  await expect(cal).toBeVisible()
+  await page.getByTestId('se-snap-cal-close').click()
+
+  // ── 목록: 날이 바뀌는 곳에 날짜 구분 줄(그 날 줄 수), 맨 위에 지금 보는 날짜가 붙어 있다 ──
+  await expect(heads).toHaveCount(3)
+  const oldest = await heads.nth(0).getAttribute('data-date')
+  expect(oldest < yesterday).toBe(true)
+  await expect(heads.nth(0)).toContainText('1장')
+  await expect(heads.nth(1)).toContainText(yesterday.slice(5))
+  await expect(heads.nth(1)).toContainText('3장')
+  await expect(heads.nth(2)).toContainText(today.slice(5))
+  await expect(heads.nth(2)).toContainText('20장')
+  await expect(page.getByTestId('se-snap-day-stick')).toContainText(oldest.slice(5))
+  // 첫 줄(가장 이른 날)을 고르면 큰 화면의 날짜는 그 줄의 날짜다. End 로 마지막 줄(오늘)로 가면 오늘
+  await page.getByTestId('se-snap-row').first().click()
+  await expect(info(page)).toContainText(oldest)
+  await page.getByTestId('se-snap-list').press('End')
+  await expect(info(page)).toContainText(today)
+  await expect(info(page)).toContainText('24 / 24')
+
+  // ── 달력: 누르면 그 하루, Shift+누르기는 기준 날부터, 끌면 끌어 간 날까지 ──
+  await dateBtn.click()
+  await cell(yesterday).click()
+  await expect(count(page)).toHaveText('3장')
+  await expect(dateBtn).toContainText(yesterday)
+  await cell(today).click({ modifiers: ['Shift'] })
+  await expect(count(page)).toHaveText('23장')
+  await expect(dateBtn).toContainText(`${yesterday.slice(5)} ~ ${today.slice(5)}`)
+  await expect(dateBtn).toContainText('2일')
+  await expect(cell(yesterday)).toHaveClass(/edge/)
+  const from = await cell(day(-4)).boundingBox()
+  const to = await cell(day(-2)).boundingBox()
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 6 })
+  await expect(cell(day(-3))).toHaveAttribute('aria-pressed', 'true') // 끄는 동안 칠해진다
+  await page.mouse.up()
+  await expect(dateBtn).toContainText(`${day(-4).slice(5)} ~ ${day(-2).slice(5)}`)
+  await expect(dateBtn).toContainText('3일')
+  await expect(page.getByTestId('se-snap-state')).toHaveText('이 기간에는 스냅샷이 없습니다.')
+  await page.getByTestId('se-snap-cal-close').click()
+
+  // ── ◀ ▶: 범위 길이를 둔 채 하루씩 ──
+  await page.getByTestId('se-snap-date-next').click()
+  await expect(dateBtn).toContainText(`${day(-3).slice(5)} ~ ${day(-1).slice(5)}`)
+  await expect(count(page)).toHaveText('3장')
+  await page.getByTestId('se-snap-date-next').click()
+  await expect(dateBtn).toContainText(`${day(-2).slice(5)} ~ ${today.slice(5)}`)
+  await expect(count(page)).toHaveText('23장')
+  await expect(page.getByTestId('se-snap-date-next')).toBeDisabled()
+
+  // ── 설비를 바꿔도 직접 고른 날짜는 그대로다 ──
+  await pickEquipment(page, 'cvd_a', 'SEWT_CVD_A01')
+  await expect(page.getByTestId('se-snap-current')).toHaveText('SEWT_CVD_A01')
+  await expect(dateBtn).toContainText(`${day(-2).slice(5)} ~ ${today.slice(5)}`)
+  await expect(count(page)).toHaveText('2장')
+
+  // ── 패널의 [초기화]: 공정·모델·설비와 목록을 비운다. 날짜는 남는다 ──
+  await page.getByTestId('se-snap-eqp-clear').click()
+  await expect(page.getByTestId('se-snap-current')).toHaveCount(0)
+  await expect(page.getByTestId('se-snap-eqp-input')).toHaveValue('')
+  await expect(page.getByTestId('se-snap-state')).toHaveText('설비를 고르세요.')
+  await expect(dateBtn).toContainText(`${day(-2).slice(5)} ~ ${today.slice(5)}`)
+  await expect(page.getByTestId('se-snap-eqp-clear')).toBeDisabled()
+  await pickEquipment(page, 'photo_a', 'SEWT_PHOTO_A01')
+  await expect(count(page)).toHaveText('23장')
+
+  // ── 달력의 [초기화]: 가장 늦은 날 하루로. 그 뒤에 고르는 설비도 가장 늦은 날을 연다 ──
+  await dateBtn.click()
+  await page.getByTestId('se-snap-cal-reset').click()
+  await expect(count(page)).toHaveText('20장')
+  await expect(dateBtn).toContainText(today)
+  await page.getByTestId('se-snap-cal-close').click()
+  await expect(heads).toHaveCount(0)
 })

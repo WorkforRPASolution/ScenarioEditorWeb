@@ -130,6 +130,28 @@ describe('하루 목록', () => {
     const next = await data(await get(`/snapshots?eqpId=${EQP_DIFF}&date=2026-11-02`))
     expect(next.items.map((i) => [i.fileName, i.time])).toEqual([[ROWS_DIFF[3].fileName, '00:10:00']])
   })
+
+  // 여러 날(사내 요청 2026-11-16): to 를 주면 그 날까지 한 번에 — 두 달 파티션을 늦은 달부터 내림차순으로 읽어(실제 CQL) 시각 순으로 합친다
+  it('여러 날: date ~ to 를 한 번에 받는다 — 줄마다 표시 날짜가 붙고, 달을 걸쳐도 시각 순이다', async () => {
+    const res = await get(`/snapshots?eqpId=${EQP_DIFF}&date=2026-10-31&to=2026-11-02`)
+    expect(res.status).toBe(200)
+    const out = await data(res)
+    expect(out).toMatchObject({ eqpId: EQP_DIFF, date: '2026-10-31', to: '2026-11-02', truncated: false })
+    expect(out.items.map((i) => [i.fileName, i.date, i.time])).toEqual([
+      [ROWS_DIFF[0].fileName, '2026-10-31', '23:59:59'], [ROWS_DIFF[1].fileName, '2026-11-01', '00:30:00'],
+      [ROWS_DIFF[2].fileName, '2026-11-01', '23:50:00'], [ROWS_DIFF[3].fileName, '2026-11-02', '00:10:00']
+    ])
+    // 하루만 청하면 to 는 그 날이고 줄에도 날짜가 붙는다
+    const one = await data(await get(`/snapshots?eqpId=${EQP_DIFF}&date=2026-11-01`))
+    expect([one.to, ...one.items.map((i) => i.date)]).toEqual(['2026-11-01', '2026-11-01', '2026-11-01'])
+  })
+  it('여러 날: to 가 date 보다 앞서거나 꼴이 아니거나 31일을 넘으면 400', async () => {
+    for (const to of ['2026-10-30', 'abc', '2026-12-05']) {
+      const res = await get(`/snapshots?eqpId=${EQP_DIFF}&date=2026-10-31&to=${to}`)
+      expect(res.status, to).toBe(400)
+      expect((await res.json()).code, to).toBe('BAD_REQUEST')
+    }
+  })
 })
 
 describe('있는 날', () => {

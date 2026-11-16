@@ -209,6 +209,7 @@ describe('SnapshotList', () => {
     it('맨 위에는 지금 보는 줄의 날짜가 붙어 있다 — 스크롤하면 그 날로 바뀐다', async () => {
       const { w, el } = await mountList(THREE, 280)
       expect(stick(w).text()).toContain('11-09 (월)')
+      expect(stick(w).text()).toContain('20장') // 구분 줄과 같은 내용이다(겹쳐도 줄 수가 가려지지 않게)
       el.scrollTop = 30 * ROW // 21(첫 날 구분 줄 + 20줄) 을 지나 둘째 날 안
       await w.find('[data-testid="se-snap-list"]').trigger('scroll')
       expect(stick(w).text()).toContain('11-10 (화)')
