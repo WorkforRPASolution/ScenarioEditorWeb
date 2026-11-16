@@ -18,6 +18,23 @@ describe('useLayoutSizes', () => {
     reset('rw')
     expect(sizes.rw).toBe(370)
   })
+  it('접기(사내 요청): 처음에는 펴져 있고, 접으면 저장되어 다시 켤 때 접힌 채다 — 크기 값은 그대로 남는다', () => {
+    const { sizes, folded, setFolded } = useLayoutSizes()
+    expect({ ...folded }).toEqual({ right: false, steps: false })
+    setFolded('right', true)
+    setFolded('steps', true)
+    expect({ ...folded }).toEqual({ right: true, steps: true })
+    expect(JSON.parse(localStorage.getItem('se-layout'))).toEqual({ ...LAYOUT_DEFAULTS, foldRight: true, foldSteps: true })
+    expect({ ...useLayoutSizes().folded }).toEqual({ right: true, steps: true })
+    setFolded('right', false)
+    expect({ ...useLayoutSizes().folded }).toEqual({ right: false, steps: true })
+    expect({ ...sizes }).toEqual(LAYOUT_DEFAULTS)
+    // 모르는 이름·참이 아닌 저장값은 펴진 것으로
+    setFolded('nope', true)
+    expect({ ...folded }).toEqual({ right: false, steps: true })
+    localStorage.setItem('se-layout', JSON.stringify({ foldRight: 'yes', foldSteps: 1 }))
+    expect({ ...useLayoutSizes().folded }).toEqual({ right: false, steps: false })
+  })
   it('저장된 값을 읽는다', () => {
     localStorage.setItem('se-layout', JSON.stringify({ rw: 400, sh: 300 }))
     expect({ ...useLayoutSizes().sizes }).toEqual({ ...LAYOUT_DEFAULTS, rw: 400, sh: 300 })

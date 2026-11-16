@@ -26,9 +26,21 @@ function readSaved() {
   }
 }
 
+// 접힌 칸(사내 요청 2026-11-16) — right = 오른쪽 스텝 패널, steps = 아래 스텝 목록. 크기와 같은 키에 foldRight·foldSteps 로 둔다(참일 때만 접힘).
+const FOLD_KEYS = { right: 'foldRight', steps: 'foldSteps' }
+function readFolded() {
+  try {
+    const v = JSON.parse(safeStorage.get(KEY) || '{}')
+    return { right: v?.foldRight === true, steps: v?.foldSteps === true }
+  } catch {
+    return { right: false, steps: false }
+  }
+}
+
 export function useLayoutSizes() {
   const sizes = reactive({ ...LAYOUT_DEFAULTS, ...readSaved() })
-  const save = () => safeStorage.set(KEY, JSON.stringify({ ...sizes }))
+  const folded = reactive(readFolded())
+  const save = () => safeStorage.set(KEY, JSON.stringify({ ...sizes, [FOLD_KEYS.right]: folded.right, [FOLD_KEYS.steps]: folded.steps }))
 
   function startDrag(key, event, sign = 1, axis = 'x') {
     event.preventDefault?.()
@@ -51,5 +63,12 @@ export function useLayoutSizes() {
     save()
   }
 
-  return { sizes, startDrag, reset }
+  // 접어도 크기는 남는다 — 펴면 그 크기로 돌아온다
+  function setFolded(key, value) {
+    if (!(key in FOLD_KEYS) || folded[key] === !!value) return
+    folded[key] = !!value
+    save()
+  }
+
+  return { sizes, folded, startDrag, reset, setFolded }
 }

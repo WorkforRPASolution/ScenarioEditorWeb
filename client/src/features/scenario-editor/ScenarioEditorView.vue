@@ -29,7 +29,7 @@ const edit = useEditStore()
 const snap = useSnapshotStore()
 const route = useRoute()
 const router = useRouter()
-const { sizes, startDrag, reset } = useLayoutSizes()
+const { sizes, folded, startDrag, reset, setFolded } = useLayoutSizes()
 const loadOpen = ref(false)
 const newOpen = ref(false)
 
@@ -116,6 +116,15 @@ watch(() => store.selectedUid, (uid) => { if (uid) snap.showStep() })
 watch(() => store.opening, (o) => { if (o) snap.showStep() })
 watch(() => !!edit.capture, (on) => { if (on) snap.showStep() })
 watch(() => (edit.panel?.isNew ? edit.panel.uid : null), (uid) => { if (uid) snap.showStep() })
+// 접기(사내 요청 2026-11-16): 아래 스텝 목록과 오른쪽 스텝 패널을 스냅샷 패널처럼 띠로 접는다 — 큰 화면(스냅샷)을 넓게 보려고.
+// 접어도 둘 다 그려 둔 채 숨긴다(패널에 적던 값·표의 스크롤이 남는다). 접힘은 크기와 함께 기억한다(se-layout).
+// - 스텝 목록을 넓게 펼친 채 접으면 넓게 보기를 푼다(큰 화면이 가려진 채 목록까지 사라지지 않게).
+// - 패널을 접은 채 새 스텝을 시작하면 패널을 편다 — 넣기·취소가 패널에 있다.
+function foldSteps() {
+  store.expanded = false
+  setFolded('steps', true)
+}
+watch(() => (edit.panel?.isNew ? edit.panel.uid : null), (uid) => { if (uid) setFolded('right', false) })
 // 스텝 표를 넓게 펼치면 큰 화면이 가려진다 — 그 상태에서 스냅샷을 고르면 넓게 보기를 푼다(시나리오 열기와 같은 규칙)
 watch(() => snap.selectedName, (name) => { if (name && snap.mode === 'snapshot') store.expanded = false })
 
@@ -135,7 +144,7 @@ const card = 'bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:
         <span class="flex-1 min-w-0">{{ t('SEW_DELETED_BANNER') }}{{ edit.changeCount ? t('SEW_DELETED_BANNER_CHANGED', { n: edit.changeCount }) : '' }}</span>
         <button class="h-8 px-3 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-100" @click="loadOpen = true">{{ t('SEW_UI_LOAD') }}</button>
       </div>
-      <div class="flex-1 min-h-0 grid" :style="{ gridTemplateColumns: `${snap.open ? sizes.lw : 36}px 12px minmax(0,1fr) 12px ${sizes.rw}px` }">
+      <div class="flex-1 min-h-0 grid" :style="{ gridTemplateColumns: `${snap.open ? sizes.lw : 36}px 12px minmax(0,1fr) 12px ${folded.right ? 36 : sizes.rw}px` }">
         <!-- 왼쪽: 스냅샷(P3) — 접힌 띠를 누르면 패널이 펼쳐진다 -->
         <template v-if="snap.open">
           <section :class="card" class="min-h-0 min-w-0 overflow-hidden"><SnapshotPanel :prefer="snapPrefer" /></section>
@@ -164,8 +173,10 @@ const card = 'bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:
               <StepViewer v-else><template #lead><ViewerModeTabs /></template></StepViewer>
             </div>
           </section>
-          <SplitGutter v-show="!store.expanded" direction="h" testid="se-gutter-s" @start="startDrag('sh', $event, -1, 'y')" @reset="reset('sh')" />
-          <section :class="card" class="flex flex-col min-h-0 shrink-0" :style="{ height: store.expanded ? '100%' : `${sizes.sh}px` }">
+          <SplitGutter v-show="!store.expanded && !folded.steps" direction="h" testid="se-gutter-s" @start="startDrag('sh', $event, -1, 'y')" @reset="reset('sh')" />
+          <!-- 접힌 스텝 목록: 띠를 누르면 펴진다 -->
+          <button v-if="folded.steps" type="button" :class="card" class="mt-3 h-9 shrink-0 flex items-center justify-center text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800" :title="t('SEW_UI_STEPS_EXPAND_HINT')" data-testid="se-steps-rail" @click="setFolded('steps', false)">{{ t('SEW_UI_STEPS_RAIL') }}</button>
+          <section v-show="!folded.steps" :class="card" class="flex flex-col min-h-0 shrink-0" :style="{ height: store.expanded ? '100%' : `${sizes.sh}px` }" data-testid="se-steps-section">
             <div class="flex items-center justify-between gap-1 px-3 h-10 border-b border-gray-200 dark:border-dark-border shrink-0">
               <div class="flex gap-1 bg-gray-100 dark:bg-dark-bg p-1 rounded-lg text-xs shrink-0">
                 <button data-testid="se-tab-table" class="px-3 py-1 rounded-md" :class="store.view === 'table' ? 'bg-white dark:bg-dark-card text-primary-700 dark:text-primary-300 font-semibold shadow-sm' : 'text-gray-500'" @click="store.view = 'table'">표</button>
@@ -173,7 +184,10 @@ const card = 'bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:
               </div>
               <!-- 편집 도구 줄: 작업본이 있고 쓸 수 있는 세션만(읽기 전용이거나 다른 시나리오를 여는 중이면 없음 — edit.editable). 새 스텝 ▾ 은 패널에 새 스텝 초안을 연다. -->
               <StepToolbar v-if="edit.editable" @new="edit.startNew" />
-              <button data-testid="se-expand" class="shrink-0 text-xs px-2 h-7 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300" @click="store.expanded = !store.expanded">{{ store.expanded ? '⤡ 줄이기' : '⤢ 넓게' }}</button>
+              <div class="flex gap-1 shrink-0">
+                <button data-testid="se-expand" class="shrink-0 text-xs px-2 h-7 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300" @click="store.expanded = !store.expanded">{{ store.expanded ? '⤡ 줄이기' : '⤢ 넓게' }}</button>
+                <button type="button" data-testid="se-fold-steps" class="shrink-0 text-xs px-2 h-7 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300" :title="t('SEW_UI_STEPS_FOLD_HINT')" @click="foldSteps">{{ t('SEW_UI_FOLD_DOWN') }}</button>
+              </div>
             </div>
             <div class="flex-1 min-h-0" data-testid="se-steps-area" @click.capture="snap.showStep()">
               <StepTable v-if="store.view === 'table'" />
@@ -181,9 +195,18 @@ const card = 'bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:
             </div>
           </section>
         </div>
-        <SplitGutter direction="v" testid="se-gutter-r" @start="startDrag('rw', $event, -1, 'x')" @reset="reset('rw')" />
-        <!-- 오른쪽: 쓸 수 있는 세션은 편집 패널(여러 줄이면 묶음 칸), 읽기 전용·여는 중은 P1 상세 -->
-        <section :class="card" class="min-h-0 overflow-hidden">
+        <!-- 오른쪽 경계선: 위쪽 손잡이를 누르면 스텝 패널이 띠로 접힌다 -->
+        <div v-if="!folded.right" class="relative flex min-h-0">
+          <SplitGutter direction="v" testid="se-gutter-r" @start="startDrag('rw', $event, -1, 'x')" @reset="reset('rw')" />
+          <button type="button" class="absolute z-10 top-1.5 -left-0.5 w-4 h-7 rounded flex items-center justify-center text-[10px] leading-none bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-primary-500 hover:text-white"
+            :title="t('SEW_UI_RIGHT_FOLD_HINT')" :aria-label="t('SEW_UI_RIGHT_FOLD_HINT')" data-testid="se-fold-right" @mousedown.stop @dblclick.stop @click="setFolded('right', true)">▶</button>
+        </div>
+        <div v-else />
+        <!-- 오른쪽: 쓸 수 있는 세션은 편집 패널(여러 줄이면 묶음 칸), 읽기 전용·여는 중은 P1 상세. 접히면 띠 -->
+        <button v-if="folded.right" type="button" :class="card" class="flex items-center justify-center hover:bg-gray-50 dark:hover:bg-gray-800" :title="t('SEW_UI_RIGHT_EXPAND_HINT')" data-testid="se-right-rail" @click="setFolded('right', false)">
+          <span class="text-xs text-gray-500 dark:text-gray-400 [writing-mode:vertical-rl]">{{ t(edit.editable ? 'SEW_UI_RIGHT_RAIL_EDIT' : 'SEW_UI_RIGHT_RAIL_DETAIL') }}</span>
+        </button>
+        <section v-show="!folded.right" :class="card" class="min-h-0 overflow-hidden" data-testid="se-right-section">
           <MultiSelection v-if="edit.editable && edit.selection.uids.length > 1" />
           <StepPanel v-else-if="edit.editable" />
           <StepDetail v-else />
