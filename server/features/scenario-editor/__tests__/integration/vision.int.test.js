@@ -99,10 +99,13 @@ describe('판정 시험 gRPC — InterfaceServer 를 거쳐 흉내 판정 서버
     await stopJudges()
     const second = await judge()
     expect(second.address).not.toBe(first.address)
-    expect((await client.requestVision(vision())).searchmaxResult).toHaveLength(1)
-    expect((await client.requestOcr(ocr())).IsAccepted).toBe(true)
+    // InterfaceServer 는 판정 서버들에 돌아가며 보낸다 — 지워진 노드의 연결이 남아 있으면 요청의 절반이 그리로 간다. 종류마다 여러 번 보내 본다
+    for (let i = 0; i < 3; i++) {
+      expect((await client.requestVision(vision())).searchmaxResult).toHaveLength(1)
+      expect((await client.requestOcr(ocr())).IsAccepted).toBe(true)
+    }
     expect(first.fake.calls).toHaveLength(1)
-    expect(second.fake.calls.map((c) => c.rpc)).toEqual(['RequestVision', 'RequestOcr'])
+    expect(second.fake.calls.map((c) => c.rpc)).toEqual(['RequestVision', 'RequestOcr', 'RequestVision', 'RequestOcr', 'RequestVision', 'RequestOcr'])
   })
 
   it('판정 서버가 없는 쪽(노드 없음)은 약 10초 뒤 502 VISION_NO_ANSWER — 있는 쪽은 그대로 되고, 동시에 보낸 요청이 서로를 기다리지 않는다', async () => {

@@ -11,14 +11,16 @@ services:
     image: zookeeper:3.5.5
     ports:
       - "127.0.0.1:2191:2181"
+    # 가벼운 확인(JVM 을 띄우지 않는다) — srvr 는 3.5 에서 기본으로 열려 있는 네 글자 명령이다
     healthcheck:
-      test: ["CMD-SHELL", "zkServer.sh status"]
+      test: ["CMD-SHELL", "echo srvr | nc -w 2 localhost 2181 | grep -q Mode"]
       interval: 5s
       timeout: 5s
       retries: 12
   # 환경 변수 MODE=DEBUG 를 주지 않는다 — 주면 ZooKeeper 를 아예 쓰지 않아 판정 요청이 늘 10초 뒤 INTERNAL 이다.
   # JVM 속성 -DMODE=DEBUG 는 남긴다(RV 를 건너뛴다). InterfaceServer 는 ZooKeeper 에 붙은 뒤에야 Mongo 를 붙이므로
-  # ZooKeeper 가 준비된 뒤에 띄운다(늦으면 저장·삭제가 실패한다) — 준비됐는지는 tools/infra/smoke-is.sh 가 저장 경로로 본다.
+  # ZooKeeper 가 준비된 뒤에 띄운다 — ZooKeeper 에 붙지 못한 채 뜨면 Mongo 를 끝내 붙이지 않아 저장·삭제가 컨테이너를 다시 띄울 때까지 실패한다.
+  # 준비됐는지는 tools/infra/smoke-is.sh 가 저장 경로로 본다(60초 안에 되지 않으면 interface-server 컨테이너를 다시 띄운다).
   interface-server:
     image: eclipse-temurin:8-jre
     depends_on:

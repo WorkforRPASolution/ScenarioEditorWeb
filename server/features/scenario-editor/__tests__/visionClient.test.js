@@ -36,13 +36,14 @@ function openSessions(server) {
     info({ request: { server_id: server.getChannelzRef().id, start_socket_id: 0, max_results: 100 } }, (err, res) => resolve(err ? -1 : res.socket_ref.length))
   })
 }
-// 듣기만 하고 아무 말도 하지 않는 TCP 서버(방화벽이 버리는 주소처럼 HTTP/2 가 시작되지 않는다)
+// 듣기만 하고 아무 말도 하지 않는 TCP 서버(방화벽이 버리는 주소처럼 HTTP/2 가 시작되지 않는다). accepted = 받은 연결 수
 async function silentTcp() {
   const sockets = new Set()
-  const server = createServer((s) => { sockets.add(s); s.on('close', () => sockets.delete(s)); s.on('error', () => {}) })
+  const seen = { accepted: 0 }
+  const server = createServer((s) => { seen.accepted += 1; sockets.add(s); s.on('close', () => sockets.delete(s)); s.on('error', () => {}) })
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   closers.push(() => new Promise((resolve) => { for (const s of sockets) s.destroy(); server.close(() => resolve()) }))
-  return `127.0.0.1:${server.address().port}`
+  return Object.assign(seen, { addr: `127.0.0.1:${server.address().port}` })
 }
 // 방금까지 쓰이던 포트를 닫아 "아무도 듣지 않는 포트" 를 얻는다
 async function closedPort() {
@@ -52,9 +53,10 @@ async function closedPort() {
   await new Promise((resolve) => server.close(() => resolve()))
   return `127.0.0.1:${port}`
 }
-function make(env) {
+// timeoutMs: 시험용 짧은 시간 제한(환경 변수는 1초~2분만 받는다)
+function make(env, { timeoutMs } = {}) {
   const logs = []
-  const client = createVisionClient({ env, log: { warn: (m) => logs.push(m) } })
+  const client = createVisionClient({ env, timeoutMs, log: { warn: (m) => logs.push(m) } })
   closers.push(() => client.close())
   return { client, logs }
 }
@@ -139,11 +141,59 @@ describe('visionClient — 연결', () => {
     expect(new Set(peers).size).toBe(3)
   })
 
-  it('호출이 끝나면 그 연결을 닫는다 — 서버에 연결이 쌓이지 않는다', async () => {
+  it('차례로 부른 호출은 쉬는 연결을 다시 쓴다 — 서버에 연결이 쌓이지 않고, close() 가 모두 닫는다', async () => {
     const { addr, server } = await serve({ RequestVision: (call, callback) => callback(null, {}) })
     const { client } = make({ EARS_INTERFACE_GRPC_ADDR: addr })
     for (let i = 0; i < 5; i++) await client.requestVision(VISION_REQ)
+    expect(await openSessions(server)).toBe(1)
+    client.close()
     await expect.poll(() => openSessions(server)).toBe(0)
+  })
+
+  // grpc-js 는 연결 중인 채널을 닫아도 그 소켓을 끊지 않는다 — 호출마다 채널을 새로 만들면 답 없는 주소에서 시험할 때마다 소켓이 하나씩 남는다.
+  it('연결되지 않는 주소(답 없는 TCP)에 거듭 불러도 연결 시도가 쌓이지 않는다', async () => {
+    const silent = await silentTcp()
+    const { client } = make({ EARS_INTERFACE_GRPC_ADDR: silent.addr }, { timeoutMs: 150 })
+    for (let i = 0; i < 5; i++) expect((await caught(client.requestVision(VISION_REQ))).code).toBe('VISION_DOWN')
+    expect(silent.accepted).toBe(1)
+  })
+
+  // InterfaceServer 는 끊긴 요청도 끝까지 처리하고, 그동안 그 연결의 다음 요청을 세운다 — 답을 받지 못한 연결은 다시 쓰지 않는다
+  it('deadline 을 넘겼거나 내가 끊은 호출의 연결은 다시 쓰지 않는다 — 답을 받은 연결만 다시 쓴다', async () => {
+    const peers = []
+    let slow = true
+    const { addr } = await serve({
+      RequestVision(call, callback) {
+        peers.push(call.getPeer())
+        if (slow) setTimeout(() => callback(null, {}), 1500).unref()
+        else callback(null, {})
+      }
+    })
+    const { client } = make({ EARS_INTERFACE_GRPC_ADDR: addr }, { timeoutMs: 200 })
+    expect((await caught(client.requestVision(VISION_REQ))).code).toBe('VISION_TIMEOUT')
+    const ac = new AbortController()
+    const pending = caught(client.requestVision(VISION_REQ, { signal: ac.signal }))
+    await expect.poll(() => peers.length).toBe(2)
+    ac.abort()
+    expect((await pending).code).toBe('VISION_CANCELLED')
+    slow = false
+    await client.requestVision(VISION_REQ)
+    await client.requestVision(VISION_REQ)
+    expect(new Set(peers.slice(0, 3)).size).toBe(3) // 시간 초과·끊김·그다음은 모두 다른 연결
+    expect(peers[3]).toBe(peers[2]) // 답을 받은 연결은 다시 쓴다
+  })
+
+  it('주소가 바뀌면 앞 주소의 쉬는 연결을 닫는다', async () => {
+    const a = await serve({ RequestVision: (call, callback) => callback(null, {}) })
+    const b = await serve({ RequestVision: (call, callback) => callback(null, {}) })
+    const env = { EARS_INTERFACE_GRPC_ADDR: a.addr }
+    const { client } = make(env)
+    await client.requestVision(VISION_REQ)
+    expect(await openSessions(a.server)).toBe(1)
+    env.EARS_INTERFACE_GRPC_ADDR = b.addr
+    await client.requestVision(VISION_REQ)
+    await expect.poll(() => openSessions(a.server)).toBe(0)
+    expect(await openSessions(b.server)).toBe(1)
   })
 
   it('close() 는 진행 중인 호출을 끊는다 — VISION_CANCELLED 로 끝난다(매달리지 않는다)', async () => {
@@ -160,14 +210,21 @@ describe('visionClient — 연결', () => {
 })
 
 describe('visionClient — 오류를 가른다', () => {
-  it('주소가 비면 503 VISION_UNSET — 서버를 부르지 않는다', async () => {
-    let hits = 0
-    await serve({ RequestVision: (call, callback) => { hits += 1; callback(null, {}) } })
+  it('주소가 비면 503 VISION_UNSET — 채널을 만들지 않는다', async () => {
+    let created = 0
+    const counting = { ...grpc, credentials: { ...grpc.credentials, createInsecure: () => { created += 1; return grpc.credentials.createInsecure() } } }
     for (const env of [{}, { EARS_INTERFACE_GRPC_ADDR: '' }, { EARS_INTERFACE_GRPC_ADDR: '   ' }]) {
-      const e = await caught(make(env).client.requestVision(VISION_REQ))
+      const client = createVisionClient({ env, grpc: counting })
+      const e = await caught(client.requestVision(VISION_REQ))
       expect([e.statusCode, e.code]).toEqual([503, 'VISION_UNSET'])
     }
-    expect(hits).toBe(0)
+    expect(created).toBe(0)
+    // 주소가 있으면 그 길로 채널을 만든다(위 셈이 뜻이 있다)
+    const { addr } = await serve({ RequestVision: (call, callback) => callback(null, {}) })
+    const client = createVisionClient({ env: { EARS_INTERFACE_GRPC_ADDR: addr }, grpc: counting })
+    closers.push(() => client.close())
+    await client.requestVision(VISION_REQ)
+    expect(created).toBe(1)
   })
 
   it('주소 꼴이 `호스트:포트` 가 아니면 503 VISION_DOWN — 문구에 값을 싣지 않는다', async () => {
@@ -204,7 +261,7 @@ describe('visionClient — 오류를 가른다', () => {
 
   it('연결은 됐는데 deadline 을 넘김 → 504 VISION_TIMEOUT', async () => {
     const { addr } = await serve({ RequestOcr: (call, callback) => { setTimeout(() => callback(null, {}), 2000).unref() } })
-    const { client } = make({ EARS_INTERFACE_GRPC_ADDR: addr, EARS_INTERFACE_GRPC_TIMEOUT_MS: '300' })
+    const { client } = make({ EARS_INTERFACE_GRPC_ADDR: addr }, { timeoutMs: 300 })
     const started = Date.now()
     const e = await caught(client.requestOcr(OCR_REQ))
     expect([e.statusCode, e.code]).toEqual([504, 'VISION_TIMEOUT'])
@@ -213,8 +270,8 @@ describe('visionClient — 오류를 가른다', () => {
   })
 
   it('한 번도 연결되지 않은 채 deadline 을 넘김(답 없는 주소) → 503 VISION_DOWN', async () => {
-    const addr = await silentTcp()
-    const { client } = make({ EARS_INTERFACE_GRPC_ADDR: addr, EARS_INTERFACE_GRPC_TIMEOUT_MS: '400' })
+    const { addr } = await silentTcp()
+    const { client } = make({ EARS_INTERFACE_GRPC_ADDR: addr }, { timeoutMs: 400 })
     const e = await caught(client.requestVision(VISION_REQ))
     expect([e.statusCode, e.code]).toEqual([503, 'VISION_DOWN'])
     expect(e.upstream.status).toBe(grpc.status.DEADLINE_EXCEEDED)
@@ -228,12 +285,27 @@ describe('visionClient — 오류를 가른다', () => {
     expect(e.message).toBe('판정 시험이 실패했습니다')
   })
 
-  it('시간 제한 값이 틀리면(글자·0·음수) 기본 12초를 쓴다 — 바로 끝나지 않는다', async () => {
+  it('시간 제한(EARS_INTERFACE_GRPC_TIMEOUT_MS)은 1초~2분만 받는다 — 밖이거나 수가 아니면 기본 12초(초 단위로 잘못 적은 12 가 12ms 가 되지 않는다)', async () => {
     const { addr } = await serve({ RequestVision: (call, callback) => { setTimeout(() => callback(null, {}), 150) } })
-    for (const bad of ['abc', '0', '-5', '']) {
+    for (const bad of ['abc', '0', '-5', '', '12', '999', '120001', '1e20', '0x10', true]) {
       const { client } = make({ EARS_INTERFACE_GRPC_ADDR: addr, EARS_INTERFACE_GRPC_TIMEOUT_MS: bad })
-      expect(await client.requestVision(VISION_REQ)).toEqual({ searchmaxResult: [] })
+      expect(await client.requestVision(VISION_REQ), String(bad)).toEqual({ searchmaxResult: [] })
     }
+    const slow = await serve({ RequestVision: (call, callback) => { setTimeout(() => callback(null, {}), 3000).unref() } })
+    const { client } = make({ EARS_INTERFACE_GRPC_ADDR: slow.addr, EARS_INTERFACE_GRPC_TIMEOUT_MS: ' 1000 ' })
+    const started = Date.now()
+    expect((await caught(client.requestVision(VISION_REQ))).code).toBe('VISION_TIMEOUT')
+    expect(Date.now() - started).toBeLessThan(2500)
+  })
+
+  // 서버가 CANCELLED 로 답하거나 스트림을 끊어도 gRPC 상태는 CANCELLED(1)다 — 내가 끊은 것만 "끊었습니다" 다
+  it('내가 끊지 않은 CANCELLED(1)는 502 VISION_FAILED 이고 로그에 남는다', async () => {
+    const { addr } = await serve({ RequestVision: (call, callback) => callback({ code: grpc.status.CANCELLED, details: 'server says cancelled' }) })
+    const { client, logs } = make({ EARS_INTERFACE_GRPC_ADDR: addr })
+    const e = await caught(client.requestVision(VISION_REQ))
+    expect([e.statusCode, e.code, e.upstream.status]).toEqual([502, 'VISION_FAILED', grpc.status.CANCELLED])
+    expect(logs).toHaveLength(1)
+    expect(logs[0]).toContain('status=1')
   })
 })
 
