@@ -409,6 +409,67 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
       memoList.value = { status: 'error', items: [], truncated: false, error: errorMessage(e) }
     }
   }
+  // ── 메모 목록에서 고치기·지우기(사내 요청 2026-11-16) — 대상은 메모 목록의 줄 { eqpId, fileName, date }. 지금 보는 설비·날짜가 아니어도 된다 ──
+  const listedMemo = (m) => memoList.value.items.find((x) => x.eqpId === m?.eqpId && x.fileName === m?.fileName) ?? null
+  // 메모 목록의 그 줄을 바꾼다(그 줄만 새로 만든 새 배열). memo 가 null 이면 줄을 뺀다. 지금 보는 하루 목록에 그 스냅샷이 있으면 그 줄도 바꾼다.
+  function patchMemoList(m, memo) {
+    const i = memoList.value.items.indexOf(listedMemo(m))
+    if (i >= 0) {
+      const items = memoList.value.items.slice()
+      if (memo) items[i] = { ...items[i], memo }
+      else items.splice(i, 1)
+      memoList.value = { ...memoList.value, items }
+    }
+    patchMemo(m.eqpId, m.date, m.fileName, memo)
+  }
+  // 결과 모양은 saveMemo·removeMemo 와 같다. 본 글(expect)은 메모 목록의 지금 줄에서 읽는다.
+  async function saveMemoAt(m, text) {
+    const cur = listedMemo(m)
+    if (!cur) return { error: t('SEW_SNAP_MEMO_SNAPSHOT_GONE'), code: 'SNAPSHOT_NOT_FOUND' }
+    try {
+      const r = (await api.saveMemo(cur.eqpId, cur.fileName, text, cur.memo.text)).data.data
+      patchMemoList(cur, r?.memo ?? null)
+      return { ok: true }
+    } catch (e) {
+      const code = errorCode(e)
+      if (code !== 'MEMO_CONFLICT') return { error: errorMessage(e), code }
+      const current = currentOf(e)
+      patchMemoList(cur, current)
+      return { conflict: true, current }
+    }
+  }
+  async function removeMemoAt(m) {
+    const cur = listedMemo(m)
+    if (!cur) return { gone: true }
+    try {
+      const r = (await api.removeMemo(cur.eqpId, cur.fileName, cur.memo.text)).data.data
+      patchMemoList(cur, r?.memo ?? null) // 같은 키의 옛 메모가 남아 있으면 그것이 온다
+      return { ok: true }
+    } catch (e) {
+      const code = errorCode(e)
+      if (code === 'MEMO_GONE') { patchMemoList(cur, null); return { gone: true } }
+      if (code !== 'MEMO_CONFLICT') return { error: errorMessage(e), code }
+      const current = currentOf(e)
+      patchMemoList(cur, current)
+      return { conflict: true, current }
+    }
+  }
+  // 여러 메모를 차례로 지운다(서버에 묶어 지우는 API 는 없다 — 하나씩, 본 글을 견줘서).
+  // 이미 없는 것은 지운 것으로 세고, 그 사이 바뀐 것은 지우지 않고 지금 값으로 남긴다(changed). 그 밖의 실패에서는 멈춘다(error) — 끊긴 연결로 남은 것을 다 기다리지 않게.
+  async function removeMemos(targets, onProgress = null) {
+    let removed = 0
+    const changed = []
+    for (let k = 0; k < targets.length; k++) {
+      const m = targets[k]
+      const r = await removeMemoAt(m)
+      if (r.ok || r.gone || (r.conflict && !r.current)) removed++
+      else if (r.conflict) changed.push({ eqpId: m.eqpId, fileName: m.fileName })
+      else return { removed, changed, error: r.error }
+      if (onProgress) onProgress(k + 1, targets.length)
+    }
+    return { removed, changed, error: '' }
+  }
+
   // 메모 목록에서 고른 메모의 스냅샷으로 간다 — 설비·날짜를 바꾸고 거르기를 '전체' 로 돌려 목록을 한 번 받아 그 줄을 고른다.
   // 목록에 없으면 알리고 다시 청하지 않는다(SE-016).
   async function goToMemo(m) {
@@ -544,6 +605,6 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
   return {
     mode, open, equipment, presence, eqpId, range, date, list, filter, selectedName, picked, calendar, image, notice, memoList,
     shown, selected, position, pickedItems, minDate, maxDate,
-    restore, setOpen, loadEquipment, refreshPresence, pickEquipment, setDate, moveDate, refresh, setFilter, select, togglePick, pickRange, moveRange, move, moveTag, moveMemo, saveMemo, removeMemo, loadMemoList, goToMemo, openCalendar, showStep, showSnapshot, say, shownImage
+    restore, setOpen, loadEquipment, refreshPresence, pickEquipment, setDate, moveDate, refresh, setFilter, select, togglePick, pickRange, moveRange, move, moveTag, moveMemo, saveMemo, removeMemo, loadMemoList, saveMemoAt, removeMemoAt, removeMemos, goToMemo, openCalendar, showStep, showSnapshot, say, shownImage
   }
 })

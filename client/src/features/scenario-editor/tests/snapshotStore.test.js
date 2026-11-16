@@ -892,6 +892,90 @@ describe('snapshotStore', () => {
       await going
       expect([s.eqpId, s.date, s.selectedName]).toEqual(['A', '2026-11-11', null])
     })
+
+    // ── 메모 목록에서 고치기·지우기(사내 요청 2026-11-16) — 지금 목록의 줄이 아니어도 된다 ──
+    const listed = async (rows) => {
+      api.memos.mockImplementation(() => ok({ items: rows, truncated: false }))
+      const s = useSnapshotStore()
+      await s.loadMemoList()
+      return s
+    }
+    const texts = (s) => s.memoList.items.map((m) => m.memo.text)
+    it('메모 목록의 메모를 고친다 — 본 글을 함께 보내고 그 줄만 바꾼 새 배열로 갈아 끼운다', async () => {
+      const s = await listed([row('B', '2026-11-09', name(0), '하나'), row('B', '2026-11-09', name(2), '둘')])
+      const before = s.memoList.items
+      api.saveMemo.mockImplementation(() => ok({ memo: { ...memo('고친 글'), editedBy: 'me' } }))
+      expect(await s.saveMemoAt(before[1], '고친 글')).toEqual({ ok: true })
+      expect(api.saveMemo).toHaveBeenCalledWith('B', name(2), '고친 글', '둘')
+      expect(texts(s)).toEqual(['하나', '고친 글'])
+      expect(s.memoList.items).not.toBe(before)
+      expect(s.memoList.items[0]).toBe(before[0])
+      expect(s.memoList.items[1].memo.editedBy).toBe('me')
+    })
+    it('고친 메모가 지금 보는 설비·날짜의 것이면 하루 목록의 그 줄도 바뀐다', async () => {
+      const s = await withMemos()
+      api.memos.mockImplementation(() => ok({ items: [row('A', '2026-11-11', name(1), '태그 메모')], truncated: false }))
+      await s.loadMemoList()
+      api.saveMemo.mockImplementation(() => ok({ memo: memo('목록에서 고침') }))
+      await s.saveMemoAt(s.memoList.items[0], '목록에서 고침')
+      expect(s.list.items[1].memo.text).toBe('목록에서 고침')
+      // 다른 날의 메모는 하루 목록을 건드리지 않는다
+      api.memos.mockImplementation(() => ok({ items: [row('A', '2026-11-10', name(3), '어제 것')], truncated: false }))
+      await s.loadMemoList()
+      await s.saveMemoAt(s.memoList.items[0], '목록에서 고침')
+      expect(s.list.items[3].memo.text).toBe('클릭 메모')
+    })
+    it('그 사이 바뀌었으면(409) 줄을 지금 값으로 바꾸고 알린다 — 지금은 메모가 없으면 줄을 뺀다', async () => {
+      const s = await listed([row('B', '2026-11-09', name(0), '하나'), row('B', '2026-11-09', name(2), '둘')])
+      api.saveMemo.mockImplementation(() => Promise.reject(conflict(memo('남이 바꾼 글', 'lee'))))
+      expect(await s.saveMemoAt(s.memoList.items[0], '내 글')).toEqual({ conflict: true, current: memo('남이 바꾼 글', 'lee') })
+      expect(texts(s)).toEqual(['남이 바꾼 글', '둘'])
+      api.saveMemo.mockImplementation(() => Promise.reject(conflict(null)))
+      expect(await s.saveMemoAt(s.memoList.items[1], '내 글')).toEqual({ conflict: true, current: null })
+      expect(texts(s)).toEqual(['남이 바꾼 글'])
+      // 목록에 없는 줄(그 사이 목록을 다시 받음)은 서버에 보내지 않는다
+      api.saveMemo.mockClear()
+      expect((await s.saveMemoAt(row('B', '2026-11-09', name(5)), '글')).code).toBe('SNAPSHOT_NOT_FOUND')
+      expect(api.saveMemo).not.toHaveBeenCalled()
+    })
+    it('메모 목록에서 하나를 지운다 — 같은 키의 옛 메모가 남아 있으면 그것이 줄에 남는다', async () => {
+      const s = await listed([row('B', '2026-11-09', name(0), '하나'), row('B', '2026-11-09', name(2), '둘')])
+      api.removeMemo.mockImplementation(() => ok({ removed: true, memo: null }))
+      expect(await s.removeMemoAt(s.memoList.items[0])).toEqual({ ok: true })
+      expect(api.removeMemo).toHaveBeenCalledWith('B', name(0), '하나')
+      expect(texts(s)).toEqual(['둘'])
+      api.removeMemo.mockImplementation(() => ok({ removed: true, memo: memo('옛 메모') }))
+      expect(await s.removeMemoAt(s.memoList.items[0])).toEqual({ ok: true })
+      expect(texts(s)).toEqual(['옛 메모'])
+      api.removeMemo.mockImplementation(() => Promise.reject(fail(404, 'MEMO_GONE')))
+      expect(await s.removeMemoAt(s.memoList.items[0])).toEqual({ gone: true })
+      expect(texts(s)).toEqual([])
+    })
+    it('여러 메모를 차례로 지운다 — 이미 없는 것은 지운 것으로, 그 사이 바뀐 것은 지금 값으로 남긴다', async () => {
+      const s = await listed([row('A', '2026-11-11', name(0), '하나'), row('B', '2026-11-09', name(2), '둘'), row('B', '2026-11-09', name(3), '셋'), row('B', '2026-11-08', name(5), '넷')])
+      const order = []
+      api.removeMemo.mockImplementation((eqpId, fileName, expect) => {
+        order.push([eqpId, fileName, expect])
+        if (fileName === name(2)) return Promise.reject(fail(404, 'MEMO_GONE'))
+        if (fileName === name(3)) return Promise.reject(conflict(memo('남이 바꾼 글', 'lee')))
+        return ok({ removed: true, memo: null })
+      })
+      const progress = []
+      const out = await s.removeMemos(s.memoList.items.slice(), (done, total) => progress.push([done, total]))
+      expect(order).toEqual([['A', name(0), '하나'], ['B', name(2), '둘'], ['B', name(3), '셋'], ['B', name(5), '넷']])
+      expect(out).toEqual({ removed: 3, changed: [{ eqpId: 'B', fileName: name(3) }], error: '' })
+      expect(progress).toEqual([[1, 4], [2, 4], [3, 4], [4, 4]])
+      expect(texts(s)).toEqual(['남이 바꾼 글'])
+    })
+    it('지우다 실패하면(연결 끊김 등) 거기서 멈추고 이유를 알린다 — 나머지는 그대로 남는다', async () => {
+      const s = await listed([row('B', '2026-11-09', name(0), '하나'), row('B', '2026-11-09', name(2), '둘'), row('B', '2026-11-09', name(3), '셋')])
+      api.removeMemo.mockImplementationOnce(() => ok({ removed: true, memo: null })).mockImplementation(() => Promise.reject(fail(503, 'UPSTREAM_DOWN')))
+      const out = await s.removeMemos(s.memoList.items.slice())
+      expect(out.removed).toBe(1)
+      expect(out.error).not.toBe('')
+      expect(api.removeMemo).toHaveBeenCalledTimes(2)
+      expect(texts(s)).toEqual(['둘', '셋'])
+    })
   })
 
   describe('여러 줄 고르기 (P3-D)', () => {
