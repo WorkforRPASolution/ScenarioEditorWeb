@@ -37,6 +37,9 @@ const asking = ref(false) // 지울지 묻는 중
 const busy = ref(false)
 const error = ref('')
 const conflict = ref(null) // { current } — 그 사이 바뀐 지금 값
+// 메모 목록의 줄(entry)일 때 서버에 보낼 "본 글" — 창을 열 때의 글, 충돌 뒤에는 그때 보인 지금 내용.
+// 저장소의 지금 줄에서 읽지 않는다(그 사이 목록을 다시 받으면 보지 않은 글을 본 것으로 보내게 된다).
+const seen = ref(null)
 const box = ref(null)
 const input = ref(null)
 
@@ -45,6 +48,7 @@ watch(() => [props.modelValue, props.fileName, props.mode, props.entry?.eqpId, p
   if (!open) return
   if (!item.value) { close(); return } // 목록이 그 사이 바뀌었다
   text.value = memo.value?.text ?? ''
+  seen.value = memo.value?.text ?? null
   asking.value = props.mode === 'delete'
   busy.value = false
   error.value = ''
@@ -79,8 +83,9 @@ async function save() {
   busy.value = true
   error.value = ''
   const entry = props.entry // 기다리는 사이 줄이 사라지면 창이 닫히며 entry 가 비워진다 — 보낼 때의 것을 쥔다
-  const r = await (entry ? snap.saveMemoAt(entry, c.text) : snap.saveMemo(props.fileName, c.text))
+  const r = await (entry ? snap.saveMemoAt(entry, c.text, seen.value) : snap.saveMemo(props.fileName, c.text))
   busy.value = false
+  if (r.conflict) seen.value = r.current?.text ?? null
   if (r.ok) close()
   // 메모 목록의 줄: 그 사이 지워졌으면 줄이 사라졌다 — 닫고 알린다(목록 창이 문구를 보인다)
   else if (r.conflict && !r.current && entry) goneOut(entry)
@@ -92,8 +97,9 @@ async function remove() {
   busy.value = true
   error.value = ''
   const entry = props.entry
-  const r = await (entry ? snap.removeMemoAt(entry) : snap.removeMemo(props.fileName))
+  const r = await (entry ? snap.removeMemoAt(entry, seen.value) : snap.removeMemo(props.fileName))
   busy.value = false
+  if (r.conflict) seen.value = r.current?.text ?? null
   if (r.ok) close()
   // 이미 없다(그 사이 남이 지움) — 지우려던 것이 이뤄졌으니 알리고 닫는다
   else if (r.gone || (r.conflict && !r.current)) goneOut(entry)

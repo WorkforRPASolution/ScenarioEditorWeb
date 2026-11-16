@@ -35,6 +35,7 @@ const busy = ref(false) // 지우는 중
 const progress = ref({ done: 0, total: 0 })
 const notice = ref(null) // { text, warn } — 지운 결과·그 사이 지워짐
 const confirmBox = ref(null)
+const removeBtn = ref(null)
 const keyOf = (m) => `${m.eqpId}\n${m.fileName}`
 
 watch(() => props.modelValue, (open) => {
@@ -70,7 +71,9 @@ watch(rows, (list) => {
 const selected = computed(() => rows.value.filter((m) => checked.value.has(keyOf(m))))
 const one = computed(() => (selected.value.length === 1 ? selected.value[0] : null))
 const allChecked = computed(() => rows.value.length > 0 && selected.value.length === rows.value.length)
-const locked = computed(() => busy.value || confirming.value)
+const modal = computed(() => busy.value || confirming.value) // 묻는 중·지우는 중 — 거르기도 잠근다(묻는 사이 대상이 바뀌지 않게)
+// 목록을 다시 받는 중에는 앞에 받은 줄이 보여도 잠근다 — 옛 글을 보고 고른 것을 새 글에 대고 지우거나 고치지 않게
+const locked = computed(() => modal.value || snap.memoList.status === 'loading')
 
 function onRow(m, e) {
   if (locked.value) return
@@ -94,6 +97,8 @@ function toggle(m) {
   checked.value = next
   anchor.value = key
 }
+// Shift+누르기가 줄의 글자를 범위로 칠하지 않게(그냥 끌어 메모 글을 고르는 것은 된다)
+const noTextRange = (e) => { if (e.shiftKey) e.preventDefault() }
 function toggleAll() {
   if (locked.value) return
   checked.value = allChecked.value ? new Set() : new Set(rows.value.map(keyOf))
@@ -128,8 +133,22 @@ async function askRemove() {
   await nextTick()
   confirmBox.value?.querySelector('button')?.focus?.() // [취소] 에 초점 — Enter 로 바로 지워지지 않게
 }
+async function cancelRemove() {
+  confirming.value = false
+  await nextTick()
+  removeBtn.value?.focus?.()
+}
+// 묻는 창: Esc 는 취소, Tab 은 창 안의 단추에서만 돈다(뒤의 거르기·목록으로 나가지 않게)
+function onConfirmKey(e) {
+  if (e.key === 'Escape') { e.stopPropagation(); cancelRemove(); return }
+  if (e.key !== 'Tab' || !confirmBox.value) return
+  const stops = [...confirmBox.value.querySelectorAll('button')]
+  const i = stops.indexOf(document.activeElement)
+  e.preventDefault()
+  stops[e.shiftKey ? (i <= 0 ? stops.length - 1 : i - 1) : (i < 0 || i === stops.length - 1 ? 0 : i + 1)]?.focus()
+}
 async function remove() {
-  const targets = selected.value.slice()
+  const targets = selected.value.slice() // 물을 때 보인 줄 — 본 글도 이 줄들의 것으로 보낸다
   confirming.value = false
   if (!targets.length || busy.value) return
   busy.value = true
@@ -137,9 +156,12 @@ async function remove() {
   progress.value = { done: 0, total: targets.length }
   const out = await snap.removeMemos(targets, (done, total) => { progress.value = { done, total } })
   busy.value = false
-  notice.value = out.error ? { text: t('SEW_SNAP_MEMO_LIST_REMOVE_STOPPED', { n: out.removed, reason: out.error }), warn: true }
-    : out.changed.length ? { text: t('SEW_SNAP_MEMO_LIST_REMOVED_CHANGED', { n: out.removed, k: out.changed.length }), warn: true }
-      : { text: t('SEW_SNAP_MEMO_LIST_REMOVED', { n: out.removed }), warn: false }
+  const parts = [out.error ? t('SEW_SNAP_MEMO_LIST_REMOVE_STOPPED', { n: out.removed, reason: out.error }) : t('SEW_SNAP_MEMO_LIST_REMOVED', { n: out.removed })]
+  if (out.changed.length) parts.push(t('SEW_SNAP_MEMO_LIST_CHANGED_NOTE', { k: out.changed.length }))
+  if (out.older) parts.push(t('SEW_SNAP_MEMO_LIST_OLDER_NOTE', { k: out.older }))
+  notice.value = { text: parts.join(' '), warn: parts.length > 1 || !!out.error }
+  await nextTick()
+  removeBtn.value?.focus?.()
 }
 const btnS = 'h-8 px-3 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:enabled:bg-gray-300 dark:hover:enabled:bg-gray-600 disabled:opacity-50'
 const btnP = 'h-8 px-3 rounded-lg text-sm bg-primary-500 hover:enabled:bg-primary-600 text-white font-medium disabled:opacity-50'
@@ -150,19 +172,19 @@ const btnD = 'h-8 px-3 rounded-lg text-sm bg-red-600 hover:enabled:bg-red-700 te
   <ModalShell :model-value="modelValue" :title="t('SEW_SNAP_MEMO_LIST')" :width="900" :height="540" :closable="!busy" testid="se-memo-list" @update:model-value="close">
     <div class="relative h-full flex flex-col min-h-0 text-gray-800 dark:text-gray-100">
       <div class="px-5 py-2.5 flex flex-wrap items-center gap-2 border-b border-gray-200 dark:border-dark-border shrink-0 text-xs">
-        <select v-model="process" class="se-inp se-memo-filter" :aria-label="t('SEW_SNAP_EQP_ALL_PROCESS')" data-testid="se-memo-list-process">
+        <select v-model="process" class="se-inp se-memo-filter" :disabled="modal" :aria-label="t('SEW_SNAP_EQP_ALL_PROCESS')" data-testid="se-memo-list-process">
           <option value="">{{ t('SEW_SNAP_EQP_ALL_PROCESS') }}</option>
           <option v-for="p in options.processes" :key="p" :value="p">{{ p }}</option>
         </select>
-        <select v-model="model" class="se-inp se-memo-filter" :aria-label="t('SEW_SNAP_EQP_ALL_MODEL')" data-testid="se-memo-list-model">
+        <select v-model="model" class="se-inp se-memo-filter" :disabled="modal" :aria-label="t('SEW_SNAP_EQP_ALL_MODEL')" data-testid="se-memo-list-model">
           <option value="">{{ t('SEW_SNAP_EQP_ALL_MODEL') }}</option>
           <option v-for="m in options.models" :key="m" :value="m">{{ m }}</option>
         </select>
-        <select v-model="eqpId" class="se-inp se-memo-filter se-memo-filter-wide" :aria-label="t('SEW_SNAP_MEMO_LIST_ALL_EQP')" data-testid="se-memo-list-eqp">
+        <select v-model="eqpId" class="se-inp se-memo-filter se-memo-filter-wide" :disabled="modal" :aria-label="t('SEW_SNAP_MEMO_LIST_ALL_EQP')" data-testid="se-memo-list-eqp">
           <option value="">{{ t('SEW_SNAP_MEMO_LIST_ALL_EQP') }}</option>
           <option v-for="e in options.eqpIds" :key="e" :value="e">{{ e }}</option>
         </select>
-        <label class="flex items-center gap-1.5 select-none"><input v-model="mine" type="checkbox" data-testid="se-memo-list-mine" />{{ t('SEW_SNAP_MEMO_LIST_MINE') }}</label>
+        <label class="flex items-center gap-1.5 select-none"><input v-model="mine" type="checkbox" :disabled="modal" data-testid="se-memo-list-mine" />{{ t('SEW_SNAP_MEMO_LIST_MINE') }}</label>
         <span v-if="snap.memoList.items.length" class="ml-auto tabular-nums text-gray-500 dark:text-gray-400" data-testid="se-memo-list-count">{{ t('SEW_SNAP_MEMO_LIST_COUNT', { n: filtered.length }) }}</span>
       </div>
       <p v-if="snap.memoList.truncated" class="px-5 py-1.5 text-[11px] bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200 shrink-0" data-testid="se-memo-list-truncated">{{ t('SEW_SNAP_MEMO_LIST_TRUNCATED') }}</p>
@@ -175,14 +197,15 @@ const btnD = 'h-8 px-3 rounded-lg text-sm bg-red-600 hover:enabled:bg-red-700 te
         <table v-else class="se-memo-table w-full text-xs">
           <thead>
             <tr>
-              <th class="se-memo-check"><input type="checkbox" :checked="allChecked" :indeterminate.prop="!allChecked && selected.length > 0" :disabled="locked" :aria-label="t('SEW_SNAP_MEMO_LIST_PICK_ALL')" :title="t('SEW_SNAP_MEMO_LIST_PICK_ALL')" data-testid="se-memo-list-check-all" @click="toggleAll" /></th>
+              <th class="se-memo-check" @click="toggleAll"><input type="checkbox" :checked="allChecked" :indeterminate.prop="!allChecked && selected.length > 0" :disabled="locked" :aria-label="t('SEW_SNAP_MEMO_LIST_PICK_ALL')" :title="t('SEW_SNAP_MEMO_LIST_PICK_ALL')" data-testid="se-memo-list-check-all" /></th>
               <th>{{ t('SEW_SNAP_MEMO_LIST_COL_AUTHOR') }}</th><th>{{ t('SEW_SNAP_MEMO_LIST_COL_EQP') }}</th><th>{{ t('SEW_SNAP_MEMO_LIST_COL_TIME') }}</th>
               <th class="w-full">{{ t('SEW_SNAP_MEMO_LIST_COL_MEMO') }}</th><th>{{ t('SEW_SNAP_MEMO_LIST_COL_WRITTEN') }}</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="m in rows" :key="keyOf(m)" :aria-selected="checked.has(keyOf(m)) ? 'true' : 'false'" data-testid="se-memo-list-row" @click="onRow(m, $event)" @dblclick="go(m)">
-              <td class="se-memo-check" @click.stop @dblclick.stop><input type="checkbox" :checked="checked.has(keyOf(m))" :disabled="locked" :aria-label="t('SEW_SNAP_MEMO_LIST_PICK')" data-testid="se-memo-list-check" @click="toggle(m)" /></td>
+            <tr v-for="m in rows" :key="keyOf(m)" :aria-selected="checked.has(keyOf(m)) ? 'true' : 'false'" data-testid="se-memo-list-row" @mousedown="noTextRange" @click="onRow(m, $event)" @dblclick="go(m)">
+              <!-- 칸 전체가 누르는 자리다(체크 칸의 누름이 칸으로 올라온다) -->
+              <td class="se-memo-check" @click.stop="toggle(m)" @dblclick.stop><input type="checkbox" :checked="checked.has(keyOf(m))" :disabled="locked" :aria-label="t('SEW_SNAP_MEMO_LIST_PICK', { eqp: m.eqpId, time: whenOf(m) })" data-testid="se-memo-list-check" /></td>
               <td>{{ authorOf(m) }}</td>
               <td>{{ m.eqpId }}</td>
               <td class="tabular-nums">{{ whenOf(m) }} <span v-if="expiryDays(m) !== null" class="se-snap-expires" data-testid="se-memo-list-expires">{{ t('SEW_SNAP_EXPIRES', { n: expiryDays(m) }) }}</span></td>
@@ -194,12 +217,13 @@ const btnD = 'h-8 px-3 rounded-lg text-sm bg-red-600 hover:enabled:bg-red-700 te
         <p v-if="!state && filtered.length > rows.length" class="px-5 py-2 text-xs text-gray-500 dark:text-gray-400" data-testid="se-memo-list-more">{{ t('SEW_SNAP_MEMO_LIST_MORE', { n: filtered.length - rows.length }) }}</p>
       </div>
       <!-- 지울지 묻기 — 목록을 가리고 한 번 묻는다 -->
-      <div v-if="confirming" class="absolute inset-0 z-10 bg-black/30 flex items-center justify-center" @click.self="confirming = false">
-        <div ref="confirmBox" class="w-[420px] max-w-[calc(100%-40px)] bg-white dark:bg-dark-card border border-gray-200 dark:border-dark-border rounded-xl shadow-2xl p-[18px]" role="alertdialog" aria-modal="true" data-testid="se-memo-list-confirm" @keydown.esc.stop="confirming = false">
-          <p class="text-sm">{{ t('SEW_SNAP_MEMO_LIST_CONFIRM', { n: selected.length }) }}</p>
-          <p v-if="others" class="mt-1.5 text-xs text-amber-700 dark:text-amber-300" data-testid="se-memo-list-confirm-others">{{ t('SEW_SNAP_MEMO_LIST_CONFIRM_OTHERS', { n: others }) }}</p>
+      <div v-if="confirming" class="absolute inset-0 z-10 bg-black/30 flex items-center justify-center" @click.self="cancelRemove">
+        <div ref="confirmBox" class="w-[420px] max-w-[calc(100%-40px)] bg-white dark:bg-dark-card border border-gray-200 dark:border-dark-border rounded-xl shadow-2xl p-[18px]" role="alertdialog" aria-modal="true"
+          aria-labelledby="se-memo-list-confirm-title" :aria-describedby="others ? 'se-memo-list-confirm-others' : undefined" data-testid="se-memo-list-confirm" @keydown="onConfirmKey">
+          <p id="se-memo-list-confirm-title" class="text-sm">{{ t('SEW_SNAP_MEMO_LIST_CONFIRM', { n: selected.length }) }}</p>
+          <p v-if="others" id="se-memo-list-confirm-others" class="mt-1.5 text-xs text-amber-700 dark:text-amber-300" data-testid="se-memo-list-confirm-others">{{ t('SEW_SNAP_MEMO_LIST_CONFIRM_OTHERS', { n: others }) }}</p>
           <div class="mt-3.5 flex justify-end gap-2">
-            <button type="button" :class="btnS" data-testid="se-memo-list-confirm-cancel" @click="confirming = false">{{ t('SEW_SNAP_MEMO_CANCEL') }}</button>
+            <button type="button" :class="btnS" data-testid="se-memo-list-confirm-cancel" @click="cancelRemove">{{ t('SEW_SNAP_MEMO_CANCEL') }}</button>
             <button type="button" :class="btnD" data-testid="se-memo-list-confirm-ok" @click="remove">{{ t('SEW_SNAP_MEMO_LIST_REMOVE') }}</button>
           </div>
         </div>
@@ -210,7 +234,7 @@ const btnD = 'h-8 px-3 rounded-lg text-sm bg-red-600 hover:enabled:bg-red-700 te
       <span v-else-if="selected.length" class="mr-auto self-center text-xs tabular-nums text-gray-600 dark:text-gray-300" data-testid="se-memo-list-picked">{{ t('SEW_SNAP_MEMO_LIST_PICKED', { n: selected.length }) }}</span>
       <button type="button" :class="btnS" :disabled="busy" data-testid="se-memo-list-close" @click="close">{{ t('SEW_SNAP_MEMO_LIST_CLOSE') }}</button>
       <button type="button" :class="btnS" :disabled="!one || locked" :title="t('SEW_SNAP_MEMO_LIST_EDIT_HINT')" data-testid="se-memo-list-edit" @click="edit">{{ t('SEW_SNAP_MEMO_LIST_EDIT') }}</button>
-      <button type="button" :class="btnS" :disabled="!selected.length || locked" data-testid="se-memo-list-remove" @click="askRemove">{{ selected.length ? t('SEW_SNAP_MEMO_LIST_REMOVE_N', { n: selected.length }) : t('SEW_SNAP_MEMO_LIST_REMOVE') }}</button>
+      <button ref="removeBtn" type="button" :class="btnS" :disabled="!selected.length || locked" data-testid="se-memo-list-remove" @click="askRemove">{{ selected.length ? t('SEW_SNAP_MEMO_LIST_REMOVE_N', { n: selected.length }) : t('SEW_SNAP_MEMO_LIST_REMOVE') }}</button>
       <button type="button" :class="btnP" :disabled="!one || locked" data-testid="se-memo-list-go" @click="go()">{{ t('SEW_SNAP_MEMO_LIST_GO') }}</button>
     </template>
   </ModalShell>

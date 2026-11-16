@@ -422,12 +422,14 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
     }
     patchMemo(m.eqpId, m.date, m.fileName, memo)
   }
-  // 결과 모양은 saveMemo·removeMemo 와 같다. 본 글(expect)은 메모 목록의 지금 줄에서 읽는다.
-  async function saveMemoAt(m, text) {
+  // 결과 모양은 saveMemo·removeMemo 와 같다.
+  // 본 글(seen)은 넘긴 줄 — 사용자가 보고 확인한 때의 것 — 에서 읽는다. 저장소의 지금 줄에서 읽으면 그 사이 목록을 다시 받았을 때
+  // 남이 바꾼 글을 "본 것" 으로 보내 충돌 없이 덮거나 지운다. 메모 창은 충돌 뒤 지금 내용을 본 글로 따로 넘긴다.
+  async function saveMemoAt(m, text, seen = m?.memo?.text ?? null) {
     const cur = listedMemo(m)
     if (!cur) return { error: t('SEW_SNAP_MEMO_SNAPSHOT_GONE'), code: 'SNAPSHOT_NOT_FOUND' }
     try {
-      const r = (await api.saveMemo(cur.eqpId, cur.fileName, text, cur.memo.text)).data.data
+      const r = (await api.saveMemo(cur.eqpId, cur.fileName, text, seen)).data.data
       patchMemoList(cur, r?.memo ?? null)
       return { ok: true }
     } catch (e) {
@@ -438,13 +440,13 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
       return { conflict: true, current }
     }
   }
-  async function removeMemoAt(m) {
+  async function removeMemoAt(m, seen = m?.memo?.text ?? null) {
     const cur = listedMemo(m)
     if (!cur) return { gone: true }
     try {
-      const r = (await api.removeMemo(cur.eqpId, cur.fileName, cur.memo.text)).data.data
-      patchMemoList(cur, r?.memo ?? null) // 같은 키의 옛 메모가 남아 있으면 그것이 온다
-      return { ok: true }
+      const r = (await api.removeMemo(cur.eqpId, cur.fileName, seen)).data.data
+      patchMemoList(cur, r?.memo ?? null) // 같은 키의 옛 메모가 남아 있으면 그것이 온다(older) — 줄이 그 메모로 남는다
+      return r?.memo ? { ok: true, older: true } : { ok: true }
     } catch (e) {
       const code = errorCode(e)
       if (code === 'MEMO_GONE') { patchMemoList(cur, null); return { gone: true } }
@@ -456,18 +458,20 @@ export const useSnapshotStore = defineStore('scenarioEditorSnapshot', () => {
   }
   // 여러 메모를 차례로 지운다(서버에 묶어 지우는 API 는 없다 — 하나씩, 본 글을 견줘서).
   // 이미 없는 것은 지운 것으로 세고, 그 사이 바뀐 것은 지우지 않고 지금 값으로 남긴다(changed). 그 밖의 실패에서는 멈춘다(error) — 끊긴 연결로 남은 것을 다 기다리지 않게.
+  // older = 지웠는데 같은 스냅샷의 옛 메모가 남아 줄이 그 메모로 바뀐 수(removed 에 든다).
   async function removeMemos(targets, onProgress = null) {
     let removed = 0
+    let older = 0
     const changed = []
     for (let k = 0; k < targets.length; k++) {
       const m = targets[k]
       const r = await removeMemoAt(m)
-      if (r.ok || r.gone || (r.conflict && !r.current)) removed++
+      if (r.ok || r.gone || (r.conflict && !r.current)) { removed++; if (r.older) older++ }
       else if (r.conflict) changed.push({ eqpId: m.eqpId, fileName: m.fileName })
-      else return { removed, changed, error: r.error }
+      else return { removed, older, changed, error: r.error }
       if (onProgress) onProgress(k + 1, targets.length)
     }
-    return { removed, changed, error: '' }
+    return { removed, older, changed, error: '' }
   }
 
   // 메모 목록에서 고른 메모의 스냅샷으로 간다 — 설비·날짜를 바꾸고 거르기를 '전체' 로 돌려 목록을 한 번 받아 그 줄을 고른다.
