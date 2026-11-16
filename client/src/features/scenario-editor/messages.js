@@ -43,6 +43,13 @@ export const MESSAGES = {
   SEW_ERR_HISTORY_DOWN: '이력 서버에 연결하지 못했습니다.',
   SEW_ERR_HISTORY_TIMEOUT: '이력 서버가 응답하지 않습니다. 잠시 뒤 다시 해 보세요.',
   SEW_ERR_HISTORY_UNREADABLE: '이력 서버의 응답을 읽지 못했습니다.',
+  // Vision·OCR 시험(P4 설계 §7) — Vision·OCR 이 같은 code 를 쓴다. 판정 서버의 실패 원인은 상태로 알 수 없어 문구가 셋을 함께 적는다
+  SEW_ERR_VISION_UNSET: '판정 시험 주소가 설정되지 않았습니다.',
+  SEW_ERR_VISION_DOWN: '중계 서버에 연결하지 못했습니다.',
+  SEW_ERR_VISION_NO_ANSWER: '판정 서버가 10초 안에 답하지 않았습니다. 판정 서버가 없거나, 오류가 났거나, 늦습니다.',
+  SEW_ERR_VISION_TIMEOUT: '응답 시간이 초과됐습니다.',
+  SEW_ERR_VISION_FAILED: '판정 시험이 실패했습니다.',
+  SEW_ERR_VISION_CANCELLED: '판정 시험을 끊었습니다.',
 
   SEW_NOTE_CONDITION_UNKNOWN: '해석할 수 없는 조건 종류입니다(Variable 등). 원래 값을 그대로 둡니다.',
   SEW_NOTE_ACTION_INVALID: '알 수 없는 동작 번호입니다. 에이전트가 이 시나리오를 거부할 수 있습니다.',
