@@ -156,9 +156,16 @@ describe('packDownload — 한 장은 PNG, 여러 장은 ZIP', () => {
     expect(unzip(await joinParts([one.blob])).map((e) => e.name)).toEqual(['E1_b.png'])
   })
 
-  it('좌표 포함으로 받은 ZIP 은 이름에 xy 가 든다', async () => {
-    const out = await packDownload({ eqpId: 'E1', date: '2026-11-16', requested: 2, files, withCircle: true, now: NOW })
-    expect(out.name).toBe('E1_2026-11-16_snapshots_xy_2.zip')
+  it('원을 그린 장이 든 ZIP 은 이름에 xy 가 든다 — 좌표 포함으로 받았어도 원을 그린 장이 없으면(태그뿐) 그림만 받은 것과 같은 이름이다', async () => {
+    const circled = [{ ...files[0], circle: true }, files[1]]
+    expect((await packDownload({ eqpId: 'E1', date: '2026-11-16', requested: 2, files: circled, now: NOW })).name).toBe('E1_2026-11-16_snapshots_xy_2.zip')
+    expect((await packDownload({ eqpId: 'E1', date: '2026-11-16', requested: 2, files, now: NOW })).name).toBe('E1_2026-11-16_snapshots_2.zip')
+  })
+  it('runDownload 는 원을 그린 장에 circle 표시를 남긴다', async () => {
+    const one = { fileName: '1000_[10][20].png', ms: 1000, time: '09:00:00', kind: 'click', tag: null, x: 10, y: 20, txn: null }
+    const run = (withCircle) => runDownload({ eqpId: 'E1', date: '2026-11-16', items: [one], withCircle, fetchBlob: async () => blobOf('raw'), drawCircle: async () => blobOf('c'), reasonOf: async () => '' })
+    expect((await run(true)).files[0].circle).toBe(true)
+    expect((await run(false)).files[0].circle).toBe(false)
   })
 
   it('받은 것이 없으면 null', async () => {

@@ -40,12 +40,12 @@ export function uniqueNames(names) {
   })
 }
 
-// circle = "좌표 포함" 으로 받은 묶음
+// circle = 원을 그린 장이 든 묶음
 export const zipName = (eqpId, date, count, { circle = false } = {}) => `${safe(eqpId)}_${date}_snapshots_${circle ? 'xy_' : ''}${count}.zip`
 
 // 고른 순서대로 한 장씩 받는다. 시작할 때 받은 설비·날짜·줄로 끝까지 간다(DC-085 — 부르는 쪽이 그 사이 바뀐 화면 상태를 넘기지 않는다).
 // fetchBlob(fileName, signal) → Blob, drawCircle(blob, x, y) → Blob, reasonOf(err) → 화면에 보일 이유, onProgress(끝난 수, 전체)
-// 결과: { files: [{ name, blob }], failed: [{ item, reason }], canceled }
+// 결과: { files: [{ name, blob, circle }], failed: [{ item, reason }], canceled } — circle = 원을 그린 장(이름이 _xy)
 export async function runDownload({ eqpId, date, items, withCircle, fetchBlob, drawCircle, reasonOf, signal = null, onProgress = null }) {
   // 원을 그릴 장만 _xy — 원이 없는 장(태그·x ≥ 9000)은 "그림만" 과 같은 바이트라 같은 이름이다
   const names = uniqueNames(items.map((i) => downloadName(eqpId, date, i, { circle: !!withCircle && wantsCircle(i) })))
@@ -56,11 +56,12 @@ export async function runDownload({ eqpId, date, items, withCircle, fetchBlob, d
     const item = items[k]
     try {
       let blob = await fetchBlob(item.fileName, signal)
-      if (withCircle && wantsCircle(item)) {
+      const circle = !!withCircle && wantsCircle(item)
+      if (circle) {
         // 좌표 포함을 골랐는데 원 없는 그림을 섞지 않는다 — 못 그리면 그 장은 못 받은 것
         try { blob = await drawCircle(blob, item.x, item.y) } catch (cause) { throw Object.assign(new Error('circle failed'), { code: 'CIRCLE_FAILED', cause }) }
       }
-      files.push({ name: names[k], blob })
+      files.push({ name: names[k], blob, circle })
     } catch (e) {
       if (signal?.aborted) return { files, failed, canceled: true } // 취소로 끊긴 것은 못 받은 것이 아니다
       failed.push({ item, reason: await reasonOf(e) })
@@ -71,7 +72,8 @@ export async function runDownload({ eqpId, date, items, withCircle, fetchBlob, d
 }
 
 // 고른 것이 하나면 그 PNG 그대로, 둘 이상이면(받은 것이 하나뿐이어도) ZIP 하나. 받은 것이 없으면 null.
-export async function packDownload({ eqpId, date, requested, files, withCircle = false, now = new Date() }) {
+// ZIP 이름의 xy 는 파일과 같은 규칙이다 — 원을 그린 장이 하나라도 들었을 때만.
+export async function packDownload({ eqpId, date, requested, files, now = new Date() }) {
   if (!files.length) return null
   if (requested === 1) return { name: files[0].name, blob: files[0].blob }
   const entries = []
@@ -79,7 +81,7 @@ export async function packDownload({ eqpId, date, requested, files, withCircle =
     const bytes = new Uint8Array(await f.blob.arrayBuffer()) // CRC 만 계산하고 놓는다 — 그림은 Blob 으로 든다
     entries.push({ name: f.name, blob: f.blob, crc: crc32(bytes), size: bytes.length })
   }
-  return { name: zipName(eqpId, date, files.length, { circle: !!withCircle }), blob: new Blob(zipParts(entries, now), { type: 'application/zip' }) }
+  return { name: zipName(eqpId, date, files.length, { circle: files.some((f) => f.circle) }), blob: new Blob(zipParts(entries, now), { type: 'application/zip' }) }
 }
 
 // 그림에 클릭 자리 원을 그린 새 PNG. 브라우저 캔버스를 쓴다(E2E 가 원 자리의 색을 본다).
