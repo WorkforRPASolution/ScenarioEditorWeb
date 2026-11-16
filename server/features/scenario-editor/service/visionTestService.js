@@ -6,6 +6,8 @@
 // - 자리: 판정 서버는 실제 설비 복구가 쓰는 서버다. 한꺼번에 도는 시험을 묶고(Vision 은 설정, OCR 은 1 — 판정 서버가 한 번에 하나씩 돈다),
 //   사용자 한 명은 한 번에 하나. 넘으면 기다리게 하지 않고 429 — 줄을 세우면 줄 선 시험이 판정 서버의 10초를 물려받는다. 자동 재시도 없음.
 //   자리는 이 프로세스 안의 셈이다(서버를 여러 개 띄우면 프로세스마다 따로).
+//   브라우저가 끊어도 라우터는 호출을 끊지 않는다 — InterfaceServer 가 취소를 판정 서버로 넘기지 않아, 끊고 자리를 비우면 버려진 요청이 쌓인다.
+//   (options.signal 은 그대로 클라이언트에 넘긴다 — 서버가 내려갈 때처럼 일부러 끊을 때 쓴다.)
 // - 기록: 판정 서버에 간 시험마다 한 줄. 그림·OCR 값·읽은 글은 남기지 않는다. 주소·gRPC details 는 클라이언트의 로그 줄에만 있다.
 const { seError } = require('../errors')
 const { MAX_REQUEST_BYTES, parseVisionMeta, parseOcrMeta, buildVisionRequest, buildOcrRequest, visionResults, ocrResult, aboutText } = require('../domain/visionTest')

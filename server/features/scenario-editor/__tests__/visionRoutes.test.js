@@ -1,4 +1,4 @@
-// POST /vision-test·/ocr-test (P4 설계 §5.2·§6) — 등록된 사용자면 시험한다(WRITE·읽기 전용 서버를 보지 않는다). 브라우저가 끊으면 판정 호출을 취소한다.
+// POST /vision-test·/ocr-test (P4 설계 §5.2·§6) — 등록된 사용자면 시험한다(WRITE·읽기 전용 서버를 보지 않는다). 브라우저가 끊어도 판정 호출은 끝까지 간다.
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
@@ -51,8 +51,6 @@ describe('POST /vision-test', () => {
     expect(calls[0].input.source.equals(png('src'))).toBe(true)
     expect(calls[0].input.train.equals(png('trn'))).toBe(true)
     expect(calls[0].input.meta).toEqual({ accept: 0.9, about: { scenario: 'S1' } })
-    expect(calls[0].options.signal).toBeInstanceOf(AbortSignal)
-    expect(calls[0].options.signal.aborted).toBe(false)
   })
   it('WRITE 권한이 없는 사용자도, 쓰기를 받지 않는 서버(seWriteDisabled)에서도 된다 — 시험은 쓰지 않는다', async () => {
     const files = [['source', png('s')], ['train', png('t')]]
@@ -87,23 +85,23 @@ describe('POST /vision-test', () => {
     expect([res.status, (await res.json()).code]).toEqual([400, 'BAD_REQUEST'])
     expect(calls).toEqual([])
   })
-  it('브라우저가 응답을 받기 전에 끊으면 서비스의 signal 이 끊긴다', async () => {
+  // InterfaceServer 는 웹이 끊은 호출을 판정 서버까지 취소하지 않는다(2026-11-16 실측 — 판정 서버는 그 요청을 끝까지 처리한다).
+  // 웹이 호출을 끊고 자리를 비우면 버려진 요청이 판정 서버에 쌓인다 — 그래서 끊지 않고 답이 올 때까지 자리를 쥔다.
+  it('브라우저가 응답을 받기 전에 끊어도 판정 호출을 끊지 않는다 — 서비스는 끝까지 돌고 서버는 살아 있다', async () => {
     let arrived
     const onArrive = new Promise((resolve) => { arrived = resolve })
-    let signal
-    fake.visionTest.vision = (user, input, options) => new Promise((resolve, reject) => {
-      signal = options.signal
-      options.signal.addEventListener('abort', () => reject(seError(499, 'VISION_CANCELLED', '판정 시험을 끊었습니다')))
-      arrived()
-    })
+    let finish
+    let options
+    fake.visionTest.vision = (user, input, opts) => new Promise((resolve) => { options = opts; finish = resolve; arrived() })
     const ac = new AbortController()
     const pending = post('/vision-test', { accept: 1 }, [['source', png('s')], ['train', png('t')]], { signal: ac.signal }).catch((e) => e.name)
     await onArrive
-    expect(signal.aborted).toBe(false)
     ac.abort()
     expect(await pending).toBe('AbortError')
-    await expect.poll(() => signal.aborted).toBe(true)
-    // 서버는 살아 있다
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(options === undefined || options.signal === undefined || options.signal === null).toBe(true)
+    finish({ results: [], ms: 1, bytes: 1 }) // 받을 사람이 없는 답 — 오류 없이 버린다
+    await new Promise((resolve) => setTimeout(resolve, 50))
     expect((await fetch(`${base}/me`)).status).toBe(200)
   })
 })
@@ -116,7 +114,6 @@ describe('POST /ocr-test', () => {
     expect(calls[0].kind).toBe('ocr')
     expect(calls[0].input.source.equals(png('ocr'))).toBe(true)
     expect(calls[0].input.meta).toEqual({ op: 3, text: 'READY', multi: { count: 2, op: 1 } })
-    expect(calls[0].options.signal).toBeInstanceOf(AbortSignal)
   })
   it('train 을 함께 보내면 400', async () => {
     expect((await post('/ocr-test', { op: 1, text: 'A' }, [['source', png('s')], ['train', png('t')]])).status).toBe(400)

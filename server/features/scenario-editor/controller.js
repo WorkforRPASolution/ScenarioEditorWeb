@@ -273,27 +273,25 @@ async function snapshotImage(req, res) {
   res.send(png)
 }
 
-// Vision·OCR 시험(P4). 브라우저가 응답을 받기 전에 끊으면(탭을 닫음·다른 스텝으로 감) 판정 호출을 취소해 자리를 비운다.
-// 'close' 는 응답을 다 보낸 뒤에도 온다 — 다 보내기 전의 것만 끊김이다.
-function abortOnClose(res) {
-  const ac = new AbortController()
-  res.on('close', () => { if (!res.writableEnded) ac.abort() })
-  return ac.signal
-}
+// Vision·OCR 시험(P4). 브라우저가 응답을 받기 전에 끊어도(탭을 닫음·다른 스텝으로 감) 판정 호출은 끊지 않는다:
+// InterfaceServer 는 끊긴 호출을 판정 서버까지 취소하지 않는다(2026-11-16 실측 — 판정 서버는 그 요청을 끝까지 처리한다).
+// 여기서 끊고 자리를 비우면 버려진 요청이 판정 서버(실제 설비 복구가 쓴다)에 쌓인다 — 답이 올 때까지(길어야 deadline 12초) 자리를 쥔다.
+// 받을 사람이 없으면 답도 오류도 쓰지 않는다.
 async function runTest(res, run) {
-  const signal = abortOnClose(res)
+  let out
   try {
-    ok(res, await run({ signal }))
+    out = await run()
   } catch (e) {
-    if (signal.aborted && e && e.code === 'VISION_CANCELLED') return // 받을 사람이 없다 — 오류로 남기지 않는다
+    if (res.destroyed) return
     throw e
   }
+  if (!res.destroyed) ok(res, out)
 }
 async function visionTest(req, res) {
-  await runTest(res, (options) => getDeps().visionTest.vision(req.seUser, { source: req.seTest.source, train: req.seTest.train, meta: req.seMeta }, options))
+  await runTest(res, () => getDeps().visionTest.vision(req.seUser, { source: req.seTest.source, train: req.seTest.train, meta: req.seMeta }))
 }
 async function ocrTest(req, res) {
-  await runTest(res, (options) => getDeps().visionTest.ocr(req.seUser, { source: req.seTest.source, meta: req.seMeta }, options))
+  await runTest(res, () => getDeps().visionTest.ocr(req.seUser, { source: req.seTest.source, meta: req.seMeta }))
 }
 
 module.exports = { visionTest, ocrTest, history, saveMemo, removeMemo, memoList, requireMemoWrite, equipment, snapshotPresence, snapshotDays, snapshotList, snapshotImage, links, reviewScenario, savePerformance, sameName, searchUsers, nameRule, setEnabled, removeScenario, deploy, deployVerify, deployFinish, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, counts, versions, open, dataCheck, image }
