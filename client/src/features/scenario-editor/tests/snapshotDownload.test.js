@@ -44,9 +44,9 @@ describe('파일 이름', () => {
     expect(zipName('A/B', '2026-11-16', 3)).toBe('A_B_2026-11-16_snapshots_3.zip')
   })
 
-  it('원을 그린 그림은 이름 끝에 _xy, 좌표 포함 ZIP 은 snapshots_xy — 그림만 받은 것과 이름이 겹치지 않는다(사내 요청)', () => {
+  it('원을 그린 그림은 이름 끝에 클릭 좌표(_x412_y288), 좌표 포함 ZIP 은 snapshots_xy — 그림만 받은 것과 이름이 겹치지 않는다(사내 요청)', () => {
     const c = click(1794790382004, '09:13:02', 412, 288)
-    expect(downloadName('E1', '2026-11-16', c, { circle: true })).toBe('E1_2026-11-16_09-13-02-004_xy.png')
+    expect(downloadName('E1', '2026-11-16', c, { circle: true })).toBe('E1_2026-11-16_09-13-02-004_x412_y288.png')
     expect(downloadName('E1', '2026-11-16', c, { circle: false })).toBe('E1_2026-11-16_09-13-02-004.png')
     expect(zipName('E1', '2026-11-16', 3, { circle: true })).toBe('E1_2026-11-16_snapshots_xy_3.zip')
     expect(zipName('E1', '2026-11-16', 3, { circle: false })).toBe('E1_2026-11-16_snapshots_3.zip')
@@ -86,8 +86,8 @@ describe('runDownload — 한 장씩 차례로', () => {
     expect(await Promise.all(out.files.map((f) => textOf(f.blob)))).toEqual([
       `circle(10,20):raw:${ITEMS[0].fileName}`, `raw:${ITEMS[1].fileName}`, `raw:${ITEMS[2].fileName}`, `circle(30,40):raw:${ITEMS[3].fileName}`
     ])
-    // 원을 그린 장만 _xy — 원이 없는 장(태그·x ≥ 9000)은 그림만 받은 것과 같은 바이트이고 같은 이름이다
-    expect(out.files.map((f) => f.name)).toEqual(['E1_2026-11-16_09-00-00-000_xy.png', 'E1_2026-11-16_09-00-01-000.png', 'E1_2026-11-16_09-00-02-000.png', 'E1_2026-11-16_09-00-02-000_xy.png'])
+    // 원을 그린 장만 좌표가 붙는다 — 원이 없는 장(태그·x ≥ 9000)은 그림만 받은 것과 같은 바이트이고 같은 이름이다
+    expect(out.files.map((f) => f.name)).toEqual(['E1_2026-11-16_09-00-00-000_x10_y20.png', 'E1_2026-11-16_09-00-01-000.png', 'E1_2026-11-16_09-00-02-000.png', 'E1_2026-11-16_09-00-02-000_x30_y40.png'])
   })
 
   it('받지 못한 장은 건너뛰고 이유와 함께 모은다 — 나머지는 받는다(DC-037)', async () => {

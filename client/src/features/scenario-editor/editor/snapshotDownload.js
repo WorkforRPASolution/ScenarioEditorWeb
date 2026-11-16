@@ -19,10 +19,11 @@ export function wantsCircle(item) {
 const safe = (s) => String(s).replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_')
 
 // `{설비ID}_{yyyy-MM-dd_HH-mm-ss-fff}.png` — 날짜·시각은 목록에 보이는 것(설비 보정 포함), fff 는 파일 ms 의 끝 세 자리(보정은 분 단위라 같다)
-// circle = 클릭 자리 원을 그린 그림 — 이름 끝에 `_xy` 를 붙여 "그림만" 으로 받은 것과 가른다(사내 요청 2026-11-16, 사내 데스크톱은 두 이름이 같다)
+// circle = 클릭 자리 원을 그린 그림 — 이름 끝에 그 클릭 좌표 `_x{x}_y{y}` 를 붙여 "그림만" 으로 받은 것과 가른다(사내 요청 2026-11-16, 사내 데스크톱은 두 이름이 같다).
+// 그림만 받은 것에는 붙이지 않는다(붙이면 두 이름이 다시 같아진다).
 export function downloadName(eqpId, date, item, { circle = false } = {}) {
   const fff = String(((item.ms % 1000) + 1000) % 1000).padStart(3, '0')
-  return `${safe(eqpId)}_${date}_${String(item.time).replace(/:/g, '-')}-${fff}${circle ? '_xy' : ''}.png`
+  return `${safe(eqpId)}_${date}_${String(item.time).replace(/:/g, '-')}-${fff}${circle ? `_x${item.x}_y${item.y}` : ''}.png`
 }
 
 // 같은 이름이 또 나오면 확장자 앞에 _2, _3 … (이미 있는 이름과도 겹치지 않게)
@@ -45,9 +46,9 @@ export const zipName = (eqpId, date, count, { circle = false } = {}) => `${safe(
 
 // 고른 순서대로 한 장씩 받는다. 시작할 때 받은 설비·날짜·줄로 끝까지 간다(DC-085 — 부르는 쪽이 그 사이 바뀐 화면 상태를 넘기지 않는다).
 // fetchBlob(fileName, signal) → Blob, drawCircle(blob, x, y) → Blob, reasonOf(err) → 화면에 보일 이유, onProgress(끝난 수, 전체)
-// 결과: { files: [{ name, blob, circle }], failed: [{ item, reason }], canceled } — circle = 원을 그린 장(이름이 _xy)
+// 결과: { files: [{ name, blob, circle }], failed: [{ item, reason }], canceled } — circle = 원을 그린 장(이름에 클릭 좌표)
 export async function runDownload({ eqpId, date, items, withCircle, fetchBlob, drawCircle, reasonOf, signal = null, onProgress = null }) {
-  // 원을 그릴 장만 _xy — 원이 없는 장(태그·x ≥ 9000)은 "그림만" 과 같은 바이트라 같은 이름이다
+  // 원을 그릴 장만 좌표가 붙는다 — 원이 없는 장(태그·x ≥ 9000)은 "그림만" 과 같은 바이트라 같은 이름이다
   const names = uniqueNames(items.map((i) => downloadName(eqpId, date, i, { circle: !!withCircle && wantsCircle(i) })))
   const files = []
   const failed = []

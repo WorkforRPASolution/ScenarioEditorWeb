@@ -648,13 +648,16 @@ test('⑥ 여러 줄 고르기(Ctrl·Shift) → 좌표 포함으로 ZIP 받기(�
   await dl.click()
   await expect(page.getByTestId('se-snap-download-plain')).toBeVisible()
   const zip = await save(() => page.getByTestId('se-snap-download-xy').click())
-  // 좌표 포함으로 받은 것은 이름에 xy 가 든다 — 묶음은 snapshots_xy, 원을 그린 장은 _xy(그림만 받은 것과 겹치지 않게)
+  // 좌표 포함으로 받은 것: 묶음은 snapshots_xy, 원을 그린 장은 이름 끝에 그 클릭 좌표(_x80_y260) — 그림만 받은 것과 겹치지 않는다
   expect(zip.name).toBe(`SEWT_PHOTO_A01_${date}_snapshots_xy_4.zip`)
   const entries = unzip(await joinParts([new Uint8Array(zip.bytes)]))
+  // 목록 줄의 파일 이름 `{ms}_[x][y].png` 에서 클릭 좌표를 읽는다
+  const xyOf = async (row) => { const [, x, y] = /_\[(\d+)\]\[(\d+)\]\.png$/.exec(await row.getAttribute('data-name')); return `_x${x}_y${y}` }
+  expect(await xyOf(snapRow(page, '14:00:00'))).toBe('_x80_y260')
   expect(entries.map((e) => e.name)).toEqual([
-    // 15:30:00 은 같은 ms 의 클릭 + 태그다 — 원을 그린 클릭만 _xy 라 이름이 갈린다(번호 _2 가 붙지 않는다)
-    `SEWT_PHOTO_A01_${date}_14-00-00-000_xy.png`, `SEWT_PHOTO_A01_${date}_15-30-00-000_xy.png`,
-    `SEWT_PHOTO_A01_${date}_15-30-00-000.png`, `SEWT_PHOTO_A01_${date}_17-20-40-600_xy.png`
+    // 15:30:00 은 같은 ms 의 클릭 + 태그다 — 원을 그린 클릭만 좌표가 붙어 이름이 갈린다(번호 _2 가 붙지 않는다)
+    `SEWT_PHOTO_A01_${date}_14-00-00-000_x80_y260.png`, `SEWT_PHOTO_A01_${date}_15-30-00-000${await xyOf(snapRow(page, '15:30:00').nth(0))}.png`,
+    `SEWT_PHOTO_A01_${date}_15-30-00-000.png`, `SEWT_PHOTO_A01_${date}_17-20-40-600${await xyOf(snapRow(page, '17:20:40'))}.png`
   ])
   // 클릭 (80, 260) 의 원: 반지름 6 자리는 빨강이고 그림 크기는 그대로다. 받기 전 그림의 그 자리는 빨강이 아니다
   const circled = PNG.sync.read(Buffer.from(entries[0].data))
