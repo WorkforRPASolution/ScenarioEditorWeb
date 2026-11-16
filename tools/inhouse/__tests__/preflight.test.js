@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
-const { checkEnv, checkName, remoteChecks, interfaceCheck, checkSnapshotEnv, snapshotConnectCheck, snapshotRemoteChecks, parseArgs, apiBase, run } = require('../preflight')
+const { checkEnv, checkName, remoteChecks, interfaceCheck, checkSnapshotEnv, snapshotConnectCheck, snapshotRemoteChecks, checkVisionEnv, visionConnectCheck, parseArgs, apiBase, run } = require('../preflight')
 
 // 사내 쓰기 시험 프로필(server/.env.inhouse.example 을 채운 꼴) — 멈춤도 경고도 없다
 const GOOD = {
@@ -381,6 +381,69 @@ describe('snapshotRemoteChecks — 떠 있는 서버를 거쳐 실제로 조회�
   })
 })
 
+const VISION = { EARS_INTERFACE_GRPC_ADDR: 'prod-is:9300', EARS_INTERFACE_GRPC_TIMEOUT_MS: '12000', SE_VISION_TEST_CONCURRENCY: '2' }
+describe('checkVisionEnv — Vision·OCR 시험 설정(구역 [6], 모두 경고 — 시험만 꺼지거나 기본값으로 돈다)', () => {
+  it('셋 다 맞으면 통과', () => {
+    expect(checkVisionEnv({ ...GOOD, ...VISION })).toEqual([])
+    expect(checkVisionEnv({ ...GOOD, ...VISION, EARS_INTERFACE_GRPC_ADDR: ' 10.20.30.40:9300 ' })).toEqual([])
+    expect(checkVisionEnv({ ...GOOD, ...VISION, EARS_INTERFACE_GRPC_ADDR: '[fd00::12]:9300' })).toEqual([])
+  })
+  it('주소가 비면 VISION_UNSET 하나만 — 시험만 꺼진다', () => {
+    for (const v of [undefined, '', '   ']) {
+      const out = checkVisionEnv({ ...GOOD, ...VISION, EARS_INTERFACE_GRPC_ADDR: v, EARS_INTERFACE_GRPC_TIMEOUT_MS: 'abc' })
+      expect(codes(out)).toEqual(['warn:VISION_UNSET'])
+      expect(out[0].message).toContain('EARS_INTERFACE_GRPC_ADDR')
+    }
+  })
+  it('주소 꼴이 `호스트:포트` 가 아니면 VISION_ADDR_FORMAT — 값을 되찍지 않는다', () => {
+    for (const bad of ['http://prod-is:9300', 'prod-is', 'prod-is:', 'prod-is:0', 'prod-is:70000', 'prod-is:9300/x', 'user:pw@prod-is:9300', 'a b:9300']) {
+      const out = checkVisionEnv({ ...GOOD, ...VISION, EARS_INTERFACE_GRPC_ADDR: bad })
+      expect(codes(out), bad).toEqual(['warn:VISION_ADDR_FORMAT'])
+      expect(out[0].message).not.toContain('prod-is')
+      expect(out[0].message).not.toContain('pw')
+    }
+  })
+  it('저장 주소(EARS_INTERFACE_URL)와 호스트·포트가 같으면 VISION_ADDR_SAME_AS_HTTP — gRPC 포트는 따로다', () => {
+    const out = checkVisionEnv({ ...GOOD, ...VISION, EARS_INTERFACE_URL: 'http://prod-is:8080', EARS_INTERFACE_GRPC_ADDR: 'PROD-IS:8080' })
+    expect(codes(out)).toEqual(['warn:VISION_ADDR_SAME_AS_HTTP'])
+    expect(checkVisionEnv({ ...GOOD, ...VISION, EARS_INTERFACE_URL: 'http://prod-is:8080', EARS_INTERFACE_GRPC_ADDR: 'prod-is:9300' })).toEqual([])
+  })
+  it('시간 제한이 양수가 아니면 VISION_TIMEOUT_FORMAT(서버는 12초로 돈다), 10초 이하이면 VISION_TIMEOUT_SHORT', () => {
+    for (const bad of ['abc', '0', '-5']) expect(codes(checkVisionEnv({ ...GOOD, ...VISION, EARS_INTERFACE_GRPC_TIMEOUT_MS: bad })), bad).toEqual(['warn:VISION_TIMEOUT_FORMAT'])
+    for (const short of ['10000', '3000']) expect(codes(checkVisionEnv({ ...GOOD, ...VISION, EARS_INTERFACE_GRPC_TIMEOUT_MS: short })), short).toEqual(['warn:VISION_TIMEOUT_SHORT'])
+    expect(checkVisionEnv({ ...GOOD, ...VISION, EARS_INTERFACE_GRPC_TIMEOUT_MS: '' })).toEqual([]) // 비면 기본값
+    expect(checkVisionEnv({ ...GOOD, ...VISION, EARS_INTERFACE_GRPC_TIMEOUT_MS: '15000' })).toEqual([])
+  })
+  it('동시 수가 1~16 의 정수가 아니면 VISION_CONCURRENCY_FORMAT(서버는 2 로 돈다)', () => {
+    for (const bad of ['0', '17', 'abc', '2.5']) expect(codes(checkVisionEnv({ ...GOOD, ...VISION, SE_VISION_TEST_CONCURRENCY: bad })), bad).toEqual(['warn:VISION_CONCURRENCY_FORMAT'])
+    expect(checkVisionEnv({ ...GOOD, ...VISION, SE_VISION_TEST_CONCURRENCY: undefined })).toEqual([])
+    expect(checkVisionEnv({ ...GOOD, ...VISION, SE_VISION_TEST_CONCURRENCY: '16' })).toEqual([])
+  })
+})
+
+describe('visionConnectCheck — 이 PC 에서 판정 시험 창구(gRPC)에 연결되는지(TCP 연결만)', () => {
+  it('연결되면 통과 — 주소의 호스트·포트로, IPv6 는 대괄호 없이', async () => {
+    const calls = []
+    const connect = async (host, port, ms) => { calls.push([host, port, ms > 0]); return null }
+    expect(await visionConnectCheck({ env: { ...GOOD, ...VISION }, connect })).toEqual([])
+    await visionConnectCheck({ env: { ...GOOD, ...VISION, EARS_INTERFACE_GRPC_ADDR: '[fd00::12]:9301' }, connect })
+    expect(calls).toEqual([['prod-is', 9300, true], ['fd00::12', 9301, true]])
+  })
+  it('연결하지 못하면 VISION_UNREACHABLE(경고) — 까닭과 화면에 나올 문구를 싣는다', async () => {
+    const out = await visionConnectCheck({ env: { ...GOOD, ...VISION }, connect: async () => 'ECONNREFUSED' })
+    expect(codes(out)).toEqual(['warn:VISION_UNREACHABLE'])
+    expect(out[0].message).toContain('ECONNREFUSED')
+    expect(out[0].message).toContain('중계 서버에 연결하지 못했습니다')
+  })
+  it('주소가 비었거나 꼴이 틀리면 연결을 시도하지 않는다', async () => {
+    let n = 0
+    const connect = async () => { n += 1; return null }
+    expect(await visionConnectCheck({ env: { ...GOOD }, connect })).toEqual([])
+    expect(await visionConnectCheck({ env: { ...GOOD, EARS_INTERFACE_GRPC_ADDR: 'http://x:1' }, connect })).toEqual([])
+    expect(n).toBe(0)
+  })
+})
+
 describe('명령 줄', () => {
   it('인자: --env(기본 server/.env)·--name·--process·--model, 모르는 인자는 던진다', () => {
     expect(parseArgs([])).toEqual({ env: 'server/.env' })
@@ -413,7 +476,7 @@ describe('명령 줄', () => {
     const lines = []
     const { fetch } = fakeFetch(Object.fromEntries([ME_OK, EQP, [DAYS, [503, { code: 'SNAPSHOT_DOWN' }]], HIST_NONE]))
     const connect = async (host) => (host === 'prod-is' ? null : 'ECONNREFUSED')
-    expect(await run({ argv: [], readEnv: () => ({ ...GOOD, ...SNAP }), fetch, connect, log: (l) => lines.push(l) })).toBe(0)
+    expect(await run({ argv: [], readEnv: () => ({ ...GOOD, ...SNAP, ...VISION }), fetch, connect, log: (l) => lines.push(l) })).toBe(0)
     const text = lines.join('\n')
     for (const code of ['CASSANDRA_UNREACHABLE', 'HISTORY_UNREACHABLE', 'SNAPSHOT_DOWN']) expect(text).toContain(`경고  ${code}`)
     expect(text).toContain('통과(경고 3)')
@@ -425,6 +488,17 @@ describe('명령 줄', () => {
     expect(await run({ argv: [], readEnv: () => ({ ...GOOD, ...SNAP, CASSANDRA_PASSWORD: '', HTTP_WEB_SERVER_URL: '' }), fetch: ok.fetch, connect: async () => null, log: (l) => lines.push(l) })).toBe(0)
     expect(lines.join('\n')).toContain('경고  CASSANDRA_CREDENTIALS_HALF')
     expect(lines.join('\n')).toContain('경고  HISTORY_UNSET')
+    // Vision·OCR 시험 설정도 함께 돈다 — 모두 경고(종료 코드 0). 판정 창구는 저장 주소와 포트가 달라 따로 연결해 본다
+    lines.length = 0
+    const dialed = []
+    const dial = async (host, port) => { dialed.push(`${host}:${port}`); return port === 9300 ? 'ECONNREFUSED' : null }
+    expect(await run({ argv: [], readEnv: () => ({ ...GOOD, ...VISION, SE_VISION_TEST_CONCURRENCY: '99' }), fetch: ok.fetch, connect: dial, log: (l) => lines.push(l) })).toBe(0)
+    expect(dialed).toEqual(expect.arrayContaining(['prod-is:8080', 'prod-is:9300']))
+    expect(lines.join('\n')).toContain('경고  VISION_CONCURRENCY_FORMAT')
+    expect(lines.join('\n')).toContain('경고  VISION_UNREACHABLE')
+    lines.length = 0
+    expect(await run({ argv: [], readEnv: () => GOOD, fetch: ok.fetch, connect: async () => null, log: (l) => lines.push(l) })).toBe(0)
+    expect(lines.join('\n')).toContain('경고  VISION_UNSET')
     // 서버가 꺼져 있으면 SERVER_DOWN 하나만 — 스냅샷 조회는 묻지도 않는다
     const down = fakeFetch({ '/me': new TypeError('fetch failed'), '/equipment': new TypeError('fetch failed') })
     expect(await run({ argv: [], readEnv: () => ({ ...GOOD, ...SNAP }), fetch: down.fetch, connect: async () => null, log: (l) => lines.push(l) })).toBe(0)

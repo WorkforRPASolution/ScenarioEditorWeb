@@ -177,6 +177,56 @@ async function snapshotConnectCheck({ env, connect = tcpConnect }) {
 }
 
 // 시험 시나리오 이름. 다른 시나리오에 쓰지 않게 SEW_TEST_yyyyMMdd(_n) 만 받는다(계획 Global Constraints).
+// ── Vision·OCR 시험(구역 [6], P4) ──
+// 모두 경고다 — 주소가 비면 시험만 꺼지고, 나머지 값이 틀리면 서버가 기본값으로 돈다. 쓰기 시험을 막지 않는다.
+// 서버(clients/visionClient.js)가 받는 꼴과 맞춘다: `호스트:포트`(스킴·계정·경로 없음), IPv6 는 [주소]:포트. 문구에 설정 값을 되찍지 않는다.
+const GRPC_ADDR = /^(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9][A-Za-z0-9._-]*):(\d{1,5})$/
+const GRPC_DEFAULT_TIMEOUT_MS = 12000
+const GRPC_RELAY_WAIT_MS = 10000 // InterfaceServer 가 판정 서버를 기다리는 시간
+
+function visionTarget(env) {
+  const m = GRPC_ADDR.exec(text(env.EARS_INTERFACE_GRPC_ADDR))
+  if (!m || !validPort(Number(m[2]))) return null
+  return { host: m[1].replace(/^\[(.*)\]$/, '$1'), port: Number(m[2]) }
+}
+
+function checkVisionEnv(env) {
+  if (text(env.EARS_INTERFACE_GRPC_ADDR) === '') {
+    return [warn('VISION_UNSET', 'EARS_INTERFACE_GRPC_ADDR 가 비었다 — Vision·OCR 시험만 "판정 시험 주소가 설정되지 않았습니다" 로 나온다. 시험을 쓰지 않으면 그대로 둔다(쓰려면 데스크톱 편집기의 Vision 시험 패널에 보이는 서버 주소 <호스트>:<포트> 를 넣는다)')]
+  }
+  const out = []
+  const target = visionTarget(env)
+  if (!target) {
+    out.push(warn('VISION_ADDR_FORMAT', 'EARS_INTERFACE_GRPC_ADDR 은 <호스트>:<포트> 꼴이어야 한다 — http:// 같은 머리·계정·경로를 붙이지 않고, 포트는 1~65535. 이대로면 시험이 "중계 서버에 연결하지 못했습니다" 로 끝난다'))
+  } else {
+    const http = interfaceTarget(env)
+    if (http && http.host.toLowerCase() === target.host.toLowerCase() && http.port === target.port) {
+      out.push(warn('VISION_ADDR_SAME_AS_HTTP', 'EARS_INTERFACE_GRPC_ADDR 가 EARS_INTERFACE_URL 과 같은 호스트·포트다 — 저장(HTTP) 포트와 판정(gRPC) 포트는 다르다. 데스크톱 편집기의 Vision 시험 패널에 보이는 서버 주소의 포트를 넣는다'))
+    }
+  }
+  const rawTimeout = text(env.EARS_INTERFACE_GRPC_TIMEOUT_MS)
+  if (rawTimeout !== '') {
+    const ms = Number(rawTimeout)
+    if (!(Number.isFinite(ms) && ms > 0)) out.push(warn('VISION_TIMEOUT_FORMAT', `EARS_INTERFACE_GRPC_TIMEOUT_MS 가 양수가 아니다 — 서버는 말없이 ${GRPC_DEFAULT_TIMEOUT_MS} 으로 돈다. ms 숫자만 적는다`))
+    else if (ms <= GRPC_RELAY_WAIT_MS) out.push(warn('VISION_TIMEOUT_SHORT', `EARS_INTERFACE_GRPC_TIMEOUT_MS 가 ${GRPC_RELAY_WAIT_MS} 이하다 — InterfaceServer 는 판정 서버를 10초까지 기다린다. 그보다 짧으면 판정 서버가 늦을 때 까닭("판정 서버가 10초 안에 답하지 않았습니다") 대신 "응답 시간이 초과됐습니다" 만 나온다. ${GRPC_DEFAULT_TIMEOUT_MS} 을 권한다`))
+  }
+  const rawCount = text(env.SE_VISION_TEST_CONCURRENCY)
+  if (rawCount !== '' && !(/^\d+$/.test(rawCount) && Number(rawCount) >= 1 && Number(rawCount) <= 16)) {
+    out.push(warn('VISION_CONCURRENCY_FORMAT', 'SE_VISION_TEST_CONCURRENCY 가 1~16 의 정수가 아니다 — 서버는 말없이 2 로 돈다'))
+  }
+  return out
+}
+
+// 주소가 비었거나 꼴이 틀리면 묻지 않는다(checkVisionEnv 가 알린다).
+async function visionConnectCheck({ env, connect = tcpConnect }) {
+  const target = visionTarget(env)
+  if (!target) return []
+  const code = await connect(target.host, target.port, CONNECT_TIMEOUT_MS)
+  if (!code) return []
+  const why = UNREACHABLE_WHY[code] ?? '이 PC 에서 닿지 않는다'
+  return [warn('VISION_UNREACHABLE', `판정 시험 창구 ${target.host}:${target.port} 에 연결하지 못했다(${code}) — ${why}. 이대로면 Vision·OCR 시험이 "중계 서버에 연결하지 못했습니다" 로 끝난다. 데스크톱 편집기의 Vision 시험 패널에 보이는 서버 주소와 견준다`)]
+}
+
 function checkName({ name, process, model }) {
   if (name === undefined) return []
   if (!TEST_NAME.test(name)) return [stop('NAME_FORMAT', `--name ${name} — 시험 이름은 SEW_TEST_yyyyMMdd 또는 SEW_TEST_yyyyMMdd_2 꼴만 쓴다`)]
@@ -327,6 +377,7 @@ async function run({ argv, readEnv = readEnvFile, fetch = globalThis.fetch, conn
   const findings = [
     ...checkEnv(env), ...(await interfaceCheck({ env, connect })), ...checkName(args),
     ...checkSnapshotEnv(env), ...(await snapshotConnectCheck({ env, connect })),
+    ...checkVisionEnv(env), ...(await visionConnectCheck({ env, connect })),
     ...(await remoteChecks({ api, fetch, ...args }))
   ]
   if (!findings.some((f) => f.code === 'SERVER_DOWN')) findings.push(...(await snapshotRemoteChecks({ api, fetch, env })))
@@ -337,7 +388,7 @@ async function run({ argv, readEnv = readEnvFile, fetch = globalThis.fetch, conn
   return stops ? 1 : 0
 }
 
-module.exports = { checkEnv, checkName, remoteChecks, interfaceCheck, checkSnapshotEnv, snapshotConnectCheck, snapshotRemoteChecks, parseArgs, apiBase, run }
+module.exports = { checkEnv, checkName, remoteChecks, interfaceCheck, checkSnapshotEnv, snapshotConnectCheck, snapshotRemoteChecks, checkVisionEnv, visionConnectCheck, parseArgs, apiBase, run }
 
 if (require.main === module) {
   run({ argv: process.argv.slice(2) }).then((code) => { process.exitCode = code }, (err) => { console.error(err.message); process.exitCode = 1 })
