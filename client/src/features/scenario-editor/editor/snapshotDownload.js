@@ -19,9 +19,10 @@ export function wantsCircle(item) {
 const safe = (s) => String(s).replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_')
 
 // `{설비ID}_{yyyy-MM-dd_HH-mm-ss-fff}.png` — 날짜·시각은 목록에 보이는 것(설비 보정 포함), fff 는 파일 ms 의 끝 세 자리(보정은 분 단위라 같다)
-export function downloadName(eqpId, date, item) {
+// circle = 클릭 자리 원을 그린 그림 — 이름 끝에 `_xy` 를 붙여 "그림만" 으로 받은 것과 가른다(사내 요청 2026-11-16, 사내 데스크톱은 두 이름이 같다)
+export function downloadName(eqpId, date, item, { circle = false } = {}) {
   const fff = String(((item.ms % 1000) + 1000) % 1000).padStart(3, '0')
-  return `${safe(eqpId)}_${date}_${String(item.time).replace(/:/g, '-')}-${fff}.png`
+  return `${safe(eqpId)}_${date}_${String(item.time).replace(/:/g, '-')}-${fff}${circle ? '_xy' : ''}.png`
 }
 
 // 같은 이름이 또 나오면 확장자 앞에 _2, _3 … (이미 있는 이름과도 겹치지 않게)
@@ -39,13 +40,15 @@ export function uniqueNames(names) {
   })
 }
 
-export const zipName = (eqpId, date, count) => `${safe(eqpId)}_${date}_snapshots_${count}.zip`
+// circle = "좌표 포함" 으로 받은 묶음
+export const zipName = (eqpId, date, count, { circle = false } = {}) => `${safe(eqpId)}_${date}_snapshots_${circle ? 'xy_' : ''}${count}.zip`
 
 // 고른 순서대로 한 장씩 받는다. 시작할 때 받은 설비·날짜·줄로 끝까지 간다(DC-085 — 부르는 쪽이 그 사이 바뀐 화면 상태를 넘기지 않는다).
 // fetchBlob(fileName, signal) → Blob, drawCircle(blob, x, y) → Blob, reasonOf(err) → 화면에 보일 이유, onProgress(끝난 수, 전체)
 // 결과: { files: [{ name, blob }], failed: [{ item, reason }], canceled }
 export async function runDownload({ eqpId, date, items, withCircle, fetchBlob, drawCircle, reasonOf, signal = null, onProgress = null }) {
-  const names = uniqueNames(items.map((i) => downloadName(eqpId, date, i)))
+  // 원을 그릴 장만 _xy — 원이 없는 장(태그·x ≥ 9000)은 "그림만" 과 같은 바이트라 같은 이름이다
+  const names = uniqueNames(items.map((i) => downloadName(eqpId, date, i, { circle: !!withCircle && wantsCircle(i) })))
   const files = []
   const failed = []
   for (let k = 0; k < items.length; k++) {
@@ -68,7 +71,7 @@ export async function runDownload({ eqpId, date, items, withCircle, fetchBlob, d
 }
 
 // 고른 것이 하나면 그 PNG 그대로, 둘 이상이면(받은 것이 하나뿐이어도) ZIP 하나. 받은 것이 없으면 null.
-export async function packDownload({ eqpId, date, requested, files, now = new Date() }) {
+export async function packDownload({ eqpId, date, requested, files, withCircle = false, now = new Date() }) {
   if (!files.length) return null
   if (requested === 1) return { name: files[0].name, blob: files[0].blob }
   const entries = []
@@ -76,7 +79,7 @@ export async function packDownload({ eqpId, date, requested, files, now = new Da
     const bytes = new Uint8Array(await f.blob.arrayBuffer()) // CRC 만 계산하고 놓는다 — 그림은 Blob 으로 든다
     entries.push({ name: f.name, blob: f.blob, crc: crc32(bytes), size: bytes.length })
   }
-  return { name: zipName(eqpId, date, files.length), blob: new Blob(zipParts(entries, now), { type: 'application/zip' }) }
+  return { name: zipName(eqpId, date, files.length, { circle: !!withCircle }), blob: new Blob(zipParts(entries, now), { type: 'application/zip' }) }
 }
 
 // 그림에 클릭 자리 원을 그린 새 PNG. 브라우저 캔버스를 쓴다(E2E 가 원 자리의 색을 본다).

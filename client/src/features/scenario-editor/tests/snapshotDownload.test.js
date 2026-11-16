@@ -44,6 +44,14 @@ describe('파일 이름', () => {
     expect(zipName('A/B', '2026-11-16', 3)).toBe('A_B_2026-11-16_snapshots_3.zip')
   })
 
+  it('원을 그린 그림은 이름 끝에 _xy, 좌표 포함 ZIP 은 snapshots_xy — 그림만 받은 것과 이름이 겹치지 않는다(사내 요청)', () => {
+    const c = click(1794790382004, '09:13:02', 412, 288)
+    expect(downloadName('E1', '2026-11-16', c, { circle: true })).toBe('E1_2026-11-16_09-13-02-004_xy.png')
+    expect(downloadName('E1', '2026-11-16', c, { circle: false })).toBe('E1_2026-11-16_09-13-02-004.png')
+    expect(zipName('E1', '2026-11-16', 3, { circle: true })).toBe('E1_2026-11-16_snapshots_xy_3.zip')
+    expect(zipName('E1', '2026-11-16', 3, { circle: false })).toBe('E1_2026-11-16_snapshots_3.zip')
+  })
+
   it('같은 이름이 또 나오면 _2, _3 — 이미 있는 이름과도 겹치지 않는다', () => {
     expect(uniqueNames(['a.png', 'b.png', 'a.png', 'a.png'])).toEqual(['a.png', 'b.png', 'a_2.png', 'a_3.png'])
     expect(uniqueNames(['a.png', 'a_2.png', 'a.png'])).toEqual(['a.png', 'a_2.png', 'a_3.png'])
@@ -78,6 +86,8 @@ describe('runDownload — 한 장씩 차례로', () => {
     expect(await Promise.all(out.files.map((f) => textOf(f.blob)))).toEqual([
       `circle(10,20):raw:${ITEMS[0].fileName}`, `raw:${ITEMS[1].fileName}`, `raw:${ITEMS[2].fileName}`, `circle(30,40):raw:${ITEMS[3].fileName}`
     ])
+    // 원을 그린 장만 _xy — 원이 없는 장(태그·x ≥ 9000)은 그림만 받은 것과 같은 바이트이고 같은 이름이다
+    expect(out.files.map((f) => f.name)).toEqual(['E1_2026-11-16_09-00-00-000_xy.png', 'E1_2026-11-16_09-00-01-000.png', 'E1_2026-11-16_09-00-02-000.png', 'E1_2026-11-16_09-00-02-000_xy.png'])
   })
 
   it('받지 못한 장은 건너뛰고 이유와 함께 모은다 — 나머지는 받는다(DC-037)', async () => {
@@ -144,6 +154,11 @@ describe('packDownload — 한 장은 PNG, 여러 장은 ZIP', () => {
     const one = await packDownload({ eqpId: 'E1', date: '2026-11-16', requested: 3, files: files.slice(1), now: NOW })
     expect(one.name).toBe('E1_2026-11-16_snapshots_1.zip')
     expect(unzip(await joinParts([one.blob])).map((e) => e.name)).toEqual(['E1_b.png'])
+  })
+
+  it('좌표 포함으로 받은 ZIP 은 이름에 xy 가 든다', async () => {
+    const out = await packDownload({ eqpId: 'E1', date: '2026-11-16', requested: 2, files, withCircle: true, now: NOW })
+    expect(out.name).toBe('E1_2026-11-16_snapshots_xy_2.zip')
   })
 
   it('받은 것이 없으면 null', async () => {

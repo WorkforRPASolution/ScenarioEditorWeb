@@ -67,12 +67,12 @@ describe('snapshotDownloadStore', () => {
     await d.start(true)
     expect(api.snapshotImage.mock.calls.map((c) => c[1])).toEqual([name(0), name(2), name(3)])
     expect(saved()).toHaveLength(1)
-    expect(saved()[0].fileName).toBe('A_2026-11-11_snapshots_3.zip')
+    expect(saved()[0].fileName).toBe('A_2026-11-11_snapshots_xy_3.zip')
     const entries = unzip(await joinParts([saved()[0].blob]))
     expect(entries.map((e) => [e.name, new TextDecoder().decode(e.data)])).toEqual([
-      ['A_2026-11-11_09-00-00-000.png', `circle(10,20):A:${name(0)}`],
+      ['A_2026-11-11_09-00-00-000_xy.png', `circle(10,20):A:${name(0)}`],
       ['A_2026-11-11_09-00-02-002.png', `A:${name(2)}`], // x ≥ 9000 — 원 없음
-      ['A_2026-11-11_09-00-03-003.png', `circle(50,60):A:${name(3)}`]
+      ['A_2026-11-11_09-00-03-003_xy.png', `circle(50,60):A:${name(3)}`]
     ])
     expect(s.notice).toBe(t('SEW_SNAP_DL_DONE', { n: 3 }))
     expect(d.job.status).toBe('idle')

@@ -491,10 +491,11 @@ test('⑥ 여러 줄 고르기(Ctrl·Shift) → 좌표 포함으로 ZIP 받기(�
   await dl.click()
   await expect(page.getByTestId('se-snap-download-plain')).toBeVisible()
   const zip = await save(() => page.getByTestId('se-snap-download-xy').click())
-  expect(zip.name).toBe(`SEWT_PHOTO_A01_${date}_snapshots_4.zip`)
+  // 좌표 포함으로 받은 것은 이름에 xy 가 든다 — 묶음은 snapshots_xy, 원을 그린 장은 _xy(그림만 받은 것과 겹치지 않게)
+  expect(zip.name).toBe(`SEWT_PHOTO_A01_${date}_snapshots_xy_4.zip`)
   const entries = unzip(await joinParts([new Uint8Array(zip.bytes)]))
   expect(entries.map((e) => e.name)).toEqual([
-    `SEWT_PHOTO_A01_${date}_14-00-00-000.png`, `SEWT_PHOTO_A01_${date}_15-30-00-000.png`,
+    `SEWT_PHOTO_A01_${date}_14-00-00-000_xy.png`, `SEWT_PHOTO_A01_${date}_15-30-00-000.png`,
     `SEWT_PHOTO_A01_${date}_15-30-00-000_2.png`, `SEWT_PHOTO_A01_${date}_17-20-40-600.png`
   ])
   // 클릭 (80, 260) 의 원: 반지름 6 자리는 빨강이고 그림 크기는 그대로다. 받기 전 그림의 그 자리는 빨강이 아니다

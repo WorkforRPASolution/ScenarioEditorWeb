@@ -45,7 +45,7 @@ export const useSnapshotDownloadStore = defineStore('scenarioEditorSnapshotDownl
         onProgress: (done) => { job.value = { ...job.value, done } }
       })
       if (out.canceled) { canceled(); return }
-      const packed = await packDownload({ eqpId, date, requested: total, files: out.files })
+      const packed = await packDownload({ eqpId, date, requested: total, files: out.files, withCircle })
       if (own.signal.aborted) { canceled(); return } // 묶는 사이에 취소했다
       if (packed) saveBlob(packed.blob, packed.name)
       if (!out.failed.length) {
