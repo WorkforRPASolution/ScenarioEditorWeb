@@ -243,29 +243,27 @@ describe('ScenarioEditorView', () => {
       const hidden = (w, id) => tid(w, id).element.style.display === 'none'
       const saved = () => JSON.parse(localStorage.getItem('se-layout') || '{}')
 
-      it('스텝 목록: [접기] 를 누르면 띠만 남고 큰 화면이 그 자리를 쓴다, 띠를 누르면 펴진다 — 접어도 표는 그려 둔 채다', async () => {
+      it('스텝 목록: 아래 경계선의 손잡이를 누르면 띠만 남고 큰 화면이 그 자리를 쓴다, 띠를 누르면 펴진다 — 접어도 표는 그려 둔 채다', async () => {
         const w = await openScenario([noneStep('a')])
         expect(tid(w, 'se-steps-rail').exists()).toBe(false)
         expect(hidden(w, 'se-steps-section')).toBe(false)
         await tid(w, 'se-fold-steps').trigger('click')
         expect(hidden(w, 'se-steps-section')).toBe(true)
-        expect(hidden(w, 'se-gutter-s')).toBe(true)
+        expect(hidden(w, 'se-gutter-s-box')).toBe(true)
         expect(tid(w, 'se-steps-rail').text()).toContain('스텝 목록')
         expect(w.findComponent({ name: 'StepTable' }).exists()).toBe(true)
         expect(saved().foldSteps).toBe(true)
         await tid(w, 'se-steps-rail').trigger('click')
         expect(hidden(w, 'se-steps-section')).toBe(false)
-        expect(hidden(w, 'se-gutter-s')).toBe(false)
+        expect(hidden(w, 'se-gutter-s-box')).toBe(false)
         expect(tid(w, 'se-steps-rail').exists()).toBe(false)
         expect(saved().foldSteps).toBe(false)
       })
-      it('스텝 목록을 넓게 펼친 채 접으면 넓게 보기를 풀어 큰 화면이 보인다', async () => {
+      it('스텝 목록을 넓게 펼친 동안에는 아래 경계선과 손잡이가 없다 — 줄인 뒤에 접는다', async () => {
         const w = await openScenario([noneStep('a')])
+        expect(hidden(w, 'se-gutter-s-box')).toBe(false)
         await tid(w, 'se-expand').trigger('click')
-        expect(useEditorStore().expanded).toBe(true)
-        await tid(w, 'se-fold-steps').trigger('click')
-        expect(useEditorStore().expanded).toBe(false)
-        expect(shownOf(w, 'StepViewer')).toBe(true)
+        expect(hidden(w, 'se-gutter-s-box')).toBe(true)
       })
       it('스텝 패널: 경계선의 손잡이를 누르면 36px 띠로 접히고 경계선이 사라진다, 띠를 누르면 저장된 폭으로 펴진다 — 접어도 패널은 그려 둔 채다', async () => {
         localStorage.setItem('se-layout', JSON.stringify({ rw: 420 }))

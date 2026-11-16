@@ -541,7 +541,7 @@ test('⑨ 스텝 목록·스텝 패널 접기 — 큰 화면이 그만큼 커지
   await expect(page.getByTestId('se-snap-dot')).toBeVisible()
   const before = await viewer.boundingBox()
 
-  // ── 스텝 목록 접기: 머리 줄의 [▼ 접기] → 띠만 남고 큰 화면이 아래로 커진다 ──
+  // ── 스텝 목록 접기: 아래 경계선 오른쪽 끝의 손잡이 → 띠만 남고 큰 화면이 아래로 커진다 ──
   await page.getByTestId('se-fold-steps').click()
   await expect(page.getByTestId('se-steps-section')).toBeHidden()
   await expect(page.getByTestId('se-steps-rail')).toHaveText('▲ 스텝 목록')

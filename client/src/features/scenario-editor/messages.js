@@ -98,7 +98,6 @@ export const MESSAGES = {
   SEW_UI_OPENING_SLOW: '큰 시나리오는 처음 열 때 시간이 걸립니다',
   SEW_UI_RETRY: '다시 시도',
   SEW_UI_SNAPSHOT_RAIL: '스냅샷',
-  SEW_UI_FOLD_DOWN: '▼ 접기',
   SEW_UI_STEPS_FOLD_HINT: '스텝 목록 접기 — 큰 화면을 넓게 봅니다',
   SEW_UI_STEPS_RAIL: '▲ 스텝 목록',
   SEW_UI_STEPS_EXPAND_HINT: '스텝 목록 펼치기',
