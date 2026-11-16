@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
-const { checkEnv, checkName, remoteChecks, interfaceCheck, parseArgs, apiBase, run } = require('../preflight')
+const { checkEnv, checkName, remoteChecks, interfaceCheck, checkSnapshotEnv, snapshotConnectCheck, snapshotRemoteChecks, parseArgs, apiBase, run } = require('../preflight')
 
 // 사내 쓰기 시험 프로필(server/.env.inhouse.example 을 채운 꼴) — 멈춤도 경고도 없다
 const GOOD = {
@@ -172,6 +172,162 @@ describe('remoteChecks — 떠 있는 서버에 묻기', () => {
   })
 })
 
+// ── 스냅샷·이력(P3) — 읽기만 하는 기능이라 틀려도 멈춤이 아니라 경고다(쓰기 시험을 막지 않는다) ──
+const SNAP = {
+  CASSANDRA_CONTACT_POINTS: 'cas-1, cas-2', CASSANDRA_PORT: '9042', CASSANDRA_LOCAL_DC: 'dc1', CASSANDRA_KEYSPACE: 'ars',
+  CASSANDRA_USERNAME: 'reader', CASSANDRA_PASSWORD: 'secretpw', HTTP_WEB_SERVER_URL: 'http://prod-hws:8082'
+}
+
+describe('checkSnapshotEnv — 스냅샷·이력 설정(구역 [10])', () => {
+  it('채운 프로필은 경고가 없다', () => {
+    expect(checkSnapshotEnv({ ...GOOD, ...SNAP })).toEqual([])
+  })
+  it('Cassandra 주소가 비면 경고 하나 — 스냅샷을 쓰지 않는 시험이면 그대로 둔다. 이력 주소는 보지 않는다', () => {
+    expect(codes(checkSnapshotEnv({ ...GOOD }))).toEqual(['warn:SNAPSHOT_UNSET'])
+    expect(codes(checkSnapshotEnv({ ...GOOD, ...SNAP, CASSANDRA_CONTACT_POINTS: ' , ', HTTP_WEB_SERVER_URL: 'prod-hws' }))).toEqual(['warn:SNAPSHOT_UNSET'])
+  })
+  it.each([
+    ['주소에 포트를 붙임', { CASSANDRA_CONTACT_POINTS: 'cas-1:9042' }, 'warn:CASSANDRA_POINTS_FORMAT'],
+    ['주소에 cql:// 같은 머리', { CASSANDRA_CONTACT_POINTS: 'cas-1,tcp://cas-2' }, 'warn:CASSANDRA_POINTS_FORMAT'],
+    ['포트가 숫자가 아님(서버는 말없이 9042 를 쓴다)', { CASSANDRA_PORT: '9042/tcp' }, 'warn:CASSANDRA_PORT_FORMAT'],
+    ['포트가 범위 밖', { CASSANDRA_PORT: '99999' }, 'warn:CASSANDRA_PORT_FORMAT'],
+    ['계정만 있고 비밀번호가 없음(서버는 계정 없이 붙는다)', { CASSANDRA_PASSWORD: '' }, 'warn:CASSANDRA_CREDENTIALS_HALF'],
+    ['비밀번호만 있음', { CASSANDRA_USERNAME: ' ' }, 'warn:CASSANDRA_CREDENTIALS_HALF'],
+    ['이력 주소가 빔(이력 보기만 꺼진다)', { HTTP_WEB_SERVER_URL: '' }, 'warn:HISTORY_UNSET'],
+    ['이력 주소에 http:// 가 없음', { HTTP_WEB_SERVER_URL: 'prod-hws:8082' }, 'warn:HISTORY_URL_FORMAT'],
+    ['이력 주소 뒤에 경로', { HTTP_WEB_SERVER_URL: 'http://prod-hws:8082/ARS/History' }, 'warn:HISTORY_URL_FORMAT']
+  ])('%s → %s', (_, over, code) => {
+    expect(codes(checkSnapshotEnv({ ...GOOD, ...SNAP, ...over }))).toEqual([code])
+  })
+  it('서버가 받는 꼴은 경고하지 않는다 — 포트 빔(9042)·IPv4·IPv6·계정 둘 다 빔·이력 주소 끝의 /', () => {
+    for (const over of [{ CASSANDRA_PORT: '' }, { CASSANDRA_CONTACT_POINTS: '10.1.2.3' }, { CASSANDRA_CONTACT_POINTS: 'fd00::12' },
+      { CASSANDRA_USERNAME: '', CASSANDRA_PASSWORD: '' }, { HTTP_WEB_SERVER_URL: ' https://hws.example/ ' }]) {
+      expect(checkSnapshotEnv({ ...GOOD, ...SNAP, ...over })).toEqual([])
+    }
+  })
+  it('문구에 비밀번호를 싣지 않는다', () => {
+    const text = JSON.stringify(checkSnapshotEnv({ ...GOOD, ...SNAP, CASSANDRA_USERNAME: '', HTTP_WEB_SERVER_URL: 'http://u:secretpw@prod-hws:8082/x' }))
+    expect(text).not.toContain('secretpw')
+  })
+})
+
+describe('snapshotConnectCheck — 이 PC 에서 Cassandra·이력 서버에 연결되는지(TCP 연결만)', () => {
+  const dial = (table) => {
+    const calls = []
+    return { calls, connect: async (host, port, ms) => { calls.push([host, port, ms]); return table[`${host}:${port}`] ?? null } }
+  }
+  it('모두 연결되면 통과 — 주소마다 CASSANDRA_PORT 로, 이력 서버는 주소의 호스트·포트로', async () => {
+    const d = dial({})
+    expect(await snapshotConnectCheck({ env: { ...GOOD, ...SNAP }, connect: d.connect })).toEqual([])
+    expect(d.calls.map((c) => c.slice(0, 2)).sort()).toEqual([['cas-1', 9042], ['cas-2', 9042], ['prod-hws', 8082]])
+    for (const c of d.calls) expect(c[2]).toBeGreaterThan(0)
+    const e = dial({})
+    await snapshotConnectCheck({ env: { ...GOOD, ...SNAP, CASSANDRA_CONTACT_POINTS: 'cas-1', CASSANDRA_PORT: '', HTTP_WEB_SERVER_URL: 'https://hws.example/' }, connect: e.connect })
+    expect(e.calls.map((c) => c.slice(0, 2)).sort()).toEqual([['cas-1', 9042], ['hws.example', 443]])
+  })
+  it('Cassandra 주소 모두에 연결하지 못하면 경고 — 주소마다 까닭을 싣는다', async () => {
+    const d = dial({ 'cas-1:9042': 'ECONNREFUSED', 'cas-2:9042': 'ENOTFOUND' })
+    const out = await snapshotConnectCheck({ env: { ...GOOD, ...SNAP }, connect: d.connect })
+    expect(codes(out)).toEqual(['warn:CASSANDRA_UNREACHABLE'])
+    expect(out[0].message).toContain('cas-1:9042(ECONNREFUSED)')
+    expect(out[0].message).toContain('cas-2:9042(ENOTFOUND)')
+  })
+  it('일부에만 연결하지 못하면 다른 경고 — 나머지로 붙는다', async () => {
+    const d = dial({ 'cas-2:9042': 'TIMEOUT' })
+    const out = await snapshotConnectCheck({ env: { ...GOOD, ...SNAP }, connect: d.connect })
+    expect(codes(out)).toEqual(['warn:CASSANDRA_POINT_UNREACHABLE'])
+    expect(out[0].message).toContain('cas-2:9042(TIMEOUT)')
+    expect(out[0].message).not.toContain('cas-1')
+  })
+  it('이력 서버에 연결하지 못하면 경고, 문구에 계정을 싣지 않는다', async () => {
+    const d = dial({ 'prod-hws:8082': 'ECONNREFUSED' })
+    const out = await snapshotConnectCheck({ env: { ...GOOD, ...SNAP, HTTP_WEB_SERVER_URL: 'http://u:secretpw@prod-hws:8082' }, connect: d.connect })
+    expect(codes(out)).toEqual(['warn:HISTORY_UNREACHABLE'])
+    expect(out[0].message).toContain('prod-hws:8082')
+    expect(JSON.stringify(out)).not.toContain('secretpw')
+  })
+  it('주소가 없거나 꼴이 틀린 것에는 붙어 보지 않는다(설정 점검이 이미 알린다)', async () => {
+    const d = dial({})
+    expect(await snapshotConnectCheck({ env: { ...GOOD }, connect: d.connect })).toEqual([])
+    expect(await snapshotConnectCheck({ env: { ...GOOD, ...SNAP, CASSANDRA_CONTACT_POINTS: 'cas-1:9042', HTTP_WEB_SERVER_URL: 'prod-hws:8082' }, connect: d.connect })).toEqual([])
+    expect(await snapshotConnectCheck({ env: { ...GOOD, ...SNAP, CASSANDRA_PORT: 'x', HTTP_WEB_SERVER_URL: '' }, connect: d.connect })).toEqual([])
+    expect(d.calls).toEqual([])
+  })
+})
+
+const EQP = ['/equipment', [200, { success: true, data: { items: [{ eqpId: "O'DD" }, { eqpId: 'EQP 01' }, { eqpId: 'EQP02' }] } }]]
+const DAYS = '/snapshots/days?eqpId=EQP+01'
+const DAYS_OK = [DAYS, [200, { success: true, data: { eqpId: 'EQP 01', latest: '2026-11-16' } }]]
+const HIST = '/history/EQP%2001/99999'
+const HIST_NONE = [HIST, [404, { code: 'HISTORY_NOT_FOUND' }]]
+
+describe('snapshotRemoteChecks — 떠 있는 서버를 거쳐 실제로 조회해 본다(계정·데이터센터 이름까지)', () => {
+  const ENV = { ...GOOD, ...SNAP }
+  it('스냅샷 조회가 되고 이력 서버가 답하면(없는 이력 404 포함) 통과 — 작은따옴표가 없는 첫 설비로 묻는다', async () => {
+    const { fetch, calls, options } = fakeFetch(Object.fromEntries([EQP, DAYS_OK, HIST_NONE]))
+    expect(await snapshotRemoteChecks({ api: API, fetch, env: ENV })).toEqual([])
+    expect(calls).toEqual([`${API}/equipment`, `${API}${DAYS}`, `${API}${HIST}`])
+    for (const o of options) expect(o.signal).toBeInstanceOf(AbortSignal)
+    const found = fakeFetch(Object.fromEntries([EQP, DAYS_OK, [HIST, [200, { success: true, data: { steps: [{}] } }]]]))
+    expect(await snapshotRemoteChecks({ api: API, fetch: found.fetch, env: ENV })).toEqual([])
+  })
+  it('Cassandra 주소가 비었으면 묻지 않는다, 이력 주소가 비었거나 꼴이 틀리면 이력은 묻지 않는다', async () => {
+    const a = fakeFetch(Object.fromEntries([EQP, DAYS_OK, HIST_NONE]))
+    expect(await snapshotRemoteChecks({ api: API, fetch: a.fetch, env: GOOD })).toEqual([])
+    expect(a.calls).toEqual([])
+    for (const url of ['', 'prod-hws:8082']) {
+      const b = fakeFetch(Object.fromEntries([EQP, DAYS_OK]))
+      expect(await snapshotRemoteChecks({ api: API, fetch: b.fetch, env: { ...ENV, HTTP_WEB_SERVER_URL: url } })).toEqual([])
+      expect(b.calls).toEqual([`${API}/equipment`, `${API}${DAYS}`])
+    }
+  })
+  it('설비 목록이 시간 안에 오지 않으면 보지 못했다고 알린다 — 말없이 통과로 두지 않는다', async () => {
+    const { fetch } = fakeFetch({ '/equipment': new DOMException('timeout', 'TimeoutError') })
+    expect(codes(await snapshotRemoteChecks({ api: API, fetch, env: ENV }))).toEqual(['warn:SNAPSHOT_NOT_CHECKED'])
+  })
+  it('설비 목록을 받지 못했거나 내 범위에 설비가 없으면 보지 못했다고 알린다', async () => {
+    const denied = fakeFetch({ '/equipment': [403, { code: 'USER_NOT_REGISTERED' }] })
+    const a = await snapshotRemoteChecks({ api: API, fetch: denied.fetch, env: ENV })
+    expect(codes(a)).toEqual(['warn:SNAPSHOT_NOT_CHECKED'])
+    expect(a[0].message).toContain('USER_NOT_REGISTERED')
+    const none = fakeFetch({ '/equipment': [200, { success: true, data: { items: [{ eqpId: "O'DD" }] } }] })
+    expect(codes(await snapshotRemoteChecks({ api: API, fetch: none.fetch, env: ENV }))).toEqual(['warn:SNAPSHOT_NOT_CHECKED'])
+  })
+  it.each([
+    // 실제 드라이버: 계정이 틀려도, 데이터센터 이름이 틀려도 "붙을 호스트가 없다"(SNAPSHOT_DOWN) 로 온다. 키스페이스가 틀리면 SNAPSHOT_FAILED
+    [503, 'SNAPSHOT_DOWN', 'warn:SNAPSHOT_DOWN', 'CASSANDRA_LOCAL_DC'],
+    [503, 'SNAPSHOT_DOWN', 'warn:SNAPSHOT_DOWN', '비밀번호'],
+    [502, 'SNAPSHOT_FAILED', 'warn:SNAPSHOT_FAILED', 'CASSANDRA_KEYSPACE'],
+    [504, 'SNAPSHOT_TIMEOUT', 'warn:SNAPSHOT_TIMEOUT', '늦'],
+    [503, 'SNAPSHOT_UNSET', 'warn:SNAPSHOT_STALE_SERVER', '다시 띄'],
+    [500, 'INTERNAL', 'warn:SNAPSHOT_CHECK_FAILED', '500 INTERNAL']
+  ])('스냅샷 조회가 %s %s 이면 %s — 스냅샷이 안 되면 이력은 묻지 않는다', async (status, code, finding, phrase) => {
+    const { fetch, calls } = fakeFetch(Object.fromEntries([EQP, [DAYS, [status, { code }]], HIST_NONE]))
+    const out = await snapshotRemoteChecks({ api: API, fetch, env: ENV })
+    expect(codes(out)).toEqual([finding])
+    expect(out[0].message).toContain(phrase)
+    expect(calls).not.toContain(`${API}${HIST}`)
+  })
+  it('스냅샷 조회가 시간 안에 답하지 않으면 경고', async () => {
+    const { fetch } = fakeFetch(Object.fromEntries([EQP, [DAYS, new DOMException('timeout', 'TimeoutError')]]))
+    expect(codes(await snapshotRemoteChecks({ api: API, fetch, env: ENV }))).toEqual(['warn:SNAPSHOT_TIMEOUT'])
+  })
+  it.each([
+    [503, 'HISTORY_DOWN', 'warn:HISTORY_DOWN'],
+    [504, 'HISTORY_TIMEOUT', 'warn:HISTORY_TIMEOUT'],
+    [502, 'HISTORY_UNREADABLE', 'warn:HISTORY_UNREADABLE'],
+    [503, 'HISTORY_UNSET', 'warn:HISTORY_STALE_SERVER'],
+    [400, 'BAD_REQUEST', 'warn:HISTORY_CHECK_FAILED']
+  ])('이력 조회가 %s %s 이면 %s', async (status, code, finding) => {
+    const { fetch } = fakeFetch(Object.fromEntries([EQP, DAYS_OK, [HIST, [status, { code }]]]))
+    expect(codes(await snapshotRemoteChecks({ api: API, fetch, env: ENV }))).toEqual([finding])
+  })
+  it('이력 조회가 시간 안에 답하지 않으면 경고', async () => {
+    const { fetch } = fakeFetch(Object.fromEntries([EQP, DAYS_OK, [HIST, new DOMException('timeout', 'TimeoutError')]]))
+    expect(codes(await snapshotRemoteChecks({ api: API, fetch, env: ENV }))).toEqual(['warn:HISTORY_TIMEOUT'])
+  })
+})
+
 describe('명령 줄', () => {
   it('인자: --env(기본 server/.env)·--name·--process·--model, 모르는 인자는 던진다', () => {
     expect(parseArgs([])).toEqual({ env: 'server/.env' })
@@ -199,6 +355,23 @@ describe('명령 줄', () => {
     const { fetch } = fakeFetch(Object.fromEntries([ME_OK]))
     expect(await run({ argv: [], readEnv: () => GOOD, fetch, connect: async () => 'ECONNREFUSED', log: (l) => lines.push(l) })).toBe(1)
     expect(lines.join('\n')).toContain('INTERFACE_UNREACHABLE')
+  })
+  it('스냅샷·이력은 틀려도 경고다 — 종료 코드 0, 서버가 꺼져 있다는 문구에 스냅샷 조회도 보지 않았다고 적는다', async () => {
+    const lines = []
+    const { fetch } = fakeFetch(Object.fromEntries([ME_OK, EQP, [DAYS, [503, { code: 'SNAPSHOT_DOWN' }]]]))
+    const connect = async (host) => (host === 'prod-is' ? null : 'ECONNREFUSED')
+    expect(await run({ argv: [], readEnv: () => ({ ...GOOD, ...SNAP }), fetch, connect, log: (l) => lines.push(l) })).toBe(0)
+    const text = lines.join('\n')
+    for (const code of ['CASSANDRA_UNREACHABLE', 'HISTORY_UNREACHABLE', 'SNAPSHOT_DOWN']) expect(text).toContain(`경고  ${code}`)
+    expect(text).toContain('통과(경고 3)')
+    expect(text).not.toContain('secretpw')
+    lines.length = 0
+    // 서버가 꺼져 있으면 SERVER_DOWN 하나만 — 스냅샷 조회는 묻지도 않는다
+    const down = fakeFetch({ '/me': new TypeError('fetch failed'), '/equipment': new TypeError('fetch failed') })
+    expect(await run({ argv: [], readEnv: () => ({ ...GOOD, ...SNAP }), fetch: down.fetch, connect: async () => null, log: (l) => lines.push(l) })).toBe(0)
+    expect(lines.join('\n')).toMatch(/SERVER_DOWN.*스냅샷/)
+    expect(lines.join('\n')).not.toContain('SNAPSHOT_NOT_CHECKED')
+    expect(down.calls).toEqual([`${API}/me`])
   })
   it('설정 파일이 없으면 멈춤(종료 코드 1)', async () => {
     const lines = []

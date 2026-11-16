@@ -3,6 +3,8 @@
 // 쓰기: node tools/inhouse/preflight.js [--env server/.env] [--name SEW_TEST_yyyyMMdd --process <공정> --model <모델>]
 // 멈춤이 하나라도 있으면 종료 코드 1. 서버가 떠 있으면 쓰기 권한(/me)을, --name 을 주면 이름 규칙(/name-rule)과 그 이름이 이미 있는지(/scenarios)도 본다.
 // InterfaceServer 는 이 PC 에서 연결되는지만 본다(TCP 연결을 열었다 닫는다 — 요청은 보내지 않는다).
+// 스냅샷·이력(P3 설계 §13, 구역 [10])도 본다 — 설정의 꼴, 이 PC 에서 Cassandra·이력 서버에 연결되는지(TCP 만), 서버가 떠 있으면
+// 서버를 거쳐 실제로 한 번 조회해 본다(계정·데이터센터 이름까지 — 이 도구가 Cassandra 에 직접 붙지는 않는다). 읽기만 하는 기능이라 모두 경고다.
 // tools 의 패키지를 쓰지 않는다 — 사내 PC 는 tools 를 설치하지 않으므로 Node 내장과 server 의 dotenv·순수 모듈만 부른다.
 const { readFileSync, existsSync } = require('node:fs')
 const net = require('node:net')
@@ -83,6 +85,70 @@ async function interfaceCheck({ env, connect = tcpConnect }) {
   return [stop('INTERFACE_UNREACHABLE', `InterfaceServer ${target.host}:${target.port} 에 연결하지 못했다(${code}) — ${why}. 이대로면 배포가 "저장 서버에 연결하지 못했습니다" 로 끝난다. 이 PC 의 데스크톱 편집기가 쓰는 주소로 바꾼다(README "사내 쓰기 시험" 3)`)]
 }
 
+// ── 스냅샷·이력(구역 [10]) ──
+// 서버 repo/snapshotRepository.js·clients/historyClient.js 가 읽는 방식과 맞춘다: 주소는 쉼표로 나눈 호스트, 포트는 숫자가 아니면 9042,
+// 계정은 둘 다 있을 때만 보낸다, 이력 주소는 http(s):// 로 시작하고 끝의 / 는 떼어 낸 뒤 /ARS/History/… 를 붙인다.
+const HOSTNAME = /^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$/
+const IPV6 = /^[0-9A-Fa-f:.]*:[0-9A-Fa-f:.]*:[0-9A-Fa-f:.]*$/
+const text = (v) => (typeof v === 'string' ? v.trim() : '')
+const cassandraPoints = (env) => text(env.CASSANDRA_CONTACT_POINTS).split(',').map((s) => s.trim()).filter(Boolean)
+const isHost = (v) => HOSTNAME.test(v) || IPV6.test(v)
+// 비면 서버 기본값 9042. 숫자가 아니거나 범위 밖이면 null.
+function cassandraPort(env) {
+  const raw = text(env.CASSANDRA_PORT)
+  if (raw === '') return 9042
+  return /^\d+$/.test(raw) && Number(raw) >= 1 && Number(raw) <= 65535 ? Number(raw) : null
+}
+// HTTP_WEB_SERVER_URL 의 호스트·포트. 꼴이 틀리면 null.
+function historyTarget(env) {
+  const raw = text(env.HTTP_WEB_SERVER_URL).replace(/\/+$/, '')
+  if (!INTERFACE_URL.test(raw)) return null
+  let url
+  try { url = new URL(raw) } catch { return null }
+  return { host: url.hostname, port: Number(url.port) || (url.protocol === 'https:' ? 443 : 80) }
+}
+
+// 설정 점검. 스냅샷·이력은 읽기만 한다 — 틀려도 운영 데이터를 바꾸지 않으므로 모두 경고다.
+function checkSnapshotEnv(env) {
+  const points = cassandraPoints(env)
+  if (!points.length) return [warn('SNAPSHOT_UNSET', 'CASSANDRA_CONTACT_POINTS 가 비었다 — 스냅샷 패널은 "주소가 설정되지 않았습니다" 만 보인다. 스냅샷을 쓰지 않는 시험이면 그대로 둔다(쓰려면 README 설정 표의 구역 [10])')]
+  const out = []
+  const bad = points.filter((h) => !isHost(h))
+  if (bad.length) out.push(warn('CASSANDRA_POINTS_FORMAT', `CASSANDRA_CONTACT_POINTS 에 호스트가 아닌 값이 있다(${bad.join(', ')}) — 호스트 이름이나 IP 만 쉼표로 잇는다. 포트는 CASSANDRA_PORT 에 따로 적는다`))
+  if (cassandraPort(env) === null) out.push(warn('CASSANDRA_PORT_FORMAT', `CASSANDRA_PORT=${text(env.CASSANDRA_PORT)} — 1~65535 의 숫자여야 한다. 숫자가 아니면 서버는 말없이 9042 로 붙는다`))
+  const password = typeof env.CASSANDRA_PASSWORD === 'string' ? env.CASSANDRA_PASSWORD : ''
+  if ((text(env.CASSANDRA_USERNAME) === '') !== (password === '')) out.push(warn('CASSANDRA_CREDENTIALS_HALF', 'CASSANDRA_USERNAME 과 CASSANDRA_PASSWORD 가운데 하나만 있다 — 서버는 둘 다 있을 때만 계정을 보낸다(이대로면 계정 없이 붙는다)'))
+  if (blank(env.HTTP_WEB_SERVER_URL)) out.push(warn('HISTORY_UNSET', 'HTTP_WEB_SERVER_URL 이 비었다 — 스냅샷의 [이력 보기] 만 "주소가 설정되지 않았습니다" 로 나온다. 이력을 보지 않으면 그대로 둔다'))
+  else if (!historyTarget(env)) out.push(warn('HISTORY_URL_FORMAT', 'HTTP_WEB_SERVER_URL 은 http://<호스트>:<포트> 꼴이어야 한다 — 앞에 http:// 가 없거나 뒤에 경로(/ARS/History)가 붙었다. 서버가 뒤에 /ARS/History/… 를 붙여 부른다'))
+  return out
+}
+
+// 이 PC 에서 Cassandra 주소들과 이력 서버에 연결되는가(TCP 만 — 계정·데이터센터 이름은 snapshotRemoteChecks 가 서버를 거쳐 본다).
+// 꼴이 틀린 값에는 붙어 보지 않는다(checkSnapshotEnv 가 이미 알린다).
+async function snapshotConnectCheck({ env, connect = tcpConnect }) {
+  const points = cassandraPoints(env)
+  if (!points.length) return []
+  const port = cassandraPort(env)
+  const history = historyTarget(env)
+  const [nodes, historyCode] = await Promise.all([
+    points.every(isHost) && port !== null ? Promise.all(points.map(async (host) => ({ host, code: await connect(host, port, CONNECT_TIMEOUT_MS) }))) : [],
+    history ? connect(history.host, history.port, CONNECT_TIMEOUT_MS) : null
+  ])
+  const out = []
+  const failed = nodes.filter((n) => n.code !== null)
+  const listed = failed.map((n) => `${n.host}:${port}(${n.code})`).join(', ')
+  if (failed.length && failed.length === nodes.length) {
+    out.push(warn('CASSANDRA_UNREACHABLE', `Cassandra 에 이 PC 에서 연결하지 못했다 — ${listed}. 이대로면 스냅샷 패널이 "연결하지 못했습니다" 로 나온다. 호스트·CASSANDRA_PORT·방화벽을 본다(쿠버네티스 안쪽 이름이면 PC 에서는 닿지 않는다)`))
+  } else if (failed.length) {
+    out.push(warn('CASSANDRA_POINT_UNREACHABLE', `Cassandra 주소 ${nodes.length}개 가운데 ${failed.length}개에 연결하지 못했다 — ${listed}. 나머지로 붙으므로 스냅샷은 보이지만, 닿지 않는 주소는 빼 둔다`))
+  }
+  if (history && historyCode !== null) {
+    const why = UNREACHABLE_WHY[historyCode] ?? '응답이 없다(주소가 틀렸거나 방화벽에 막혔다)'
+    out.push(warn('HISTORY_UNREACHABLE', `이력 서버 ${history.host}:${history.port} 에 연결하지 못했다(${historyCode}) — ${why}. 이대로면 [이력 보기] 가 "연결하지 못했습니다" 로 나온다`))
+  }
+  return out
+}
+
 // 시험 시나리오 이름. 다른 시나리오에 쓰지 않게 SEW_TEST_yyyyMMdd(_n) 만 받는다(계획 Global Constraints).
 function checkName({ name, process, model }) {
   if (name === undefined) return []
@@ -114,7 +180,7 @@ async function remoteChecks({ api, fetch, name, process, model }) {
     try { return await fetch(`${api}${path}`, { signal: AbortSignal.timeout(TIMEOUT_MS) }) } catch { return null }
   }
   const named = name !== undefined && !blank(process) && !blank(model)
-  const down = () => (named ? stop : warn)('SERVER_DOWN', `${api} 에 닿지 않는다 — 쓰기 권한과 시험 이름은 보지 않았다. 서버(npm run dev)를 띄운 창은 두고 새 명령 프롬프트 창에서 다시 돌린다`)
+  const down = () => (named ? stop : warn)('SERVER_DOWN', `${api} 에 닿지 않는다 — 쓰기 권한·시험 이름·스냅샷 조회는 보지 않았다. 서버(npm run dev)를 띄운 창은 두고 새 명령 프롬프트 창에서 다시 돌린다`)
   const me = await get('/me')
   if (!me) return [down()]
   if (me.status !== 200) return [stop('ME_FAILED', `사용자 조회가 ${me.status} ${await errorCode(me)} — SE_USER_SINGLEID 가 운영 ARS_USER_INFO 에 있는지 본다`)]
@@ -134,6 +200,53 @@ async function remoteChecks({ api, fetch, name, process, model }) {
     out.push(stop('NAME_EXISTS', `${process}·${model} 에 ${name} 이 이미 있다 — 덮어쓰지 않는다. 다른 접미사를 쓴다(예: ${nextName(name)})`))
   }
   return out
+}
+
+// 서버가 스냅샷·이력을 묻고 답하기까지의 시간 제한 — 서버의 Cassandra 제한(연결 5초 + 읽기 10초)·이력 서버 제한(15초)보다 길게
+const SNAPSHOT_TIMEOUT_MS = 20000
+// 있을 수 없는 txn 은 아니지만(가장 작은 이력 번호) 없으면 이력 서버가 "없다" 고 답한다 — 닿고 읽힌다는 것만 본다
+const PROBE_TXN = '99999'
+const SERVER_LOG = '원인은 서버를 띄운 창의 로그에 남는다'
+const SNAPSHOT_FAILURES = {
+  SNAPSHOT_DOWN: ['SNAPSHOT_DOWN', `서버가 Cassandra 에 연결하지 못했다 — 주소·포트가 맞으면(위에 CASSANDRA_UNREACHABLE 이 없으면) 계정·비밀번호나 CASSANDRA_LOCAL_DC(운영 cqlsh 의 select data_center from system.local; 값)가 틀렸다. ${SERVER_LOG}("스냅샷 저장소(Cassandra) 오류 → SNAPSHOT_DOWN — …" 에 주소마다의 원인)`],
+  SNAPSHOT_FAILED: ['SNAPSHOT_FAILED', `Cassandra 에는 붙었지만 조회가 실패했다 — CASSANDRA_KEYSPACE(기본 ars)와 계정의 읽기 권한을 본다. ${SERVER_LOG}("스냅샷 저장소(Cassandra) 오류 → SNAPSHOT_FAILED — …")`],
+  SNAPSHOT_TIMEOUT: ['SNAPSHOT_TIMEOUT', 'Cassandra 응답이 늦다(시간 초과) — 잠시 뒤 다시 돌려 본다. 이어지면 주소·방화벽을 본다'],
+  SNAPSHOT_UNSET: ['SNAPSHOT_STALE_SERVER', '떠 있는 서버는 CASSANDRA_CONTACT_POINTS 가 빈 채로 떴다 — .env 를 고친 뒤에는 서버를 다시 띄운다']
+}
+const HISTORY_FAILURES = {
+  HISTORY_DOWN: ['HISTORY_DOWN', `서버가 이력 서버에 연결하지 못했다 — HTTP_WEB_SERVER_URL 의 호스트·포트를 본다. ${SERVER_LOG}`],
+  HISTORY_TIMEOUT: ['HISTORY_TIMEOUT', '이력 서버 응답이 늦다(시간 초과) — 잠시 뒤 다시 돌려 본다'],
+  HISTORY_UNREADABLE: ['HISTORY_UNREADABLE', `이력 서버의 답을 읽지 못했다 — HTTP_WEB_SERVER_URL 이 이력 서버(HttpWebServer)가 아닌 다른 서버의 주소일 수 있다. ${SERVER_LOG}`],
+  HISTORY_UNSET: ['HISTORY_STALE_SERVER', '떠 있는 서버는 HTTP_WEB_SERVER_URL 이 빈 채로 떴다 — .env 를 고친 뒤에는 서버를 다시 띄운다']
+}
+
+// 떠 있는 서버를 거쳐 스냅샷·이력을 실제로 한 번씩 조회한다 — 계정·데이터센터 이름·키스페이스는 붙어 봐야 안다.
+// 내 범위의 설비 하나로 "가장 늦은 한 장"(한두 줄 읽기)과 이력 한 건(없는 번호면 "없다" 는 답)을 묻는다. 읽기만 한다.
+// 서버가 꺼져 있을 때는 부르지 않는다(run — remoteChecks 의 SERVER_DOWN 이 알린다).
+async function snapshotRemoteChecks({ api, fetch, env }) {
+  if (!cassandraPoints(env).length) return []
+  const get = async (path, ms) => {
+    try { return await fetch(`${api}${path}`, { signal: AbortSignal.timeout(ms) }) } catch { return null }
+  }
+  const list = await get('/equipment', SNAPSHOT_TIMEOUT_MS)
+  if (!list) return [warn('SNAPSHOT_NOT_CHECKED', '설비 목록이 시간 안에 오지 않았다 — 스냅샷·이력 조회는 보지 않았다. 다시 돌려 본다')]
+  if (list.status !== 200) return [warn('SNAPSHOT_NOT_CHECKED', `설비 목록 조회가 ${list.status} ${await errorCode(list)} — 스냅샷·이력 조회는 보지 않았다`)]
+  // 작은따옴표가 든 설비 ID 는 서버가 이력 서버에 보내지 않는다
+  const eqp = ((await list.json())?.data?.items ?? []).find((e) => e && typeof e.eqpId === 'string' && e.eqpId !== '' && !e.eqpId.includes("'"))
+  if (!eqp) return [warn('SNAPSHOT_NOT_CHECKED', '내 범위에 설비가 없다 — 스냅샷·이력 조회는 보지 않았다(스냅샷 패널에도 고를 설비가 없다)')]
+  const days = await get(`/snapshots/days?${new URLSearchParams({ eqpId: eqp.eqpId })}`, SNAPSHOT_TIMEOUT_MS)
+  if (!days) return [warn(...SNAPSHOT_FAILURES.SNAPSHOT_TIMEOUT)]
+  if (days.status !== 200) {
+    const code = await errorCode(days)
+    return [warn(...(SNAPSHOT_FAILURES[code] ?? ['SNAPSHOT_CHECK_FAILED', `스냅샷 조회(${eqp.eqpId})가 ${days.status} ${code} — ${SERVER_LOG}`]))]
+  }
+  if (!historyTarget(env)) return []
+  const history = await get(`/history/${encodeURIComponent(eqp.eqpId)}/${PROBE_TXN}`, SNAPSHOT_TIMEOUT_MS)
+  if (!history) return [warn(...HISTORY_FAILURES.HISTORY_TIMEOUT)]
+  if (history.status === 200) return []
+  const code = await errorCode(history)
+  if (code === 'HISTORY_NOT_FOUND') return [] // 이력 서버가 "그 번호의 이력이 없다" 고 답했다 — 닿고 읽힌다
+  return [warn(...(HISTORY_FAILURES[code] ?? ['HISTORY_CHECK_FAILED', `이력 조회(${eqp.eqpId})가 ${history.status} ${code} — ${SERVER_LOG}`]))]
 }
 
 function parseArgs(argv) {
@@ -169,7 +282,13 @@ async function run({ argv, readEnv = readEnvFile, fetch = globalThis.fetch, conn
     log(`멈춤  ENV_FILE_MISSING  ${args.env} 이 없다 — server\\.env.inhouse.example 을 server\\.env 로 복사해 채운다`)
     return 1
   }
-  const findings = [...checkEnv(env), ...(await interfaceCheck({ env, connect })), ...checkName(args), ...(await remoteChecks({ api: apiBase(env), fetch, ...args }))]
+  const api = apiBase(env)
+  const findings = [
+    ...checkEnv(env), ...(await interfaceCheck({ env, connect })), ...checkName(args),
+    ...checkSnapshotEnv(env), ...(await snapshotConnectCheck({ env, connect })),
+    ...(await remoteChecks({ api, fetch, ...args }))
+  ]
+  if (!findings.some((f) => f.code === 'SERVER_DOWN')) findings.push(...(await snapshotRemoteChecks({ api, fetch, env })))
   for (const f of findings) log(`${LABEL[f.level]}  ${f.code}  ${f.message}`)
   const stops = findings.filter((f) => f.level === 'stop').length
   const warns = findings.length - stops
@@ -177,7 +296,7 @@ async function run({ argv, readEnv = readEnvFile, fetch = globalThis.fetch, conn
   return stops ? 1 : 0
 }
 
-module.exports = { checkEnv, checkName, remoteChecks, interfaceCheck, parseArgs, apiBase, run }
+module.exports = { checkEnv, checkName, remoteChecks, interfaceCheck, checkSnapshotEnv, snapshotConnectCheck, snapshotRemoteChecks, parseArgs, apiBase, run }
 
 if (require.main === module) {
   run({ argv: process.argv.slice(2) }).then((code) => { process.exitCode = code }, (err) => { console.error(err.message); process.exitCode = 1 })
