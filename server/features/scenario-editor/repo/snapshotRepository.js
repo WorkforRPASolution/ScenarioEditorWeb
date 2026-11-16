@@ -9,6 +9,8 @@ const READ_TIMEOUT_MS = 10000
 const CONNECT_TIMEOUT_MS = 5000
 const FETCH_SIZE = 5000
 const Q_LIST = 'select fname from snapshotlist where eqpid = ? and year = ? and month = ? and fname >= ? and fname < ?'
+// 늦은 것부터 — 여러 날 목록이 한도에서 잘릴 때 늦은 줄이 남게(이름 하한이 있어 지워진 줄을 지나가지 않는다)
+const Q_LIST_DESC = `${Q_LIST} order by fname desc`
 const Q_LATEST = 'select fname from snapshotlist where eqpid = ? and year = ? and month = ? and fname >= ? order by fname desc limit 1'
 const Q_IMAGE = 'select image from snapshot where eqpid = ? and year = ? and month = ? and day = ? and fname = ?'
 
@@ -71,11 +73,11 @@ function createSnapshotRepository({ env = process.env, driver, log = null }) {
     }
   }
 
-  async function listNames(eqpId, { year, month }, fromName, toName, limit) {
+  async function listNames(eqpId, { year, month }, fromName, toName, limit, { latest = false } = {}) {
     const names = []
     let pageState
     do {
-      const r = await run(Q_LIST, [eqpId, year, month, fromName, toName], { fetchSize: FETCH_SIZE, ...(pageState ? { pageState } : {}) })
+      const r = await run(latest ? Q_LIST_DESC : Q_LIST, [eqpId, year, month, fromName, toName], { fetchSize: FETCH_SIZE, ...(pageState ? { pageState } : {}) })
       for (const row of r.rows) names.push(row.fname)
       pageState = r.pageState || null
     } while (pageState && names.length <= limit)

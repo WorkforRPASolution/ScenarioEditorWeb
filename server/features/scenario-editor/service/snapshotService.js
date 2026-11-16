@@ -12,7 +12,8 @@ const {
   RETENTION_MS, timeDiffOf, displayOf, dayRange, monthsOf, partitionDays, nameBound, daysLeft, maxAgeOf
 } = require('../domain/snapshotTime')
 
-const DAY_LIMIT = 50000 // 하루 목록 줄 수 한도
+const LIST_LIMIT = 100000 // 목록 줄 수 한도(하루든 여러 날이든) — 넘으면 늦은 것부터 남긴다. 로컬 측정: 15일 9만 줄 읽기 0.24초 + 줄 만들기 0.22초, 응답 18MB(압축 전)
+const MAX_SPAN_DAYS = 31 // 한 번에 청할 수 있는 날 수(보관 기간은 15일 — 걸치는 달 수를 묶어 두려는 것)
 const COUNT_LIMIT = 300000 // 날짜별 개수를 셀 때 읽는 줄 수 한도
 const PRESENCE_CHUNK = 2000 // 한 요청이 보는 설비 수 — 나머지는 next 로 이어 청한다
 const PRESENCE_TTL_MS = 10 * 60000 // 설비의 가장 늦은 한 장을 기억하는 시간 — 화면이 다시 받는 주기(5분)보다 길게 둔다
@@ -41,15 +42,17 @@ function createSnapshotService({ snapshotRepo, scopes, now, env = {}, log = null
   })()
 
   // 원본 ms 범위 [from, to) 의 이름을 걸치는 달마다 읽는다. 합쳐서 limit 줄에서 멈춘다 → { parsed, skipped, truncated }
-  async function readRange(eqpId, from, to, limit) {
+  // latest = 늦은 달부터, 달 안에서도 늦은 것부터 읽는다 — 한도에서 멈추면 늦은 줄이 남는다(목록). 아니면 이른 것부터(날짜별 개수).
+  async function readRange(eqpId, from, to, limit, { latest = false } = {}) {
     const seen = new Set()
     const parsed = []
     let skipped = 0
     let truncated = false
-    for (const month of monthsOf(from, to)) {
+    const months = monthsOf(from, to)
+    for (const month of latest ? months.reverse() : months) {
       const left = limit - seen.size
       if (left <= 0) { truncated = true; break }
-      const r = await snapshotRepo.listNames(eqpId, month, nameBound(from), nameBound(to), left)
+      const r = await snapshotRepo.listNames(eqpId, month, nameBound(from), nameBound(to), left, ...(latest ? [{ latest: true }] : []))
       if (r.truncated) truncated = true
       for (const name of r.names) {
         if (seen.has(name)) continue
@@ -71,14 +74,23 @@ function createSnapshotService({ snapshotRepo, scopes, now, env = {}, log = null
       .sort((a, b) => cmp(a.eqpId, b.eqpId))
   }
 
-  async function list(user, eqpId, date) {
+  // date 하루, 또는 date ~ to(둘 다 표시 날짜, 끝 날 포함)의 목록. 줄마다 표시 날짜(date)가 붙는다.
+  async function list(user, eqpId, date, to = null) {
     const eqp = await scopes.equipmentOf(user, eqpId)
     const timeDiff = timeDiffOf(eqp.snapshotTimeDiff)
-    const range = dayRange(date, timeDiff, displayTz)
-    if (!range) throw seError(400, 'BAD_REQUEST', 'date 는 YYYY-MM-DD 꼴의 날짜여야 합니다', { path: 'date' })
+    const first = dayRange(date, timeDiff, displayTz)
+    if (!first) throw seError(400, 'BAD_REQUEST', 'date 는 YYYY-MM-DD 꼴의 날짜여야 합니다', { path: 'date' })
+    const until = to === undefined || to === null || to === '' ? date : to
+    const last = until === date ? first : dayRange(until, timeDiff, displayTz)
+    if (!last) throw seError(400, 'BAD_REQUEST', 'to 는 YYYY-MM-DD 꼴의 날짜여야 합니다', { path: 'to' })
+    if (until < date) throw seError(400, 'BAD_REQUEST', 'to 는 date 보다 앞설 수 없습니다', { path: 'to' })
+    if ((Date.parse(`${until}T00:00:00Z`) - Date.parse(`${date}T00:00:00Z`)) / DAY + 1 > MAX_SPAN_DAYS) {
+      throw seError(400, 'BAD_REQUEST', `한 번에 ${MAX_SPAN_DAYS}일까지 볼 수 있습니다`, { path: 'to' })
+    }
+    const range = { from: first.from, to: last.to }
     // 메모는 목록과 같은 이름 범위로 함께 읽는다(forRange 는 던지지 않는다)
     const [{ parsed, skipped, truncated }, memo] = await Promise.all([
-      readRange(eqpId, range.from, range.to, DAY_LIMIT),
+      readRange(eqpId, range.from, range.to, LIST_LIMIT, { latest: true }),
       memos ? memos.forRange(eqpId, nameBound(range.from), nameBound(range.to)) : NO_MEMOS
     ])
     const at = now()
@@ -88,11 +100,11 @@ function createSnapshotService({ snapshotRepo, scopes, now, env = {}, log = null
       .map((p) => {
         const d = displayOf(p.ms, timeDiff, displayTz)
         return {
-          fileName: p.fileName, ms: p.ms, time: d.time, shift: d.shift, kind: p.kind, tag: p.tag, x: p.x, y: p.y, txn: p.txn,
+          fileName: p.fileName, ms: p.ms, date: d.date, time: d.time, shift: d.shift, kind: p.kind, tag: p.tag, x: p.x, y: p.y, txn: p.txn,
           hasHistory: p.hasHistory, memo: memo.byName.get(p.fileName) ?? null, daysLeft: daysLeft(p.ms, at)
         }
       })
-    return { eqpId, date, timeDiff, items, skipped, truncated, memoFailed: memo.failed }
+    return { eqpId, date, to: until, timeDiff, items, skipped, truncated, memoFailed: memo.failed }
   }
 
   // 보관 기간 안에서 가장 늦은 한 장의 원본 ms. 늦은 달부터 한 줄씩 본다.
@@ -228,4 +240,4 @@ function createSnapshotService({ snapshotRepo, scopes, now, env = {}, log = null
   return { equipment, presence, days, list, image }
 }
 
-module.exports = { createSnapshotService, DAY_LIMIT, COUNT_LIMIT, PRESENCE_CHUNK, PRESENCE_TTL_MS, PRESENCE_CONCURRENCY, PRESENCE_BUDGET_MS }
+module.exports = { createSnapshotService, LIST_LIMIT, COUNT_LIMIT, PRESENCE_CHUNK, PRESENCE_TTL_MS, PRESENCE_CONCURRENCY, PRESENCE_BUDGET_MS }

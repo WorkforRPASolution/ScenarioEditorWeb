@@ -80,6 +80,13 @@ describe('snapshotRepository — Cassandra 읽기만, 처음 쓸 때 연결 (P3 
     expect(calls.execute[1].options.pageState).toBe('p1')
   })
 
+  it('listNames: latest 면 늦은 것부터(내림차순) 읽는다 — 한도에서 자르면 늦은 것이 남는다', async () => {
+    const { driver, calls } = fakeDriver({ pages: [names('c', 'b'), names('a')] })
+    const out = await createSnapshotRepository({ env: ENV, driver }).listNames('E1', { year: 2026, month: 11 }, '0', '9', 2, { latest: true })
+    expect(out).toEqual({ names: ['c', 'b'], truncated: true })
+    expect(calls.execute[0].query).toBe('select fname from snapshotlist where eqpid = ? and year = ? and month = ? and fname >= ? and fname < ? order by fname desc')
+    expect(calls.execute[0].params).toEqual(['E1', 2026, 11, '0', '9'])
+  })
   it('listNames: 한도에서 멈춘다 — 한도를 넘긴 쪽까지만 읽고 truncated', async () => {
     const { driver, calls } = fakeDriver({ pages: [names('a', 'b', 'c'), names('d', 'e', 'f'), names('g', 'h', 'i'), names('j')] })
     const out = await createSnapshotRepository({ env: ENV, driver }).listNames('E1', { year: 2026, month: 11 }, '0', '9', 5)

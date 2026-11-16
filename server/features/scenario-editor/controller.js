@@ -233,7 +233,8 @@ async function snapshotDays(req, res) {
 }
 
 async function snapshotList(req, res) {
-  ok(res, await getDeps().snapshots.list(req.seUser, need(req.query.eqpId, 'eqpId'), need(req.query.date, 'date')))
+  // to 가 있으면 date ~ to(끝 날 포함), 없으면 date 하루
+  ok(res, await getDeps().snapshots.list(req.seUser, need(req.query.eqpId, 'eqpId'), need(req.query.date, 'date'), typeof req.query.to === 'string' ? req.query.to : null))
 }
 
 // ── 스냅샷 메모 (P3-C) ── 설비 범위·글 규칙·충돌은 서비스가 본다. 여기서는 본문 꼴만 본다.

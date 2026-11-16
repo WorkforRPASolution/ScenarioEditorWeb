@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
-const { createSnapshotService, DAY_LIMIT, COUNT_LIMIT, PRESENCE_CHUNK, PRESENCE_TTL_MS, PRESENCE_CONCURRENCY, PRESENCE_BUDGET_MS } = require('../service/snapshotService')
+const { createSnapshotService, LIST_LIMIT, COUNT_LIMIT, PRESENCE_CHUNK, PRESENCE_TTL_MS, PRESENCE_CONCURRENCY, PRESENCE_BUDGET_MS } = require('../service/snapshotService')
 const { createScopeService } = require('../service/scopeService')
 const { seError } = require('../errors')
 
@@ -28,9 +28,11 @@ function fakeRepo({ months = {}, images = {}, truncated = false } = {}) {
   const of = ({ year, month }) => [...(months[`${year}-${String(month).padStart(2, '0')}`] || [])].sort()
   return {
     calls,
-    listNames: async (eqpId, month, fromName, toName, limit) => {
-      calls.listNames.push({ eqpId, month, fromName, toName, limit })
+    // latest = 늦은 것부터(내림차순) — 한도에서 자르면 늦은 것이 남는다
+    listNames: async (eqpId, month, fromName, toName, limit, { latest = false } = {}) => {
+      calls.listNames.push({ eqpId, month, fromName, toName, limit, ...(latest ? { latest } : {}) })
       const names = of(month).filter((n) => n >= fromName && n < toName)
+      if (latest) names.reverse()
       return { names: names.slice(0, limit), truncated: truncated || names.length > limit }
     },
     latestName: async (eqpId, month, fromName) => {
@@ -88,14 +90,14 @@ describe('snapshotService.list — 하루 목록', () => {
     const repo = fakeRepo()
     await service(repo).list(USER, 'E1', '2026-11-11')
     expect(repo.calls.listNames).toEqual([
-      { eqpId: 'E1', month: { year: 2026, month: 11 }, fromName: String(kst(2026, 11, 11)), toName: String(kst(2026, 11, 12)), limit: DAY_LIMIT }
+      { eqpId: 'E1', month: { year: 2026, month: 11 }, fromName: String(kst(2026, 11, 11)), toName: String(kst(2026, 11, 12)), limit: LIST_LIMIT, latest: true }
     ])
   })
 
-  it('1일은 앞 달과 그 달 두 번', async () => {
+  it('1일은 그 달과 앞 달 두 번 — 늦은 달부터 읽는다', async () => {
     const repo = fakeRepo()
     await service(repo).list(USER, 'E1', '2026-11-01')
-    expect(repo.calls.listNames.map((c) => c.month)).toEqual([{ year: 2026, month: 10 }, { year: 2026, month: 11 }])
+    expect(repo.calls.listNames.map((c) => c.month)).toEqual([{ year: 2026, month: 11 }, { year: 2026, month: 10 }])
     expect(repo.calls.listNames.every((c) => c.fromName === String(kst(2026, 11, 1)) && c.toName === String(kst(2026, 11, 2)))).toBe(true)
   })
 
@@ -105,10 +107,10 @@ describe('snapshotService.list — 하루 목록', () => {
     const repo = fakeRepo({ months: { '2026-11': [click(ms, 412, 388), `${ms + 1000}_[9990][${txn}].png`] } })
     const out = await service(repo).list(USER, 'E1', '2026-11-11')
     expect(out).toEqual({
-      eqpId: 'E1', date: '2026-11-11', timeDiff: 0, skipped: 0, truncated: false, memoFailed: false,
+      eqpId: 'E1', date: '2026-11-11', to: '2026-11-11', timeDiff: 0, skipped: 0, truncated: false, memoFailed: false,
       items: [
-        { fileName: click(ms, 412, 388), ms, time: '09:13:02', shift: 'DAY', kind: 'click', tag: null, x: 412, y: 388, txn: null, hasHistory: false, memo: null, daysLeft: 15 },
-        { fileName: `${ms + 1000}_[9990][${txn}].png`, ms: ms + 1000, time: '09:13:03', shift: 'DAY', kind: 'tag', tag: 'success', x: null, y: null, txn: String(txn), hasHistory: true, memo: null, daysLeft: 15 }
+        { fileName: click(ms, 412, 388), ms, date: '2026-11-11', time: '09:13:02', shift: 'DAY', kind: 'click', tag: null, x: 412, y: 388, txn: null, hasHistory: false, memo: null, daysLeft: 15 },
+        { fileName: `${ms + 1000}_[9990][${txn}].png`, ms: ms + 1000, date: '2026-11-11', time: '09:13:03', shift: 'DAY', kind: 'tag', tag: 'success', x: null, y: null, txn: String(txn), hasHistory: true, memo: null, daysLeft: 15 }
       ]
     })
   })
@@ -189,10 +191,56 @@ describe('snapshotService.list — 하루 목록', () => {
     expect(out.truncated).toBe(true)
   })
 
-  it('두 달을 합쳐도 한도를 넘지 않는다 — 둘째 달에는 남은 만큼만 청한다', async () => {
-    const repo = fakeRepo({ months: { '2026-10': [click(kst(2026, 11, 1, 1)), click(kst(2026, 11, 1, 2))] } })
+  it('두 달을 합쳐도 한도를 넘지 않는다 — 둘째 달(앞 달)에는 남은 만큼만 청한다', async () => {
+    const repo = fakeRepo({ months: { '2026-11': [click(kst(2026, 11, 1, 1)), click(kst(2026, 11, 1, 2))] } })
     await service(repo).list(USER, 'E1', '2026-11-01')
-    expect(repo.calls.listNames.map((c) => c.limit)).toEqual([DAY_LIMIT, DAY_LIMIT - 2])
+    expect(repo.calls.listNames.map((c) => c.limit)).toEqual([LIST_LIMIT, LIST_LIMIT - 2])
+  })
+
+  // ── 여러 날(사내 요청 2026-11-16) ──
+  it('to 를 주면 그 날까지 한 번에 — 범위는 첫 날 0시부터 끝 날 다음 0시, 줄마다 표시 날짜가 붙고 응답에 to 가 든다', async () => {
+    const a = kst(2026, 11, 9, 23, 59, 59)
+    const b = kst(2026, 11, 10, 0, 0, 1)
+    const c = kst(2026, 11, 11, 8)
+    const repo = fakeRepo({ months: { '2026-11': [click(c), click(a), click(b), click(kst(2026, 11, 12, 0, 0, 1)), click(kst(2026, 11, 8, 23))] } })
+    const out = await service(repo).list(USER, 'E1', '2026-11-09', '2026-11-11')
+    expect([out.date, out.to]).toEqual(['2026-11-09', '2026-11-11'])
+    expect(out.items.map((i) => [i.date, i.time])).toEqual([['2026-11-09', '23:59:59'], ['2026-11-10', '00:00:01'], ['2026-11-11', '08:00:00']])
+    expect(repo.calls.listNames.map((x) => [x.fromName, x.toName])).toEqual([[String(kst(2026, 11, 9)), String(kst(2026, 11, 12))]])
+  })
+  it('달을 걸친 범위는 걸치는 달을 늦은 달부터 읽어 ms 순으로 합친다', async () => {
+    const a = kst(2026, 10, 30, 10)
+    const b = kst(2026, 11, 2, 10)
+    const repo = fakeRepo({ months: { '2026-10': [click(a)], '2026-11': [click(b)] } })
+    const out = await service(repo).list(USER, 'E1', '2026-10-30', '2026-11-02')
+    expect(repo.calls.listNames.map((x) => x.month)).toEqual([{ year: 2026, month: 11 }, { year: 2026, month: 10 }])
+    expect(out.items.map((i) => i.date)).toEqual(['2026-10-30', '2026-11-02'])
+  })
+  it('to 가 날짜 꼴이 아니거나 date 보다 앞서거나 범위가 31일을 넘으면 400 — 저장소를 부르지 않는다', async () => {
+    const repo = fakeRepo()
+    for (const to of ['2026-11-31', 'abc', '2026-11-10', '2026-12-12']) {
+      const e = await caught(service(repo).list(USER, 'E1', '2026-11-11', to))
+      expect([e.statusCode, e.code, e.details?.path], to).toEqual([400, 'BAD_REQUEST', 'to'])
+    }
+    expect(repo.calls.listNames).toHaveLength(0)
+    // 31일까지는 받는다. 비었으면 하루
+    expect((await service(repo).list(USER, 'E1', '2026-11-11', '2026-12-11')).to).toBe('2026-12-11')
+    for (const to of [undefined, '', null]) expect((await service(repo).list(USER, 'E1', '2026-11-11', to)).to).toBe('2026-11-11')
+  })
+  it('한도를 넘으면 늦은 것부터 남긴다 — 화면이 여는 것이 가장 늦은 줄이다', async () => {
+    const base = kst(2026, 11, 10, 9)
+    const names = Array.from({ length: 5 }, (_, i) => click(base + i * 1000))
+    const repo = fakeRepo({ months: { '2026-11': names } })
+    repo.listNames = ((inner) => (eqpId, month, f, t, limit, o) => inner(eqpId, month, f, t, Math.min(limit, 3), o))(repo.listNames)
+    const out = await service(repo).list(USER, 'E1', '2026-11-10', '2026-11-11')
+    expect(out.truncated).toBe(true)
+    expect(out.items.map((i) => i.fileName)).toEqual(names.slice(2))
+  })
+  it('여러 날이면 메모도 그 범위 전체의 이름으로 읽는다', async () => {
+    const asked = []
+    const memos = { forRange: async (...args) => { asked.push(args); return { byName: new Map(), hidden: new Set(), failed: false } } }
+    await createSnapshotService({ snapshotRepo: fakeRepo(), scopes: fakeScopes(), now: () => NOW, env: {}, memos }).list(USER, 'E1', '2026-11-09', '2026-11-11')
+    expect(asked).toEqual([['E1', String(kst(2026, 11, 9)), String(kst(2026, 11, 12))]])
   })
 
   it('남은 날은 줄마다 지금 기준으로 센다', async () => {
@@ -212,7 +260,7 @@ describe('snapshotService.list — 하루 목록', () => {
   })
 
   it('한도 상수', () => {
-    expect([DAY_LIMIT, COUNT_LIMIT]).toEqual([50000, 300000])
+    expect([LIST_LIMIT, COUNT_LIMIT]).toEqual([100000, 300000])
   })
 })
 
