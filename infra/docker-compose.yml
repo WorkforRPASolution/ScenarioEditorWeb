@@ -1,17 +1,35 @@
-# ScenarioEditorWeb 로컬 인프라 — InterfaceServer(DEBUG 모드)와 이력 서버(HttpWebServer + 전용 ZooKeeper). Mongo·Redis·Cassandra 는 이미 떠 있는 컨테이너를 쓴다.
+# ScenarioEditorWeb 로컬 인프라 — InterfaceServer(+ 전용 ZooKeeper)와 이력 서버(HttpWebServer + 전용 ZooKeeper). Mongo·Redis·Cassandra 는 이미 떠 있는 컨테이너를 쓴다.
 # 프로필 ss(평소에는 뜨지 않는다): 스냅샷 서버 맞춤 확인용 ARSSnapShotServer + 전용 ZooKeeper — `docker compose -f infra/docker-compose.yml --profile ss up -d`
 # 선례: ARSAgent tools/integration 의 is 프로필.
 name: sew-infra
 services:
+  # ── InterfaceServer: 저장·삭제(HTTP 8080)와 Vision·OCR 판정 중계(gRPC 9300 → 호스트 9310, P4) ──
+  # 판정 요청은 ZooKeeper `/EARS/ARSImageProcessingSrv/daemons`·`/EARS/ARSOCRProcessingSrv/daemons` 의 자식 노드(호스트:포트)로 중계된다.
+  # 공유 로컬 ZooKeeper(ars-zookeeper)를 쓰지 않도록 전용으로 하나 둔다 — InterfaceServer 는 뜰 때 자기 주소를 올리고 같은 이름을 지운다.
+  # 호스트 2191 은 흉내 판정 서버·VisionServer 맞춤 확인이 노드를 보는 데 쓴다(tools/infra/is-zk.js 는 컨테이너 안의 zkCli 를 쓴다).
+  is-zookeeper:
+    image: zookeeper:3.5.5
+    ports:
+      - "127.0.0.1:2191:2181"
+    healthcheck:
+      test: ["CMD-SHELL", "zkServer.sh status"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+  # 환경 변수 MODE=DEBUG 를 주지 않는다 — 주면 ZooKeeper 를 아예 쓰지 않아 판정 요청이 늘 10초 뒤 INTERNAL 이다.
+  # JVM 속성 -DMODE=DEBUG 는 남긴다(RV 를 건너뛴다). InterfaceServer 는 ZooKeeper 에 붙은 뒤에야 Mongo 를 붙이므로
+  # ZooKeeper 가 준비된 뒤에 띄운다(늦으면 저장·삭제가 실패한다) — 준비됐는지는 tools/infra/smoke-is.sh 가 저장 경로로 본다.
   interface-server:
     image: eclipse-temurin:8-jre
+    depends_on:
+      is-zookeeper:
+        condition: service_healthy
     environment:
       HOST_IP: 127.0.0.1
       HTTP_PORT: "8080"
       VISION_PORT: "9300"
       THRIFT_VISION_PORT: "9301"
       REDIS_PASSWORD: visuallove
-      MODE: DEBUG
     volumes:
       - ./is/dist:/opt/is:ro
       - ./is/conf:/ears/conf/EARSInterfaceSrv:ro
@@ -27,6 +45,7 @@ services:
       - start
     ports:
       - "127.0.0.1:8080:8080"
+      - "127.0.0.1:9310:9300"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     mem_limit: 2g

@@ -1,6 +1,6 @@
 {
-  "_comment": "ScenarioEditorWeb 로컬 시험용. Mongo·Redis 만 실제(호스트의 mongodb-44·ars-redis), 나머지 주소는 쓰지 않는 자리표시. 사내 설정과 무관.",
-  "ZookeeperQuorum": "127.0.0.1:2181",
+  "_comment": "ScenarioEditorWeb 로컬 시험용. Mongo·Redis(호스트의 mongodb-44·ars-redis)와 전용 ZooKeeper(is-zookeeper — 판정 중계)만 실제, 나머지 주소는 쓰지 않는 자리표시. 사내 설정과 무관.",
+  "ZookeeperQuorum": "is-zookeeper:2181",
   "ARSCommandServerAddress": "127.0.0.1:1",
   "HttpWebServerAddress": "127.0.0.1:1",
   "RedisSentinelConnection": "host.docker.internal:6379",
