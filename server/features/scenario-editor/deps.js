@@ -68,6 +68,11 @@ function build(env = process.env) {
   const { createHistoryClient } = require('./clients/historyClient')
   const { createHistoryService } = require('./service/historyService')
   out.history = createHistoryService({ client: createHistoryClient({ env, log }), scopes })
+  // Vision·OCR 시험(P4) — InterfaceServer 의 gRPC 판정 창구. 주소(EARS_INTERFACE_GRPC_ADDR)는 부를 때 읽는다. 비어 있으면 시험만 503 이다.
+  const { createVisionClient } = require('./clients/visionClient')
+  const { createVisionTestService } = require('./service/visionTestService')
+  out.visionClient = createVisionClient({ env, log })
+  out.visionTest = createVisionTestService({ client: out.visionClient, env, log })
   return out
 }
 

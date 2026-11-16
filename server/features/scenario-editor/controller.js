@@ -273,4 +273,27 @@ async function snapshotImage(req, res) {
   res.send(png)
 }
 
-module.exports = { history, saveMemo, removeMemo, memoList, requireMemoWrite, equipment, snapshotPresence, snapshotDays, snapshotList, snapshotImage, links, reviewScenario, savePerformance, sameName, searchUsers, nameRule, setEnabled, removeScenario, deploy, deployVerify, deployFinish, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, counts, versions, open, dataCheck, image }
+// Vision·OCR 시험(P4). 브라우저가 응답을 받기 전에 끊으면(탭을 닫음·다른 스텝으로 감) 판정 호출을 취소해 자리를 비운다.
+// 'close' 는 응답을 다 보낸 뒤에도 온다 — 다 보내기 전의 것만 끊김이다.
+function abortOnClose(res) {
+  const ac = new AbortController()
+  res.on('close', () => { if (!res.writableEnded) ac.abort() })
+  return ac.signal
+}
+async function runTest(res, run) {
+  const signal = abortOnClose(res)
+  try {
+    ok(res, await run({ signal }))
+  } catch (e) {
+    if (signal.aborted && e && e.code === 'VISION_CANCELLED') return // 받을 사람이 없다 — 오류로 남기지 않는다
+    throw e
+  }
+}
+async function visionTest(req, res) {
+  await runTest(res, (options) => getDeps().visionTest.vision(req.seUser, { source: req.seTest.source, train: req.seTest.train, meta: req.seMeta }, options))
+}
+async function ocrTest(req, res) {
+  await runTest(res, (options) => getDeps().visionTest.ocr(req.seUser, { source: req.seTest.source, meta: req.seMeta }, options))
+}
+
+module.exports = { visionTest, ocrTest, history, saveMemo, removeMemo, memoList, requireMemoWrite, equipment, snapshotPresence, snapshotDays, snapshotList, snapshotImage, links, reviewScenario, savePerformance, sameName, searchUsers, nameRule, setEnabled, removeScenario, deploy, deployVerify, deployFinish, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, counts, versions, open, dataCheck, image }

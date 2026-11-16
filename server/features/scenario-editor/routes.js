@@ -3,6 +3,7 @@ const { authenticate } = require('../../shared/middleware/authMiddleware')
 const { asyncHandler } = require('../../shared/middleware/errorHandler')
 const c = require('./controller')
 const { multipartMeta } = require('./upload')
+const { testUpload } = require('./testUpload')
 
 const router = express.Router()
 router.use(authenticate)
@@ -46,5 +47,9 @@ router.delete('/snapshots/:eqpId/:fileName/memo', c.requireMemoWrite, asyncHandl
 router.get('/memos', asyncHandler(c.memoList))
 // 자동 복구 이력(P3-D) — 이력 서버(HttpWebServer)의 HTML 에서 뽑은 스텝·설명·그림. 태그 스냅샷의 txn(99999 이상)으로 부른다.
 router.get('/history/:eqpId/:txn', asyncHandler(c.history))
+// Vision·OCR 시험(P4) — 편집 중인 스텝의 조건을 판정 서버에 물어 본다. 등록된 사용자면 된다:
+// WRITE 권한·읽기 전용 서버(seWriteDisabled)를 보지 않는다(아무것도 쓰지 않는다, 사내 데스크톱도 누구나 시험한다). 부담은 서비스가 동시 수로 묶는다.
+router.post('/vision-test', testUpload(['source', 'train']), asyncHandler(c.visionTest))
+router.post('/ocr-test', testUpload(['source']), asyncHandler(c.ocrTest))
 
 module.exports = router

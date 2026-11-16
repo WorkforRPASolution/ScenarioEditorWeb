@@ -50,6 +50,8 @@ export const MESSAGES = {
   SEW_ERR_VISION_TIMEOUT: '응답 시간이 초과됐습니다.',
   SEW_ERR_VISION_FAILED: '판정 시험이 실패했습니다.',
   SEW_ERR_VISION_CANCELLED: '판정 시험을 끊었습니다.',
+  SEW_ERR_VISION_TOO_LARGE: '보낼 그림이 너무 큽니다(4MB 까지). 검색 영역을 줄여 보세요.',
+  SEW_ERR_VISION_BUSY: '다른 시험이 돌고 있습니다. 잠시 뒤 다시 해 보세요.',
 
   SEW_NOTE_CONDITION_UNKNOWN: '해석할 수 없는 조건 종류입니다(Variable 등). 원래 값을 그대로 둡니다.',
   SEW_NOTE_ACTION_INVALID: '알 수 없는 동작 번호입니다. 에이전트가 이 시나리오를 거부할 수 있습니다.',
