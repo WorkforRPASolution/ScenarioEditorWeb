@@ -30,7 +30,8 @@ const item = computed(() => (props.entry
   : snap.list.items.find((i) => i.fileName === props.fileName) ?? null))
 const title = computed(() => (!item.value ? '' : props.entry
   ? t('SEW_SNAP_MEMO_TITLE', { eqp: item.value.eqpId, time: `${item.value.date} ${item.value.time}` })
-  : t('SEW_SNAP_MEMO_TITLE', { eqp: snap.eqpId, time: item.value.time })))
+  // 여러 날을 보고 있으면 그 스냅샷의 날짜도 적는다
+  : t('SEW_SNAP_MEMO_TITLE', { eqp: snap.eqpId, time: snap.multiDay && item.value.date ? `${item.value.date} ${item.value.time}` : item.value.time })))
 const memo = computed(() => item.value?.memo ?? null)
 const text = ref('')
 const asking = ref(false) // 지울지 묻는 중

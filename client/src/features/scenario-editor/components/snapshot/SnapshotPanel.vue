@@ -1,11 +1,11 @@
 <script setup>
-// 스냅샷 왼쪽 패널(P3 설계 §4.2) — 설비 고르기, 날짜(◀ ▶·달력), 거르기(전체·태그·메모), 하루 목록, [메모 목록]·[새로 고침].
+// 스냅샷 왼쪽 패널(P3 설계 §4.2) — 설비 고르기(+ 초기화), 날짜(◀ ▶·달력 — 하루·여러 날·전체), 거르기(전체·태그·메모), 목록, [메모 목록]·[새로 고침].
 // 상태(설비·날짜·목록·고른 것)는 저장소가 갖는다.
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useSnapshotStore } from '../../stores/snapshotStore'
 import { useEditorStore } from '../../stores/editorStore'
 import { FILTERS } from '../../editor/snapshotList'
-import { weekdayOf } from '../../editor/snapshotDates'
+import { weekdayOf, spanDays } from '../../editor/snapshotDates'
 import { t } from '../../messages'
 import EquipmentPicker from './EquipmentPicker.vue'
 import SnapshotCalendar from './SnapshotCalendar.vue'
@@ -23,10 +23,15 @@ const memoListOpen = ref(false) // 메모 목록 창 — 설비를 고르기 전
 // ── 날짜 ──
 const dateRow = ref(null)
 const calOpen = ref(false)
-const dateText = computed(() => (snap.date ? `${snap.date} (${t('SEW_SNAP_WEEKDAYS')[weekdayOf(snap.date)]})` : t('SEW_SNAP_DATE_NONE')))
+// 하루: `2026-11-16 (월)`, 여러 날: `11-10 ~ 11-16` + 날 수
+const dateText = computed(() => {
+  if (!snap.date) return t('SEW_SNAP_DATE_NONE')
+  if (!snap.multiDay) return `${snap.date} (${t('SEW_SNAP_WEEKDAYS')[weekdayOf(snap.date)]})`
+  return `${snap.date.slice(5)} ~ ${snap.dateTo.slice(5)} · ${t('SEW_SNAP_DATE_DAYS', { n: spanDays(snap.date, snap.dateTo) })}`
+})
 const canPick = computed(() => !!snap.eqpId && !!snap.minDate)
 const atFirst = computed(() => !snap.date || snap.date <= snap.minDate)
-const atLast = computed(() => !snap.date || snap.date >= snap.maxDate)
+const atLast = computed(() => !snap.date || (snap.dateTo ?? snap.date) >= snap.maxDate)
 function toggleCalendar() {
   calOpen.value = !calOpen.value
   if (calOpen.value) snap.openCalendar()
@@ -47,7 +52,7 @@ const state = computed(() => {
     return { text: l.error && l.error !== failed ? `${failed} ${l.error}` : failed, retry: true }
   }
   if (l.items.length) return snap.shown.length ? null : { text: t(snap.filter === 'memo' ? 'SEW_SNAP_NO_MEMO' : 'SEW_SNAP_NO_TAG') }
-  if (l.status === 'ready') return { text: snap.date ? t('SEW_SNAP_EMPTY_DAY') : t('SEW_SNAP_NO_RECENT') }
+  if (l.status === 'ready') return { text: !snap.date ? t('SEW_SNAP_NO_RECENT') : t(snap.multiDay ? 'SEW_SNAP_EMPTY_RANGE' : 'SEW_SNAP_EMPTY_DAY') }
   return { text: t('SEW_SNAP_LOADING') }
 })
 const btn = 'h-7 px-2 rounded-md text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:enabled:bg-gray-300 dark:hover:enabled:bg-gray-600 disabled:opacity-50'

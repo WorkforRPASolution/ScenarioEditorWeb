@@ -33,6 +33,8 @@ export const useSnapshotDownloadStore = defineStore('scenarioEditorSnapshotDownl
     const limit = downloadLimit(editor.me)
     if (items.length > limit) { snap.say(t('SEW_SNAP_DL_LIMIT', { max: limit, n: items.length })); return }
     const [eqpId, date] = [snap.eqpId, snap.date]
+    // 여러 날을 보고 있으면 묶음 이름에 범위를 적는다(그림 이름에는 그 줄의 날짜 — runDownload)
+    const label = snap.multiDay ? `${snap.date}~${snap.dateTo}` : date
     const own = new AbortController()
     controller = own
     const total = items.length
@@ -45,7 +47,7 @@ export const useSnapshotDownloadStore = defineStore('scenarioEditorSnapshotDownl
         onProgress: (done) => { job.value = { ...job.value, done } }
       })
       if (out.canceled) { canceled(); return }
-      const packed = await packDownload({ eqpId, date, requested: total, files: out.files })
+      const packed = await packDownload({ eqpId, date: label, requested: total, files: out.files })
       if (own.signal.aborted) { canceled(); return } // 묶는 사이에 취소했다
       if (packed) saveBlob(packed.blob, packed.name)
       if (!out.failed.length) {

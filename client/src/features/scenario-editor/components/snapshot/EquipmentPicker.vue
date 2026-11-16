@@ -86,6 +86,15 @@ function pick(id) {
   q.value = id
   snap.pickEquipment(id)
 }
+// [초기화](사내 요청 2026-11-16) — 공정·모델·설비 고른 것을 비운다(목록도 비워진다). 날짜는 건드리지 않는다
+const canClear = computed(() => !!(process.value || model.value || q.value || snap.eqpId))
+function clearAll() {
+  listOpen.value = false
+  process.value = ''
+  model.value = ''
+  q.value = ''
+  snap.clearEquipment()
+}
 // 목록을 눌러 고르면 입력 칸이 초점을 지킨 채 목록만 닫힌다 — 그 뒤 다시 누르거나 치면 focus 이벤트 없이도 연다.
 // 닫힌 채 누르면 들어올 때처럼 글자를 모두 고른다(이어서 치면 설비 ID 뒤에 덧붙지 않고 바뀐다).
 function onClick(e) { if (!listOpen.value) openList(e) }
@@ -114,9 +123,13 @@ function onKey(e) {
         <SearchSelect v-model="process" :options="processes" :all-label="t('SEW_SNAP_EQP_ALL_PROCESS')" :disabled="!ready" :note-of="processNote" testid="se-snap-eqp-process" />
         <SearchSelect v-model="model" :options="models" :all-label="t('SEW_SNAP_EQP_ALL_MODEL')" :disabled="!ready" :note-of="modelNote" testid="se-snap-eqp-model" />
       </div>
-      <input v-model="q" class="se-inp" type="text" autocomplete="off" spellcheck="false" :aria-label="t('SEW_SNAP_EQP_LABEL')" :disabled="!ready"
-        :placeholder="snap.equipment.status === 'loading' ? t('SEW_SNAP_EQP_LOADING') : t('SEW_SNAP_EQP_PLACEHOLDER')" data-testid="se-snap-eqp-input"
-        @focus="openList" @click="onClick" @input="reopen" @blur="closeList" @keydown="onKey" />
+      <div class="flex gap-1.5">
+        <input v-model="q" class="se-inp min-w-0" type="text" autocomplete="off" spellcheck="false" :aria-label="t('SEW_SNAP_EQP_LABEL')" :disabled="!ready"
+          :placeholder="snap.equipment.status === 'loading' ? t('SEW_SNAP_EQP_LOADING') : t('SEW_SNAP_EQP_PLACEHOLDER')" data-testid="se-snap-eqp-input"
+          @focus="openList" @click="onClick" @input="reopen" @blur="closeList" @keydown="onKey" />
+        <button type="button" class="shrink-0 h-[30px] px-2 rounded-md text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:enabled:bg-gray-300 dark:hover:enabled:bg-gray-600 disabled:opacity-50"
+          :disabled="!ready || !canClear" :title="t('SEW_SNAP_EQP_CLEAR_HINT')" data-testid="se-snap-eqp-clear" @click="clearAll">{{ t('SEW_SNAP_EQP_CLEAR') }}</button>
+      </div>
       <!-- 목록을 누를 때 입력 칸이 초점을 잃지 않게(잃으면 누르기 전에 목록이 닫힌다) mousedown 을 막는다 -->
       <div v-if="listOpen && ready" ref="list" class="se-snap-eqp-list" @mousedown.prevent>
         <button v-for="({ e, ip, latest }, i) in rows" :key="e.eqpId" type="button" tabindex="-1" :class="{ on: e.eqpId === snap.eqpId, first: i === active }" data-testid="se-snap-eqp-option" :data-eqp="e.eqpId" @click="pick(e.eqpId)">

@@ -135,7 +135,7 @@ defineExpose({ onLoad, fit })
     <!-- 정보 줄: 머리 줄에 함께 넣으면 패널을 펼친 화면에서 좌표·크기·순번이 잘려 제 줄에 둔다 -->
     <div v-if="item" class="px-3 py-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-dark-border shrink-0" data-testid="se-snap-info">
       <b class="text-gray-800 dark:text-gray-100">{{ snap.eqpId }}</b>
-      <span class="tabular-nums">{{ snap.date }} <b class="text-gray-800 dark:text-gray-100">{{ item.time }}</b></span>
+      <span class="tabular-nums">{{ item.date ?? snap.date }} <b class="text-gray-800 dark:text-gray-100">{{ item.time }}</b></span>
       <span>{{ item.shift }}</span>
       <span v-if="item.kind === 'tag'" class="se-pill" :class="`se-snap-tag-${item.tag}`" data-testid="se-snap-tag">{{ t(`SEW_SNAP_TAG_${item.tag}`) }}</span>
       <span v-else class="tabular-nums">{{ t('SEW_SNAP_INFO_CLICK', { x: item.x, y: item.y }) }}</span>

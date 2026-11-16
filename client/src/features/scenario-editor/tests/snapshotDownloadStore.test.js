@@ -78,6 +78,19 @@ describe('snapshotDownloadStore', () => {
     expect(d.job.status).toBe('idle')
   })
 
+  it('여러 날을 보고 있으면 그림 이름에는 그 줄의 날짜를, ZIP 이름에는 범위(첫 날~끝 날)를 쓴다(사내 요청)', async () => {
+    items = ITEMS.map((it, i) => ({ ...it, date: i < 2 ? '2026-11-09' : '2026-11-11' }))
+    api.snapshots.mockImplementation((eqpId, date, to) => ok({ eqpId, date, ...(to ? { to } : {}), timeDiff: 0, items, skipped: 0, truncated: false }))
+    const s = useSnapshotStore()
+    await s.pickEquipment('A', { select: false })
+    await s.setDates('2026-11-09', '2026-11-11')
+    s.select(name(1))
+    s.togglePick(name(2))
+    const d = useSnapshotDownloadStore()
+    await d.start(false)
+    expect(saved()[0].fileName).toBe('A_2026-11-09~2026-11-11_snapshots_2.zip')
+    expect(unzip(await joinParts([saved()[0].blob])).map((e) => e.name)).toEqual(['A_2026-11-09_09-00-01-001.png', 'A_2026-11-11_09-00-02-002.png'])
+  })
   it('받는 동안 진행(n / 전체)이 오르고, 다시 시작하지 못한다', async () => {
     const { d } = await ready([0, 1, 3])
     const gates = [defer(), defer(), defer()]

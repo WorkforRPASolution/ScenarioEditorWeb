@@ -48,8 +48,9 @@ export const zipName = (eqpId, date, count, { circle = false } = {}) => `${safe(
 // fetchBlob(fileName, signal) → Blob, drawCircle(blob, x, y) → Blob, reasonOf(err) → 화면에 보일 이유, onProgress(끝난 수, 전체)
 // 결과: { files: [{ name, blob, circle }], failed: [{ item, reason }], canceled } — circle = 원을 그린 장(이름에 클릭 좌표)
 export async function runDownload({ eqpId, date, items, withCircle, fetchBlob, drawCircle, reasonOf, signal = null, onProgress = null }) {
+  // 날짜는 그 줄의 것(여러 날 목록이면 줄마다 다르다), 없으면 받은 date.
   // 원을 그릴 장만 좌표가 붙는다 — 원이 없는 장(태그·x ≥ 9000)은 "그림만" 과 같은 바이트라 같은 이름이다
-  const names = uniqueNames(items.map((i) => downloadName(eqpId, date, i, { circle: !!withCircle && wantsCircle(i) })))
+  const names = uniqueNames(items.map((i) => downloadName(eqpId, i.date ?? date, i, { circle: !!withCircle && wantsCircle(i) })))
   const files = []
   const failed = []
   for (let k = 0; k < items.length; k++) {

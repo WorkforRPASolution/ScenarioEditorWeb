@@ -104,6 +104,16 @@ describe('SnapshotViewer', () => {
       w.vm.onLoad(IMG); await w.vm.$nextTick()
       expect(info()).toContain('640 × 360')
     })
+    it('여러 날을 보고 있으면 정보 줄의 날짜는 그 스냅샷의 날짜다(범위의 첫 날이 아니다)', async () => {
+      const dated = ITEMS.map((it, i) => ({ ...it, date: i < 2 ? '2026-11-09' : '2026-11-10' }))
+      api.snapshots.mockImplementation((eqpId, date, to) => ok({ eqpId, date, ...(to ? { to } : {}), timeDiff: 0, items: dated, skipped: 0, truncated: false }))
+      const { w, s } = await mountSized()
+      await s.setDates('2026-11-09', '2026-11-10')
+      s.select(name(3))
+      await flushPromises()
+      expect(tid(w, 'se-snap-info').text()).toContain('2026-11-10')
+      expect(tid(w, 'se-snap-info').text()).not.toContain('2026-11-09')
+    })
     it('태그 스냅샷은 좌표 대신 태그 알약, 순번은 거른 목록 안에서 센다', async () => {
       const { w, s } = await mountSized()
       s.setFilter('tag')

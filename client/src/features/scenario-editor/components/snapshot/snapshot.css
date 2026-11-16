@@ -5,6 +5,10 @@
 .se-snap-list { user-select: none; }
 .se-snap-row[aria-selected='true'] { background: #dbeafe; }
 .se-snap-row[data-current='true'] { border-left-color: #2563eb; }
+/* 여러 날 목록의 날짜 구분 줄 — 줄과 같은 높이(28px). 붙여 둔 날짜(.se-snap-day-stick)는 자리를 차지하지 않고 맨 위에 겹친다 */
+.se-snap-day { display: flex; align-items: center; height: 28px; padding: 0 10px 0 13px; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; background: #f3f4f6; color: #4b5563; border-bottom: 1px solid #e5e7eb; }
+.se-snap-day-count { margin-left: auto; font-weight: 400; color: #6b7280; }
+.se-snap-day-stick { position: sticky; top: 0; z-index: 1; margin-bottom: -28px; }
 .se-snap-time { font-variant-numeric: tabular-nums; color: #111827; }
 .se-snap-shift { width: 40px; font-size: 10px; color: #6b7280; }
 .se-snap-expires { margin-left: auto; font-size: 10px; color: #b45309; }
@@ -64,10 +68,19 @@
 .se-snap-cal { position: absolute; left: 0; right: 0; top: calc(100% + 2px); z-index: 30; padding: 8px; background: #fff; border: 1px solid #d1d5db; border-radius: 6px; box-shadow: 0 8px 20px rgba(0, 0, 0, .15); font-size: 11px; }
 .se-snap-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
 .se-snap-cal-head { color: #6b7280; margin: 4px 0 2px; }
-.se-snap-cal-grid button { position: relative; height: 26px; border: 0; border-radius: 4px; background: none; color: inherit; font-size: 11px; font-variant-numeric: tabular-nums; }
+/* 날짜 칸: 위에 날짜, 아래에 그날의 장 수. 끌어 여러 날을 고르므로 글자 선택·터치 스크롤을 막는다 */
+.se-snap-cal-days { touch-action: none; user-select: none; -webkit-user-select: none; }
+.se-snap-cal-grid button { position: relative; height: 36px; padding: 3px 0 0; border: 0; border-radius: 4px; background: none; color: inherit; font-size: 11px; line-height: 1.2; font-variant-numeric: tabular-nums; display: flex; flex-direction: column; align-items: center; }
+.se-snap-cal-grid button small { font-size: 9px; color: #6b7280; }
 .se-snap-cal-grid button:enabled:hover { background: #eff6ff; }
 .se-snap-cal-grid button:disabled { color: #9ca3af; opacity: .5; }
 .se-snap-cal-grid button[aria-pressed='true'] { background: #dbeafe; color: #1d4ed8; font-weight: 600; }
+/* 범위의 가운데는 이어 보이게 모서리를 없애고, 양 끝은 진하게 */
+.se-snap-cal-grid button.in:not(.edge) { border-radius: 0; font-weight: 400; }
+.se-snap-cal-grid button.edge { background: #3b82f6; color: #fff; }
+.se-snap-cal-grid button.edge small { color: rgba(255, 255, 255, .9); }
+.se-snap-cal-grid button.edge[data-has]::after { background: #fff; }
+.se-snap-cal-grid button.edge:enabled:hover { background: #2563eb; }
 .se-snap-cal-grid button[data-has]::after { content: ''; position: absolute; left: 50%; bottom: 2px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: #2563eb; }
 .se-snap-cal p { margin: 6px 0 0; color: #6b7280; line-height: 1.4; }
 
@@ -96,6 +109,8 @@
 .dark .se-snap-memo-ic { color: #fcd34d; }
 .dark .se-snap-memo-bar { background: rgba(146, 64, 14, .2); }
 .dark .se-snap-eqp-list, .dark .se-snap-cal { background: #1e293b; border-color: #475569; }
+.dark .se-snap-day { background: #273449; color: #cbd5e1; border-bottom-color: #334155; }
+.dark .se-snap-day-count { color: #94a3b8; }
 .dark .se-snap-eqp-list button:hover, .dark .se-snap-eqp-list button.first, .dark .se-snap-cal-grid button:enabled:hover { background: #334155; }
 .dark .se-snap-eqp-list button.first { box-shadow: inset 3px 0 0 #60a5fa; }
 .dark .se-snap-eqp-list button.on b, .dark .se-snap-eqp-list button.on .se-snap-opt { color: #93c5fd; }
@@ -104,6 +119,9 @@
 .dark .se-snap-eqp-list em[data-has='0'] { color: #64748b; }
 .dark .se-snap-eqp-list small, .dark .se-snap-eqp-list p, .dark .se-snap-cal p, .dark .se-snap-cal-head { color: #94a3b8; }
 .dark .se-snap-cal-grid button[aria-pressed='true'] { background: rgba(30, 64, 175, .4); color: #93c5fd; }
+.dark .se-snap-cal-grid button small { color: #94a3b8; }
+.dark .se-snap-cal-grid button.edge { background: #2563eb; color: #fff; }
+.dark .se-snap-cal-grid button.edge small { color: rgba(255, 255, 255, .9); }
 .dark .se-snap-cal-grid button[data-has]::after { background: #60a5fa; }
 /* 클릭한 곳(사내 요청 2026-11-16) — 점이 깜빡이고, 점에서 고리가 크게 퍼져 나간다. 고리는 점 크기를 따른다(점은 확대와 상관없이 화면에서 12px).
    움직임 줄이기 설정(OS 의 애니메이션 효과 끔 — 사내 PC·원격 접속에 흔하다)에서도 깜빡인다: 퍼지는 움직임만 빼고 고리가 제자리에서 밝아졌다 흐려진다. */

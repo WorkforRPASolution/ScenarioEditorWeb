@@ -180,4 +180,48 @@ describe('SnapshotList', () => {
       expect(w.find('[data-testid="se-snap-list"]').attributes('aria-multiselectable')).toBe('true')
     })
   })
+
+  // 여러 날 목록(사내 요청 2026-11-16) — 날이 바뀌는 곳에 날짜 구분 줄
+  describe('여러 날 — 날짜 구분 줄', () => {
+    const dayItems = (date, base, n) => Array.from({ length: n }, (_, i) => item(base + i, { date }))
+    const THREE = [...dayItems('2026-11-09', 1000, 20), ...dayItems('2026-11-10', 2000, 20), ...dayItems('2026-11-11', 3000, 20)]
+    // 구분 줄 = 날짜 칸 + 줄 수 칸
+    const heads = (w) => w.findAll('[data-testid="se-snap-day"]').map((h) => h.findAll('span').map((x) => x.text()).join(' '))
+    const stick = (w) => w.find('[data-testid="se-snap-day-stick"]')
+
+    it('날이 바뀌는 곳에 날짜·요일과 그 날 줄 수를 적은 구분 줄이 들어간다. 하루뿐이면 없다', async () => {
+      const { w } = await mountList(THREE, 2000)
+      expect(heads(w)).toEqual(['11-09 (월) 20장', '11-10 (화) 20장', '11-11 (수) 20장'])
+      expect(rows(w)).toHaveLength(60)
+      expect(w.find('[data-testid="se-snap-rows"]').attributes('style')).toContain(`height: ${63 * ROW}px`)
+      w.unmount()
+      const one = await mountList(dayItems('2026-11-11', 3000, 5), 2000)
+      expect(heads(one.w)).toEqual([])
+      expect(stick(one.w).exists()).toBe(false)
+    })
+    it('거르면 남은 줄로 다시 센다 — 줄이 없는 날의 구분 줄은 없다', async () => {
+      const items = THREE.map((it, i) => (i === 3 || i === 45 ? { ...it, kind: 'tag', tag: 'start', txn: '1' } : it))
+      const { w, s } = await mountList(items, 2000)
+      s.setFilter('tag')
+      await flushPromises()
+      expect(heads(w)).toEqual(['11-09 (월) 1장', '11-11 (수) 1장'])
+    })
+    it('맨 위에는 지금 보는 줄의 날짜가 붙어 있다 — 스크롤하면 그 날로 바뀐다', async () => {
+      const { w, el } = await mountList(THREE, 280)
+      expect(stick(w).text()).toContain('11-09 (월)')
+      el.scrollTop = 30 * ROW // 21(첫 날 구분 줄 + 20줄) 을 지나 둘째 날 안
+      await w.find('[data-testid="se-snap-list"]').trigger('scroll')
+      expect(stick(w).text()).toContain('11-10 (화)')
+    })
+    it('구분 줄이 있어도 화면 밖의 줄을 고르면 그 줄이 보이게 움직인다(구분 줄만큼 아래다)', async () => {
+      const { s, el } = await mountList(THREE, 280)
+      s.select(THREE[59].fileName)
+      await flushPromises()
+      expect(el.scrollTop).toBe(scrollFor(62, 0, 280, ROW)) // 60번째 줄 + 구분 줄 셋
+      // 그 날의 첫 줄로 올라가면 구분 줄까지 보인다
+      s.select(THREE[40].fileName)
+      await flushPromises()
+      expect(el.scrollTop).toBe(42 * ROW)
+    })
+  })
 })

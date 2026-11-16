@@ -45,6 +45,16 @@ describe('MemoDialog', () => {
   const closed = (w) => (w.emitted('update:modelValue') ?? []).some((e) => e[0] === false)
   const type = async (text) => { await tid('se-memo-input').setValue(text) }
 
+  it('여러 날을 보고 있으면 제목에 그 스냅샷의 날짜도 적는다', async () => {
+    const dated = ITEMS.map((it, i) => ({ ...it, date: i < 2 ? '2026-11-09' : '2026-11-10' }))
+    api.snapshots.mockImplementation((eqpId, date, to) => ok({ eqpId, date, ...(to ? { to } : {}), timeDiff: 0, items: dated, skipped: 0, truncated: false }))
+    const s = useSnapshotStore()
+    await s.pickEquipment('SEWT_A01', { select: false })
+    await s.setDates('2026-11-09', '2026-11-10')
+    mount(MemoDialog, { props: { modelValue: true, fileName: name(2), mode: 'edit', me: 'kim' }, attachTo: document.body })
+    await flushPromises()
+    expect(tid('se-memo-dialog').text()).toContain('메모 — SEWT_A01 · 2026-11-10 09:13:02')
+  })
   it('새 메모: 제목에 설비·시각, 빈 칸에서 시작 — 저장하면 본 값 없이 보내고 닫는다', async () => {
     api.saveMemo.mockImplementation(() => ok({ memo: memo('새 메모') }))
     const { w, s } = await open(0)
