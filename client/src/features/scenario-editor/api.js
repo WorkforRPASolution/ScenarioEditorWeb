@@ -11,6 +11,8 @@ export const ADMIN_TIMEOUT_MS = 60000
 export const SNAPSHOT_TIMEOUT_MS = 20000
 // 이력(P3-D): 서버가 이력 서버(HttpWebServer)를 15초까지 기다린다 — 그보다 먼저 끊지 않게
 export const HISTORY_TIMEOUT_MS = 30000
+// Vision·OCR 시험(P4): 서버가 판정 서버를 12초까지 기다린다 — 그보다 먼저 끊지 않게
+export const VISION_TEST_TIMEOUT_MS = 20000
 // 공용 axios 의 기본 머리글은 JSON 이고, axios 는 그때 FormData 를 JSON 으로 바꾼다 — 멀티파트를 적으면 브라우저가 경계값과 함께 다시 쓴다.
 const MULTIPART = { 'Content-Type': 'multipart/form-data' }
 
@@ -71,6 +73,10 @@ export const scenarioEditorApi = {
   memos: () => api.get('/scenario-editor/memos', { timeout: SNAPSHOT_TIMEOUT_MS }),
   // 자동 복구 이력(P3-D) → { eqpId, txn, steps: [{ no, text, images: [{ kind: 'ref'|'screen', src }] }] } — txn 은 태그 스냅샷의 것(99999 이상)
   history: (eqpId, txn) => api.get(`/scenario-editor/history/${enc(eqpId)}/${enc(txn)}`, { timeout: HISTORY_TIMEOUT_MS }),
+  // Vision·OCR 시험(P4) — 멀티파트(meta + PNG). 브라우저가 준비한 그림을 올린다: source = 시험할 화면에서 자른 영역 조각, train = 찾을 그림.
+  // → { results: [{ score, x, y }], ms, bytes }(x·y 는 조각 기준·소수 — 화면이 보정한다) / { accepted, found, confidence, ms, bytes }
+  visionTest: (formData, signal) => api.post('/scenario-editor/vision-test', formData, { headers: MULTIPART, timeout: VISION_TEST_TIMEOUT_MS, signal }),
+  ocrTest: (formData, signal) => api.post('/scenario-editor/ocr-test', formData, { headers: MULTIPART, timeout: VISION_TEST_TIMEOUT_MS, signal }),
   // 그림 한 장(Blob). 실패 본문도 Blob 으로 온다 — blobError 로 code 를 읽는다
   snapshotImage: (eqpId, fileName, signal) => api.get(`/scenario-editor/snapshots/${enc(eqpId)}/${enc(fileName)}/image`, { responseType: 'blob', signal, timeout: SNAPSHOT_TIMEOUT_MS })
 }

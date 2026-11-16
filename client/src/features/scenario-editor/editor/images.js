@@ -52,6 +52,10 @@ export async function loadBitmap(url) {
   return createImageBitmap(await loadBlob(url))
 }
 
+// 그림 바이트를 색을 바꾸지 않고 푼다(Vision·OCR 시험의 조각 자르기) — 브라우저가 PNG 의 색 정보(iCCP·gAMA)를 적용하면
+// 똑같은 그림에서 자른 조각의 픽셀이 달라져 판정 점수가 떨어진다. (브라우저 전용 얇은 감싸개 — E2E 에서 확인)
+export const bitmapOf = (blob) => createImageBitmap(blob, { colorSpaceConversion: 'none' })
+
 // 서버 초안 그림 URL(refUrl 이 로컬 Blob 이 없을 때 쓰는 것과 같은 경로)
 export const draftImageUrl = (draftId, tempId) => imageUrl(`/scenario-editor/drafts/${enc(draftId)}/images/${enc(tempId)}`)
 
