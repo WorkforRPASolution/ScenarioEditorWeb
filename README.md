@@ -163,7 +163,7 @@ notepad server\.env
 | [6] | `EARS_INTERFACE_MAX_REQUEST_MB` | 사내 InterfaceServer 의 `max-content-length`(MB). 모르면 `100` 그대로 |
 | [4] | `SE_USER_SINGLEID` | WRITE 권한이 있는 본인 SingleID |
 | [9] | `SE_LINK_PREPROCESSING_SOP` | (선택) 전처리 설정 창에 보일 안내 문서 주소(`http://`·`https://`). 비워 두면 링크가 보이지 않는다. 읽기 시험 때 만든 `.env` 에는 이 줄이 없을 수 있다 — 없어도 된다 |
-| [10] | `CASSANDRA_*`·`SE_SNAPSHOT_PARTITION_TZ`·`SE_DISPLAY_TZ`·`SE_SNAPSHOT_PRESENCE_CONCURRENCY`·`HTTP_WEB_SERVER_URL` | 스냅샷·이력(P3) 설정이다. **스냅샷 화면을 쓰려면 채운다** — `CASSANDRA_CONTACT_POINTS`(운영 Cassandra 호스트만, 여러 대면 쉼표)·`CASSANDRA_PORT`·`CASSANDRA_LOCAL_DC`(운영 cqlsh 의 `select data_center from system.local;` 값)·`CASSANDRA_KEYSPACE`·`CASSANDRA_USERNAME`·`CASSANDRA_PASSWORD`(읽기 권한만 있으면 된다 — 웹은 `SELECT` 만 보낸다). 이력 보기는 `HTTP_WEB_SERVER_URL`(`http://<호스트>:<포트>`)을 채운다. 나머지 줄은 예시 값 그대로 둔다. 비워 두면: `CASSANDRA_CONTACT_POINTS` 가 비어 있으면 서버는 Cassandra 에 연결하지 않고 스냅샷 패널만 "주소가 설정되지 않았습니다" 를 보이며, `HTTP_WEB_SERVER_URL` 이 비어 있으면 [이력 보기] 창에만 그 안내가 나온다 — 읽기·쓰기 시험만 할 때는 비워 둬도 된다. 값이 틀리면 화면에는 "받지 못했습니다" 만 나오고 무엇이 틀렸는지는 서버 창의 로그(`스냅샷 저장소(Cassandra) 오류 → …`)에 남는다. 2026-11-16 사내 PC 한 대에서 값을 넣어 보기·메모·받기·이력·스냅샷에서 스텝 만들기를 확인했다(쓸 때의 주의는 아래 "스냅샷 화면을 쓸 때"). 사전 점검(`tools\inhouse\preflight.js`)은 아직 Cassandra·이력 서버를 보지 않는다. 읽기·쓰기 시험 때 만든 `.env` 에는 이 구역이 없을 수 있다 — 쓰려면 `server\.env.inhouse.example` 의 구역 `[10]` 을 옮겨 적는다 |
+| [10] | `CASSANDRA_*`·`SE_SNAPSHOT_PARTITION_TZ`·`SE_DISPLAY_TZ`·`SE_SNAPSHOT_PRESENCE_CONCURRENCY`·`HTTP_WEB_SERVER_URL` | 스냅샷·이력(P3) 설정이다. **스냅샷 화면을 쓰려면 채운다** — `CASSANDRA_CONTACT_POINTS`(운영 Cassandra 호스트만, 여러 대면 쉼표)·`CASSANDRA_PORT`·`CASSANDRA_LOCAL_DC`(운영 cqlsh 의 `select data_center from system.local;` 값)·`CASSANDRA_KEYSPACE`·`CASSANDRA_USERNAME`·`CASSANDRA_PASSWORD`(읽기 권한만 있으면 된다 — 웹은 `SELECT` 만 보낸다). 이력 보기는 `HTTP_WEB_SERVER_URL`(`http://<호스트>:<포트>`)을 채운다. 나머지 줄은 예시 값 그대로 둔다. 비워 두면: `CASSANDRA_CONTACT_POINTS` 가 비어 있으면 서버는 Cassandra 에 연결하지 않고 스냅샷 패널만 "주소가 설정되지 않았습니다" 를 보이며, `HTTP_WEB_SERVER_URL` 이 비어 있으면 [이력 보기] 창에만 그 안내가 나온다 — 읽기·쓰기 시험만 할 때는 비워 둬도 된다. 값이 틀리면 화면에는 "받지 못했습니다" 만 나오고 무엇이 틀렸는지는 서버 창의 로그(`스냅샷 저장소(Cassandra) 오류 → …`)에 남는다. 2026-11-16 사내 PC 한 대에서 값을 넣어 보기·메모·받기·이력·스냅샷에서 스텝 만들기를 확인했다(쓸 때의 주의는 아래 "스냅샷 화면을 쓸 때"). 사전 점검(`tools\inhouse\preflight.js`)이 이 구역의 꼴과 연결, 서버를 거친 실제 조회를 본다(아래 4 — 모두 `경고` 이고 멈춤이 아니다). 읽기·쓰기 시험 때 만든 `.env` 에는 이 구역이 없을 수 있다 — 쓰려면 `server\.env.inhouse.example` 의 구역 `[10]` 을 옮겨 적는다 |
 | [1]·[4]·[5] | 그대로 둘 것 | `HOST=127.0.0.1` · `SE_DEV_USER_OVERRIDE=0` · `SE_WEBMANAGER_DB=0` |
 
 ### 4. 사전 점검
@@ -176,7 +176,18 @@ node tools\inhouse\preflight.js
 
 InterfaceServer 는 연결만 열었다 닫는다(요청은 보내지 않는다). `멈춤 INTERFACE_UNREACHABLE` 이면 배포가 "저장 서버에 연결하지 못했습니다" 로 끝난다 — 괄호 안 글자로 가린다: `ENOTFOUND` 는 이 PC 에서 모르는 이름, `ECONNREFUSED` 는 호스트·포트가 틀림, `TIMEOUT` 은 주소가 틀렸거나 방화벽. 3 의 `EARS_INTERFACE_URL` 안내대로 주소를 고친다.
 
-첫 실행에서는 서버를 아직 띄우지 않았으므로 `경고 SERVER_DOWN` 이 나오는 것이 맞다.
+스냅샷·이력(구역 `[10]`)도 본다. 읽기만 하는 기능이라 틀려도 **`경고`** 다(쓰기 시험을 막지 않는다 — 스냅샷을 쓰지 않으면 `경고 SNAPSHOT_UNSET` 은 두어도 된다).
+
+- 설정의 꼴: Cassandra 주소(호스트나 IP, `호스트:포트` 도 된다)·포트·계정(둘 다 있거나 둘 다 없거나), 이력 서버 주소(`http://<호스트>:<포트>` — 뒤에 `/ARS/History` 를 붙이지 않는다).
+- 이 PC 에서 Cassandra 주소마다, 이력 서버에 연결되는지(연결만 열었다 닫는다): `경고 CASSANDRA_UNREACHABLE`·`CASSANDRA_POINT_UNREACHABLE`(일부만 안 닿음)·`HISTORY_UNREACHABLE`.
+- **서버를 띄운 뒤에 돌리면** 서버를 거쳐 실제로 한 번씩 조회한다 — 내 범위의 설비 하나의 가장 늦은 스냅샷 한 장(한두 줄 읽기)과 이력 한 건(없는 번호 99999 — "없다" 는 답이면 통과). 운영 Cassandra·이력 서버에 읽기 요청이 하나씩 간다. 이 도구가 Cassandra 에 직접 붙지는 않는다.
+  - `경고 SNAPSHOT_DOWN`: 연결하지 못함 — 주소·포트 경고가 없으면 **계정·비밀번호나 `CASSANDRA_LOCAL_DC` 가 틀린 것**이다(데이터센터 이름이 틀려도 이 경고다). 비밀번호에 `#` 이 있으면 값을 따옴표로 감싼다(`.env` 는 `#` 뒤를 버린다).
+  - `경고 SNAPSHOT_FAILED`: 붙었지만 조회 실패 — `CASSANDRA_KEYSPACE`·읽기 권한.
+  - `경고 HISTORY_DOWN`·`HISTORY_UNREADABLE`: 이력 서버 주소가 틀렸거나 이력 서버가 아닌 주소.
+  - 무엇이 틀렸는지는 서버 창의 로그(`스냅샷 저장소(Cassandra) 오류 → …`·`이력 서버(HttpWebServer) …`)에 남는다.
+- **서버는 뜬 때의 설정을 쓴다.** `.env` 를 고쳤으면 서버를 다시 띄운 뒤 다시 돌린다 — 다시 띄우지 않으면 같은 경고가 나오고, 반대로 맞는 값으로 떠 있는 서버는 `.env` 를 틀리게 고쳐도 통과로 보인다.
+
+첫 실행에서는 서버를 아직 띄우지 않았으므로 `경고 SERVER_DOWN` 이 나오는 것이 맞다(이때는 스냅샷·이력의 실제 조회도 보지 않는다).
 
 서버를 띄운 뒤(5), 서버 창은 그대로 두고 **새 명령 프롬프트 창**(저장소 폴더)에서 시험 이름과 함께 한 번 더 돌린다. 쓰기 권한, 이름 규칙, 그 이름이 이미 있는지를 본다. 이때는 서버에 닿지 않으면 멈춤이다.
 

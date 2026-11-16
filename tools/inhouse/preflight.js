@@ -47,13 +47,16 @@ function checkEnv(env) {
   return out
 }
 
+// URL 의 연결할 호스트·포트. IPv6 주소는 대괄호를 뗀다(대괄호째 붙으면 이름으로 찾다 ENOTFOUND 가 된다).
+const urlTarget = (url) => ({ host: url.hostname.replace(/^\[(.*)\]$/, '$1'), port: Number(url.port) || (url.protocol === 'https:' ? 443 : 80) })
+
 // EARS_INTERFACE_URL 의 호스트·포트. 꼴이 틀리면 null.
 function interfaceTarget(env) {
   const raw = String(env.EARS_INTERFACE_URL ?? '').trim()
   if (!INTERFACE_URL.test(raw)) return null
   let url
   try { url = new URL(raw) } catch { return null }
-  return { host: url.hostname, port: Number(url.port) || (url.protocol === 'https:' ? 443 : 80) }
+  return urlTarget(url)
 }
 
 const CONNECT_TIMEOUT_MS = 3000
@@ -86,26 +89,45 @@ async function interfaceCheck({ env, connect = tcpConnect }) {
 }
 
 // ── 스냅샷·이력(구역 [10]) ──
-// 서버 repo/snapshotRepository.js·clients/historyClient.js 가 읽는 방식과 맞춘다: 주소는 쉼표로 나눈 호스트, 포트는 숫자가 아니면 9042,
-// 계정은 둘 다 있을 때만 보낸다, 이력 주소는 http(s):// 로 시작하고 끝의 / 는 떼어 낸 뒤 /ARS/History/… 를 붙인다.
-const HOSTNAME = /^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$/
-const IPV6 = /^[0-9A-Fa-f:.]*:[0-9A-Fa-f:.]*:[0-9A-Fa-f:.]*$/
+// 서버 repo/snapshotRepository.js·clients/historyClient.js·cassandra-driver 가 읽는 방식과 맞춘다:
+// - 주소는 쉼표로 나눈 호스트. 드라이버는 host:port·[ipv6]:port 도 풀고 그 포트를 CASSANDRA_PORT 보다 앞세운다(control-connection.js).
+// - CASSANDRA_PORT 는 비었거나 숫자가 아니면 9042, 숫자면 그대로(범위 밖이면 붙다가 실패한다).
+// - 계정은 둘 다 있을 때만 보낸다(비밀번호는 다듬지 않는다).
+// - 이력 주소는 http(s):// 로 시작해야 하고 끝의 / 를 뗀 뒤 /ARS/History/… 를 붙인다(앞에 경로가 있어도 된다).
+// 문구에 설정 값을 되찍지 않는다 — 틀린 자리에 계정·비밀번호가 들어 있을 수 있다(연결해 본 호스트·포트만 싣는다).
+const HOSTNAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 const text = (v) => (typeof v === 'string' ? v.trim() : '')
+const validPort = (n) => Number.isInteger(n) && n >= 1 && n <= 65535
 const cassandraPoints = (env) => text(env.CASSANDRA_CONTACT_POINTS).split(',').map((s) => s.trim()).filter(Boolean)
-const isHost = (v) => HOSTNAME.test(v) || IPV6.test(v)
-// 비면 서버 기본값 9042. 숫자가 아니거나 범위 밖이면 null.
-function cassandraPort(env) {
-  const raw = text(env.CASSANDRA_PORT)
-  if (raw === '') return 9042
-  return /^\d+$/.test(raw) && Number(raw) >= 1 && Number(raw) <= 65535 ? Number(raw) : null
+const cassandraPort = (env) => (/^\d+$/.test(text(env.CASSANDRA_PORT)) ? Number(text(env.CASSANDRA_PORT)) : 9042)
+
+// 주소 하나 → { host, port }(port 는 주소에 붙인 것, 없으면 null). 호스트 꼴이 아니면 null.
+function parsePoint(name) {
+  let host = name
+  let port = null
+  if (name.startsWith('[') && name.indexOf(']:') > 1) {
+    const i = name.lastIndexOf(']:')
+    host = name.slice(1, i)
+    port = name.slice(i + 2)
+  } else if (name.indexOf(':') > 0 && name.split(':').length === 2) {
+    [host, port] = name.split(':')
+  }
+  if (net.isIP(host) === 0 && !HOSTNAME.test(host)) return null
+  if (port === null) return { host, port: null }
+  return /^\d+$/.test(port) && validPort(Number(port)) ? { host, port: Number(port) } : null
 }
-// HTTP_WEB_SERVER_URL 의 호스트·포트. 꼴이 틀리면 null.
-function historyTarget(env) {
-  const raw = text(env.HTTP_WEB_SERVER_URL).replace(/\/+$/, '')
-  if (!INTERFACE_URL.test(raw)) return null
+
+// HTTP_WEB_SERVER_URL → 비었으면 null, 틀렸으면 { problem }, 맞으면 { host, port }
+function historyUrl(env) {
+  const raw = text(env.HTTP_WEB_SERVER_URL)
+  if (raw === '') return null
+  if (!/^https?:\/\//i.test(raw)) return { problem: '앞에 http:// (또는 https://)가 없다' }
   let url
-  try { url = new URL(raw) } catch { return null }
-  return { host: url.hostname, port: Number(url.port) || (url.protocol === 'https:' ? 443 : 80) }
+  try { url = new URL(raw) } catch { return { problem: '주소로 읽지 못한다(포트는 숫자여야 한다)' } }
+  if (url.username || url.password) return { problem: '주소에 계정을 넣었다 — 서버가 그런 주소로는 요청을 보내지 못한다' }
+  if (url.search || url.hash) return { problem: '뒤에 ? 나 # 이 붙었다' }
+  if (/\/ARS\/History\/*$/i.test(url.pathname)) return { problem: '뒤에 /ARS/History 가 붙었다' }
+  return urlTarget(url)
 }
 
 // 설정 점검. 스냅샷·이력은 읽기만 한다 — 틀려도 운영 데이터를 바꾸지 않으므로 모두 경고다.
@@ -113,38 +135,43 @@ function checkSnapshotEnv(env) {
   const points = cassandraPoints(env)
   if (!points.length) return [warn('SNAPSHOT_UNSET', 'CASSANDRA_CONTACT_POINTS 가 비었다 — 스냅샷 패널은 "주소가 설정되지 않았습니다" 만 보인다. 스냅샷을 쓰지 않는 시험이면 그대로 둔다(쓰려면 README 설정 표의 구역 [10])')]
   const out = []
-  const bad = points.filter((h) => !isHost(h))
-  if (bad.length) out.push(warn('CASSANDRA_POINTS_FORMAT', `CASSANDRA_CONTACT_POINTS 에 호스트가 아닌 값이 있다(${bad.join(', ')}) — 호스트 이름이나 IP 만 쉼표로 잇는다. 포트는 CASSANDRA_PORT 에 따로 적는다`))
-  if (cassandraPort(env) === null) out.push(warn('CASSANDRA_PORT_FORMAT', `CASSANDRA_PORT=${text(env.CASSANDRA_PORT)} — 1~65535 의 숫자여야 한다. 숫자가 아니면 서버는 말없이 9042 로 붙는다`))
+  const bad = points.map((v, i) => (parsePoint(v) ? 0 : i + 1)).filter(Boolean)
+  if (bad.length) out.push(warn('CASSANDRA_POINTS_FORMAT', `CASSANDRA_CONTACT_POINTS 의 ${bad.join('·')}번째 값이 호스트 꼴이 아니다 — 호스트 이름이나 IP 만 쉼표로 잇는다(cql:// 같은 머리·계정·경로를 붙이지 않는다)`))
+  const rawPort = text(env.CASSANDRA_PORT)
+  if (rawPort !== '' && !/^\d+$/.test(rawPort)) out.push(warn('CASSANDRA_PORT_FORMAT', 'CASSANDRA_PORT 가 숫자가 아니다 — 서버는 말없이 9042 로 붙는다. 포트 숫자만 적는다'))
+  else if (!validPort(cassandraPort(env))) out.push(warn('CASSANDRA_PORT_FORMAT', 'CASSANDRA_PORT 가 1~65535 밖이다 — 서버가 그 포트로 붙으려다 실패한다'))
   const password = typeof env.CASSANDRA_PASSWORD === 'string' ? env.CASSANDRA_PASSWORD : ''
-  if ((text(env.CASSANDRA_USERNAME) === '') !== (password === '')) out.push(warn('CASSANDRA_CREDENTIALS_HALF', 'CASSANDRA_USERNAME 과 CASSANDRA_PASSWORD 가운데 하나만 있다 — 서버는 둘 다 있을 때만 계정을 보낸다(이대로면 계정 없이 붙는다)'))
-  if (blank(env.HTTP_WEB_SERVER_URL)) out.push(warn('HISTORY_UNSET', 'HTTP_WEB_SERVER_URL 이 비었다 — 스냅샷의 [이력 보기] 만 "주소가 설정되지 않았습니다" 로 나온다. 이력을 보지 않으면 그대로 둔다'))
-  else if (!historyTarget(env)) out.push(warn('HISTORY_URL_FORMAT', 'HTTP_WEB_SERVER_URL 은 http://<호스트>:<포트> 꼴이어야 한다 — 앞에 http:// 가 없거나 뒤에 경로(/ARS/History)가 붙었다. 서버가 뒤에 /ARS/History/… 를 붙여 부른다'))
+  if ((text(env.CASSANDRA_USERNAME) === '') !== (password === '')) out.push(warn('CASSANDRA_CREDENTIALS_HALF', 'CASSANDRA_USERNAME 과 CASSANDRA_PASSWORD 가운데 하나만 있다 — 서버는 둘 다 있을 때만 계정을 보낸다(이대로면 계정 없이 붙는다). 비밀번호에 # 이 있으면 값을 따옴표로 감싼다(.env 는 # 뒤를 버린다)'))
+  const history = historyUrl(env)
+  if (!history) out.push(warn('HISTORY_UNSET', 'HTTP_WEB_SERVER_URL 이 비었다 — 스냅샷의 [이력 보기] 만 "주소가 설정되지 않았습니다" 로 나온다. 이력을 보지 않으면 그대로 둔다'))
+  else if (history.problem) out.push(warn('HISTORY_URL_FORMAT', `HTTP_WEB_SERVER_URL 은 http://<호스트>:<포트> 꼴이어야 한다 — ${history.problem}. 서버가 뒤에 /ARS/History/… 를 붙여 부른다`))
   return out
 }
 
 // 이 PC 에서 Cassandra 주소들과 이력 서버에 연결되는가(TCP 만 — 계정·데이터센터 이름은 snapshotRemoteChecks 가 서버를 거쳐 본다).
-// 꼴이 틀린 값에는 붙어 보지 않는다(checkSnapshotEnv 가 이미 알린다).
+// 꼴이 틀린 값에는 붙어 보지 않는다(checkSnapshotEnv 가 이미 알린다). 꼴이 맞는 나머지에는 붙어 본다.
 async function snapshotConnectCheck({ env, connect = tcpConnect }) {
   const points = cassandraPoints(env)
   if (!points.length) return []
-  const port = cassandraPort(env)
-  const history = historyTarget(env)
+  const fallback = cassandraPort(env)
+  const targets = points.map(parsePoint).filter(Boolean).map((t) => ({ host: t.host, port: t.port ?? fallback })).filter((t) => validPort(t.port))
+  const history = historyUrl(env)
+  const historyTarget = history && !history.problem ? history : null
   const [nodes, historyCode] = await Promise.all([
-    points.every(isHost) && port !== null ? Promise.all(points.map(async (host) => ({ host, code: await connect(host, port, CONNECT_TIMEOUT_MS) }))) : [],
-    history ? connect(history.host, history.port, CONNECT_TIMEOUT_MS) : null
+    Promise.all(targets.map(async (t) => ({ ...t, code: await connect(t.host, t.port, CONNECT_TIMEOUT_MS) }))),
+    historyTarget ? connect(historyTarget.host, historyTarget.port, CONNECT_TIMEOUT_MS) : null
   ])
   const out = []
   const failed = nodes.filter((n) => n.code !== null)
-  const listed = failed.map((n) => `${n.host}:${port}(${n.code})`).join(', ')
+  const listed = failed.map((n) => `${n.host}:${n.port}(${n.code})`).join(', ')
   if (failed.length && failed.length === nodes.length) {
-    out.push(warn('CASSANDRA_UNREACHABLE', `Cassandra 에 이 PC 에서 연결하지 못했다 — ${listed}. 이대로면 스냅샷 패널이 "연결하지 못했습니다" 로 나온다. 호스트·CASSANDRA_PORT·방화벽을 본다(쿠버네티스 안쪽 이름이면 PC 에서는 닿지 않는다)`))
+    out.push(warn('CASSANDRA_UNREACHABLE', `Cassandra 에 이 PC 에서 연결하지 못했다 — ${listed}. 이대로면 스냅샷 패널이 "스냅샷 저장소가 응답하지 않습니다" 로 나온다. 호스트·포트·방화벽을 본다(쿠버네티스 안쪽 이름이면 PC 에서는 닿지 않는다)`))
   } else if (failed.length) {
     out.push(warn('CASSANDRA_POINT_UNREACHABLE', `Cassandra 주소 ${nodes.length}개 가운데 ${failed.length}개에 연결하지 못했다 — ${listed}. 나머지로 붙으므로 스냅샷은 보이지만, 닿지 않는 주소는 빼 둔다`))
   }
-  if (history && historyCode !== null) {
+  if (historyTarget && historyCode !== null) {
     const why = UNREACHABLE_WHY[historyCode] ?? '응답이 없다(주소가 틀렸거나 방화벽에 막혔다)'
-    out.push(warn('HISTORY_UNREACHABLE', `이력 서버 ${history.host}:${history.port} 에 연결하지 못했다(${historyCode}) — ${why}. 이대로면 [이력 보기] 가 "연결하지 못했습니다" 로 나온다`))
+    out.push(warn('HISTORY_UNREACHABLE', `이력 서버 ${historyTarget.host}:${historyTarget.port} 에 연결하지 못했다(${historyCode}) — ${why}. 이대로면 [이력 보기] 가 "이력 서버에 연결하지 못했습니다" 로 나온다`))
   }
   return out
 }
@@ -204,49 +231,63 @@ async function remoteChecks({ api, fetch, name, process, model }) {
 
 // 서버가 스냅샷·이력을 묻고 답하기까지의 시간 제한 — 서버의 Cassandra 제한(연결 5초 + 읽기 10초)·이력 서버 제한(15초)보다 길게
 const SNAPSHOT_TIMEOUT_MS = 20000
-// 있을 수 없는 txn 은 아니지만(가장 작은 이력 번호) 없으면 이력 서버가 "없다" 고 답한다 — 닿고 읽힌다는 것만 본다
+// 이력 번호 가운데 가장 작은 값 — 없으면 이력 서버가 "없다" 고 답한다. 닿고 읽힌다는 것만 본다
 const PROBE_TXN = '99999'
 const SERVER_LOG = '원인은 서버를 띄운 창의 로그에 남는다'
+// 서버는 뜬 때의 설정을 쓴다 — .env 만 고치고 다시 돌리면 같은 경고가 나온다
+const RESTART = '.env 를 고쳤으면 서버를 다시 띄운 뒤 다시 돌린다'
 const SNAPSHOT_FAILURES = {
-  SNAPSHOT_DOWN: ['SNAPSHOT_DOWN', `서버가 Cassandra 에 연결하지 못했다 — 주소·포트가 맞으면(위에 CASSANDRA_UNREACHABLE 이 없으면) 계정·비밀번호나 CASSANDRA_LOCAL_DC(운영 cqlsh 의 select data_center from system.local; 값)가 틀렸다. ${SERVER_LOG}("스냅샷 저장소(Cassandra) 오류 → SNAPSHOT_DOWN — …" 에 주소마다의 원인)`],
-  SNAPSHOT_FAILED: ['SNAPSHOT_FAILED', `Cassandra 에는 붙었지만 조회가 실패했다 — CASSANDRA_KEYSPACE(기본 ars)와 계정의 읽기 권한을 본다. ${SERVER_LOG}("스냅샷 저장소(Cassandra) 오류 → SNAPSHOT_FAILED — …")`],
+  SNAPSHOT_DOWN: ['SNAPSHOT_DOWN', `서버가 Cassandra 에 연결하지 못했다 — 위에 Cassandra 주소·포트 경고가 없으면 계정·비밀번호나 CASSANDRA_LOCAL_DC(운영 cqlsh 의 select data_center from system.local; 값)가 틀렸다. 비밀번호에 # 이 있으면 값을 따옴표로 감싼다. ${SERVER_LOG}("스냅샷 저장소(Cassandra) 오류 → SNAPSHOT_DOWN — …" 에 주소마다의 원인). ${RESTART}`],
+  SNAPSHOT_FAILED: ['SNAPSHOT_FAILED', `Cassandra 에는 붙었지만 조회가 실패했다 — CASSANDRA_KEYSPACE(기본 ars)와 계정의 읽기 권한을 본다. ${SERVER_LOG}("스냅샷 저장소(Cassandra) 오류 → SNAPSHOT_FAILED — …"). ${RESTART}`],
   SNAPSHOT_TIMEOUT: ['SNAPSHOT_TIMEOUT', 'Cassandra 응답이 늦다(시간 초과) — 잠시 뒤 다시 돌려 본다. 이어지면 주소·방화벽을 본다'],
   SNAPSHOT_UNSET: ['SNAPSHOT_STALE_SERVER', '떠 있는 서버는 CASSANDRA_CONTACT_POINTS 가 빈 채로 떴다 — .env 를 고친 뒤에는 서버를 다시 띄운다']
 }
 const HISTORY_FAILURES = {
-  HISTORY_DOWN: ['HISTORY_DOWN', `서버가 이력 서버에 연결하지 못했다 — HTTP_WEB_SERVER_URL 의 호스트·포트를 본다. ${SERVER_LOG}`],
+  HISTORY_DOWN: ['HISTORY_DOWN', `서버가 이력 서버에 연결하지 못했다 — HTTP_WEB_SERVER_URL 의 호스트·포트를 본다. ${SERVER_LOG}. ${RESTART}`],
   HISTORY_TIMEOUT: ['HISTORY_TIMEOUT', '이력 서버 응답이 늦다(시간 초과) — 잠시 뒤 다시 돌려 본다'],
-  HISTORY_UNREADABLE: ['HISTORY_UNREADABLE', `이력 서버의 답을 읽지 못했다 — HTTP_WEB_SERVER_URL 이 이력 서버(HttpWebServer)가 아닌 다른 서버의 주소일 수 있다. ${SERVER_LOG}`],
+  HISTORY_UNREADABLE: ['HISTORY_UNREADABLE', `이력 서버의 답을 읽지 못했다 — HTTP_WEB_SERVER_URL 이 이력 서버(HttpWebServer)가 아닌 다른 서버의 주소이거나, 이력 서버 쪽에서 오류가 났다. ${SERVER_LOG}. ${RESTART}`],
   HISTORY_UNSET: ['HISTORY_STALE_SERVER', '떠 있는 서버는 HTTP_WEB_SERVER_URL 이 빈 채로 떴다 — .env 를 고친 뒤에는 서버를 다시 띄운다']
 }
 
 // 떠 있는 서버를 거쳐 스냅샷·이력을 실제로 한 번씩 조회한다 — 계정·데이터센터 이름·키스페이스는 붙어 봐야 안다.
 // 내 범위의 설비 하나로 "가장 늦은 한 장"(한두 줄 읽기)과 이력 한 건(없는 번호면 "없다" 는 답)을 묻는다. 읽기만 한다.
-// 서버가 꺼져 있을 때는 부르지 않는다(run — remoteChecks 의 SERVER_DOWN 이 알린다).
+// 서버가 뜬 때의 설정을 본다(.env 파일이 아니다). 서버가 꺼져 있을 때는 부르지 않는다(run — remoteChecks 의 SERVER_DOWN 이 알린다).
+// 이력은 Cassandra 설정과 따로다(서버 → 이력 서버) — 스냅샷 조회가 실패해도 묻는다. 이력 주소가 비었거나 꼴이 틀리면 묻지 않는다(checkSnapshotEnv 가 알린다).
 async function snapshotRemoteChecks({ api, fetch, env }) {
   if (!cassandraPoints(env).length) return []
-  const get = async (path, ms) => {
-    try { return await fetch(`${api}${path}`, { signal: AbortSignal.timeout(ms) }) } catch { return null }
+  // 답 또는 못 받은 까닭('late' = 시간 초과, 'gone' = 서버에 닿지 않음)
+  const ask = async (path) => {
+    try { return { res: await fetch(`${api}${path}`, { signal: AbortSignal.timeout(SNAPSHOT_TIMEOUT_MS) }) } } catch (e) { return { why: e && e.name === 'TimeoutError' ? 'late' : 'gone' } }
   }
-  const list = await get('/equipment', SNAPSHOT_TIMEOUT_MS)
-  if (!list) return [warn('SNAPSHOT_NOT_CHECKED', '설비 목록이 시간 안에 오지 않았다 — 스냅샷·이력 조회는 보지 않았다. 다시 돌려 본다')]
-  if (list.status !== 200) return [warn('SNAPSHOT_NOT_CHECKED', `설비 목록 조회가 ${list.status} ${await errorCode(list)} — 스냅샷·이력 조회는 보지 않았다`)]
+  const unseen = (code, what, why) => warn(code, `${what} — ${why}. 다시 돌려 본다`)
+  const NOT_SEEN = '스냅샷·이력 조회는 보지 않았다'
+  const list = await ask('/equipment')
+  if (!list.res) return [unseen('SNAPSHOT_NOT_CHECKED', list.why === 'late' ? '설비 목록이 시간 안에 오지 않았다' : '설비 목록을 받다가 서버에 닿지 않게 됐다', NOT_SEEN)]
+  if (list.res.status !== 200) return [warn('SNAPSHOT_NOT_CHECKED', `설비 목록 조회가 ${list.res.status} ${await errorCode(list.res)} — ${NOT_SEEN}`)]
+  let items
+  try { items = (await list.res.json())?.data?.items } catch { return [unseen('SNAPSHOT_NOT_CHECKED', '설비 목록의 답을 읽지 못했다', NOT_SEEN)] }
   // 작은따옴표가 든 설비 ID 는 서버가 이력 서버에 보내지 않는다
-  const eqp = ((await list.json())?.data?.items ?? []).find((e) => e && typeof e.eqpId === 'string' && e.eqpId !== '' && !e.eqpId.includes("'"))
-  if (!eqp) return [warn('SNAPSHOT_NOT_CHECKED', '내 범위에 설비가 없다 — 스냅샷·이력 조회는 보지 않았다(스냅샷 패널에도 고를 설비가 없다)')]
-  const days = await get(`/snapshots/days?${new URLSearchParams({ eqpId: eqp.eqpId })}`, SNAPSHOT_TIMEOUT_MS)
-  if (!days) return [warn(...SNAPSHOT_FAILURES.SNAPSHOT_TIMEOUT)]
-  if (days.status !== 200) {
-    const code = await errorCode(days)
-    return [warn(...(SNAPSHOT_FAILURES[code] ?? ['SNAPSHOT_CHECK_FAILED', `스냅샷 조회(${eqp.eqpId})가 ${days.status} ${code} — ${SERVER_LOG}`]))]
+  const eqp = (Array.isArray(items) ? items : []).find((e) => e && typeof e.eqpId === 'string' && e.eqpId !== '' && !e.eqpId.includes("'"))
+  if (!eqp) return [warn('SNAPSHOT_NOT_CHECKED', `내 범위에 설비가 없다 — ${NOT_SEEN}(스냅샷 패널에도 고를 설비가 없다)`)]
+
+  async function snapshot() {
+    const r = await ask(`/snapshots/days?${new URLSearchParams({ eqpId: eqp.eqpId })}`)
+    if (!r.res) return r.why === 'late' ? [warn(...SNAPSHOT_FAILURES.SNAPSHOT_TIMEOUT)] : [unseen('SNAPSHOT_NOT_CHECKED', '스냅샷을 묻다가 서버에 닿지 않게 됐다', '스냅샷 조회는 보지 않았다')]
+    if (r.res.status === 200) return []
+    const code = await errorCode(r.res)
+    return [warn(...(SNAPSHOT_FAILURES[code] ?? ['SNAPSHOT_CHECK_FAILED', `스냅샷 조회(${eqp.eqpId})가 ${r.res.status} ${code} — ${SERVER_LOG}`]))]
   }
-  if (!historyTarget(env)) return []
-  const history = await get(`/history/${encodeURIComponent(eqp.eqpId)}/${PROBE_TXN}`, SNAPSHOT_TIMEOUT_MS)
-  if (!history) return [warn(...HISTORY_FAILURES.HISTORY_TIMEOUT)]
-  if (history.status === 200) return []
-  const code = await errorCode(history)
-  if (code === 'HISTORY_NOT_FOUND') return [] // 이력 서버가 "그 번호의 이력이 없다" 고 답했다 — 닿고 읽힌다
-  return [warn(...(HISTORY_FAILURES[code] ?? ['HISTORY_CHECK_FAILED', `이력 조회(${eqp.eqpId})가 ${history.status} ${code} — ${SERVER_LOG}`]))]
+  async function history() {
+    const target = historyUrl(env)
+    if (!target || target.problem) return []
+    const r = await ask(`/history/${encodeURIComponent(eqp.eqpId)}/${PROBE_TXN}`)
+    if (!r.res) return r.why === 'late' ? [warn(...HISTORY_FAILURES.HISTORY_TIMEOUT)] : [unseen('HISTORY_NOT_CHECKED', '이력을 묻다가 서버에 닿지 않게 됐다', '이력 조회는 보지 않았다')]
+    if (r.res.status === 200) return []
+    const code = await errorCode(r.res)
+    if (code === 'HISTORY_NOT_FOUND') return [] // 이력 서버가 "그 번호의 이력이 없다" 고 답했다 — 닿고 읽힌다
+    return [warn(...(HISTORY_FAILURES[code] ?? ['HISTORY_CHECK_FAILED', `이력 조회(${eqp.eqpId})가 ${r.res.status} ${code} — ${SERVER_LOG}`]))]
+  }
+  return (await Promise.all([snapshot(), history()])).flat()
 }
 
 function parseArgs(argv) {
