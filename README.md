@@ -52,7 +52,7 @@ copy client\.env.example client\.env
 notepad server\.env
 ```
 
-메모장에서 `<...>` 자리를 채우고 저장한다. 파일은 구역 `[1]`~`[8]` 로 나뉘어 있고 채울 줄에는 `[채움]` 이 적혀 있다. 맨 위 "채울 곳" 에 시험별로 채울 변수가 있다. 아래 표의 구역 번호가 그 파일의 구역이다.
+메모장에서 `<...>` 자리를 채우고 저장한다. 파일은 구역 `[1]`~`[10]` 으로 나뉘어 있고 채울 줄에는 `[채움]` 이 적혀 있다. 맨 위 "채울 곳" 에 시험별로 채울 변수가 있다. 아래 표의 구역 번호가 그 파일의 구역이다.
 
 | 구역 | 변수 | 넣을 값 |
 |---|---|---|
@@ -163,7 +163,7 @@ notepad server\.env
 | [6] | `EARS_INTERFACE_MAX_REQUEST_MB` | 사내 InterfaceServer 의 `max-content-length`(MB). 모르면 `100` 그대로 |
 | [4] | `SE_USER_SINGLEID` | WRITE 권한이 있는 본인 SingleID |
 | [9] | `SE_LINK_PREPROCESSING_SOP` | (선택) 전처리 설정 창에 보일 안내 문서 주소(`http://`·`https://`). 비워 두면 링크가 보이지 않는다. 읽기 시험 때 만든 `.env` 에는 이 줄이 없을 수 있다 — 없어도 된다 |
-| [10] | `CASSANDRA_*`·`SE_SNAPSHOT_PARTITION_TZ`·`SE_DISPLAY_TZ`·`SE_SNAPSHOT_PRESENCE_CONCURRENCY`·`HTTP_WEB_SERVER_URL` | 스냅샷·이력(P3) 설정이다. 스냅샷 화면(보기·메모·받기·이력·스냅샷에서 스텝 만들기)은 들어와 있지만 **사내 확인 절차(P3-F)를 쓰기 전이라 읽기·쓰기 시험에서는 비워 둔다**(2026-11-16 기준 사내 PC 한 대에서는 Cassandra 값을 넣어 스냅샷 보기를 이미 쓰고 있다 — 접속 값은 그 PC 의 `server\.env` 에만 있다) — `CASSANDRA_CONTACT_POINTS` 가 비어 있으면 서버는 Cassandra 에 연결하지 않고 스냅샷 패널만 "주소가 설정되지 않았습니다" 를 보인다. `HTTP_WEB_SERVER_URL` 이 비어 있으면 이력 보기만 안 된다. 넣을 값(Cassandra 주소·읽기 계정·데이터센터 이름·이력 서버 주소)과 절차는 P3-F 에서 이 문서에 적는다. 읽기·쓰기 시험 때 만든 `.env` 에는 이 구역이 없을 수 있다 — 없어도 된다 |
+| [10] | `CASSANDRA_*`·`SE_SNAPSHOT_PARTITION_TZ`·`SE_DISPLAY_TZ`·`SE_SNAPSHOT_PRESENCE_CONCURRENCY`·`HTTP_WEB_SERVER_URL` | 스냅샷·이력(P3) 설정이다. **스냅샷 화면을 쓰려면 채운다** — `CASSANDRA_CONTACT_POINTS`(운영 Cassandra 호스트만, 여러 대면 쉼표)·`CASSANDRA_PORT`·`CASSANDRA_LOCAL_DC`(운영 cqlsh 의 `select data_center from system.local;` 값)·`CASSANDRA_KEYSPACE`·`CASSANDRA_USERNAME`·`CASSANDRA_PASSWORD`(읽기 권한만 있으면 된다 — 웹은 `SELECT` 만 보낸다). 이력 보기는 `HTTP_WEB_SERVER_URL`(`http://<호스트>:<포트>`)을 채운다. 나머지 줄은 예시 값 그대로 둔다. 비워 두면: `CASSANDRA_CONTACT_POINTS` 가 비어 있으면 서버는 Cassandra 에 연결하지 않고 스냅샷 패널만 "주소가 설정되지 않았습니다" 를 보이며, `HTTP_WEB_SERVER_URL` 이 비어 있으면 [이력 보기] 창에만 그 안내가 나온다 — 읽기·쓰기 시험만 할 때는 비워 둬도 된다. 값이 틀리면 화면에는 "받지 못했습니다" 만 나오고 무엇이 틀렸는지는 서버 창의 로그(`스냅샷 저장소(Cassandra) 오류 → …`)에 남는다. 2026-11-16 사내 PC 한 대에서 값을 넣어 보기·메모·받기·이력·스냅샷에서 스텝 만들기를 확인했다(쓸 때의 주의는 아래 "스냅샷 화면을 쓸 때"). 사전 점검(`tools\inhouse\preflight.js`)은 아직 Cassandra·이력 서버를 보지 않는다. 읽기·쓰기 시험 때 만든 `.env` 에는 이 구역이 없을 수 있다 — 쓰려면 `server\.env.inhouse.example` 의 구역 `[10]` 을 옮겨 적는다 |
 | [1]·[4]·[5] | 그대로 둘 것 | `HOST=127.0.0.1` · `SE_DEV_USER_OVERRIDE=0` · `SE_WEBMANAGER_DB=0` |
 
 ### 4. 사전 점검
@@ -257,3 +257,14 @@ npm run dev
 
 - **운영 시나리오의 켜짐 스위치를 눌렀다**: 한 번만 더 눌러 되돌리고, 스위치 옆 글자가 원래 상태인지 본다. 수정 이력(`Owners`)에 두 줄이 남으므로 시나리오 이름과 시각을 적어 그 시나리오 담당자에게 알린다.
 - **운영 시나리오에 배포·삭제·심의·성과 저장을 했다**: 웹으로 더 고치지 않는다. 서버를 끄고 화면 사진과 시각을 적어 바로 담당자에게 알린다. 배포했다면 설비에 이미 나간 것이다. 되돌리는 방법은 담당자와 정한다.
+
+## 스냅샷 화면을 쓸 때 (사내)
+
+`server\.env` 의 구역 `[10]` 을 채우면 왼쪽 "스냅샷" 띠에서 설비의 스냅샷을 본다(위 "사내 쓰기 시험 → 3. 설정" 표의 `[10]`).
+
+- **읽기만 하는 것**: 설비 고르기, 목록(하루·여러 날·전체 15일), 그림, 받기(브라우저가 그림을 받아 묶는다), 이력 보기. 운영 Cassandra 에는 `SELECT` 만, 이력 서버에는 조회만 보낸다.
+- **운영 데이터를 바꾸는 것 — 메모**: 메모 쓰기·고치기·지우기는 운영 `ARS_USER_MEMO` 에 그대로 반영되고 데스크톱 편집기에도 보인다. 지우면 되돌릴 수 없다. 메모 목록 창의 [지우기 (n)] 은 고른 메모를 한꺼번에 지우며 **다른 사람이 쓴 메모도 지운다**(건수를 보이고 한 번 묻는다).
+- **스냅샷에서 스텝 만들기**: 만든 스텝을 배포하는 것은 쓰기 시험과 같은 규칙이다 — `SEW_TEST_<날짜>` 시나리오에만 배포한다(위 "사내 쓰기 시험").
+- **부담을 줄이는 설정**: 설비 고르기의 스냅샷 유무 표시가 운영 Cassandra 에 부담이면 `SE_SNAPSHOT_PRESENCE_CONCURRENCY` 를 낮추거나 `0` 으로 끈다(사내 측정 2026-11-16: 새로 띄운 뒤 처음 약 3초).
+- **여러 날·전체**: 한 번에 10만 줄까지 받고, 넘으면 늦은 것부터 남기고 알린다. 스냅샷이 아주 많은 설비에서 [전체] 가 느리면 날짜를 좁힌다.
+
