@@ -290,6 +290,14 @@ describe('ScenarioEditorView', () => {
         expect(tid(w, 'se-steps-rail').exists()).toBe(true)
         expect(cols(w)).toContain('12px 36px')
       })
+      it('패널을 접은 채 [적용하고 이동] 이 칸 오류로 막히면 패널이 펴진다 — 오류 칸이 숨은 채 아무 일도 없어 보이지 않게(독립 검토)', async () => {
+        const w = await openScenario([noneStep('a')])
+        await tid(w, 'se-fold-right').trigger('click')
+        expect(hidden(w, 'se-right-section')).toBe(true)
+        useEditStore().requestFocus('description')
+        await w.vm.$nextTick()
+        expect(hidden(w, 'se-right-section')).toBe(false)
+      })
       it('패널을 접은 채 새 스텝을 시작하면 패널이 펴진다 — 넣기·취소가 패널에 있다', async () => {
         const w = await openScenario()
         await tid(w, 'se-fold-right').trigger('click')

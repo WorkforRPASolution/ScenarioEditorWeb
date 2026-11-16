@@ -495,14 +495,12 @@ test.describe('메모', () => {
     await expect(page.getByTestId('se-memo-list-go')).toBeDisabled()
     await listRows.filter({ hasText: '목록에서 고침' }).getByTestId('se-memo-list-check').uncheck()
     await expect(remove).toHaveText('지우기 (3)')
-    await page.screenshot({ path: `/Users/hyunkyungmin/.claude/jobs/c6912d30/tmp/shots/memo-list-picked-${page.viewportSize().width}.png` })
 
     // ── 지우기: 건수와 남의 메모 수를 보이고 한 번 묻는다. 취소하면 그대로, 확인하면 지우고 알린다 ──
     await remove.click()
     const confirm = page.getByTestId('se-memo-list-confirm')
     await expect(confirm).toContainText('메모 3건을 지웁니다.')
     await expect(page.getByTestId('se-memo-list-confirm-others')).toHaveText('다른 사람이 쓴 메모 1건이 들어 있습니다.')
-    await page.screenshot({ path: `/Users/hyunkyungmin/.claude/jobs/c6912d30/tmp/shots/memo-list-confirm-${page.viewportSize().width}.png` })
     await page.getByTestId('se-memo-list-confirm-cancel').click()
     await expect(confirm).toHaveCount(0)
     await expect(listRows).toHaveCount(4)
@@ -563,7 +561,6 @@ test('⑨ 스텝 목록·스텝 패널 접기 — 큰 화면이 그만큼 커지
   expect(img.x).toBeGreaterThanOrEqual(wide.x - 1)
   expect(img.x + img.width).toBeLessThanOrEqual(wide.x + wide.width + 1)
   expect(img.y + img.height).toBeLessThanOrEqual(wide.y + wide.height + 1)
-  await page.screenshot({ path: `/Users/hyunkyungmin/.claude/jobs/c6912d30/tmp/shots/fold-both-${page.viewportSize().width}.png` })
 
   // ── 새로고침 뒤에도 접힌 채다(se-layout) ──
   await page.reload()
@@ -577,7 +574,6 @@ test('⑨ 스텝 목록·스텝 패널 접기 — 큰 화면이 그만큼 커지
   await expect(page.getByTestId('se-right-section')).toBeVisible()
   await expect(page.getByTestId('se-right-rail')).toHaveCount(0)
   await expect(page.getByTestId('se-steps-rail')).toBeVisible()
-  await page.screenshot({ path: `/Users/hyunkyungmin/.claude/jobs/c6912d30/tmp/shots/fold-steps-new-step-${page.viewportSize().width}.png` })
 
   // ── 띠를 누르면 펴지고, 손잡이·[접기] 가 다시 보인다 ──
   await page.getByTestId('se-steps-rail').click()

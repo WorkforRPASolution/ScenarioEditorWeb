@@ -125,6 +125,8 @@ function foldSteps() {
   setFolded('steps', true)
 }
 watch(() => (edit.panel?.isNew ? edit.panel.uid : null), (uid) => { if (uid) setFolded('right', false) })
+// 패널의 칸으로 초점을 보내라는 요청(적용이 칸 오류로 막힘 등) — 접혀 있으면 오류 칸이 보이지 않으니 편다. 초점은 다음 틱에 간다(StepPanel)
+watch(() => edit.focusReq, (r) => { if (r) setFolded('right', false) })
 // 스텝 표를 넓게 펼치면 큰 화면이 가려진다 — 그 상태에서 스냅샷을 고르면 넓게 보기를 푼다(시나리오 열기와 같은 규칙)
 watch(() => snap.selectedName, (name) => { if (name && snap.mode === 'snapshot') store.expanded = false })
 
