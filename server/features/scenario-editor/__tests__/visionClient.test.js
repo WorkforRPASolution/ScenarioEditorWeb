@@ -27,7 +27,14 @@ async function serve(handlers) {
     server.bindAsync('127.0.0.1:0', grpc.ServerCredentials.createInsecure(), (err, p) => (err ? reject(err) : resolve(p)))
   })
   closers.push(() => server.forceShutdown())
-  return { port, addr: `127.0.0.1:${port}` }
+  return { port, addr: `127.0.0.1:${port}`, server }
+}
+// 서버에 열려 있는 HTTP/2 연결 수(grpc-js 서버의 채널 정보)
+function openSessions(server) {
+  const info = grpc.getChannelzHandlers().GetServerSockets
+  return new Promise((resolve) => {
+    info({ request: { server_id: server.getChannelzRef().id, start_socket_id: 0, max_results: 100 } }, (err, res) => resolve(err ? -1 : res.socket_ref.length))
+  })
 }
 // 듣기만 하고 아무 말도 하지 않는 TCP 서버(방화벽이 버리는 주소처럼 HTTP/2 가 시작되지 않는다)
 async function silentTcp() {
@@ -110,6 +117,45 @@ describe('visionClient — 주고받기', () => {
     expect((await client.requestVision(VISION_REQ)).searchmaxResult[0].TX).toBe(2)
     client.close()
     expect((await client.requestVision(VISION_REQ)).searchmaxResult[0].TX).toBe(2)
+  })
+})
+
+describe('visionClient — 연결', () => {
+  // InterfaceServer 는 연결 하나의 요청을 한 번에 하나씩 처리한다(2026-11-16 실측 — 같은 연결의 두 번째 요청은 앞의 것이 끝나야 시작된다).
+  // 그래서 호출마다 연결을 따로 연다 — 늦는 시험 하나가 다른 시험을 세우지 않게.
+  it('동시에 부른 호출은 서로 다른 연결로 간다', async () => {
+    const peers = []
+    let release
+    const gate = new Promise((resolve) => { release = resolve })
+    const { addr } = await serve({
+      RequestVision(call, callback) { peers.push(call.getPeer()); gate.then(() => callback(null, {})) },
+      RequestOcr(call, callback) { peers.push(call.getPeer()); gate.then(() => callback(null, {})) }
+    })
+    const { client } = make({ EARS_INTERFACE_GRPC_ADDR: addr })
+    const all = Promise.all([client.requestVision(VISION_REQ), client.requestVision(VISION_REQ), client.requestOcr(OCR_REQ)])
+    await expect.poll(() => peers.length).toBe(3)
+    release()
+    await all
+    expect(new Set(peers).size).toBe(3)
+  })
+
+  it('호출이 끝나면 그 연결을 닫는다 — 서버에 연결이 쌓이지 않는다', async () => {
+    const { addr, server } = await serve({ RequestVision: (call, callback) => callback(null, {}) })
+    const { client } = make({ EARS_INTERFACE_GRPC_ADDR: addr })
+    for (let i = 0; i < 5; i++) await client.requestVision(VISION_REQ)
+    await expect.poll(() => openSessions(server)).toBe(0)
+  })
+
+  it('close() 는 진행 중인 호출을 끊는다 — VISION_CANCELLED 로 끝난다(매달리지 않는다)', async () => {
+    let arrived
+    const onArrive = new Promise((resolve) => { arrived = resolve })
+    const { addr } = await serve({ RequestVision: () => arrived() })
+    const { client } = make({ EARS_INTERFACE_GRPC_ADDR: addr })
+    const pending = caught(client.requestVision(VISION_REQ))
+    await onArrive
+    client.close()
+    const e = await pending
+    expect(e.code).toBe('VISION_CANCELLED')
   })
 })
 

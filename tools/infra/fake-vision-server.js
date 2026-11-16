@@ -82,16 +82,14 @@ async function withJudge({ zk = createIsZk(), advertiseHost = 'host.docker.inter
     if (stopped) return
     stopped = true
     try {
-      for (const kind of kinds) await zk.remove(kind, address)
+      await Promise.all(kinds.map((kind) => zk.remove(kind, address)))
     } finally {
       await fake.stop()
     }
   }
   try {
-    for (const kind of kinds) await zk.add(kind, address)
-    for (const kind of kinds) {
-      if (!(await zk.list(kind)).includes(address)) throw new Error(`judge node not registered: ${kind} ${address}`)
-    }
+    // zkCli 한 번이 1초쯤이라 두 경로를 함께 부른다. create 가 성공(종료 코드 0)이면 노드가 있다
+    await Promise.all(kinds.map((kind) => zk.add(kind, address)))
     if (noticeMs > 0) await new Promise((resolve) => setTimeout(resolve, noticeMs))
   } catch (e) {
     await stop().catch(() => {})

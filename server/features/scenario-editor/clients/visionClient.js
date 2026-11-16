@@ -9,7 +9,10 @@
 // - 그 밖의 상태 502 VISION_FAILED
 // - 부른 쪽이 끊음(signal) 499 VISION_CANCELLED — gRPC 호출을 취소한다(응답으로 나갈 일은 없다. 서비스가 자리를 비우는 신호)
 // 사용자 문구에는 주소·gRPC details 를 싣지 않는다 — 로그와 오류의 upstream { status, details } 에만 남긴다.
-// 채널은 처음 쓸 때 만들어 계속 쓴다. 주소는 부를 때마다 읽고, 바뀌었으면 채널을 새로 만든다(통합 시험·실측이 주소를 바꾼다).
+// **호출마다 연결을 따로 연다.** InterfaceServer 는 연결 하나의 gRPC 요청을 한 번에 하나씩 처리한다(akka-http 10.1 의 HTTP/2 처리 기본값 —
+// 2026-11-16 실측: 같은 연결로 동시에 보낸 두 요청 중 뒤의 것은 앞의 것이 끝난 뒤(판정 서버가 없으면 10초 뒤)에야 시작됐고, 연결을 따로 쓰면 함께 끝났다).
+// 연결을 함께 쓰면 늦는 시험 하나가 다른 사용자의 시험을 세우고, 기다리는 동안 그 시험의 deadline 이 지난다.
+// 주소는 부를 때마다 읽는다(통합 시험·실측이 주소를 바꾼다).
 const path = require('node:path')
 const { seError } = require('../errors')
 
@@ -22,13 +25,14 @@ const DETAILS_MAX = 300
 const ADDR = /^(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9][A-Za-z0-9._-]*):(\d{1,5})$/
 const CHANNEL_OPTIONS = {
   'grpc.enable_http_proxy': 0, // 사내 편집기와 같다 — 프록시 환경 변수가 있어도 곧장 붙는다
+  'grpc.use_local_subchannel_pool': 1, // 채널마다 제 연결 — 없으면 grpc-js 가 같은 주소의 채널끼리 연결 하나를 나눠 쓴다
   'grpc.initial_reconnect_backoff_ms': 500,
-  'grpc.max_reconnect_backoff_ms': 3000 // InterfaceServer 가 다시 뜬 뒤 바로 되게
+  'grpc.max_reconnect_backoff_ms': 3000
 }
 
 function createVisionClient({ env = process.env, grpc = require('@grpc/grpc-js'), protoLoader = require('@grpc/proto-loader'), log = null } = {}) {
   let Stub = null // 처음 쓸 때 proto 를 읽는다
-  let current = null // { addr, stub }
+  const open = new Set() // 진행 중인 호출 — { stub, pending }
 
   const stubClass = () => Stub || (Stub = grpc.loadPackageDefinition(protoLoader.loadSync(PROTO_PATH, PROTO_OPTIONS)).ImageProcesssingGrpcSrv.ImageProcesssingGrpcSrv)
 
@@ -53,19 +57,9 @@ function createVisionClient({ env = process.env, grpc = require('@grpc/grpc-js')
     return Number.isFinite(n) && n > 0 ? n : DEFAULT_TIMEOUT_MS
   }
 
+  // 진행 중인 호출을 모두 끊는다(서버가 내려갈 때). 그 호출들은 VISION_CANCELLED 로 끝난다. 뒤에 다시 불러도 된다.
   function close() {
-    if (!current) return
-    const { stub } = current
-    current = null
-    stub.close()
-  }
-
-  function stubFor(addr) {
-    if (current && current.addr === addr) return current.stub
-    close()
-    const Ctor = stubClass()
-    current = { addr, stub: new Ctor(addr, grpc.credentials.createInsecure(), CHANNEL_OPTIONS) }
-    return current.stub
+    for (const { pending } of open) pending.cancel()
   }
 
   function mapError(err, stub) {
@@ -87,16 +81,22 @@ function createVisionClient({ env = process.env, grpc = require('@grpc/grpc-js')
   async function call(kind, request, { signal = null } = {}) {
     const addr = address()
     if (signal && signal.aborted) throw seError(499, 'VISION_CANCELLED', '판정 시험을 끊었습니다')
-    const stub = stubFor(addr)
+    const Ctor = stubClass()
+    const stub = new Ctor(addr, grpc.credentials.createInsecure(), CHANNEL_OPTIONS)
     return new Promise((resolve, reject) => {
       let onAbort = null
-      const pending = stub[RPC[kind]](request, { deadline: new Date(Date.now() + timeoutMs()) }, (err, res) => {
+      const entry = { stub, pending: null }
+      entry.pending = stub[RPC[kind]](request, { deadline: new Date(Date.now() + timeoutMs()) }, (err, res) => {
         if (signal && onAbort) signal.removeEventListener('abort', onAbort)
-        if (err) reject(mapError(err, stub))
+        open.delete(entry)
+        const failure = err ? mapError(err, stub) : null // 채널 상태는 닫기 전에 본다
+        stub.close()
+        if (failure) reject(failure)
         else resolve(res)
       })
+      open.add(entry)
       if (signal) {
-        onAbort = () => pending.cancel()
+        onAbort = () => entry.pending.cancel()
         signal.addEventListener('abort', onAbort, { once: true })
       }
     })
