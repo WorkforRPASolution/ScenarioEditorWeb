@@ -16,8 +16,10 @@ const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
 const uniq = (values) => [...new Set(values.filter((v) => typeof v === 'string' && v !== ''))].sort(cmp)
 
 // 거르기 항목 — 목록에 있는 메모의 것만. 모델은 고른 공정 안에서, 설비는 고른 공정·모델 안에서.
-export function memoOptions(items, { process = '', model = '' } = {}) {
-  const all = Array.isArray(items) ? items : []
+// mine([내 메모만])이면 내가 쓴 메모의 것만 — 내 메모가 없는 공정·모델·설비는 항목에 없다(불러오기 창의 [내 초안만] 과 같다).
+export function memoOptions(items, { process = '', model = '', mine = false, me = '' } = {}) {
+  const listed = Array.isArray(items) ? items : []
+  const all = mine ? listed.filter((m) => isMine(m.memo, me)) : listed
   const inProcess = process ? all.filter((m) => m.process === process) : all
   const inModel = model ? inProcess.filter((m) => m.model === model) : inProcess
   return { processes: uniq(all.map((m) => m.process)), models: uniq(inProcess.map((m) => m.model)), eqpIds: uniq(inModel.map((m) => m.eqpId)) }

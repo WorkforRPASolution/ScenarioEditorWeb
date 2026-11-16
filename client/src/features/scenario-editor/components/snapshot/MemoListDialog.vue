@@ -1,6 +1,6 @@
 <script setup>
 // 메모 목록 창(P3 설계 §4.5) — 내 범위 설비의, 스냅샷 시각이 15일 안인 메모. 열 때마다 다시 받는다.
-// - 거르기(공정·모델·설비·내 메모만)는 화면에서 한다. 항목은 목록에 있는 메모의 것만이다.
+// - 거르기(공정·모델·설비·내 메모만)는 화면에서 한다. 항목은 목록에 있는 메모의 것만이다 — [내 메모만] 을 켜면 내 메모가 있는 것만(고른 값이 항목에서 빠지면 푼다).
 // - 줄을 고르고 [이 스냅샷으로 가기](또는 두 번 누르기) → 저장소가 그 설비·그 날 목록을 한 번 받아 그 줄을 고른다(SE-016).
 // - 줄은 300건까지만 그린다(서버는 5,000건까지 준다).
 // - 고르기(사내 요청 2026-11-16): 줄을 누르면 그 줄 하나, 체크 칸·Ctrl(⌘)은 더하고 빼기, Shift 는 범위, 머리 칸은 보이는 줄 모두.
@@ -53,9 +53,10 @@ watch(() => props.modelValue, (open) => {
 }, { immediate: true })
 
 const items = computed(() => snap.memoList.items)
-const options = computed(() => memoOptions(items.value, { process: process.value, model: model.value }))
+const options = computed(() => memoOptions(items.value, { process: process.value, model: model.value, mine: mine.value, me: props.me }))
 // 위 거르기를 바꿔 아래 값이 항목에서 빠지면 그 거르기를 푼다
 watch(options, (o) => {
+  if (process.value && !o.processes.includes(process.value)) process.value = '' // [내 메모만] 을 켰는데 그 공정에 내 메모가 없다
   if (model.value && !o.models.includes(model.value)) model.value = ''
   if (eqpId.value && !o.eqpIds.includes(eqpId.value)) eqpId.value = ''
 })

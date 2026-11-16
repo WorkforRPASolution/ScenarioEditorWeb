@@ -36,6 +36,13 @@ describe('memoOptions — 메모 목록의 거르기 항목(목록에 있는 메
     expect(memoOptions(ITEMS, { process: 'ETCH' }).models).toEqual(['M2'])
     expect(memoOptions(null, {})).toEqual({ processes: [], models: [], eqpIds: [] })
   })
+  it('[내 메모만] 이면 항목도 내가 쓴 메모의 것만 — 내 메모가 없는 공정·모델·설비는 고를 수 없다(2026-11-16 사용자 요청)', () => {
+    expect(memoOptions(ITEMS, { mine: true, me: 'lee' })).toEqual({ processes: ['CVD'], models: ['M1', 'M2'], eqpIds: ['C1', 'C2'] })
+    expect(memoOptions(ITEMS, { mine: true, me: 'kim' })).toEqual({ processes: ['CVD', 'ETCH'], models: ['M1', 'M2'], eqpIds: ['C1', 'E3'] })
+    expect(memoOptions(ITEMS, { process: 'CVD', mine: true, me: 'kim' })).toEqual({ processes: ['CVD', 'ETCH'], models: ['M1'], eqpIds: ['C1'] })
+    expect(memoOptions(ITEMS, { mine: true, me: 'park' })).toEqual({ processes: [], models: [], eqpIds: [] })
+    expect(memoOptions(ITEMS, { mine: false, me: 'lee' }).processes).toEqual(['CVD', 'ETCH'])
+  })
 })
 
 describe('filterMemos', () => {
