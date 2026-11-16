@@ -445,6 +445,145 @@ test.describe('메모', () => {
     await expect(page.getByTestId('se-snap-memo-mark')).toHaveCount(0)
     expect((await callAs('sew_master', 'GET', `snapshots?eqpId=SEWT_PHOTO_A01&date=${yesterday}`)).items[0].memo).toBeNull()
   })
+
+  // 사내 요청(2026-11-16): 메모 목록에서 바로 고치고, 여러 개를 골라 지운다 — 지금 보는 설비·날짜가 아니어도 된다
+  test('⑧ 메모 목록에서 고치기(남의 메모 알림) → 여러 개 골라 지우기(건수·남의 메모 수 확인) → 그 사이 바뀐 메모는 지우지 않고 지금 내용으로', async ({ page }) => {
+    const days = await callAs('sew_master', 'GET', 'snapshots/days?eqpId=SEWT_PHOTO_A01')
+    const yesterday = new Date(Date.parse(`${days.latest}T00:00:00Z`) - 86400000).toISOString().slice(0, 10)
+    const today = (await callAs('sew_master', 'GET', `snapshots?eqpId=SEWT_PHOTO_A01&date=${days.latest}`)).items
+    const old = (await callAs('sew_master', 'GET', `snapshots?eqpId=SEWT_PHOTO_A01&date=${yesterday}`)).items[0]
+    await callAs('sew_master', 'PUT', memoPath(today[0].fileName), { memo: '내 메모 하나', expect: null })
+    await callAs('sew_master', 'PUT', memoPath(today[1].fileName), { memo: '내 메모 둘', expect: null })
+    await callAs('sew_longgrade', 'PUT', memoPath(today[2].fileName), { memo: '남의 메모', expect: null })
+    await callAs('sew_longgrade', 'PUT', memoPath(old.fileName), { memo: '어제 메모', expect: null })
+
+    await asUser(page, 'sew_master')
+    await page.goto('/scenario-editor')
+    await page.getByTestId('se-snapshot-rail').click()
+    await pickEquipment(page, 'cvd_a', 'SEWT_CVD_A01') // 다른 설비를 보는 채로
+    await page.getByTestId('se-snap-memo-list-open').click()
+    const listRows = page.getByTestId('se-memo-list-row')
+    const picked = page.getByTestId('se-memo-list-picked')
+    const edit = page.getByTestId('se-memo-list-edit')
+    const remove = page.getByTestId('se-memo-list-remove')
+    const notice = page.getByTestId('se-memo-list-notice')
+    await expect(listRows).toHaveCount(4)
+    await expect(edit).toBeDisabled()
+    await expect(remove).toBeDisabled()
+
+    // ── 고치기: 줄을 하나 고르면 켜진다. 남의 메모라 누구 것인지 보이고, 저장하면 그 줄만 바뀐다 ──
+    await listRows.filter({ hasText: '남의 메모' }).click()
+    await expect(picked).toHaveText('1건 고름')
+    await edit.click()
+    const dialog = page.getByTestId('se-memo-dialog')
+    await expect(dialog).toContainText('SEWT_PHOTO_A01')
+    await expect(page.getByTestId('se-memo-input')).toHaveValue('남의 메모')
+    await expect(page.getByTestId('se-memo-others')).toContainText('님이 쓴 메모입니다.')
+    await page.getByTestId('se-memo-input').fill('목록에서 고침')
+    await page.getByTestId('se-memo-input').press('Enter')
+    await expect(dialog).toHaveCount(0)
+    await expect(listRows.filter({ hasText: '목록에서 고침' })).toHaveCount(1)
+    await expect(listRows.filter({ hasText: '남의 메모' })).toHaveCount(0)
+    const edited = (await callAs('sew_master', 'GET', `snapshots?eqpId=SEWT_PHOTO_A01&date=${days.latest}`)).items[2].memo
+    expect([edited.text, edited.author, edited.editedBy]).toEqual(['목록에서 고침', 'sew_longgrade', 'sew_master'])
+
+    // ── 여러 개 고르기: 머리 칸은 보이는 줄 모두, 체크 칸은 하나씩 빼고 더한다. 둘 이상이면 고치기·가기는 꺼진다 ──
+    await page.getByTestId('se-memo-list-check-all').check()
+    await expect(picked).toHaveText('4건 고름')
+    await expect(remove).toHaveText('지우기 (4)')
+    await expect(edit).toBeDisabled()
+    await expect(page.getByTestId('se-memo-list-go')).toBeDisabled()
+    await listRows.filter({ hasText: '목록에서 고침' }).getByTestId('se-memo-list-check').uncheck()
+    await expect(remove).toHaveText('지우기 (3)')
+    await page.screenshot({ path: `/Users/hyunkyungmin/.claude/jobs/c6912d30/tmp/shots/memo-list-picked-${page.viewportSize().width}.png` })
+
+    // ── 지우기: 건수와 남의 메모 수를 보이고 한 번 묻는다. 취소하면 그대로, 확인하면 지우고 알린다 ──
+    await remove.click()
+    const confirm = page.getByTestId('se-memo-list-confirm')
+    await expect(confirm).toContainText('메모 3건을 지웁니다.')
+    await expect(page.getByTestId('se-memo-list-confirm-others')).toHaveText('다른 사람이 쓴 메모 1건이 들어 있습니다.')
+    await page.screenshot({ path: `/Users/hyunkyungmin/.claude/jobs/c6912d30/tmp/shots/memo-list-confirm-${page.viewportSize().width}.png` })
+    await page.getByTestId('se-memo-list-confirm-cancel').click()
+    await expect(confirm).toHaveCount(0)
+    await expect(listRows).toHaveCount(4)
+    await remove.click()
+    await page.getByTestId('se-memo-list-confirm-ok').click()
+    await expect(notice).toHaveText('메모 3건을 지웠습니다.')
+    await expect(listRows).toHaveCount(1)
+    await expect(listRows).toContainText('목록에서 고침')
+    await expect(page.getByTestId('se-memo-list-count')).toHaveText('1건')
+    expect((await callAs('sew_master', 'GET', 'memos')).items.map((m) => m.memo.text)).toEqual(['목록에서 고침'])
+
+    // ── 그 사이 다른 사람이 바꾼 메모는 지우지 않는다 — 지금 내용으로 바뀌어 남고, 다시 지우면 지워진다 ──
+    await callAs('sew_longgrade', 'PUT', memoPath(today[2].fileName), { memo: '그 사이 바뀜', expect: '목록에서 고침' })
+    await listRows.first().click()
+    await remove.click()
+    await page.getByTestId('se-memo-list-confirm-ok').click()
+    await expect(notice).toContainText('그 사이 내용이 바뀐 1건은 지우지 않았습니다')
+    await expect(listRows).toContainText('그 사이 바뀜')
+    await expect(remove).toHaveText('지우기 (1)') // 고른 채로 남는다
+    await remove.click()
+    await page.getByTestId('se-memo-list-confirm-ok').click()
+    await expect(notice).toHaveText('메모 1건을 지웠습니다.')
+    await expect(page.getByTestId('se-memo-list-state')).toHaveText('최근 15일 스냅샷에 달린 메모가 없습니다.')
+    expect((await callAs('sew_master', 'GET', 'memos')).items).toEqual([])
+  })
+})
+
+// 사내 요청(2026-11-16): 아래 스텝 목록과 오른쪽 스텝 패널을 스냅샷 패널처럼 띠로 접어 큰 화면을 넓게 본다
+test('⑨ 스텝 목록·스텝 패널 접기 — 큰 화면이 그만큼 커지고, 새로고침 뒤에도 접힌 채이며, 띠를 누르면 펴진다. 접은 채 새 스텝을 시작하면 패널이 펴진다', async ({ page }) => {
+  await asUser(page, 'sew_master')
+  await page.goto('/scenario-editor')
+  await openFromDialog(page, 'SEWCVD', 'SEWMODELA', 'ALL_CONDITIONS')
+  await expect(page.getByTestId('se-base-image')).toBeVisible()
+  await page.getByTestId('se-snapshot-rail').click()
+  await pickEquipment(page, 'photo_a', 'SEWT_PHOTO_A01')
+  await snapRow(page, '09:13:02').click()
+  const viewer = page.getByTestId('se-snap-viewer')
+  await expect(page.getByTestId('se-snap-dot')).toBeVisible()
+  const before = await viewer.boundingBox()
+
+  // ── 스텝 목록 접기: 머리 줄의 [▼ 접기] → 띠만 남고 큰 화면이 아래로 커진다 ──
+  await page.getByTestId('se-fold-steps').click()
+  await expect(page.getByTestId('se-steps-section')).toBeHidden()
+  await expect(page.getByTestId('se-steps-rail')).toHaveText('▲ 스텝 목록')
+  const tall = await viewer.boundingBox()
+  expect(tall.height - before.height).toBeGreaterThan(180)
+  expect(Math.abs(tall.width - before.width)).toBeLessThan(2)
+
+  // ── 스텝 패널 접기: 경계선 위쪽 손잡이 → 36px 띠, 큰 화면이 오른쪽으로 커진다. 그림은 다시 맞춰져 다 보인다 ──
+  await page.getByTestId('se-fold-right').click()
+  await expect(page.getByTestId('se-right-section')).toBeHidden()
+  await expect(page.getByTestId('se-right-rail')).toHaveText('스텝 편집')
+  const wide = await viewer.boundingBox()
+  expect(wide.width - tall.width).toBeGreaterThan(300)
+  const rail = await page.getByTestId('se-right-rail').boundingBox()
+  expect(Math.round(rail.width)).toBe(36)
+  const img = await page.getByTestId('se-snap-image').boundingBox()
+  expect(img.x).toBeGreaterThanOrEqual(wide.x - 1)
+  expect(img.x + img.width).toBeLessThanOrEqual(wide.x + wide.width + 1)
+  expect(img.y + img.height).toBeLessThanOrEqual(wide.y + wide.height + 1)
+  await page.screenshot({ path: `/Users/hyunkyungmin/.claude/jobs/c6912d30/tmp/shots/fold-both-${page.viewportSize().width}.png` })
+
+  // ── 새로고침 뒤에도 접힌 채다(se-layout) ──
+  await page.reload()
+  await expect(page.getByTestId('se-right-rail')).toBeVisible()
+  await expect(page.getByTestId('se-steps-rail')).toBeVisible()
+
+  // ── 접은 채 스냅샷으로 새 스텝을 시작하면 패널이 펴진다(넣기·취소가 패널에 있다). 스텝 목록은 접힌 채다 ──
+  await snapRow(page, '09:13:02').click()
+  await page.getByTestId('se-snap-new').click()
+  await page.getByTestId('se-snap-new-image').click()
+  await expect(page.getByTestId('se-right-section')).toBeVisible()
+  await expect(page.getByTestId('se-right-rail')).toHaveCount(0)
+  await expect(page.getByTestId('se-steps-rail')).toBeVisible()
+  await page.screenshot({ path: `/Users/hyunkyungmin/.claude/jobs/c6912d30/tmp/shots/fold-steps-new-step-${page.viewportSize().width}.png` })
+
+  // ── 띠를 누르면 펴지고, 손잡이·[접기] 가 다시 보인다 ──
+  await page.getByTestId('se-steps-rail').click()
+  await expect(page.getByTestId('se-steps-section')).toBeVisible()
+  await expect(page.getByTestId('se-fold-steps')).toBeVisible()
+  await expect(page.getByTestId('se-fold-right')).toBeVisible()
 })
 
 // P3-D 받기·이력(설계 §4.6·§4.7, §12 E2E ③). 이력은 `npm run seed -- snapshots` 가 로컬 이력 서버(HttpWebServer)에 넣은 스텝 셋(tools/seed/data/history.js).
@@ -497,8 +636,9 @@ test('⑥ 여러 줄 고르기(Ctrl·Shift) → 좌표 포함으로 ZIP 받기(�
   expect(zip.name).toBe(`SEWT_PHOTO_A01_${date}_snapshots_xy_4.zip`)
   const entries = unzip(await joinParts([new Uint8Array(zip.bytes)]))
   expect(entries.map((e) => e.name)).toEqual([
-    `SEWT_PHOTO_A01_${date}_14-00-00-000_xy.png`, `SEWT_PHOTO_A01_${date}_15-30-00-000.png`,
-    `SEWT_PHOTO_A01_${date}_15-30-00-000_2.png`, `SEWT_PHOTO_A01_${date}_17-20-40-600.png`
+    // 15:30:00 은 같은 ms 의 클릭 + 태그다 — 원을 그린 클릭만 _xy 라 이름이 갈린다(번호 _2 가 붙지 않는다)
+    `SEWT_PHOTO_A01_${date}_14-00-00-000_xy.png`, `SEWT_PHOTO_A01_${date}_15-30-00-000_xy.png`,
+    `SEWT_PHOTO_A01_${date}_15-30-00-000.png`, `SEWT_PHOTO_A01_${date}_17-20-40-600_xy.png`
   ])
   // 클릭 (80, 260) 의 원: 반지름 6 자리는 빨강이고 그림 크기는 그대로다. 받기 전 그림의 그 자리는 빨강이 아니다
   const circled = PNG.sync.read(Buffer.from(entries[0].data))
