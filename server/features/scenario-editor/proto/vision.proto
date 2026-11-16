@@ -1,0 +1,92 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "com.sec.eeg.ars.data.ImageProcesssingGrpcSrv";
+option java_outer_classname = "visioninterface";
+
+package ImageProcesssingGrpcSrv;
+
+service ImageProcesssingGrpcSrv {
+  rpc RequestConditionCheck(VisionScenarioRequest) returns (ConditionCheckResult);
+  rpc RequestVision(VisionRequest) returns (SearchMaxResultCollection);
+  rpc RequestConditionCheckOcr(VisionScenarioRequest) returns (ConditionCheckResult);
+  rpc RequestOcr(OcrRequest) returns (OcrResult);
+  rpc RequestOcrResult(OcrResultRequest) returns (OcrDataCollection);
+}
+
+message VisionScenarioRequest {
+  string eqpId = 1;
+  string process = 2;
+  string model = 3;
+  string scenarioId = 4;
+  int32 scenarioStep = 5;
+  bytes capturedImage = 6;
+  int64 txn = 7;
+}
+
+message ConditionCheckResult {
+  bool IsConditionOK = 1;
+  int32 NextStep = 2;
+  double TX = 3;
+  double TY = 4;
+}
+
+message VisionRequest {
+  bytes sourceImage = 1;
+  bytes trainImage = 2;
+  SearchMaxParam param = 3;
+}
+
+message SearchMaxResultCollection {
+  repeated SearchMaxResult searchmaxResult = 1;
+}
+
+message SearchMaxResult {
+  bool success = 1;
+  double Score = 2;
+  double TX = 3;
+  double TY = 4;
+}
+
+message OcrParam {
+  int32 OcrValueType = 1;
+  int32 OcrOperation = 2;
+  string TextValue = 3;
+  int32 MinMatchingValue = 4;
+  double NumberValue = 5;
+  double NumberRangeMin = 6;
+  double NumberRangeMax = 7;
+}
+
+message SearchMaxParam {
+  double AcceptThreshold = 1;
+  int32 MaximumNumberToFind = 2;
+  double Timeout = 3;
+  bool TimeoutEnabled = 4;
+}
+
+message OcrRequest {
+  bytes sourceImage = 1;
+  OcrParam param = 2;
+}
+
+message OcrResultRequest {
+  bytes targetImage = 1;
+}
+
+message OcrData {
+  int32 Index = 1;
+  string Value = 2;
+}
+
+message OcrDataCollection {
+  repeated OcrData result = 1;
+}
+
+message OcrResult {
+  bool IsAccepted = 1;
+  string FoundResult = 2;
+  string Confidence = 3;
+  double TX = 4;
+  double TY = 5;
+}
