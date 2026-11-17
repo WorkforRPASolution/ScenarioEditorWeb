@@ -220,6 +220,8 @@ export const MESSAGES = {
   SEW_SNAP_STEP_IMAGE_HINT: '이 화면에서 그림을 찾아 누릅니다',
   SEW_SNAP_STEP_OCR: 'OCR 스텝',
   SEW_SNAP_STEP_OCR_HINT: '이 화면의 글자를 읽어 비교합니다',
+  SEW_SNAP_STEP_NONE: '조건 없는 스텝',
+  SEW_SNAP_STEP_NONE_HINT: '화면을 보지 않고 바로 동작합니다 — 이 스냅샷을 쓰지 않습니다',
   SEW_SNAP_STEP_NO_SCENARIO: '시나리오를 열거나 새로 만들면 이 화면으로 새 스텝을 만들 수 있습니다.',
   SEW_SNAP_STEP_READ_ONLY: '읽기 전용으로 연 시나리오에는 스텝을 만들 수 없습니다.',
   SEW_SNAP_STEP_NO_WRITE: '쓰기 권한이 없어 스텝을 만들 수 없습니다.',

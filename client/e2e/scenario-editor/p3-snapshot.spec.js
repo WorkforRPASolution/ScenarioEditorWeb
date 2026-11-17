@@ -854,8 +854,20 @@ test.describe('스냅샷에서 스텝 만들기', () => {
     await page.getByTestId('se-new-add').click()
     await expect(rows(page)).toHaveCount(2)
     expect(await column(page, 'desc')).toEqual(['스냅샷 이미지 스텝', '스냅샷 OCR 스텝'])
+
+    // ── 조건 없는 스텝도 스냅샷 보기의 메뉴에서 만든다(사내 요청 2026-11-17) — 스냅샷을 쓰지 않고, 만든 순서대로 맨 끝에 붙는다 ──
+    await snapMode().click()
+    await newBtn.click()
+    await page.getByTestId('se-snap-new-none').click()
+    await expect(page.getByTestId('se-new-where')).toHaveValue('')
+    await expect(page.getByTestId('se-panel-kind')).toHaveText('조건 없음')
+    await panel.locator('[data-field="desc"]').fill('스냅샷 보기에서 만든 조건 없는 스텝')
+    await panel.locator('[data-station="action"] input').first().fill('restart.bat')
+    await page.getByTestId('se-new-add').click()
+    await expect(rows(page)).toHaveCount(3)
+    expect(await column(page, 'desc')).toEqual(['스냅샷 이미지 스텝', '스냅샷 OCR 스텝', '스냅샷 보기에서 만든 조건 없는 스텝'])
     // 마지막 스텝의 성공 시 NEXT 는 갈 곳이 없다 — 성공으로 끝낸다
-    const last = await rowAt(page, 1).getAttribute('row-id')
+    const last = await rowAt(page, 2).getAttribute('row-id')
     await cellOf(page, last, 'onTrue').locator('[data-pick]').click()
     await page.getByTestId('se-picker').locator('[data-end="SUCCESS"]').click()
     await expect(cellOf(page, last, 'onTrue')).toHaveText('SUCCESS')
@@ -878,7 +890,7 @@ test.describe('스냅샷에서 스텝 만들기', () => {
     // ── 다시 열면 두 스텝의 기준 화면이 그 스냅샷이다 ──
     await page.reload()
     await expect(page.getByTestId('se-bar-id')).toHaveText(idOf(NEW))
-    await expect(rows(page)).toHaveCount(2)
+    await expect(rows(page)).toHaveCount(3)
     await selectRow(page, 's0')
     await expect.poll(() => naturalOf('se-base-image')).toEqual([SNAP.w, SNAP.h])
     // 찾을 그림은 그 스냅샷에서 자른 것(끈 자리는 화면 배율만큼 1~2px 어긋날 수 있다)
@@ -887,10 +899,11 @@ test.describe('스냅샷에서 스텝 만들기', () => {
     const api = await apiAs('sew_master')
     try {
       const back = await api.open(NEW)
-      expect(back.steps.map((s) => s.condition.kind)).toEqual(['image', 'ocr'])
+      expect(back.steps.map((s) => s.condition.kind)).toEqual(['image', 'ocr', 'none'])
       const area = back.steps[0].condition.searchArea
       expect([area.x, area.y, area.w, area.h].every((v, i) => near(v, AREA[i])), JSON.stringify(area)).toBe(true)
-      for (const st of back.steps) {
+      expect(back.steps[2].baseImage.state).toBe('notNeeded')
+      for (const st of back.steps.slice(0, 2)) {
         expect(st.baseImage.state).toBe('present')
         const bytes = Buffer.from(await (await get(st.baseImage.url.replace(/^\/scenario-editor\//, ''))).arrayBuffer())
         expect(bytes.equals(snapBytes), `스텝 ${st.no} 기준 화면`).toBe(true)

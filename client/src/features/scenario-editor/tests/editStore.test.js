@@ -1812,6 +1812,18 @@ describe('editStore — 스냅샷을 새 스텝의 기준 화면으로(P3-E)', (
     e.startNew('image', { snapshot: snapOf(a.fileName, 'SEWT_CVD_A01') })
     expect(e.panel.draft.images.base.tempId).not.toBe(first)
   })
+  it('스냅샷 보기에서 시작한 조건 없는 스텝(end)도 넣을 자리가 맨 끝이다 — 표 위 [새 스텝] 은 고른 줄 앞 그대로', () => {
+    const { s, e } = panelFixture([imageStep(0), imageStep(1), noneStep(2)])
+    s.select('s1')
+    expect(e.startNew('none', { end: true })).toBe(true)
+    expect(e.panel).toMatchObject({ isNew: true, insertBefore: null, origin: 's1' })
+    expect(e.panel.draft.condition.kind).toBe('none')
+    expect(e.uploads.size).toBe(0) // 그림을 올리지 않는다
+    e.cancelNew()
+    s.select('s1')
+    expect(e.startNew('none')).toBe(true)
+    expect(e.panel.insertBefore).toBe('s1')
+  })
   it('스텝을 고른 채 스냅샷으로 만들면 기준 화면은 고른 스텝의 것이 아니라 스냅샷이고, 넣을 자리는 맨 끝이다(자리는 바꿀 수 있다)', () => {
     const { s, e } = panelFixture([imageStep(0), imageStep(1), noneStep(2)])
     s.select('s1')

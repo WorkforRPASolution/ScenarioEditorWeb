@@ -31,7 +31,8 @@
 /* 큰 화면 이동 줄의 펼침 메뉴(받기) — 위로 연다 */
 .se-snap-menu { position: absolute; left: 0; bottom: calc(100% + 4px); z-index: 20; display: flex; flex-direction: column; min-width: 120px; padding: 4px; border-radius: 8px; background: #fff; border: 1px solid #e5e7eb; box-shadow: 0 8px 24px rgba(0, 0, 0, .15); }
 .se-snap-menu > button { height: 28px; padding: 0 10px; border-radius: 6px; font-size: 12px; text-align: left; white-space: nowrap; color: #374151; }
-.se-snap-menu > button:hover { background: #f3f4f6; }
+.se-snap-menu > button:hover:enabled { background: #f3f4f6; }
+.se-snap-menu > button:disabled { opacity: .45; cursor: not-allowed; }
 .se-snap-memo-ic { color: #b45309; font-size: 12px; cursor: default; }
 .se-snap-memo-bar { background: #fffbeb; }
 /* 메모 목록 창의 거르기 — 입력 칸 기본 폭(100%)을 눌러 한 줄에 놓는다 */
@@ -105,7 +106,7 @@
 .dark .se-history-screen-box > img { border-color: #475569; }
 .dark .se-snap-menu { background: #1e293b; border-color: #475569; }
 .dark .se-snap-menu > button { color: #e2e8f0; }
-.dark .se-snap-menu > button:hover { background: #334155; }
+.dark .se-snap-menu > button:hover:enabled { background: #334155; }
 .dark .se-snap-memo-ic { color: #fcd34d; }
 .dark .se-snap-memo-bar { background: rgba(146, 64, 14, .2); }
 .dark .se-snap-eqp-list, .dark .se-snap-cal { background: #1e293b; border-color: #475569; }

@@ -468,28 +468,47 @@ describe('SnapshotViewer', () => {
       expect(off(w)).toBe(true)
       expect(btn(w).attributes('title')).toBe(MESSAGES.SEW_SNAP_STEP_DELETED)
     })
-    it('고칠 수 있는 시나리오여도 그림이 떠 있지 않으면(고른 줄 없음·받는 중·그려지기 전·실패) 꺼져 있다(DC-038)', async () => {
+    it('고칠 수 있는 시나리오여도 그림이 떠 있지 않으면(고른 줄 없음·받는 중·그려지기 전·실패) 이미지·OCR 스텝은 꺼져 있다(DC-038) — 조건 없는 스텝은 그림을 쓰지 않아 켜져 있다', async () => {
       const { w, s } = await mountSized()
       panelFixture([imageStep(0)])
       await w.vm.$nextTick()
-      expect(off(w)).toBe(true) // 고른 줄 없음
-      expect(btn(w).attributes('title')).toBe(MESSAGES.SEW_SNAP_STEP_NO_IMAGE)
+      const item = (kind) => tid(w, `se-snap-new-${kind}`)
+      const itemOff = (kind) => item(kind).attributes('disabled') !== undefined
+      // 버튼은 켜져 있다(조건 없는 스텝을 만들 수 있다) — 메뉴 안에서 이미지·OCR 만 꺼지고 까닭을 알린다
+      expect(off(w)).toBe(false)
+      expect(btn(w).attributes('title')).toBeUndefined()
+      await btn(w).trigger('click')
+      expect([itemOff('image'), itemOff('ocr'), itemOff('none')]).toEqual([true, true, false]) // 고른 줄 없음
+      expect(item('image').attributes('title')).toBe(MESSAGES.SEW_SNAP_STEP_NO_IMAGE)
+      expect(item('ocr').attributes('title')).toBe(MESSAGES.SEW_SNAP_STEP_NO_IMAGE)
       const slow = defer()
       api.snapshotImage.mockImplementationOnce(() => slow.promise)
       s.select(name(1))
       await flushPromises()
-      expect(off(w)).toBe(true) // 받는 중
+      expect(itemOff('image')).toBe(true) // 받는 중
       slow.resolve({ data: new Blob(['x']) })
       await flushPromises()
-      expect(off(w)).toBe(true) // 받았지만 아직 그려지지 않았다
+      expect(itemOff('image')).toBe(true) // 받았지만 아직 그려지지 않았다
       w.vm.onLoad(IMG)
       await w.vm.$nextTick()
-      expect(off(w)).toBe(false)
-      expect(btn(w).attributes('title')).toBeUndefined()
+      expect([itemOff('image'), itemOff('ocr'), itemOff('none')]).toEqual([false, false, false])
+      expect(item('image').attributes('title')).toBe(MESSAGES.SEW_SNAP_STEP_IMAGE_HINT)
       api.snapshotImage.mockImplementation(() => Promise.reject(blobFail(404, 'SNAPSHOT_NOT_FOUND')))
       s.select(name(4))
       await flushPromises()
-      expect(off(w)).toBe(true) // 그림이 서버에 없다
+      expect([itemOff('image'), itemOff('ocr'), itemOff('none')]).toEqual([true, true, false]) // 그림이 서버에 없다 — 메뉴는 열린 채
+    })
+    it('[새 스텝 ▾] → 조건 없는 스텝(사내 요청 2026-11-17): 스냅샷을 쓰지 않는 새 스텝을 맨 끝에 넣을 자리로 시작하고 메뉴를 닫는다', async () => {
+      const { w, s } = await mountSized()
+      panelFixture([imageStep(0)])
+      const startNew = vi.spyOn(useEditStore(), 'startNew').mockReturnValue(true)
+      await show(w, s, 1)
+      await btn(w).trigger('click')
+      expect(tid(w, 'se-snap-new-none').text()).toBe(MESSAGES.SEW_SNAP_STEP_NONE)
+      expect(tid(w, 'se-snap-new-none').attributes('title')).toBe(MESSAGES.SEW_SNAP_STEP_NONE_HINT)
+      await tid(w, 'se-snap-new-none').trigger('click')
+      expect(startNew.mock.calls).toEqual([['none', { end: true }]])
+      expect(tid(w, 'se-snap-new-none').exists()).toBe(false)
     })
     it('[새 스텝 ▾] → 이미지 스텝·OCR 스텝: 떠 있는 그림의 바이트로 새 스텝을 시작하고 메뉴를 닫는다', async () => {
       const blobs = new Map()

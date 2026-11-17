@@ -761,6 +761,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   // 패널에 적용 안 한 변경이 있으면 먼저 묻는다(다른 스텝으로 가는 것과 같은 이동).
   // opts.snapshot(P3-E, 스냅샷 보기의 [새 스텝]) = { eqpId, fileName, blob }: 그 그림을 기준 화면으로 쓴다 — 스텝이 없는 시나리오에서도 된다.
   // 누를 때 떠 있던 그림을 쥐고 간다(확인 창을 거치는 사이 다른 스냅샷을 골라도 바뀌지 않는다). 그림이 없거나 너무 크면 시작하지 않고 알린다.
+  // opts.end(스냅샷 보기의 [새 스텝] → 조건 없는 스텝, 2026-11-17): 넣을 자리를 맨 끝으로 시작한다 — 스냅샷으로 만드는 스텝과 같은 자리에 쌓이게.
   function startNew(kind, opts = {}) {
     if (!editable.value || (!CAP_FLOWS[kind] && kind !== 'none')) return false
     const fromSnapshot = !!CAP_FLOWS[kind] && 'snapshot' in opts
@@ -768,7 +769,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
       const problem = snapshotBaseProblem(opts.snapshot)
       if (problem) { notify(t(problem === 'tooLarge' ? 'SEW_SNAP_STEP_TOO_LARGE' : 'SEW_SNAP_STEP_NO_IMAGE')); return false }
     }
-    const open = () => openNew(kind, fromSnapshot ? opts.snapshot : null)
+    const open = () => openNew(kind, fromSnapshot ? opts.snapshot : null, { end: opts.end === true })
     if (!panelDirty()) return open()
     return guard(open, { action: 'move' })
   }
@@ -786,7 +787,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     snapshotBases.set(key, tempId)
     return { from: 'upload', tempId }
   }
-  function openNew(kind, snapshot = null) {
+  function openNew(kind, snapshot = null, { end = false } = {}) {
     const s = session.value
     if (!s?.working) return false
     if (s.working.steps.length >= STEP_MAX) { refused('STEP_LIMIT'); return false }
@@ -799,7 +800,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     capture.value = null
     // insertBefore = 넣을 자리(그 줄 앞, null 이면 맨 끝 — 만드는 중에 바꿀 수 있다). origin = 시작할 때 고른 줄(기준 화면을 빌린 줄, 취소·되돌리기가 돌아갈 곳).
     // 스냅샷으로 만드는 스텝은 맨 끝이 기본이다 — 스냅샷을 시각 순서로 넘기며 이어 만들 때 만든 순서대로 쌓인다(고른 줄은 흔히 방금 넣은 스텝이다. 사내 [추가] 도 끝에 붙인다).
-    panel.value = { uid, isNew: true, draft, base: draft, insertBefore: snapshot ? null : anchor, origin: anchor, tried: false }
+    panel.value = { uid, isNew: true, draft, base: draft, insertBefore: snapshot || end ? null : anchor, origin: anchor, tried: false }
     // 표에서 고른 줄을 비운다(새 스텝은 아직 표에 없다). 패널을 먼저 바꿔 두어 초점 감시가 초안을 지우지 않는다.
     selection.value = emptySelection()
     useEditorStore().selectedUid = null
