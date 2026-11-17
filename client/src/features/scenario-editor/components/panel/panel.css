@@ -3,6 +3,8 @@
 .se-st { position: relative; padding-bottom: 14px; --c: #94a3b8; }
 .se-st::before { content: ''; position: absolute; left: -24px; top: 3px; width: 12px; height: 12px; border-radius: 50%; background: #fff; border: 3px solid var(--c); z-index: 1; }
 .se-st::after { content: ''; position: absolute; left: -19px; top: 8px; bottom: -8px; width: 2px; background: #d1d5db; }
+/* 시험 줄(P4): 구역이 아니라 "찾는 것" 에 딸린 줄 — 점 없이 세로줄만 잇는다 */
+.se-st-test::before { display: none; }
 .se-st-last { padding-bottom: 0; }
 .se-st-last::after { bottom: auto; height: 26px; }
 .se-st-area { --c: #2563eb; }

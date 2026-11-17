@@ -2,10 +2,12 @@
 import { ref, computed, watch } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
 import { imageSrc } from '../editor/display'
+import { testInputOfStep, aboutOf } from '../editor/visionTest'
 import { useTrainSpot } from '../composables/useTrainSpot'
 import { t, LABELS, noteMessage } from '../messages'
 import { targetLabel, targetKind, multiLabel, actionDetails, conditionLabel, actionLabel, intervalSec, stepExtraRows } from '../format'
 import CropView from './CropView.vue'
+import TestStation from './panel/TestStation.vue'
 import '../pills.css'
 
 defineOptions({ name: 'StepDetail' })
@@ -28,6 +30,9 @@ const retryText = computed(() => {
   const r = s.value?.retry ?? {}
   return `${show(r.limit)}회 · ${Number.isFinite(r.intervalMs) ? `${intervalSec(r.intervalMs)}초` : '—'}`
 })
+// Vision·OCR 시험(P4): 읽기 전용에서도 저장된 값으로 시험한다
+const testInput = computed(() => testInputOfStep(s.value))
+const testAbout = computed(() => aboutOf(store.skeleton, s.value?.no))
 const go = (target) => { if (target?.kind === 'step') store.select(target.uid) }
 const extra = computed(() => stepExtraRows(s.value))
 const sec = 'px-3 py-2.5 border-b border-gray-200 dark:border-dark-border'
@@ -96,6 +101,7 @@ const lab = 'text-[11px] font-semibold text-gray-500 dark:text-gray-400 mb-2'
         <p v-else-if="c.kind === 'image' || c.kind === 'ocr'" class="text-xs text-amber-700 dark:text-amber-300">{{ t('SEW_UI_CONDITION_DETAIL_MISSING') }}</p>
         <p v-else-if="c.kind === 'none'" class="text-xs text-gray-600 dark:text-gray-300">{{ t('SEW_UI_CONDITION_NONE_HINT') }}</p>
         <p v-else class="text-xs text-gray-600 dark:text-gray-300">{{ t('SEW_UI_CONDITION_UNKNOWN_HINT', { op: show(c.operationRaw) }) }}</p>
+        <TestStation class="mt-2.5" :input="testInput" :about="testAbout" />
       </div>
 
       <div :class="sec">

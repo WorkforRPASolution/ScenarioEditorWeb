@@ -9,11 +9,13 @@ import { useEditStore } from '../stores/editStore'
 import { refUrl } from '../editor/images'
 import { CAN_FAIL, CLICK_TYPES, PRESERVE_ONLY, PANEL_OWN_CODES, changedFields, diffLines, errorFields, firstError, sentence, trainMapDropped, keyboardTokensDropped } from '../editor/panel'
 import { typeNameOf } from '../editor/display'
+import { testInputOfDraft, aboutOf } from '../editor/visionTest'
 import { t, noteMessage, fieldMessage } from '../messages'
 import { conditionLabel } from '../format'
 import FieldError from './panel/FieldError.vue'
 import LookStation from './panel/LookStation.vue'
 import FindStation from './panel/FindStation.vue'
+import TestStation from './panel/TestStation.vue'
 import ActionStation from './panel/ActionStation.vue'
 import FlowStation from './panel/FlowStation.vue'
 import OptionStation from './panel/OptionStation.vue'
@@ -56,6 +58,12 @@ const trainPics = computed(() => {
   return Object.keys(train).sort((a, b) => Number(a) - Number(b))
     .map((key) => ({ key, src: isRef(train[key]) ? refUrl(train[key], ctx.value) : null, other: train[key]?.from === 'other' })).filter((x) => x.src)
 })
+// Vision·OCR 시험(P4): 패널의 지금 값으로 시험한다. 저장 기준 판의 같은 스텝은 OCR 접미사를 붙일지 가리는 데 쓴다(editor/visionTest).
+const sourceStep = computed(() => (p.value.isNew ? null : (edit.session?.saveBase?.steps ?? []).find((s) => s.uid === d.value?.uid) ?? null))
+const testInput = computed(() => (d.value ? testInputOfDraft(d.value, ctx.value, sourceStep.value) : null))
+const testAbout = computed(() => aboutOf(store.skeleton, p.value.isNew ? null : idx.value + 1))
+// [스텝에 넣기]: 패널의 정확도 칸에만 넣는다 — 작업본은 [적용] 을 눌러야 바뀐다
+const setAccept = (v) => edit.updateDraft((s) => ({ ...s, condition: { ...s.condition, image: { ...s.condition.image, accept: v } } }))
 const clickOutside = ref(false)
 watch(() => d.value?.uid, () => { clickOutside.value = false })
 
@@ -149,6 +157,7 @@ const btnS = 'h-8 px-3 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray
         <div class="se-rail">
           <LookStation v-if="kind === 'image' || kind === 'ocr'" :draft="d" :errs="errs" :changed="changed" :base-src="baseSrc" :base-other="baseOther" :is-new="p.isNew" />
           <FindStation :draft="d" :errs="errs" :changed="changed" :train-pics="trainPics" @outside="clickOutside = $event" />
+          <TestStation class="se-st se-st-test" :input="testInput" :about="testAbout" editable @accept="setAccept" />
           <ActionStation :draft="d" :errs="errs" :changed="changed" :click-outside="clickOutside && CLICK_TYPES.includes(type)" />
           <FlowStation :draft="d" :errs="errs" :changed="changed" :is-new="p.isNew" />
         </div>
