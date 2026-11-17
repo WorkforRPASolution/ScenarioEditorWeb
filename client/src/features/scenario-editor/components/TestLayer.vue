@@ -14,7 +14,8 @@ defineOptions({ name: 'TestLayer' })
 const props = defineProps({
   natural: { type: Object, required: true }, // 그림 크기 { w, h }
   scale: { type: Number, default: 1 },
-  mode: { type: String, required: true } // 이 층이 붙은 보기: 'step' | 'snapshot'
+  mode: { type: String, required: true }, // 이 층이 붙은 보기: 'step' | 'snapshot'
+  hideClick: { type: Boolean, default: false } // 큰 화면이 [누를 곳 보기] 의 점을 깜빡이는 동안 — 같은 자리의 점 둘이 엇박으로 깜빡이지 않게 누를 곳 점을 숨긴다
 })
 const store = useVisionTestStore()
 const k = computed(() => 1 / (props.scale > 0 ? props.scale : 1))
@@ -34,7 +35,7 @@ const tag = computed(() => ({ transform: `scale(${k.value})` }))
       <div v-for="r in hits.rects" :key="r.no" class="se-test-hit absolute" :style="box(r, r.picked ? 4 : 2)" data-testid="se-test-hit" :data-picked="r.picked ? 'true' : 'false'">
         <span class="se-test-tag" :style="tag">{{ t('SEW_TEST_TAG_FOUND', { n: r.no }) }}</span>
       </div>
-      <ClickDot v-if="hits.click" :x="hits.click.x" :y="hits.click.y" :scale="scale" :title="t('SEW_TEST_TAG_CLICK')"
+      <ClickDot v-if="hits.click && !hideClick" :x="hits.click.x" :y="hits.click.y" :scale="scale" :title="t('SEW_TEST_TAG_CLICK')"
         data-testid="se-test-click" :data-x="hits.click.x" :data-y="hits.click.y" />
     </div>
   </div>

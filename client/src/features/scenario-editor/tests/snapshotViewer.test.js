@@ -168,10 +168,11 @@ describe('SnapshotViewer', () => {
     it('점은 확대해도 화면에서 같은 크기(지름 12px)다', async () => {
       const { w, s } = await mountSized()
       await show(w, s, 1)
-      const size = () => Number(/width: ([\d.]+)px/.exec(tid(w, 'se-snap-dot').attributes('style'))[1])
-      expect(size() * tf(w).scale).toBeCloseTo(12, 5)
+      // 점은 12px 상자(snapshot.css)를 그림의 배율만큼 거꾸로 줄여 둔다
+      const k = () => Number(/scale\(([\d.e-]+)\)/.exec(tid(w, 'se-snap-dot').attributes('style'))[1])
+      expect(k() * tf(w).scale).toBeCloseTo(1, 5)
       await tid(w, 'se-snap-zoom-actual').trigger('click')
-      expect(size()).toBeCloseTo(12, 5)
+      expect(k()).toBeCloseTo(1, 5)
     })
     it('태그 스냅샷과 그림 밖 좌표에는 그리지 않는다', async () => {
       const { w, s } = await mountSized()

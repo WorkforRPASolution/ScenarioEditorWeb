@@ -782,6 +782,7 @@ export const MESSAGES = {
   SEW_CLICK_SHOW_WHY_none: '기준 화면의 검색 영역에서 찾을 그림을 찾지 못해 누를 곳을 알 수 없습니다.',
   SEW_CLICK_SHOW_WHY_timeout: '기준 화면에서 찾을 그림을 3초 안에 찾지 못했습니다.',
   SEW_CLICK_SHOW_WHY_error: '그림을 불러오지 못했습니다.',
+  SEW_CLICK_SHOW_WHY_OTHER: '큰 화면이 이 스텝의 기준 화면을 보이고 있지 않습니다.',
   SEW_CAP_LOCATING: '찾는 중…',
   SEW_CAP_FOCUS_AREA: '큰 화면에 꽉 차게 보기',
   SEW_CAP_VIEW_ALL: '큰 화면에 전체 보기',

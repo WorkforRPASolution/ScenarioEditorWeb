@@ -118,26 +118,35 @@ watch(() => edit.viewReq, (r) => {
   if (r.kind === 'all') fit()
   else if (r.kind === 'area' && isRect(draft.value?.condition?.searchArea)) focusArea(draft.value.condition.searchArea)
 })
-// ── [누를 곳 보기] ── 깜빡이는 동안의 자리는 지금의 찾은 자리 + 누를 곳이다(누를 곳을 고치면 따라간다). 시험 결과가 떠 있어 + 표시를 숨긴 동안에도 그린다.
-// 다시 누르면 처음부터 세고(점을 새로 그려 깜빡임도 처음부터), 다른 스텝으로 가거나 잡기를 시작하면 끝낸다. 누를 곳이 화면 밖이면(확대·이동) 전체로 맞춘다.
+// ── [누를 곳 보기] ── 깜빡이는 동안의 자리는 지금의 찾은 자리 + 누를 곳이다(누를 곳을 고치면 따라간다). 시험 결과가 떠 있어 + 표시를 숨긴 동안에도 그린다
+// (그동안 시험 결과의 누를 곳 점은 숨긴다 — 같은 자리의 점 둘이 엇박으로 깜빡인다).
+// - 요청은 이 화면이 보이고 있는 스텝의 것만 받는다(패널 초안과 큰 화면의 스텝은 갈릴 수 있다). 요청이 비워지면(세션이 바뀜) 끝낸다.
+// - 다시 누르면 처음부터 세고(점을 새로 그려 깜빡임도 처음부터), 다른 스텝으로 가거나 잡기를 시작하면 끝낸다.
+// - 누를 곳이 보이는 곳 밖이면(확대·이동해 둠, 기준 화면 밖의 누를 곳) 배율은 둔 채 그 점을 상자 가운데로 옮긴다 — 확대해 보던 배율을 잃지 않는다.
+//   상자가 숨겨져 있으면(스냅샷 모드·넓게 보기) 옮기지 않는다 — 다시 보일 때 화면이 전체로 맞춰진다(usePanZoom).
 const flashing = ref(false)
 let flashTimer = null
 function stopFlash() { clearTimeout(flashTimer); flashTimer = null; flashing.value = false }
 const flashAt = computed(() => (flashing.value && !cap.value ? spot.marks.value?.click ?? null : null))
-function inView(p) {
+const DOT_EDGE = 8 // 점(반지름 6px + 가는 테)이 상자 끝에 잘리지 않을 여유
+function reveal(p) {
   const el = box.value
-  if (!el || !(el.clientWidth > 0 && el.clientHeight > 0)) return true
+  const w = el?.clientWidth
+  const h = el?.clientHeight
+  if (!(w > 0 && h > 0)) return
   const sx = view.tx + p.x * view.scale
   const sy = view.ty + p.y * view.scale
-  return sx >= 0 && sy >= 0 && sx <= el.clientWidth && sy <= el.clientHeight
+  if (sx >= DOT_EDGE && sy >= DOT_EDGE && sx <= w - DOT_EDGE && sy <= h - DOT_EDGE) return
+  setView({ scale: view.scale, tx: w / 2 - p.x * view.scale, ty: h / 2 - p.y * view.scale })
 }
 watch(() => edit.clickShow, (r) => {
-  const at = r && !cap.value ? spot.marks.value?.click : null
+  if (!r) { stopFlash(); return }
+  const at = r.uid === shownUid.value && !cap.value ? spot.marks.value?.click : null
   if (!at) return
   clearTimeout(flashTimer)
   flashing.value = true
   flashTimer = setTimeout(stopFlash, CLICK_SHOW_MS)
-  if (!inView(at)) fit()
+  reveal(at)
 })
 watch([shownUid, () => !!cap.value], stopFlash)
 onBeforeUnmount(stopFlash)
@@ -195,7 +204,7 @@ defineExpose({ onLoad, fit })
         <div v-else-if="natural && areaStyle && !draft" class="absolute" :class="step.condition.kind === 'ocr' ? 'border-solid border-violet-600 bg-violet-500/10' : 'border-dashed border-primary-500 bg-primary-500/5'"
           :style="areaStyle" data-testid="se-search-area" />
         <SpotLayer v-if="natural && spotMarks" :natural="natural" :scale="view.scale" :train="spotMarks.train" :click="spotMarks.click" :labels="spotLabels" />
-        <TestLayer v-if="natural && !cap" :natural="natural" :scale="view.scale" mode="step" />
+        <TestLayer v-if="natural && !cap" :natural="natural" :scale="view.scale" mode="step" :hide-click="!!flashAt" />
         <ClickDot v-if="natural && flashAt" :key="edit.clickShow?.n" :x="flashAt.x" :y="flashAt.y" :scale="view.scale" :title="t('SEW_TEST_TAG_CLICK')"
           data-testid="se-click-flash" :data-x="flashAt.x" :data-y="flashAt.y" />
       </div>

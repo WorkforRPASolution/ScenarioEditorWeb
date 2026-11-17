@@ -54,7 +54,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   const locating = ref(false) // [다시 찍기]가 기준 화면에서 찾을 그림을 찾는 중
   // 큰 화면 보기 요청({ kind: 'area' | 'all', n }) — 패널 그림을 누르면 영역에 맞춰·전체(목업 focusArea·viewAll), 잡기를 시작하면 전체
   const viewReq = shallowRef(null)
-  // [누를 곳 보기] 요청 { n } — 누를 때마다 n 이 오른다. 큰 화면(StepViewer)이 스텝 그림의 누를 곳에 점을 잠깐 깜빡인다
+  // [누를 곳 보기] 요청 { n, uid } — 누를 때마다 n 이 오른다. 큰 화면(StepViewer)이 그 스텝(uid)을 보이고 있으면 스텝 그림의 누를 곳에 점을 잠깐 깜빡인다
   const clickShow = shallowRef(null)
   const toast = ref(null)
   const dialog = ref(null)
@@ -640,7 +640,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   }
   function setAreaDrag(on) { areaDragging.value = !!on }
   function requestView(kind) { viewReq.value = { kind, n: (viewReq.value?.n ?? 0) + 1 } }
-  function showClick() { clickShow.value = { n: (clickShow.value?.n ?? 0) + 1 } }
+  function showClick(uid) { clickShow.value = { n: (clickShow.value?.n ?? 0) + 1, uid } }
   // 잡기는 큰 화면에 그린 기준 화면 위에서만 — 패널 초안의 기준 화면이 그림(참조)이어야 한다. 버튼도 이것으로 끈다.
   const captureBaseUrl = () => { const d = panel.value.draft; return d ? refUrl(d.images?.base, imgCtx()) : null }
   const canCapture = computed(() => editable.value && !!captureBaseUrl())

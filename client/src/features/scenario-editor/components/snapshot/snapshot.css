@@ -126,19 +126,17 @@
 .dark .se-snap-cal-grid button.edge:enabled:hover { background: #1d4ed8; }
 .dark .se-snap-cal-grid button.edge[data-has]::after { background: #fff; }
 .dark .se-snap-cal-grid button[data-has]::after { background: #60a5fa; }
-/* 클릭한 곳·누를 곳 점(ClickDot — 사내 요청 2026-11-16) — 점이 깜빡이고, 점에서 고리가 퍼져 나간다. 고리는 점 크기를 따른다(점은 확대와 상관없이 화면에서 12px).
-   색(사내 요청 2026-11-17 — 점도 고리도 붉은 계열이라 붉은 화면에서 보이지 않았다): 점 = 빨강 + 흰 테 + 어두운 가는 테, 고리 = 청록(빨강의 반대쪽 색) + 어두운 가장자리.
-   어느 배경에서도 둘 중 하나와 밝은 테·어두운 테 가운데 하나는 배경과 갈린다. 고리는 가운데가 빈 고리라 점을 덮지 않는다.
-   고리의 치수는 모두 점 크기의 비율(%)이라 확대와 상관없다 — 어두운 가는 테만 px 이라 --k(1 / 배율)를 곱한다.
+/* 클릭한 곳·누를 곳 점(ClickDot — 사내 요청 2026-11-16) — 점이 깜빡이고, 점에서 고리가 퍼져 나간다.
+   점은 12px 상자이고 ClickDot 이 그림의 배율만큼 거꾸로 줄여(transform) 확대와 상관없이 화면에서 같은 크기다 — 여기 치수는 모두 화면 px 이다.
+   색(사내 요청 2026-11-17 — 점도 고리도 붉은 계열이라 붉은 화면에서 보이지 않았다): 점(::before) = 빨강 + 흰 테 + 어두운 가는 테, 고리(::after) = 청록(빨강의 반대쪽 색) + 어두운 가장자리.
+   어느 배경에서도 둘 중 하나와 밝은 테·어두운 테 가운데 하나는 배경과 갈린다. 고리는 가운데가 빈 고리라 점을 덮지 않는다(안쪽 반지름 7px = 점 6px + 가는 테 1px).
+   점과 고리는 따로 흐려진다 — 한 요소의 투명도로 깜빡이면 고리까지 함께 흐려져 고리가 가장 넓을 때 보이지 않는다. 둘 다 투명도·변환만 움직인다(다시 칠하지 않는다).
    움직임 줄이기 설정(OS 의 애니메이션 효과 끔 — 사내 PC·원격 접속에 흔하다)에서도 깜빡인다: 퍼지는 움직임만 빼고 고리가 제자리에서 밝아졌다 흐려진다. */
-.se-snap-dot { background: #dc2626; border-style: solid; border-color: #fff; box-shadow: 0 0 0 calc(1px * var(--k, 1)) rgba(15, 23, 42, .9); animation: se-snap-dot-blink 1s ease-in-out infinite; }
-.se-snap-dot::after { content: ''; position: absolute; inset: -100%; border-radius: 50%; pointer-events: none;
+.se-snap-dot { width: 12px; height: 12px; }
+.se-snap-dot::before { content: ''; position: absolute; inset: 0; box-sizing: border-box; border-radius: 50%; background: #dc2626; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(15, 23, 42, .9);
+  animation: se-snap-dot-blink 1s ease-in-out infinite; }
+.se-snap-dot::after { content: ''; position: absolute; inset: -50%; border-radius: 50%; pointer-events: none;
   background: radial-gradient(closest-side, transparent 0 58%, #0f172a 58% 63%, #22d3ee 63% 95%, #0f172a 95% 100%); animation: se-snap-dot-ping 1s cubic-bezier(0, 0, .2, 1) infinite; }
-/* 점의 깜빡임은 투명도가 아니라 색으로 한다 — 투명도로 하면 고리(점의 ::after)까지 함께 흐려져 고리가 가장 넓을 때 보이지 않는다 */
-@keyframes se-snap-dot-blink {
-  0%, 100% { background-color: #dc2626; border-color: #fff; box-shadow: 0 0 0 calc(1px * var(--k, 1)) rgba(15, 23, 42, .9); }
-  50% { background-color: rgba(220, 38, 38, .2); border-color: rgba(255, 255, 255, .3); box-shadow: 0 0 0 calc(1px * var(--k, 1)) rgba(15, 23, 42, .25); }
-}
+@keyframes se-snap-dot-blink { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
 @keyframes se-snap-dot-ping { 0% { transform: scale(1); opacity: 1; } 65% { opacity: .75; } 100% { transform: scale(2.4); opacity: 0; } }
-@keyframes se-snap-dot-fade { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
-@media (prefers-reduced-motion: reduce) { .se-snap-dot::after { transform: scale(1.5); animation: se-snap-dot-fade 1s ease-in-out infinite; } }
+@media (prefers-reduced-motion: reduce) { .se-snap-dot::after { transform: scale(1.5); animation: se-snap-dot-blink 1s ease-in-out infinite; } }

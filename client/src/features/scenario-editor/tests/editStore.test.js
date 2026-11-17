@@ -928,10 +928,10 @@ describe('editStore — 큰 화면 잡기·[다시 찍기]·새 스텝(Task 7)',
   it('누를 곳 보기 요청: 누를 때마다 번호가 오르고(큰 화면이 그때마다 다시 깜빡인다), 세션이 바뀌면 비운다', () => {
     const { e } = mk()
     expect(e.clickShow).toBe(null)
-    e.showClick()
-    expect(e.clickShow).toEqual({ n: 1 })
-    e.showClick()
-    expect(e.clickShow).toEqual({ n: 2 })
+    e.showClick('s0')
+    expect(e.clickShow).toEqual({ n: 1, uid: 's0' }) // 어느 스텝의 누를 곳인지 함께 — 큰 화면이 다른 스텝을 보이고 있으면 받지 않는다
+    e.showClick('s1')
+    expect(e.clickShow).toEqual({ n: 2, uid: 's1' })
     e.end()
     expect(e.clickShow).toBe(null)
   })

@@ -715,7 +715,7 @@ describe('StepViewer — 기준 화면에서 찾은 그림·누를 곳을 늘 �
     vi.useFakeTimers()
     try {
       await btn.trigger('click')
-      expect(e.clickShow).toEqual({ n: 1 })
+      expect(e.clickShow).toEqual({ n: 1, uid: 's0' })
       const dot = w.find(FLASH)
       expect(dot.exists()).toBe(true)
       expect(dot.classes()).toContain('se-snap-dot')
@@ -736,7 +736,7 @@ describe('StepViewer — 기준 화면에서 찾은 그림·누를 곳을 늘 �
   it('[누를 곳 보기]: 깜빡이는 동안 누를 곳을 고치면 점이 따라가고, 다른 스텝으로 가거나 잡기를 시작하면 사라진다(그 뒤에 저절로 다시 뜨지 않는다)', async () => {
     const { s, e } = panelFixture([imageStep(0), imageStep(1)])
     const w = await mountViewer()
-    e.showClick(); await nextTick()
+    e.showClick('s0'); await nextTick()
     expect(w.find(FLASH).attributes('data-x')).toBe('64')
     e.updateDraft((d) => ({ ...d, action: { ...d.action, click: { x: 300, y: -5, basis: 'trainImage' } } }))
     await nextTick()
@@ -746,29 +746,95 @@ describe('StepViewer — 기준 화면에서 찾은 그림·누를 곳을 늘 �
     expect(w.find(FLASH).exists()).toBe(false)
     e.cancelCapture(); await nextTick()
     expect(w.find(FLASH).exists()).toBe(false)
-    e.showClick(); await nextTick()
+    e.showClick('s0'); await nextTick()
     expect(w.find(FLASH).exists()).toBe(true)
     e.discardPanel()
-    e.clickRow('s1'); await nextTick(); await settle()
+    e.clickRow('s1'); await nextTick()
     expect(s.selectedUid).toBe('s1')
+    w.vm.onLoad({ target: { naturalWidth: 1000, naturalHeight: 500 } }); await nextTick() // 새 스텝의 기준 화면을 읽고, 찾을 그림도 찾았다
+    await settle()
+    expect(w.find(SPOT).exists()).toBe(true)
     expect(w.find(FLASH).exists()).toBe(false)
     w.unmount()
   })
-  it('[누를 곳 보기]: 확대·이동해 누를 곳이 보이지 않으면 화면을 전체로 맞추고, 보이면 그대로 둔다', async () => {
+  it('[누를 곳 보기]: 다시 누르면 점을 새로 그려 깜빡임도 처음부터다', async () => {
     const { e } = panelFixture([imageStep(0), imageStep(1)])
     const w = await mountViewer()
-    const fitted = viewOf(w)
-    for (let i = 0; i < 12; i++) await w.find('.select-none').trigger('wheel', { deltaY: -100, clientX: 790, clientY: 390 }) // 오른쪽 아래로 크게 확대 — 누를 곳(64,62)은 왼쪽 위 밖
-    const zoomed = viewOf(w)
-    expect(zoomed).not.toBe(fitted)
-    e.showClick(); await nextTick()
+    e.showClick('s0'); await nextTick()
+    const first = w.find(FLASH).element
+    e.showClick('s0'); await nextTick()
     expect(w.find(FLASH).exists()).toBe(true)
-    expect(viewOf(w)).toBe(fitted)
-    await w.find('.select-none').trigger('wheel', { deltaY: -100, clientX: 60, clientY: 60 }) // 누를 곳 둘레로 조금 확대 — 아직 보인다
-    const near = viewOf(w)
-    expect(near).not.toBe(fitted)
-    e.showClick(); await nextTick()
-    expect(viewOf(w)).toBe(near)
+    expect(w.find(FLASH).element).not.toBe(first)
+    w.unmount()
+  })
+  it('[누를 곳 보기]: 큰 화면이 보이는 스텝의 요청만 받는다 — 요청이 비워지면(세션이 바뀜) 깜빡임을 끝내고 다시 띄우지 않는다. 사라질 때 타이머를 남기지 않는다', async () => {
+    const { e } = panelFixture([imageStep(0), imageStep(1)])
+    const w = await mountViewer()
+    e.showClick('s1'); await nextTick() // 큰 화면은 s0 을 보이고 있다
+    expect(w.find(FLASH).exists()).toBe(false)
+    e.showClick('s0'); await nextTick()
+    expect(w.find(FLASH).exists()).toBe(true)
+    e.clickShow = null; await nextTick()
+    expect(w.find(FLASH).exists()).toBe(false)
+    await settle()
+    expect(w.find(FLASH).exists()).toBe(false)
+    vi.useFakeTimers()
+    try {
+      e.showClick('s0'); await nextTick()
+      expect(w.find(FLASH).exists()).toBe(true)
+      expect(vi.getTimerCount()).toBe(1)
+      w.unmount()
+      expect(vi.getTimerCount()).toBe(0)
+    } finally { vi.useRealTimers() }
+  })
+  it('[누를 곳 보기]: 누를 곳이 보이는 곳 밖이면(확대·이동, 기준 화면 밖의 누를 곳) 배율은 둔 채 그 점을 가운데로 옮기고, 보이면 그대로 둔다', async () => {
+    const { e } = panelFixture([imageStep(0), imageStep(1)]) // 상자 800×400, 기준 화면 1000×500
+    const w = await mountViewer()
+    const tfOf = () => { const m = /translate\((-?[\d.e-]+)px, (-?[\d.e-]+)px\) scale\(([\d.e-]+)\)/.exec(viewOf(w)); return { tx: Number(m[1]), ty: Number(m[2]), scale: Number(m[3]) } }
+    const at = (x, y) => { const v = tfOf(); return [v.tx + x * v.scale, v.ty + y * v.scale] }
+    const fitted = viewOf(w)
+    e.showClick('s0'); await nextTick()
+    expect(viewOf(w)).toBe(fitted) // 맞춤 화면에서는 보인다
+    for (let i = 0; i < 12; i++) await w.find('.select-none').trigger('wheel', { deltaY: -100, clientX: 790, clientY: 390 }) // 오른쪽 아래로 크게 확대 — 누를 곳(64,62)은 왼쪽 위 밖
+    const zoom = tfOf().scale
+    expect(at(64, 62)[0]).toBeLessThan(0)
+    e.showClick('s0'); await nextTick()
+    expect(tfOf().scale).toBe(zoom) // 확대해 둔 배율은 그대로
+    expect(at(64, 62).map(Math.round)).toEqual([400, 200])
+    // 오른쪽·아래 밖
+    await w.find('.select-none').trigger('mousedown', { button: 0, clientX: 400, clientY: 200 })
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 1300, clientY: 700 }))
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 1300, clientY: 700 }))
+    await nextTick()
+    expect(at(64, 62).map(Math.round)).toEqual([1300, 700])
+    e.showClick('s0'); await nextTick()
+    expect(at(64, 62).map(Math.round)).toEqual([400, 200])
+    // 상자 끝에 걸쳐 점이 잘릴 자리(끝에서 3px)도 옮긴다
+    const v = tfOf()
+    await w.find('.select-none').trigger('mousedown', { button: 0, clientX: 400, clientY: 200 })
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 400 - 397, clientY: 200 }))
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 400 - 397, clientY: 200 }))
+    await nextTick()
+    expect(Math.round(at(64, 62)[0])).toBe(3)
+    e.showClick('s0'); await nextTick()
+    expect(at(64, 62).map(Math.round)).toEqual([400, 200])
+    expect(tfOf().scale).toBe(v.scale)
+    // 넉넉히 보이는 자리면 그대로
+    await w.find('.select-none').trigger('mousedown', { button: 0, clientX: 400, clientY: 200 })
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 300, clientY: 150 }))
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 300, clientY: 150 }))
+    await nextTick()
+    const moved = viewOf(w)
+    e.showClick('s0'); await nextTick()
+    expect(viewOf(w)).toBe(moved)
+    // 기준 화면 밖의 누를 곳(찾은 그림 왼쪽 위로 멀리): 맞춤 화면에서도 상자 밖이면 그 점을 가운데로
+    await w.findAll('button').find((b) => b.text() === '맞춤').trigger('click')
+    e.updateDraft((d) => ({ ...d, action: { ...d.action, click: { x: -300, y: -300, basis: 'trainImage' } } }))
+    await nextTick()
+    expect(at(-260, -250)[0]).toBeLessThan(0)
+    e.showClick('s0'); await nextTick()
+    expect(w.find(FLASH).attributes('data-x')).toBe('-260')
+    expect(at(-260, -250).map(Math.round)).toEqual([400, 200])
     w.unmount()
   })
   it('[누를 곳 보기]: 찾을 그림을 한 곳 찾지 못했으면 버튼이 꺼지고 까닭을 알린다 — 잡는 동안에도 꺼진다. 꺼진 동안의 요청은 점을 그리지 않는다', async () => {
@@ -781,7 +847,7 @@ describe('StepViewer — 기준 화면에서 찾은 그림·누를 곳을 늘 �
       await settle()
       expect(p.find(SHOW).attributes('disabled'), found).toBeDefined()
       expect(p.find(SHOW).attributes('title'), found).toBe(t(`SEW_CLICK_SHOW_WHY_${found}`))
-      e.showClick(); await nextTick()
+      e.showClick('s0'); await nextTick()
       expect(w.find(FLASH).exists(), found).toBe(false)
       p.unmount(); w.unmount()
     }
@@ -795,7 +861,7 @@ describe('StepViewer — 기준 화면에서 찾은 그림·누를 곳을 늘 �
     e.startCapture(['click']); await nextTick()
     expect(p.find(SHOW).attributes('disabled')).toBeDefined()
     expect(p.find(SHOW).attributes('title')).toBe(t('SEW_CLICK_SHOW_WHY_CAPTURE'))
-    e.showClick(); await nextTick()
+    e.showClick('s0'); await nextTick()
     expect(w.find(FLASH).exists()).toBe(false)
     e.cancelCapture(); await nextTick()
     // 누를 곳이 정수가 아니면(비움) 찾을 것이 없다
@@ -824,9 +890,34 @@ describe('StepViewer — 기준 화면에서 찾은 그림·누를 곳을 늘 �
     useVisionTestStore().run = { status: 'done', kind: 'image', key: 'k', valueKey: 'v', screen: 'base', results: [{ score: 1, x: 40, y: 50 }], train: { w: 20, h: 10 }, click: { x: 64, y: 62 }, verdict: { ok: true, rule: null }, picked: 0, stale: false }
     await nextTick()
     expect(w.find(SPOT).exists()).toBe(false)
+    expect(w.find('[data-testid="se-test-click"]').exists()).toBe(true)
     await btn.trigger('click')
     expect([w.find(FLASH).attributes('data-x'), w.find(FLASH).attributes('data-y')]).toEqual(['64', '62'])
+    expect(w.find('[data-testid="se-test-click"]').exists()).toBe(false) // 깜빡이는 동안 시험 결과의 점은 숨긴다(같은 자리에서 엇박으로 깜빡인다)
+    expect(w.findAll('[data-testid="se-test-hit"]').length).toBe(1)
     d.unmount(); w.unmount()
+  })
+  it('[누를 곳 보기]: 읽기 전용 상세 — 마우스 클릭이 아닌 동작·OCR 스텝에는 버튼이 없다', async () => {
+    const { s } = panelFixture([imageStep(0, { action: { type: 6, typeName: 'Wait', raw: '3', waitSec: 3 } }), ocrStep(1), noneStep(2, { action: { type: 1, typeName: 'MouseLeftClick', raw: '3:4', click: { x: 3, y: 4, basis: 'screenOrigin' } } })], { canWrite: false })
+    const d = mount(StepDetail, { attachTo: document.body })
+    for (const uid of ['s0', 's1', 's2']) {
+      s.select(uid); await nextTick()
+      expect(d.find(SHOW).exists(), uid).toBe(false)
+    }
+    expect(d.text()).toContain('3:4') // 좌표 줄은 있다
+    d.unmount()
+  })
+  it('[누를 곳 보기]: 큰 화면이 패널의 스텝을 보이고 있지 않으면(여러 줄을 골랐다 풀어 패널과 큰 화면이 갈림·기준 화면을 아직 읽지 못함) 버튼이 꺼지고 까닭을 알린다', async () => {
+    const { e } = panelFixture([imageStep(0), imageStep(1)])
+    const p = mount(StepPanel, { attachTo: document.body }) // 큰 화면 없이 패널만
+    await settle()
+    expect(p.find(SHOW).attributes('disabled')).toBeDefined()
+    expect(p.find(SHOW).attributes('title')).toBe(t('SEW_CLICK_SHOW_WHY_OTHER'))
+    e.setScreenSize({ w: 1000, h: 500, uid: 's0' }); await nextTick()
+    expect(p.find(SHOW).attributes('disabled')).toBeUndefined()
+    e.setScreenSize({ w: 1000, h: 500, uid: 's1' }); await nextTick()
+    expect(p.find(SHOW).attributes('disabled')).toBeDefined()
+    p.unmount()
   })
 
   it('시험 결과가 떠 있는 동안 머리 줄은 시험 결과의 색을 알린다 — "학습 이미지 위치는 저장되지 않아…" 로 바뀌지 않는다', async () => {

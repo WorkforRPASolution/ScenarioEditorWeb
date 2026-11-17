@@ -116,8 +116,8 @@ watch(() => store.selectedUid, (uid) => { if (uid) snap.showStep() })
 watch(() => store.opening, (o) => { if (o) snap.showStep() })
 watch(() => !!edit.capture, (on) => { if (on) snap.showStep() })
 watch(() => (edit.panel?.isNew ? edit.panel.uid : null), (uid) => { if (uid) snap.showStep() })
-// [누를 곳 보기]: 점은 스텝 그림 위에 깜빡인다
-watch(() => edit.clickShow, (r) => { if (r) snap.showStep() })
+// [누를 곳 보기]: 점은 스텝 그림 위에 깜빡인다 — 스텝 표를 넓게 펼쳐 큰 화면이 가려져 있으면 넓게 보기도 푼다(아래 스냅샷 고르기와 같은 규칙)
+watch(() => edit.clickShow, (r) => { if (r) { snap.showStep(); store.expanded = false } })
 // 접기(사내 요청 2026-11-16): 아래 스텝 목록과 오른쪽 스텝 패널을 스냅샷 패널처럼 띠로 접는다 — 큰 화면(스냅샷)을 넓게 보려고.
 // 접어도 둘 다 그려 둔 채 숨긴다(패널에 적던 값·표의 스크롤이 남는다). 접힘은 크기와 함께 기억한다(se-layout).
 // - 손잡이는 두 경계선에 있다(패널 = 오른쪽 경계선 위쪽, 목록 = 아래 경계선 오른쪽 끝). 목록을 넓게 펼친 동안에는 아래 경계선이 없어 접지 못한다.

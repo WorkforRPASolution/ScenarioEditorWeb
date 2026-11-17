@@ -50,6 +50,17 @@ describe('TestLayer — 시험이 찾은 곳', () => {
     w.unmount()
   })
 
+  it('큰 화면이 [누를 곳 보기] 의 점을 깜빡이는 동안(hideClick)에는 시험 결과의 누를 곳 점을 그리지 않는다 — 같은 자리에서 엇박으로 깜빡이지 않게', async () => {
+    const w = mountLayer({ hideClick: true })
+    store.run = done()
+    await w.vm.$nextTick()
+    expect(all(w, 'se-test-hit').length).toBe(2)
+    expect(at(w, 'se-test-click').exists()).toBe(false)
+    await w.setProps({ hideClick: false })
+    expect(at(w, 'se-test-click').exists()).toBe(true)
+    w.unmount()
+  })
+
   it('고른 줄의 사각형은 굵게, 선 굵기·점 크기는 확대와 상관없이 화면에서 같다', async () => {
     const w = mountLayer({ scale: 2 })
     store.run = done({ picked: 1 })
@@ -57,7 +68,7 @@ describe('TestLayer — 시험이 찾은 곳', () => {
     const hits = all(w, 'se-test-hit')
     expect(hits.map((h) => h.attributes('data-picked'))).toEqual(['false', 'true'])
     expect(hits.map((h) => px(h, 'borderWidth'))).toEqual([1, 2])
-    expect(px(at(w, 'se-test-click'), 'width')).toBe(6)
+    expect(at(w, 'se-test-click').attributes('style')).toContain('scale(0.5)')
     await w.setProps({ scale: 0.5 })
     expect(all(w, 'se-test-hit').map((h) => px(h, 'borderWidth'))).toEqual([4, 8])
     w.unmount()

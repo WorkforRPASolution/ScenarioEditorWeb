@@ -80,10 +80,12 @@ const canRepick = computed(() => kind.value === 'image' && isRect(props.draft.co
       <KeptAction v-if="kept" :action="action" />
       <ClickAction v-else-if="CLICK_TYPES.includes(type)" :action="action" :errs="errs" :kind="kind" :outside="clickOutside" @update="update">
         <template v-if="kind === 'image'" #repick>
-          <ClickShowButton class="ml-auto" :draft="draft" />
+          <span class="ml-auto shrink-0 flex items-center gap-0.5">
+          <ClickShowButton :draft="draft" />
           <button type="button" data-testid="se-repick" :disabled="!canRepick" :title="edit.canCapture ? t('SEW_CAP_REPICK_TITLE') : t('SEW_CAP_NO_BASE_IMAGE')"
             class="shrink-0 h-7 px-2 rounded-md text-xs font-medium text-primary-700 dark:text-primary-300 hover:enabled:bg-primary-50 dark:hover:enabled:bg-primary-900/30 disabled:text-gray-400 disabled:opacity-60"
             @click="edit.repick()">{{ edit.locating ? t('SEW_CAP_LOCATING') : hasClick ? t('SEW_CAP_REPICK') : t('SEW_CAP_PICK') }}</button>
+          </span>
         </template>
       </ClickAction>
       <component :is="BODY[type]" v-else-if="BODY[type]" :action="action" :errs="errs" @update="update" />

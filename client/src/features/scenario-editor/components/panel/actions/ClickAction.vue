@@ -15,7 +15,8 @@ const set = (k, text) => emit('update', { ...props.action, click: { ...click(), 
 
 <template>
   <div v-if="kind === 'image'">
-    <div class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+    <!-- 패널이 좁으면 버튼 묶음(누를 곳 보기·다시 찍기)이 다음 줄로 간다 — 한 줄에 두면 X·Y 칸이 눌려 숫자가 보이지 않는다 -->
+    <div class="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
       <span class="text-red-600 dark:text-red-400">✛</span><span>{{ t('SEW_PANEL_CLICK_AT') }}</span>
       X<input class="se-inp se-inp-n" :class="{ 'se-inp-bad': errs.click?.level === 'error' }" inputmode="numeric" data-field="click" :value="numOut(action.click?.x)" :aria-label="t('SEW_PANEL_CLICK_X')" @change="set('x', $event.target.value)">
       Y<input class="se-inp se-inp-n" :class="{ 'se-inp-bad': errs.click?.level === 'error' }" inputmode="numeric" data-testid="se-click-y" :value="numOut(action.click?.y)" :aria-label="t('SEW_PANEL_CLICK_Y')" @change="set('y', $event.target.value)">
