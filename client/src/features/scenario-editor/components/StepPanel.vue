@@ -37,12 +37,14 @@ const kind = computed(() => d.value?.condition?.kind)
 const type = computed(() => d.value?.action?.type)
 const allErrs = computed(() => (d.value ? edit.panelErrors() : {}))
 // 새 스텝은 [넣기]를 누르기 전에는 칸 오류를 보이지 않는다 — 빈 초안이 처음부터 빨갛지 않게.
-// 다만 영역 칸에 숫자로 잘못 친 값(정수 아님·1 미만·음수·화면 밖)은 바로 알린다 — 끌어 잡은 영역에서는 나오지 않는 오류다. 아직 다 치지 않은 빈 칸은 두고.
-const TYPED_AREA = new Set(['AREA_NOT_INTEGER', 'AREA_SIZE_MIN', 'AREA_NEGATIVE', 'AREA_OUT_RIGHT', 'AREA_OUT_BOTTOM'])
+// 다만 영역 칸에 숫자로 잘못 친 값(정수 아님·1 미만·음수·너무 큼·화면 밖)은 바로 알린다 — 끌어 잡은 영역에서는 나오지 않는 오류다.
+// 빈 칸은 영역이 이미 있을 때만(잡은 영역의 칸을 비움 — 큰 화면은 옛 값을 그리고 있다). 영역이 없으면 아직 다 치지 않은 것이라 둔다.
+const TYPED_AREA = new Set(['AREA_NOT_INTEGER', 'AREA_SIZE_MIN', 'AREA_NEGATIVE', 'AREA_TOO_LARGE', 'AREA_OUT_RIGHT', 'AREA_OUT_BOTTOM'])
 const errs = computed(() => {
   if (!p.value.isNew || p.value.tried) return allErrs.value
   const a = allErrs.value.area
-  return a && TYPED_AREA.has(a.code) ? { area: a } : {}
+  const show = a && (TYPED_AREA.has(a.code) || (a.code === 'AREA_FIELD_EMPTY' && !!d.value?.condition?.searchArea))
+  return show ? { area: a } : {}
 })
 const changed = computed(() => (p.value.isNew ? [] : changedFields(p.value.base, d.value)))
 const bad = computed(() => errorFields(errs.value))

@@ -6,11 +6,24 @@ import {
   testKey, valueKey, ocrLines, confidenceOf, aboutOf, hitsOf
 } from '../editor/visionTest'
 import { imageStep, ocrStep, noneStep, eqpStep } from './panelFixture'
+import { MESSAGES } from '../messages'
 
 const session = { source: { process: 'P', model: 'M', name: 'N', crtime: 1, fileId: 'F' } }
 const ctx = { session, uploads: new Map(), draftId: null }
 const BASE = { kind: 'base' }
 const SNAP = { kind: 'snapshot', snapshot: { eqpId: 'E1', fileName: '1700000000000_[1][2].png' } }
+
+describe('영역 칸에 잘못 친 글자가 남아 있으면 시험하지 않는다(areaTyped — 칸에 보이는 값과 다른 영역으로 시험하지 않게)', () => {
+  it('시험 입력에 표시가 실리고 [시험] 이 꺼지는 까닭이 된다', () => {
+    const s = imageStep(0)
+    const typed = { ...s, condition: { ...s.condition, areaTyped: { w: '80o' } } }
+    expect(testInputOfDraft(typed, ctx).areaTyped).toBe(true)
+    expect('areaTyped' in testInputOfDraft(s, ctx)).toBe(false)
+    expect(blockReason(testInputOfDraft(typed, ctx), { screen: { kind: 'base' }, accept: 0.9 })).toBe('SEW_TEST_WHY_AREA_TYPED')
+    expect(blockReason(testInputOfDraft(s, ctx), { screen: { kind: 'base' }, accept: 0.9 })).toBe(null)
+    expect(MESSAGES.SEW_TEST_WHY_AREA_TYPED).toBeTruthy()
+  })
+})
 
 describe('testInputOfDraft — 패널 초안에서 시험 입력', () => {
   it('이미지 스텝: 영역·기준 화면·찾을 그림(0번)·패널 정확도·누를 곳·동작·다중 검사', () => {

@@ -42,6 +42,8 @@ test('검색 영역을 키보드로 — 큰 화면이 따라오고, 글자·소�
   expect(await rect()).toEqual(['600', '320', '800', '520']) // 오타 하나로 영역이 사라지지 않는다 — 큰 화면·영역 그림은 마지막 바른 값
   await expect(panel.getByTestId('se-look-area')).toBeVisible()
   await expect(page.getByTestId('se-cap-look')).toHaveText('다시 잡기')
+  await expect(page.getByTestId('se-test-run')).toBeDisabled() // 칸에 보이는 값과 다른 영역으로 시험하지 않는다
+  await expect(page.getByTestId('se-test-run')).toHaveAttribute('title', '영역 칸에 잘못 넣은 값이 있습니다. 먼저 고치세요.')
   await expect(apply).toHaveAttribute('data-blocked', 'true')
   await apply.click()
   await expect(box('w')).toBeFocused() // 막히면 걸린 칸으로
@@ -52,8 +54,17 @@ test('검색 영역을 키보드로 — 큰 화면이 따라오고, 글자·소�
   expect(await rect()).toEqual(['600', '320', '800', '520'])
   await type('w', '0')
   await expect(err).toHaveText('영역의 W 값은 1 이상이어야 합니다.')
-  await type('w', '800')
+  expect(await rect()).toEqual(['600', '320', '800', '520']) // 0 을 쳐도 영역은 남는다
+  await type('w', '70000')
+  await expect(err).toHaveText('영역의 W 값이 너무 큽니다(65535 이하).')
+  await type('w', '８００') // 전각 숫자
+  await expect(box('w')).toHaveValue('800')
   await expect(err).toHaveCount(0)
+  await type('w', ' 0800 ')
+  await expect(box('w')).toHaveValue('800')
+  await expect(err).toHaveCount(0)
+  await expect(page.getByTestId('se-test-run')).toBeEnabled()
+  expect(await panel.locator('[data-area].se-inp-ch').evaluateAll((els) => els.map((el) => el.getAttribute('data-area')))).toEqual(['x', 'w']) // 바뀐 칸만
 
   // ── 음수·기준 화면 밖: 걸린 칸(X·W, Y·H)과 화면 크기 ──
   await type('y', '-1')

@@ -54,9 +54,15 @@ describe('checkStepFields', () => {
     const low = withCond({ searchArea: { x: 0, y: 45, w: 20, h: 10 } })
     expect(codes(checkStepFields(low, ctx(low, { applied, screen })))).toEqual({ area: 'AREA_OUT_BOTTOM' })
     expect(checkStepFields(moved, ctx(moved, { applied }))).toEqual({}) // 화면 크기를 모른다
-    const neg = withCond({ searchArea: { x: -1, y: 0, w: 20, h: 10 } })
-    expect(codes(checkStepFields(neg, ctx(neg, { applied })))).toEqual({ area: 'AREA_NEGATIVE' })
-    expect(checkStepFields(neg, ctx(neg, { applied: neg }))).toEqual({}) // 적용돼 있던 음수
+    // 방향마다: 적용돼 있던 값이 오른쪽 밖이어도 Y 만 고치면 막지 않는다
+    const down = withCond({ searchArea: { x: 90, y: 5, w: 20, h: 10 } })
+    expect(checkStepFields(down, ctx(down, { applied, screen }))).toEqual({})
+    // 영역에 들어 있던 음수는 다른 칸을 고쳐도 막지 않는다(음수는 칠 때 areaTyped 로 잡는다)
+    const negApplied = withCond({ searchArea: { x: -1, y: 0, w: 20, h: 10 } })
+    const negMoved = withCond({ searchArea: { x: -1, y: 0, w: 30, h: 10 } })
+    expect(checkStepFields(negMoved, ctx(negMoved, { applied: negApplied, screen }))).toEqual({})
+    expect(codes(check(withCond({ areaTyped: { x: '-1' } })))).toEqual({ area: 'AREA_NEGATIVE' })
+    expect(codes(check(withCond({ areaTyped: { w: '99999999999' } })))).toEqual({ area: 'AREA_TOO_LARGE' })
   })
   it('표의 줄 알림(applied 를 주지 않는다)은 음수·화면 밖을 보지 않는다 — 저장 기준에 없는 붙여 온 스텝도', () => {
     const s = withCond({ searchArea: { x: -5, y: 0, w: 500, h: 10 } })

@@ -145,6 +145,17 @@ describe('CaptureLayer — 끌어 잡기(기준 화면 픽셀)', () => {
     expect('areaTyped' in e.panel.draft.condition).toBe(false)
     expect(e.panelErrors().area).toBeUndefined()
   })
+  it('패널의 영역 칸에 치고 확정하지 않은 채 영역을 끌면 — 누른 뒤에 확정된 값에서 옮긴다(브라우저는 mousedown 뒤에 칸의 change 를 보낸다, 독립 검토 M5)', async () => {
+    const { e } = panelFixture([imageStep(0), imageStep(1)]) // 10,20 300×200
+    const w = mountHost(2)
+    place(w, { scale: 2 })
+    await w.find('[data-h="body"]').trigger('mousedown', { button: 0, clientX: 40, clientY: 60 })
+    e.updateDraft((d) => ({ ...d, condition: { ...d.condition, searchArea: { x: 10, y: 20, w: 200, h: 100 } } })) // 칸이 초점을 잃으며 확정
+    await w.vm.$nextTick() // 다음 mousemove 는 다시 그린 뒤에 온다
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 140, clientY: 80 })) // 기준 화면 +50, +10
+    window.dispatchEvent(new MouseEvent('mouseup', {}))
+    expect(e.panel.draft.condition.searchArea).toEqual({ x: 60, y: 30, w: 200, h: 100 })
+  })
   it('영역을 끄는 동안 editStore.areaDragging 을 켜고, 놓거나 층이 사라지면 끈다(찾을 그림 위치 찾기를 미룬다)', async () => {
     const { e } = panelFixture([imageStep(0), imageStep(1)])
     const w = mountHost(1)

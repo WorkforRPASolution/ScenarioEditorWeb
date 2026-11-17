@@ -82,7 +82,9 @@ const showHint = ref(safeStorage.get(HINT) !== '1')
 
 watch(src, () => { natural.value = null; failed.value = false })
 // 읽은 기준 화면의 크기를 편집 저장소에 알린다 — 패널에서 숫자로 넣은 검색 영역이 화면 밖인지 본다(그림이 바뀌거나 사라지면 비운다)
-watch(natural, (n) => edit.setScreenSize(n), { flush: 'sync' })
+// 같은 그림을 쓰는 다른 스텝으로 가면 그림은 다시 읽지 않으므로 어느 스텝의 그림인지도 함께 본다.
+const shownUid = computed(() => (isNew.value ? edit.panel.uid : step.value?.uid ?? null))
+watch([natural, shownUid], ([n, uid]) => edit.setScreenSize(n ? { ...n, uid } : null), { flush: 'sync' })
 
 function onLoad(e) { natural.value = { w: e.target.naturalWidth, h: e.target.naturalHeight }; fit() }
 // Esc: 잡기 취소(잡기가 쓴 칸만 되돌린다). 목업 keydown 순서대로 확인 창·다음 스텝 고르기·펼침 메뉴가 먼저 받고,

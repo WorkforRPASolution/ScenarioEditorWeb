@@ -108,8 +108,11 @@ function onAreaDown(e, handle) {
   if (cap.value || e.button !== 0 || !area.value) return
   e.stopPropagation()
   const start = toImg(e)
-  const orig = { ...area.value }
+  // 처음 값은 첫 움직임 때 잡는다 — 패널의 영역 칸에 치고 확정하지 않은 채 누르면 브라우저가 mousedown 뒤에 그 칸의 change 를 보낸다
+  let orig = null
   track(start, (q) => {
+    if (!area.value) return
+    orig ??= { ...area.value }
     const r = handle === 'body' ? moveRect(orig, q.x - start.x, q.y - start.y, W.value, H.value) : resizeRect(orig, handle, q, W.value, H.value)
     const cur = props.draft.condition?.searchArea
     if (cur && cur.x === r.x && cur.y === r.y && cur.w === r.w && cur.h === r.h) return

@@ -90,12 +90,13 @@ describe('LookStation — 영역을 숫자로 넣기', () => {
 
   it('음수와 기준 화면 밖: 걸린 칸(X·W 또는 Y·H)과 화면 크기를 알린다', async () => {
     const { e } = panelFixture([imageStep(0), imageStep(1)])
-    e.setScreenSize({ w: 400, h: 300 })
+    e.setScreenSize({ w: 400, h: 300, uid: 's0' })
     const w = mountPanel(); await flushPromises()
     expect(w.find('[data-testid="se-area-screen"]').text()).toBe(t('SEW_PANEL_AREA_SCREEN', { w: 400, h: 300 }))
     await type(w, 'x', '-1')
     expect(bad(w)).toEqual(['x'])
     expect(w.find('[data-err="area"]').text()).toBe(t('RULE_AREA_NEGATIVE', { names: 'X' }))
+    expect(areaOf(e).x).toBe(10) // 음수는 영역에 넣지 않는다
     await type(w, 'x', '150')
     expect(bad(w)).toEqual(['x', 'w'])
     expect(w.find('[data-err="area"]').text()).toBe(t('RULE_AREA_OUT_RIGHT', { w: 400, h: 300, sum: 450 }))
@@ -109,10 +110,58 @@ describe('LookStation — 영역을 숫자로 넣기', () => {
     w.unmount()
   })
 
-  it('화면 크기를 모르면 화면 크기 글이 없다', () => {
+  it('화면 크기를 모르면(그림을 읽기 전·다른 스텝의 그림) 화면 밖은 검사하지 않는다고 알리고, 한도를 넘는 값은 그래도 막는다', async () => {
+    const { e } = panelFixture([imageStep(0), imageStep(1)])
+    const w = mountPanel()
+    expect(w.find('[data-testid="se-area-screen"]').text()).toBe(t('SEW_PANEL_AREA_SCREEN_UNKNOWN'))
+    e.setScreenSize({ w: 400, h: 300, uid: 's1' }); await flushPromises()
+    expect(w.find('[data-testid="se-area-screen"]').text()).toBe(t('SEW_PANEL_AREA_SCREEN_UNKNOWN'))
+    await type(w, 'x', '50000') // 화면 밖이지만 화면 크기를 모른다
+    expect(bad(w)).toEqual([])
+    await type(w, 'x', '70000')
+    expect(bad(w)).toEqual(['x'])
+    expect(w.find('[data-err="area"]').text()).toBe(t('RULE_AREA_TOO_LARGE', { names: 'X', max: 65535 }))
+    expect(areaOf(e).x).toBe(50000)
+    w.unmount()
+  })
+
+  it('폭·높이에 0·음수를 쳐도 영역 그림과 [다시 잡기] 가 남는다(독립 검토 M2)', async () => {
+    const { e } = panelFixture([imageStep(0), imageStep(1)])
+    const w = mountPanel()
+    for (const text of ['0', '-5']) {
+      await type(w, 'w', text)
+      expect(areaOf(e)).toEqual({ x: 10, y: 20, w: 300, h: 200 })
+      expect(box(w, 'w').element.value).toBe(text)
+      expect(bad(w)).toEqual(['w'])
+      expect(w.find('[data-err="area"]').text()).toBe(t('RULE_AREA_SIZE_MIN', { names: 'W' }))
+      expect(w.find('[data-testid="se-look-area"]').exists()).toBe(true)
+      expect(w.find('[data-testid="se-cap-look"]').text()).toBe(t('SEW_CAP_REGRAB'))
+    }
+    w.unmount()
+  })
+
+  it('치는 도중 패널이 다시 그려져도(기준 화면 크기가 도착) 친 글자가 지워지지 않는다(독립 검토 M1)', async () => {
+    const { e } = panelFixture([imageStep(0), imageStep(1)])
+    const w = mountPanel()
+    const el = box(w, 'x')
+    el.element.value = '55'; await el.trigger('input')
+    e.setScreenSize({ w: 400, h: 300, uid: 's0' }); await flushPromises()
+    expect(el.element.value).toBe('55')
+    expect(areaOf(e).x).toBe(10) // 아직 확정 전
+    await el.trigger('change')
+    expect(areaOf(e).x).toBe(55)
+    expect(el.element.value).toBe('55')
+    // 확정하면 칸은 초안의 값으로 돌아온다(앞자리 0·공백)
+    el.element.value = ' 055 '; await el.trigger('input'); await el.trigger('change')
+    expect(el.element.value).toBe('55')
+    w.unmount()
+  })
+
+  it('바뀐 칸만 바뀜 색이다(독립 검토 M10)', async () => {
     panelFixture([imageStep(0), imageStep(1)])
     const w = mountPanel()
-    expect(w.find('[data-testid="se-area-screen"]').exists()).toBe(false)
+    await type(w, 'w', '310')
+    expect(['x', 'y', 'w', 'h'].filter((k) => box(w, k).classes().includes('se-inp-ch'))).toEqual(['w'])
     w.unmount()
   })
 
@@ -133,9 +182,9 @@ describe('LookStation — 영역을 숫자로 넣기', () => {
 
   it('새 스텝: 영역이 없으면 빈 칸이고, 네 칸을 치면 영역이 된다 — 다 치기 전에는 붉히지 않고, 틀린 값은 [넣기] 전에도 알린다', async () => {
     const { e } = panelFixture([imageStep(0), imageStep(1)])
-    e.setScreenSize({ w: 400, h: 300 })
     const w = mountPanel()
     expect(e.startNew('image')).toBe(true)
+    e.setScreenSize({ w: 400, h: 300, uid: e.panel.uid })
     e.finishCapture(); await flushPromises()
     expect(areaOf(e)).toBe(null)
     expect(values(w)).toEqual(['', '', '', ''])
@@ -156,6 +205,20 @@ describe('LookStation — 영역을 숫자로 넣기', () => {
     await type(w, 'w', '700')
     expect(bad(w)).toEqual(['x', 'w'])
     await type(w, 'w', '70')
+    w.unmount()
+  })
+
+  it('새 스텝: 잡은 영역의 칸을 비우면 [넣기] 를 누르기 전에도 알린다 — 큰 화면은 옛 값을 그리고 있다(독립 검토 M8)', async () => {
+    const { e } = panelFixture([imageStep(0), imageStep(1)])
+    const w = mountPanel()
+    expect(e.startNew('image')).toBe(true)
+    expect(await e.captureNext({ x: 40, y: 50, w: 60, h: 70 })).toBe(true)
+    e.finishCapture(); await flushPromises()
+    expect(e.panel.tried).toBe(false)
+    expect(values(w)).toEqual(['40', '50', '60', '70'])
+    await type(w, 'w', '')
+    expect(bad(w)).toEqual(['w'])
+    expect(w.find('[data-err="area"]').text()).toBe(t('RULE_AREA_FIELD_EMPTY', { names: 'W' }))
     w.unmount()
   })
 

@@ -2,7 +2,7 @@
 // 결과: { [칸]: { code, params, level: 'error' | 'notice' } }. notice = 옛 값이라 칸 오류가 아니라 패널 안내로만 보인다(적용을 막지 않는다).
 // 문구는 messages.js 의 RULE_<code>. 저장 형식 문자열은 만들지 않고 구조화 값만 본다.
 import { sameStep } from './diff'
-import { areaIssue, sameArea } from './areaInput'
+import { areaIssue, changedAreaKeys } from './areaInput'
 
 const isInt = (v) => typeof v === 'number' && Number.isInteger(v)
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v)
@@ -42,7 +42,7 @@ export function acceptCode(acc) {
 }
 
 // 패널 초안만 주는 값(표의 줄 알림은 주지 않는다): applied = 패널이 연 때의(마지막으로 적용한) 그 스텝, screen = 기준 화면 크기 { w, h }.
-// 검색 영역의 음수·화면 밖은 패널에서 고친 값(applied 와 다름·새 스텝)만 막는다 — 저장돼 있던 값·붙여 온 스텝의 값은 서버가 받는 값이다.
+// 검색 영역의 화면 밖은 패널에서 고친 칸(applied 의 영역과 다른 칸, 새 스텝은 모두)만 본다 — 저장돼 있던 값·붙여 온 스텝의 값은 서버가 받는 값이다.
 export function checkStepFields(step, { working, isNew, base, user, applied, screen } = {}) {
   const e = {}
   const put = (field, code, params = {}, level = 'error') => { if (!e[field]) e[field] = { code, params, level } }
@@ -56,7 +56,7 @@ export function checkStepFields(step, { working, isNew, base, user, applied, scr
 
   if (c.kind === 'image' || c.kind === 'ocr') {
     // 영역 없음은 서버 code(AREA_INVALID), 칸마다의 이유(빈 칸·정수 아님·폭 높이·음수·화면 밖)는 areaIssue 의 code. 패널에서 잘못 친 글자(areaTyped)도 여기서 걸린다.
-    const bad = areaIssue(c, { screen, changed: !!isNew || (!!applied && !sameArea(applied.condition?.searchArea, c.searchArea)) })
+    const bad = areaIssue(c, { screen, changed: isNew ? true : applied ? changedAreaKeys(applied.condition?.searchArea, c.searchArea) : false })
     if (bad) put('area', bad.code, bad.params)
     const multi = c.kind === 'image' ? c.image?.multi : c.ocr?.multi
     const ok = multi && typeof multi === 'object'

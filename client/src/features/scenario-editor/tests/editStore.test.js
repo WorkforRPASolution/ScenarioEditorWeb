@@ -10,6 +10,7 @@ vi.mock('../editor/crop', async (orig) => ({ ...(await orig()), cropPng: fx.crop
 vi.mock('../editor/locate', () => ({ locate: fx.locate }))
 import { useEditorStore } from '../stores/editorStore'
 import { useEditStore } from '../stores/editStore'
+import { typeArea } from '../editor/areaInput'
 import { t } from '../messages'
 
 const ok = (data) => Promise.resolve({ data: { success: true, data } })
@@ -296,8 +297,12 @@ describe('editStore — 패널', () => {
     const { e } = mk()
     setArea(e, { x: 900, y: 20, w: 300, h: 200 })
     expect(e.panelErrors().area).toBeUndefined() // 화면 크기를 아직 모른다
-    e.setScreenSize({ w: 1000, h: 500 })
-    expect(e.screenSize).toEqual({ w: 1000, h: 500 })
+    e.setScreenSize({ w: 1000, h: 500, uid: 's1' }) // 다른 스텝의 그림 — 여러 줄을 고른 동안 큰 화면은 다른 줄을 보인다(독립 검토 M4)
+    expect(e.panelScreen).toBe(null)
+    expect(e.panelErrors().area).toBeUndefined()
+    e.setScreenSize({ w: 1000, h: 500, uid: 's0' })
+    expect(e.screenSize).toEqual({ w: 1000, h: 500, uid: 's0' })
+    expect(e.panelScreen).toEqual({ w: 1000, h: 500 })
     expect(e.panelErrors().area).toMatchObject({ code: 'AREA_OUT_RIGHT', level: 'error', params: { w: 1000, h: 500, sum: 1200 } })
     expect(e.applyPanel()).toBe(false)
     expect(e.focusReq.field).toBe('area')
@@ -306,17 +311,26 @@ describe('editStore — 패널', () => {
     expect(e.applyPanel()).toBe(true)
     e.setScreenSize(null)
     expect(e.screenSize).toBe(null)
+    expect(e.panelScreen).toBe(null)
+  })
+  it('화면 크기를 몰라도 한도를 넘는 값은 작업본에 들어가지 않는다(독립 검토 I1)', () => {
+    const { e, edited } = mk()
+    e.updateDraft((d) => ({ ...d, condition: typeArea(d.condition, 'w', '99999999999') }))
+    expect(e.panel.draft.condition.searchArea).toEqual({ x: 10, y: 20, w: 300, h: 200 })
+    expect(e.panelErrors().area).toMatchObject({ code: 'AREA_TOO_LARGE', level: 'error' })
+    expect(e.applyPanel()).toBe(false)
+    expect(e.session.working).toBe(edited)
   })
   it('적용돼 있던 영역이 화면 밖이어도 다른 칸을 고쳐 적용할 수 있다(패널에서 고친 영역만 막는다)', () => {
     const { e } = panelFixture([imageStep(0, { condition: { ...imageStep(0).condition, searchArea: { x: 900, y: 20, w: 300, h: 200 } } }), imageStep(1)])
-    e.setScreenSize({ w: 1000, h: 500 })
+    e.setScreenSize({ w: 1000, h: 500, uid: 's0' })
     setAccept(e, 0.8)
     expect(e.panelErrors().area).toBeUndefined()
     expect(e.applyPanel()).toBe(true)
   })
   it('다른 시나리오를 열면(begin) 화면 크기를 잊는다', () => {
     const { e } = mk()
-    e.setScreenSize({ w: 1000, h: 500 })
+    e.setScreenSize({ w: 1000, h: 500, uid: 's0' })
     e.begin(skeleton, { canWrite: true })
     expect(e.screenSize).toBe(null)
   })

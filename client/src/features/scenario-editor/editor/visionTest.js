@@ -38,7 +38,9 @@ function shape(kind, uid, c, a, urls, ocr, withRule) {
   return {
     kind, uid, area: areaOf(c.searchArea), baseUrl: urls.baseUrl, trainUrl: image ? urls.trainUrl : null,
     accept: image ? acceptIn(c.image?.accept) : null, click: image ? clickOfAction(a) : null, actionType: a?.type ?? null,
-    multi: image && withRule ? multiOf(c.image?.multi, 1) : null, ocr
+    multi: image && withRule ? multiOf(c.image?.multi, 1) : null, ocr,
+    // 패널의 영역 칸에 잘못 친 글자가 남아 있다(editor/areaInput.js) — 칸에 보이는 값과 다른 영역으로 시험하지 않는다
+    ...(c.areaTyped ? { areaTyped: true } : {})
   }
 }
 
@@ -93,6 +95,7 @@ export function blockReason(input, { screen, accept = null, running = false } = 
   if (!input) return 'SEW_TEST_WHY_NO_AREA'
   if (running) return 'SEW_TEST_WHY_RUNNING'
   if (!input.area) return 'SEW_TEST_WHY_NO_AREA'
+  if (input.areaTyped) return 'SEW_TEST_WHY_AREA_TYPED'
   if (input.kind === 'image') {
     if (!input.trainUrl) return 'SEW_TEST_WHY_NO_TRAIN'
     if (accept === null) return 'SEW_TEST_WHY_ACCEPT'

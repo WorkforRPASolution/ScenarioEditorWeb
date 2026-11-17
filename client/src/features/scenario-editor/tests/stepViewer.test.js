@@ -63,12 +63,16 @@ describe('StepViewer', () => {
     const w = mount(StepViewer)
     expect(edit.screenSize).toBe(null)
     w.vm.onLoad({ target: { naturalWidth: 1920, naturalHeight: 1200 } }); await w.vm.$nextTick()
-    expect(edit.screenSize).toEqual({ w: 1920, h: 1200 })
+    expect(edit.screenSize).toEqual({ w: 1920, h: 1200, uid: 's0' }) // 어느 스텝의 그림인지 함께
     open(step({ baseImage: { state: 'present', src: 'blob:other' } }))
     await w.vm.$nextTick()
     expect(edit.screenSize).toBe(null)
     w.vm.onLoad({ target: { naturalWidth: 640, naturalHeight: 360 } }); await w.vm.$nextTick()
-    expect(edit.screenSize).toEqual({ w: 640, h: 360 })
+    expect(edit.screenSize).toEqual({ w: 640, h: 360, uid: 's0' })
+    // 같은 그림을 쓰는 다른 스텝으로 가면(같은 스냅샷으로 만든 스텝들) 그림은 다시 읽지 않지만 스텝은 바뀐다
+    open(step({ uid: 's7', baseImage: { state: 'present', src: 'blob:other' } }))
+    await w.vm.$nextTick()
+    expect(edit.screenSize).toEqual({ w: 640, h: 360, uid: 's7' })
     w.unmount()
     expect(edit.screenSize).toBe(null)
   })

@@ -16,6 +16,7 @@
 .se-inp-n { width: 52px; text-align: right; font-variant-numeric: tabular-nums; }
 .se-inp-bad, .se-inp-bad:focus { border-color: #ef4444; box-shadow: 0 0 0 2px #fee2e2; }
 .se-inp-ch { border-color: #3b82f6; box-shadow: 0 0 0 2px #dbeafe; }
+.se-inp[disabled] { background: #f3f4f6; color: #9ca3af; cursor: not-allowed; }
 .se-seg { display: inline-flex; background: #e5e7eb; border-radius: 6px; padding: 2px; }
 .se-seg button { border: 0; background: none; padding: 1px 9px; border-radius: 4px; color: #6b7280; font-size: 12px; line-height: 20px; }
 .se-seg button[aria-pressed='true'] { background: #fff; color: #1d4ed8; font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, .12); }

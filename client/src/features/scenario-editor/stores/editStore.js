@@ -59,7 +59,8 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   const moved = shallowRef(new Set())
   // 패널이 초점을 옮길 칸({ field, n } — n 은 같은 칸을 다시 요청해도 감시가 울리게)
   const focusReq = shallowRef(null)
-  // 큰 화면(StepViewer)이 읽은 기준 화면의 크기 { w, h } — 패널에서 숫자로 넣은 검색 영역이 화면 밖인지 볼 때 쓴다. 모르면 null.
+  // 큰 화면(StepViewer)이 읽은 기준 화면의 크기 { w, h, uid } — 패널에서 숫자로 넣은 검색 영역이 화면 밖인지 볼 때 쓴다. 모르면 null.
+  // uid = 그 그림의 스텝. 여러 줄을 고른 동안에는 큰 화면이 패널 초안과 다른 줄을 보이므로, 패널의 스텝과 같을 때만 쓴다(panelScreen).
   const screenSize = shallowRef(null)
   const revealReq = ref(0) // 창(저장 창의 막힌 줄·갈 곳 목록)에서 스텝으로 갈 때마다 오른다 — 화면이 접힌 스텝 패널을 편다
   let movedTimer = null
@@ -260,9 +261,13 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     const p = panel.value
     if (!p.draft || !session.value?.working) return {}
     return checkStepFields(p.draft, { working: session.value.working, isNew: p.isNew, base: p.isNew ? null : saveBaseStep(p.uid), user: useEditorStore().me,
-      applied: p.isNew ? null : p.base, screen: screenSize.value })
+      applied: p.isNew ? null : p.base, screen: panelScreen.value })
   }
-  function setScreenSize(size) { screenSize.value = size && size.w > 0 && size.h > 0 ? { w: size.w, h: size.h } : null }
+  function setScreenSize(size) { screenSize.value = size && size.w > 0 && size.h > 0 ? { w: size.w, h: size.h, uid: size.uid ?? null } : null }
+  const panelScreen = computed(() => {
+    const s = screenSize.value
+    return s && panel.value.draft && s.uid === panel.value.uid ? { w: s.w, h: s.h } : null
+  })
   function requestFocus(field) { focusReq.value = { field, n: (focusReq.value?.n ?? 0) + 1 } }
   // [적용]: 오류가 있으면 막고 첫 오류 칸으로 초점. 기준과 같으면 아무것도 쌓지 않는다. 저장 기준점과 같은 값이면 그 객체를 다시 쓴다.
   function applyPanel() {
@@ -928,7 +933,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   }
 
   return {
-    session, selection, panel, undo, redo, clip, windowClip, uploads, capture, locating, viewReq, canCapture, toast, dialog, moved, focusReq, screenSize, revealReq, editable, draftId, spots, spotGen, areaDragging,
+    session, selection, panel, undo, redo, clip, windowClip, uploads, capture, locating, viewReq, canCapture, toast, dialog, moved, focusReq, screenSize, panelScreen, revealReq, editable, draftId, spots, spotGen, areaDragging,
     begin, beginNew, beginRestore, beginFromDraft, markDeleted, markPropertyChanged, forgetDraft, end, rebase, markDraft, run, undoLast, redoLast,
     setSelection, syncFocus, requestSelect, jumpTo, clickRow, panelDirty, notify,
     openPanel, syncPanel, updateDraft, panelErrors, setScreenSize, applyPanel, discardPanel, requestFocus,

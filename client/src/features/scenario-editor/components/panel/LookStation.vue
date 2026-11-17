@@ -7,7 +7,7 @@
 // [잡기]/[다시 잡기] = 큰 화면에서 영역부터 끌어 잡기(마우스 클릭이면 그림·누를 곳까지). 영역 그림을 누르면 큰 화면을 영역에 맞추고,
 // 기준 화면 그림을 누르면 전체를 보인다(목업 focusArea·viewAll). 새 스텝은 기준 화면 그림이 큰 화면에 이미 있어 따로 보이지 않는다.
 // 기준 화면 그림이 없으면(저장되지 않은 옛 스텝) 잡을 화면이 없으므로 [잡기]를 끄고 이유를 보인다(editStore.canCapture).
-import { computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useEditStore } from '../../stores/editStore'
 import { captureFlow } from '../../editor/capture'
 import { AREA_KEYS, typeArea, areaText } from '../../editor/areaInput'
@@ -42,6 +42,13 @@ const setField = (k, text) => {
 }
 // [적용]이 막혀 초점을 받을 칸: 걸린 첫 칸, 없으면 X
 const focusKey = computed(() => badKeys.value[0] ?? 'x')
+// 치는 중인 글자(확정 전) — 반영은 Enter·칸을 떠날 때(change) 하므로, 그 사이 패널이 다시 그려져도(기준 화면 크기가 도착하는 등) 친 글자가 지워지지 않게 쥔다
+const editing = ref(null) // { k, text }
+const shownText = (k) => (editing.value?.k === k ? editing.value.text : areaText(props.draft.condition, k))
+const commit = (k, text) => { editing.value = null; setField(k, text) }
+watch(() => props.draft.uid, () => { editing.value = null })
+// 바뀐 칸: 패널이 연 때의 값과 칸에 보이는 글자가 다른 칸만
+const chKeys = computed(() => (props.changed.includes('area') ? AREA_KEYS.filter((k) => areaText(props.draft.condition, k) !== areaText(edit.panel.base?.condition, k)) : []))
 const failText = computed(() => (props.baseOther ? t('SEW_EDIT_IMAGE_SOURCE_GONE') : null))
 const pic = 'text-[11px] text-gray-500 dark:text-gray-400 mb-0.5 whitespace-nowrap'
 </script>
@@ -69,11 +76,13 @@ const pic = 'text-[11px] text-gray-500 dark:text-gray-400 mb-0.5 whitespace-nowr
     <div class="mt-1.5 flex items-center gap-x-2 gap-y-1 flex-wrap text-xs text-gray-500 dark:text-gray-400 tabular-nums" data-testid="se-area-inputs">
       <label v-for="k in AREA_KEYS" :key="k" class="inline-flex items-center gap-0.5">
         <span>{{ k.toUpperCase() }}</span>
-        <input class="se-inp se-inp-n" :class="{ 'se-inp-bad': badKeys.includes(k), 'se-inp-ch': !badKeys.includes(k) && changed.includes('area') }" inputmode="numeric" autocomplete="off"
-          :data-area="k" :data-field="k === focusKey ? 'area' : undefined" :value="areaText(draft.condition, k)" :disabled="locked" :title="locked ? t('SEW_PANEL_AREA_LOCKED') : undefined"
-          :aria-label="t(`SEW_PANEL_AREA_${k.toUpperCase()}`, { name })" :aria-invalid="badKeys.includes(k) ? 'true' : undefined" @change="setField(k, $event.target.value)">
+        <input class="se-inp se-inp-n" :class="{ 'se-inp-bad': badKeys.includes(k), 'se-inp-ch': !badKeys.includes(k) && chKeys.includes(k) }" inputmode="numeric" autocomplete="off"
+          :data-area="k" :data-field="k === focusKey ? 'area' : undefined" :value="shownText(k)" :disabled="locked" :title="locked ? t('SEW_PANEL_AREA_LOCKED') : undefined"
+          :aria-label="t(`SEW_PANEL_AREA_${k.toUpperCase()}`, { name })" :aria-invalid="badKeys.includes(k) ? 'true' : undefined"
+          @input="editing = { k, text: $event.target.value }" @change="commit(k, $event.target.value)" @blur="editing = null">
       </label>
-      <span v-if="edit.screenSize" class="text-[11px] text-gray-400 dark:text-gray-500 whitespace-nowrap" data-testid="se-area-screen">{{ t('SEW_PANEL_AREA_SCREEN', edit.screenSize) }}</span>
+      <!-- 화면 밖 검사의 기준. 모르면(그림을 읽는 중·읽지 못함·기준 화면 없음) 검사하지 않는다는 것을 알린다 -->
+      <span class="text-[11px] text-gray-400 dark:text-gray-500" data-testid="se-area-screen">{{ edit.panelScreen ? t('SEW_PANEL_AREA_SCREEN', edit.panelScreen) : t('SEW_PANEL_AREA_SCREEN_UNKNOWN') }}</span>
     </div>
     <FieldError :errs="errs" field="area" />
   </div>
