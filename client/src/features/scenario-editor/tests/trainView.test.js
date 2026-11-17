@@ -85,18 +85,23 @@ describe('찾을 그림 위치 찾기 입력(초점 스텝)', () => {
     const two = imageStep(0, { images: { train: { 1: { from: 'source', id: 's0-train-1' }, 0: { from: 'source', id: 's0-train-0' } }, base: { from: 'source', id: 's0-bi' } } })
     expect(spotInputOfDraft(two, ctx).trainUrl).toBe(url('s0-train-0'))
   })
-  it('패널 초안: 마우스 클릭 셋·이미지 조건·영역·두 그림이 모두 있어야 한다', () => {
+  it('패널 초안: 이미지 조건·영역·두 그림이 모두 있어야 한다 — 누를 곳은 마우스 클릭 셋이고 정수일 때만(아니면 click 은 null, 찾기는 한다)', () => {
     const s = imageStep(0)
-    for (const type of [1, 2, 3]) expect(spotInputOfDraft({ ...s, action: { ...s.action, type } }, ctx)).not.toBe(null)
-    expect(spotInputOfDraft({ ...s, action: { type: 6, typeName: 'Wait', waitSec: 1 } }, ctx)).toBe(null)
-    expect(spotInputOfDraft({ ...s, action: { ...s.action, click: { x: null, y: null, basis: 'trainImage' } } }, ctx)).toBe(null)
+    for (const type of [1, 2, 3]) expect(spotInputOfDraft({ ...s, action: { ...s.action, type } }, ctx).click).toEqual({ x: 24, y: 12 })
+    const noClick = { baseUrl: url('s0-bi'), trainUrl: url('s0-train-0'), area: { x: 10, y: 20, w: 300, h: 200 }, click: null }
+    expect(spotInputOfDraft({ ...s, action: { type: 6, typeName: 'Wait', waitSec: 1 } }, ctx)).toEqual(noClick)
+    expect(spotInputOfDraft({ ...s, action: { type: 5, typeName: 'Keyboard', raw: 'a', click: { x: 1, y: 2, basis: 'trainImage' } } }, ctx)).toEqual(noClick)
+    expect(spotInputOfDraft({ ...s, action: { type: 0, typeName: 'None', raw: '' } }, ctx)).toEqual(noClick)
+    expect(spotInputOfDraft({ ...s, action: undefined }, ctx)).toEqual(noClick)
+    expect(spotInputOfDraft({ ...s, action: { ...s.action, click: { x: null, y: null, basis: 'trainImage' } } }, ctx)).toEqual(noClick)
+    expect(spotInputOfDraft({ ...s, action: { ...s.action, click: { x: 1.5, y: 2, basis: 'trainImage' } } }, ctx)).toEqual(noClick)
     expect(spotInputOfDraft({ ...s, condition: { ...s.condition, searchArea: null } }, ctx)).toBe(null)
     expect(spotInputOfDraft({ ...s, images: { ...s.images, base: { literal: 'AA==' } } }, ctx)).toBe(null)
     expect(spotInputOfDraft({ ...s, images: { ...s.images, train: {} } }, ctx)).toBe(null)
     expect(spotInputOfDraft(ocrStep(0), ctx)).toBe(null)
     expect(spotInputOfDraft(null, ctx)).toBe(null)
   })
-  it('표시 스텝(P1 뼈대 모양): 기준 화면·0번 학습 이미지 URL, 클릭은 학습 이미지 기준일 때만', () => {
+  it('표시 스텝(P1 뼈대 모양): 기준 화면·0번 학습 이미지 URL — 누를 곳은 마우스 클릭이고 학습 이미지 기준일 때만(아니면 click 은 null, 찾기는 한다)', () => {
     const st = {
       uid: 's0', baseImage: { state: 'present', url: '/b' },
       condition: { kind: 'image', searchArea: { x: 1, y: 2, w: 30, h: 40 }, image: { trainImages: [{ key: 1, url: '/t1' }, { key: 0, url: '/t0' }] } },
@@ -106,8 +111,12 @@ describe('찾을 그림 위치 찾기 입력(초점 스텝)', () => {
     expect(spotInputOfStep({ ...st, baseImage: { state: 'present', src: 'blob:b' }, condition: { ...st.condition, image: { trainImages: [{ key: 0, url: null, src: 'blob:t' }] } } }))
       .toMatchObject({ baseUrl: 'blob:b', trainUrl: 'blob:t' })
     expect(spotInputOfStep({ ...st, baseImage: { state: 'missing' } })).toBe(null)
-    expect(spotInputOfStep({ ...st, action: { ...st.action, click: { x: 1, y: 1, basis: 'screenOrigin' } } })).toBe(null)
-    expect(spotInputOfStep({ ...st, action: { type: 5, typeName: 'Keyboard' } })).toBe(null)
+    const noClick = { baseUrl: 'http://x/api/b', trainUrl: 'http://x/api/t0', area: { x: 1, y: 2, w: 30, h: 40 }, click: null }
+    expect(spotInputOfStep({ ...st, action: { ...st.action, click: { x: 1, y: 1, basis: 'screenOrigin' } } })).toEqual(noClick)
+    expect(spotInputOfStep({ ...st, action: { type: 5, typeName: 'Keyboard' } })).toEqual(noClick)
+    expect(spotInputOfStep({ ...st, action: { type: 0, typeName: 'None' } })).toEqual(noClick)
+    expect(spotInputOfStep({ ...st, action: undefined })).toEqual(noClick)
+    expect(spotInputOfStep({ ...st, action: { ...st.action, click: { x: null, y: 7, basis: 'trainImage' } } })).toEqual(noClick)
     expect(spotInputOfStep({ ...st, condition: { ...st.condition, image: { trainImages: [] } } })).toBe(null)
     expect(spotInputOfStep({ ...st, condition: { kind: 'ocr', searchArea: st.condition.searchArea } })).toBe(null)
     expect(spotInputOfStep(null)).toBe(null)
@@ -129,6 +138,13 @@ describe('위치 찾기 결과 → 썸네일·큰 화면·문구', () => {
   it('한 곳이면 썸네일 주변 채우기(기준 화면 URL·찾은 자리·기준 화면 크기)와 큰 화면 표시(찾은 그림·누를 곳 = 찾은 자리 + 누를 곳)', () => {
     expect(spotAround(input, one)).toEqual({ src: 'B', x: 711, y: 660, bw: 1920, bh: 1200 })
     expect(spotMarks(input, one)).toEqual({ train: { x: 711, y: 660, w: 255, h: 96 }, click: { x: 1011, y: 650 } })
+  })
+  it('누를 곳이 없는 스텝(마우스 클릭이 아닌 동작)은 찾은 그림만 — click 은 null, 썸네일 주변 채우기는 그대로', () => {
+    const noClick = { ...input, click: null }
+    expect(spotMarks(noClick, one)).toEqual({ train: { x: 711, y: 660, w: 255, h: 96 }, click: null })
+    expect(spotAround(noClick, one)).toEqual({ src: 'B', x: 711, y: 660, bw: 1920, bh: 1200 })
+    expect(spotMarks(noClick, { found: 'many' })).toBe(null)
+    expect(spotNote(noClick, one)).toBe('SEW_UI_SPOT_one')
   })
   it('여러 곳·못 찾음·시간 초과·불러오기 실패·아직 찾는 중이면 채우지도 그리지도 않는다', () => {
     for (const r of [{ found: 'many' }, { found: 'none' }, { found: 'timeout' }, { found: 'error' }, null]) {

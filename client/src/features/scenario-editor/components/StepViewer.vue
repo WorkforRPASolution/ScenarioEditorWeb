@@ -3,6 +3,7 @@
 // 쓸 수 있는 세션은 패널 초안(고른 스텝의 초안 또는 아직 표에 없는 새 스텝)을 그리고, 그 위의 잡기 층(CaptureLayer)이
 // 영역 끌기·손잡이·끌어 잡기·누를 곳 찍기를 맡는다. 잡기 중에는 머리에 단계 띠와 [취소], 아래에 안내 줄(목업 renderViewer).
 // 잡기 밖에서는 기준 화면에서 찾은 찾을 그림 자리와 누를 곳을 늘 그린다(SpotLayer — 한 곳 찾았을 때만, 읽기 전용에서도).
+// 찾을 그림 자리는 이미지 스텝이면 동작과 상관없이, 누를 곳 + 는 마우스 클릭일 때만 그린다.
 // [누를 곳 보기](패널·상세의 작은 버튼 → editStore.clickShow)를 누르면 그 누를 곳에 스냅샷 클릭 점과 같은 점(ClickDot)을 CLICK_SHOW_MS 동안 깜빡인다.
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useEditorStore } from '../stores/editorStore'

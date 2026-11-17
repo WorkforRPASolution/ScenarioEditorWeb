@@ -1,6 +1,6 @@
 // 찾을 그림 + 누를 곳 보기(목업 trainThumb·clickOutside, 큰 화면 overlay 의 찾은 그림·누를 곳). 보기 기능이라 작업본·초안을 바꾸지 않는다.
 // - thumbView: 누를 곳이 찾을 그림 밖이면 썸네일을 그 지점까지 넓힌다(좌표는 찾을 그림 왼쪽 위 기준).
-// - spotInputOf*: 초점 스텝(패널 초안 또는 보는 스텝)에서 기준 화면의 찾을 그림 위치를 찾을 입력. 저장값에는 찾을 그림의 기준 화면 위치가 없어
+// - spotInputOf*: 초점 스텝(패널 초안 또는 보는 스텝 — 이미지 조건이면 동작과 상관없이)에서 기준 화면의 찾을 그림 위치를 찾을 입력. 저장값에는 찾을 그림의 기준 화면 위치가 없어
 //   [다시 찍기]와 같은 길(editStore.findSpot → locateTrain)로 찾는다. 키 = 기준 화면·찾을 그림·검색 영역(누를 곳은 넣지 않는다).
 // - spotAround·spotMarks·spotNote: 찾은 결과를 썸네일 주변 채우기·큰 화면 표시·썸네일 아래 문구로.
 import { refUrl } from './images'
@@ -41,30 +41,31 @@ export function thumbView(size, click, { maxW = 300, maxH = 150, mark = 8 } = {}
   return v
 }
 
-// 패널 초안(EditedStep): 이미지 조건 + 마우스 클릭 셋(정수 누를 곳) + 검색 영역 + 기준 화면·찾을 그림 참조(URL 을 만들 수 있을 때)
+// 누를 곳(찾을 그림 왼쪽 위 기준): 마우스 클릭 셋이고 좌표가 정수일 때만. 그 밖의 동작(키보드·대기·없음 …)과 아직 찍지 않은 누를 곳은 null —
+// 찾을 그림의 자리는 동작과 상관없이 찾아 그린다(2026-11-17 사내 보고: 마우스 클릭 스텝에서만 찾은 그림이 보였다).
+const clickOf = (a, needBasis) => (CLICK_TYPES.includes(a?.type) && (!needBasis || a.click?.basis === 'trainImage')
+  && Number.isInteger(a.click?.x) && Number.isInteger(a.click?.y) ? { x: a.click.x, y: a.click.y } : null)
+
+// 패널 초안(EditedStep): 이미지 조건 + 검색 영역 + 기준 화면·찾을 그림 참조(URL 을 만들 수 있을 때). click = 누를 곳 또는 null
 export function spotInputOfDraft(draft, ctx) {
   const c = draft?.condition
-  const a = draft?.action
   if (c?.kind !== 'image' || !isRect(c.searchArea)) return null
-  if (!CLICK_TYPES.includes(a?.type) || !Number.isInteger(a.click?.x) || !Number.isInteger(a.click?.y)) return null
   const base = draft.images?.base
   const baseUrl = isRef(base) ? refUrl(base, ctx) : null
   const trainUrl = refUrl(firstTrainRef(draft.images?.train), ctx)
   if (!baseUrl || !trainUrl) return null
-  return { baseUrl, trainUrl, area: areaOf(c.searchArea), click: { x: a.click.x, y: a.click.y } }
+  return { baseUrl, trainUrl, area: areaOf(c.searchArea), click: clickOf(draft.action, false) }
 }
 
-// 표시 스텝(P1 뼈대 모양 — 읽기 전용 상세·큰 화면): 기준 화면이 있고, 학습 이미지(키 0 먼저) URL 이 있고, 클릭이 학습 이미지 기준일 때
+// 표시 스텝(P1 뼈대 모양 — 읽기 전용 상세·큰 화면): 기준 화면이 있고, 학습 이미지(키 0 먼저) URL 이 있을 때. click = 학습 이미지 기준의 누를 곳 또는 null
 export function spotInputOfStep(step) {
   const c = step?.condition
-  const a = step?.action
   if (c?.kind !== 'image' || !isRect(c.searchArea) || step.baseImage?.state !== 'present') return null
-  if (!CLICK_TYPES.includes(a?.type) || a.click?.basis !== 'trainImage' || !Number.isInteger(a.click.x) || !Number.isInteger(a.click.y)) return null
   const ti = (c.image?.trainImages ?? []).filter((x) => imageSrc(x)).sort((p, q) => Number(p.key) - Number(q.key))[0]
   const baseUrl = imageSrc(step.baseImage)
   const trainUrl = ti ? imageSrc(ti) : null
   if (!baseUrl || !trainUrl) return null
-  return { baseUrl, trainUrl, area: areaOf(c.searchArea), click: { x: a.click.x, y: a.click.y } }
+  return { baseUrl, trainUrl, area: areaOf(c.searchArea), click: clickOf(step.action, true) }
 }
 
 export const spotKey = (input) => (input ? `${input.baseUrl}\n${input.trainUrl}\n${input.area.x},${input.area.y},${input.area.w},${input.area.h}` : null)
@@ -72,9 +73,9 @@ export const spotKey = (input) => (input ? `${input.baseUrl}\n${input.trainUrl}\
 const isOne = (input, r) => !!input && r?.found === 'one'
 // 썸네일의 넓힌 부분을 채울 기준 화면: src = 기준 화면 URL, x·y = 기준 화면에서 찾은 찾을 그림 왼쪽 위, bw·bh = 기준 화면 크기
 export const spotAround = (input, r) => (isOne(input, r) ? { src: input.baseUrl, x: r.x, y: r.y, bw: r.bw, bh: r.bh } : null)
-// 큰 화면에 그릴 찾은 그림 사각형과 누를 곳(기준 화면 픽셀)
+// 큰 화면에 그릴 찾은 그림 사각형과 누를 곳(기준 화면 픽셀). 누를 곳이 없는 스텝은 click 이 null
 export const spotMarks = (input, r) => (isOne(input, r)
-  ? { train: { x: r.x, y: r.y, w: r.w, h: r.h }, click: { x: r.x + input.click.x, y: r.y + input.click.y } } : null)
+  ? { train: { x: r.x, y: r.y, w: r.w, h: r.h }, click: input.click ? { x: r.x + input.click.x, y: r.y + input.click.y } : null } : null)
 
 const NOTE_FOUND = new Set(['one', 'many', 'none', 'timeout', 'error'])
 // 썸네일 아래 "주변 화면" 문구 키. 찾을 수 없는 스텝(기준 화면·영역·그림이 없음)은 저장되어 있지 않음, 찾는 중이면 null.

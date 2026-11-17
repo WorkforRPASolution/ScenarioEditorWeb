@@ -21,11 +21,11 @@ const edit = useEditStore()
 const spot = useTrainSpot(() => (props.draft ? { draft: props.draft } : props.step ? { step: props.step } : null))
 const why = computed(() => {
   if (edit.capture) return t('SEW_CLICK_SHOW_WHY_CAPTURE')
-  if (!spot.input.value) return t('SEW_CLICK_SHOW_WHY_NO_INPUT')
+  if (!spot.input.value?.click) return t('SEW_CLICK_SHOW_WHY_NO_INPUT') // 찾을 것(기준 화면·영역·찾을 그림)이나 누를 곳이 없다
   const r = spot.result.value
   if (!r || !['one', 'many', 'none', 'timeout'].includes(r.found)) return t(r ? 'SEW_CLICK_SHOW_WHY_error' : 'SEW_CLICK_SHOW_WHY_FINDING')
   if (r.found !== 'one') return t(`SEW_CLICK_SHOW_WHY_${r.found}`)
-  if (!spot.marks.value) return t('SEW_CLICK_SHOW_WHY_FINDING') // 영역을 끄는 동안
+  if (!spot.marks.value?.click) return t('SEW_CLICK_SHOW_WHY_FINDING') // 영역을 끄는 동안
   return props.draft && edit.screenSize?.uid !== edit.panel.uid ? t('SEW_CLICK_SHOW_WHY_OTHER') : null
 })
 const uid = computed(() => (props.draft ? edit.panel.uid : props.step?.uid))

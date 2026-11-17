@@ -578,6 +578,35 @@ describe('StepViewer — 기준 화면에서 찾은 그림·누를 곳을 늘 �
     expect(w.findAll('[data-h]').length).toBe(9) // 영역 손잡이는 그대로
     w.unmount()
   })
+  it('마우스 클릭이 아닌 동작(대기·키보드·없음)의 이미지 스텝도 찾은 그림 테두리를 그린다 — 누를 곳 + 와 그 이름표는 없다', async () => {
+    for (const action of [{ type: 6, typeName: 'Wait', raw: '3', waitSec: 3 }, { type: 5, typeName: 'Keyboard', raw: 'abc', text: 'abc' }, { type: 0, typeName: 'None', raw: '' }]) {
+      setActivePinia(createPinia())
+      fx.locate.mockClear()
+      fx.locate.mockReturnValue({ found: 'one', x: 40, y: 50 })
+      panelFixture([imageStep(0, { action }), imageStep(1)])
+      const w = await mountViewer()
+      const spot = w.find(SPOT)
+      expect(spot.exists(), action.typeName).toBe(true)
+      expect(fx.locate, action.typeName).toHaveBeenCalledTimes(1)
+      expect(rectOf(w)).toEqual(['40', '50', '20', '10'])
+      expect(w.find('[data-testid="se-spot-click"]').exists(), action.typeName).toBe(false)
+      expect(spot.text()).toContain(t('SEW_CAP_TAG_FOUND'))
+      expect(spot.text()).not.toContain(t('SEW_CAP_TAG_CLICK'))
+      w.unmount()
+    }
+  })
+  it('마우스 클릭인데 누를 곳을 아직 찍지 않았으면(비움) 찾은 그림만 그리고, 찍으면 + 가 생긴다', async () => {
+    const { e } = panelFixture([imageStep(0, { action: { type: 1, typeName: 'MouseLeftClick', raw: '', click: { x: null, y: null, basis: 'trainImage' } } }), imageStep(1)])
+    const w = await mountViewer()
+    expect(rectOf(w)).toEqual(['40', '50', '20', '10'])
+    expect(w.find('[data-testid="se-spot-click"]').exists()).toBe(false)
+    e.updateDraft((d) => ({ ...d, action: { ...d.action, click: { x: 3, y: 4, basis: 'trainImage' } } }))
+    await settle()
+    const c = w.find('[data-testid="se-spot-click"]')
+    expect([c.attributes('data-x'), c.attributes('data-y')]).toEqual(['43', '54'])
+    expect(fx.locate).toHaveBeenCalledTimes(1) // 누를 곳은 키에 없다 — 다시 찾지 않는다
+    w.unmount()
+  })
   it('영역을 끄는 동안 큰 화면 표시를 숨기고 찾지 않다가, 놓으면 그 영역으로 한 번 찾아 다시 그린다', async () => {
     const { e } = panelFixture([imageStep(0), imageStep(1)]) // 영역 10,20 300×200
     const w = await mountViewer()
@@ -658,6 +687,17 @@ describe('StepViewer — 기준 화면에서 찾은 그림·누를 곳을 늘 �
       expect(w.text()).not.toContain(t('SEW_UI_TRAIN_NOT_STORED'))
       w.unmount()
     }
+    // 마우스 클릭이 아닌 동작의 스텝도 찾은 학습 이미지를 그린다(누를 곳 + 는 없다) — 머리 안내도 "찾은 자리"
+    setActivePinia(createPinia())
+    fx.locate.mockReturnValue({ found: 'one', x: 40, y: 50 })
+    panelFixture([imageStep(0, { action: { type: 5, typeName: 'Keyboard', raw: 'abc', text: 'abc' } }), imageStep(1)], { canWrite: false, skOver: { s0: tis(0) } })
+    const k = await mountViewer()
+    expect(rectOf(k)).toEqual(['40', '50', '20', '10'])
+    expect(k.find('[data-testid="se-spot-click"]').exists()).toBe(false)
+    expect(k.find(SPOT).text()).toContain(t('SEW_UI_TAG_TRAIN'))
+    expect(k.find(SPOT).text()).not.toContain(t('SEW_UI_TAG_CLICK'))
+    expect(k.text()).toContain(t('SEW_UI_TRAIN_FOUND'))
+    k.unmount()
     setActivePinia(createPinia())
     fx.locate.mockReturnValue({ found: 'many' })
     fx.loadBitmap.mockClear()
