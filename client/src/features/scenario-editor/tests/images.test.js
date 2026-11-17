@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { refUrl, newTempId, uploadIdsOf } from '../editor/images'
+import { refUrl, newTempId, uploadIdsOf, bitmapOf } from '../editor/images'
 
 const session = { source: { process: 'P 1', model: 'M/2', name: 'N', crtime: 1700000000000, fileId: 'F9' } }
 
@@ -50,5 +50,17 @@ describe('newTempId', () => {
   it('규칙에 맞고 매번 다르다', () => {
     const a = newTempId(), b = newTempId()
     expect(a).toMatch(/^[A-Za-z0-9_-]{1,64}$/); expect(a).not.toBe(b); expect(a[0]).toBe('t')
+  })
+})
+
+describe('bitmapOf — 판정 서버에 보낼 그림을 풀 때', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+  it('브라우저가 색을 바꾸지 않게 푼다(PNG 의 색 정보를 적용하면 똑같은 그림의 점수가 떨어진다)', async () => {
+    const made = { width: 2, height: 1 }
+    const create = vi.fn(async () => made)
+    vi.stubGlobal('createImageBitmap', create)
+    const blob = new Blob(['x'])
+    expect(await bitmapOf(blob)).toBe(made)
+    expect(create).toHaveBeenCalledWith(blob, { colorSpaceConversion: 'none' })
   })
 })

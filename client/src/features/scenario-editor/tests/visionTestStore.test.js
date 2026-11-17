@@ -254,6 +254,11 @@ describe('시험 정확도 칸과 시험할 화면', () => {
     store.syncAccept(null, 's2') // 패널 값이 틀리면 빈 칸
     expect(store.acceptText).toBe('')
   })
+  it('패널 값을 그대로 보인다 — 소수 둘째 자리까지는 두 자리로, 더 긴 값은 줄이지 않는다(다른 값으로 시험하지 않게)', () => {
+    const shown = (v) => { store.syncAccept(v, `k${v}`); return store.acceptText }
+    expect([0.9, 1, 0.85, 0.5].map(shown)).toEqual(['0.90', '1.00', '0.85', '0.50'])
+    expect([0.875, 0.855, 0.9731].map(shown)).toEqual(['0.875', '0.855', '0.9731'])
+  })
   it('시험할 화면: 고른 값이 남는다. 스냅샷을 골랐는데 떠 있는 것이 없으면 screenNow 의 snapshot 이 null', () => {
     expect(store.screenNow()).toEqual({ kind: 'base' })
     store.setScreen('snapshot')

@@ -62,6 +62,7 @@ const trainPics = computed(() => {
 const sourceStep = computed(() => (p.value.isNew ? null : (edit.session?.saveBase?.steps ?? []).find((s) => s.uid === d.value?.uid) ?? null))
 const testInput = computed(() => (d.value ? testInputOfDraft(d.value, ctx.value, sourceStep.value) : null))
 const testAbout = computed(() => aboutOf(store.skeleton, p.value.isNew ? null : idx.value + 1))
+const testScope = computed(() => `${JSON.stringify(edit.session?.source ?? null)}${edit.session?.newId ?? ''}`)
 // [스텝에 넣기]: 패널의 정확도 칸에만 넣는다 — 작업본은 [적용] 을 눌러야 바뀐다
 const setAccept = (v) => edit.updateDraft((s) => ({ ...s, condition: { ...s.condition, image: { ...s.condition.image, accept: v } } }))
 const clickOutside = ref(false)
@@ -157,7 +158,7 @@ const btnS = 'h-8 px-3 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray
         <div class="se-rail">
           <LookStation v-if="kind === 'image' || kind === 'ocr'" :draft="d" :errs="errs" :changed="changed" :base-src="baseSrc" :base-other="baseOther" :is-new="p.isNew" />
           <FindStation :draft="d" :errs="errs" :changed="changed" :train-pics="trainPics" @outside="clickOutside = $event" />
-          <TestStation class="se-st se-st-test" :input="testInput" :about="testAbout" editable @accept="setAccept" />
+          <TestStation class="se-st se-st-test" :input="testInput" :about="testAbout" :scope="testScope" editable @accept="setAccept" />
           <ActionStation :draft="d" :errs="errs" :changed="changed" :click-outside="clickOutside && CLICK_TYPES.includes(type)" />
           <FlowStation :draft="d" :errs="errs" :changed="changed" :is-new="p.isNew" />
         </div>

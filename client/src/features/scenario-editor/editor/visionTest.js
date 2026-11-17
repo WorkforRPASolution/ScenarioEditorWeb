@@ -32,12 +32,13 @@ function ocrOf(o, withSuffix) {
   const multi = withSuffix ? multiOf(o?.multi, 0) : null
   return { op: o?.op, text: o?.text, number: o?.number, min: o?.min, max: o?.max, multi, multiBad: withSuffix && !multi }
 }
-function shape(kind, uid, c, a, urls, ocr) {
+// withRule: 이미지 다중 검사 조건을 실을 것인가(배포될 값에 조건이 있을 때만 — 아래 testInputOfDraft)
+function shape(kind, uid, c, a, urls, ocr, withRule) {
   const image = kind === 'image'
   return {
     kind, uid, area: areaOf(c.searchArea), baseUrl: urls.baseUrl, trainUrl: image ? urls.trainUrl : null,
     accept: image ? acceptIn(c.image?.accept) : null, click: image ? clickOfAction(a) : null, actionType: a?.type ?? null,
-    multi: image ? multiOf(c.image?.multi, 1) : null, ocr
+    multi: image && withRule ? multiOf(c.image?.multi, 1) : null, ocr
   }
 }
 
@@ -45,27 +46,26 @@ function shape(kind, uid, c, a, urls, ocr) {
 // sourceStep = 저장 기준 판의 같은 스텝(session.saveBase 의 것, 새 스텝이면 null) — OCR 접미사를 붙일지 가린다:
 // 서버는 고친 스텝을 통째로 다시 조립하며 `@@@@{개수}-{연산}` 을 쓴다(설명만 고쳐도). 손대지 않은 스텝은 저장값 그대로 나간다.
 // 그래서 저장값에 접미사가 없던 옛 스텝을 고치지 않고 시험할 때만 접미사 없이 보낸다(실행과 같게 — 한 줄 이상 맞으면 성공).
+// 이미지의 다중 검사도 같다: 저장값(TextValue)이 비어 있으면 판정 서버는 개수를 견주지 않고(하나 이상이면 성공), 고친 스텝에는 서버가 `{개수}-{연산}` 을 써 넣는다.
 export function testInputOfDraft(draft, ctx, sourceStep = null) {
   const c = draft?.condition
   if (c?.kind !== 'image' && c?.kind !== 'ocr') return null
   const base = draft.images?.base
   const urls = { baseUrl: isRef(base) ? refUrl(base, ctx) : null, trainUrl: c.kind === 'image' ? refUrl(firstTrainRef(draft.images?.train), ctx) : null }
-  let ocr = null
-  if (c.kind === 'ocr') {
-    const untouched = !!sourceStep && sourceStep.origin === draft.origin && sameStep(sourceStep, draft)
-    ocr = ocrOf(c.ocr, !(untouched && (c.ocr?.multi?.raw ?? '') === ''))
-  }
-  return shape(c.kind, draft.uid, c, draft.action, urls, ocr)
+  const untouched = !!sourceStep && sourceStep.origin === draft.origin && sameStep(sourceStep, draft)
+  const stored = (multi) => !(untouched && (multi?.raw ?? '') === '')
+  const ocr = c.kind === 'ocr' ? ocrOf(c.ocr, stored(c.ocr?.multi)) : null
+  return shape(c.kind, draft.uid, c, draft.action, urls, ocr, stored(c.image?.multi))
 }
 
-// 표시 스텝(읽기 전용 상세 — P1 뼈대 모양). 저장값 그대로 시험한다: OCR 접미사는 저장값에 있을 때만.
+// 표시 스텝(읽기 전용 상세 — P1 뼈대 모양). 저장값 그대로 시험한다: OCR 접미사·이미지 다중 검사 조건은 저장값에 있을 때만.
 export function testInputOfStep(step) {
   const c = step?.condition
   if (c?.kind !== 'image' && c?.kind !== 'ocr') return null
   const ti = (c.image?.trainImages ?? []).filter((x) => imageSrc(x)).sort((p, q) => Number(p.key) - Number(q.key))[0]
   const urls = { baseUrl: step.baseImage?.state === 'present' ? imageSrc(step.baseImage) : null, trainUrl: ti ? imageSrc(ti) : null }
   const ocr = c.kind === 'ocr' ? ocrOf(c.ocr, (c.ocr?.multi?.raw ?? '') !== '') : null
-  return shape(c.kind, step.uid, c, step.action, urls, ocr)
+  return shape(c.kind, step.uid, c, step.action, urls, ocr, (c.image?.multi?.raw ?? '') !== '')
 }
 
 // 시험 정확도 칸의 글자 → 0~1 의 수. 아니면 null(지수 표기·부호는 받지 않는다)
@@ -114,10 +114,12 @@ export const toScreen = (results, crop) => results.map((r) => ({ score: r.score,
 // 누를 곳 = 첫 결과의 왼쪽 위 + 스텝의 상대 좌표. 1818 을 특별 취급하지 않는다(DC-078).
 export const clickOf = (input, first) => (input?.click && first ? { x: first.x + input.click.x, y: first.y + input.click.y } : null)
 
-// 스텝의 조건으로 맞음·안 맞음(판정 서버의 실행 규칙): 동작이 없고(type 0) 다중 검사가 있으면 그 조건, 그 밖에는 하나 이상.
+// 스텝의 조건으로 맞음·안 맞음(판정 서버의 실행 규칙 — ImageProcessingServer SearchMax.cs): **먼저 하나 이상** 찾아야 하고,
+// 동작이 없고(type 0) 다중 검사 조건이 있으면 그다음에 개수를 견준다. 0곳은 "n개 이하" 여도 실패다.
 export function visionVerdict(input, count) {
   const rule = input.actionType === 0 && input.multi ? input.multi : null
-  if (!rule) return { ok: count >= 1, rule: null }
+  if (count < 1) return { ok: false, rule }
+  if (!rule) return { ok: true, rule: null }
   const ok = rule.op === 0 ? count === rule.count : rule.op === 1 ? count >= rule.count : count <= rule.count
   return { ok, rule }
 }

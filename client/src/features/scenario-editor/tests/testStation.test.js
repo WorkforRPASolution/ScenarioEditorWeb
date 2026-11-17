@@ -1,6 +1,7 @@
 // 시험 줄(P4 설계 §4.1~§4.5): "찾는 것" 아래의 칸·[시험]·결과. 편집 패널과 읽기 전용 상세가 함께 쓴다.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { defineComponent, h } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 vi.mock('../api', () => ({ scenarioEditorApi: { visionTest: vi.fn(), ocrTest: vi.fn() }, imageUrl: (p) => `http://x/api${p}` }))
 vi.mock('../editor/images', async (orig) => ({ ...(await orig()), loadBitmap: vi.fn(() => Promise.reject(new Error('no network in unit tests'))) }))
@@ -367,6 +368,31 @@ describe('시험 줄 — 상태와 결과', () => {
     expect(store.target).toBe(null)
   })
 
+  it('시험 줄이 다른 부품의 시험 줄로 갈릴 때(여는 동안 읽기 전용 상세 → 편집 패널) 새 시험 줄이 알린 영역이 남는다', async () => {
+    // 새 부품이 붙은 뒤에 앞 부품이 사라진다 — 사라지는 쪽이 새 쪽의 영역을 지우면 스냅샷 위 테두리가 없어진다
+    const Host = defineComponent({
+      props: { edit: Boolean },
+      setup: (p) => () => (p.edit ? h('section', [h(TestStation, { input: IMAGE(), editable: true })]) : h('article', [h(TestStation, { input: OCR() })]))
+    })
+    const w = mount(Host, { props: { edit: false }, attachTo: document.body })
+    expect(store.target.kind).toBe('ocr')
+    await w.setProps({ edit: true })
+    expect(store.target).toEqual({ kind: 'image', area: { x: 10, y: 20, w: 300, h: 200 } })
+    await w.setProps({ edit: false })
+    expect(store.target.kind).toBe('ocr')
+    w.unmount()
+    expect(store.target).toBe(null)
+  })
+
+  it('손댄 시험 정확도는 그 시나리오의 그 스텝에만 남는다 — 다른 시나리오의 같은 번호 스텝(uid 가 같다)으로 넘어가지 않는다', async () => {
+    const w = mountRow({ input: IMAGE(), scope: 'P/M/A@1' })
+    await type(w, 'se-test-accept', '0.3')
+    await w.setProps({ scope: 'P/M/B@7' })
+    expect(at(w, 'se-test-accept').element.value).toBe('0.90')
+    expect(at(w, 'se-test-apply').element.disabled).toBe(true)
+    w.unmount()
+  })
+
   it('[닫기] 는 결과를 지우고, 시험 줄이 사라져도(다른 화면으로) 지운다', async () => {
     const input = IMAGE()
     const w = mountRow({ input })
@@ -423,6 +449,24 @@ describe('시험 줄이 붙는 곳', () => {
     expect(start.mock.calls[0][0].accept).toBe(0.7)
     expect(start.mock.calls[0][1]).toEqual({ about: { process: 'P', model: 'M', scenario: 'N', step: 1 } })
     w.unmount()
+  })
+
+  it('편집 패널·읽기 전용 상세: 다른 시나리오를 열면 손댄 시험 정확도가 따라오지 않는다', async () => {
+    const { s, e, skeleton } = panelFixture([imageStep(0)])
+    const other = (name) => ({ ...skeleton, name, edited: { ...skeleton.edited, source: { ...skeleton.edited.source, name } } })
+    const w = mount(StepPanel, { attachTo: document.body })
+    await type(w, 'se-test-accept', '0.3')
+    s.skeleton = other('N2'); e.begin(s.skeleton, s.me); e.syncFocus('s0'); await flushPromises()
+    expect(at(w, 'se-test-accept').element.value).toBe('0.90')
+    w.unmount()
+
+    s.me = { ...s.me, canWrite: false }
+    s.skeleton = other('N3'); e.begin(s.skeleton, s.me); e.syncFocus('s0'); await flushPromises()
+    const d = mount(StepDetail, { attachTo: document.body })
+    await type(d, 'se-test-accept', '0.3')
+    s.skeleton = other('N4'); e.begin(s.skeleton, s.me); e.syncFocus('s0'); await flushPromises()
+    expect(at(d, 'se-test-accept').element.value).toBe('0.90')
+    d.unmount()
   })
 
   it('편집 패널(OCR): 저장값에 다중 검사 접미사가 없던 스텝은 고치기 전에는 접미사 없이, 고치면 붙여 시험한다', async () => {

@@ -21,6 +21,15 @@ describe('testInputOfDraft — 패널 초안에서 시험 입력', () => {
       accept: 0.9, click: { x: 24, y: 12 }, actionType: 1, multi: { count: 1, op: 0 }, ocr: null
     })
   })
+  it('이미지 다중 검사: 저장값에 조건이 없던(TextValue 가 빈) 스텝은 고치지 않은 동안 조건 없음 — 고치면 서버가 `1-0` 을 써 넣는다', () => {
+    const old = (over = {}) => { const st = imageStep(0, over); st.condition = { ...st.condition, image: { ...st.condition.image, multi: { count: '1', op: 0, raw: '' } } }; return st }
+    const source = old()
+    expect(testInputOfDraft(old(), ctx, source).multi).toBeNull() // 손대지 않음 → 실행은 하나 이상이면 성공
+    expect(testInputOfDraft(old({ descriptionToEmail: '고침' }), ctx, source).multi).toEqual({ count: 1, op: 0 })
+    expect(testInputOfDraft(old(), ctx, null).multi).toEqual({ count: 1, op: 0 }) // 새 스텝
+    const stored = imageStep(0)
+    expect(testInputOfDraft(stored, ctx, stored).multi).toEqual({ count: 1, op: 0 }) // 저장값에 조건이 있다
+  })
   it('마우스 클릭이 아니어도 시험 입력이 된다 — 누를 곳만 없다', () => {
     const none = testInputOfDraft(imageStep(0, { action: { type: 0, typeName: 'None', raw: '' } }), ctx)
     expect([none.click, none.actionType]).toEqual([null, 0])
@@ -95,6 +104,12 @@ describe('testInputOfStep — 읽기 전용의 표시 스텝에서 시험 입력
       kind: 'image', uid: 's0', area: { x: 10, y: 20, w: 300, h: 200 }, baseUrl: 'http://x/api/b', trainUrl: 'http://x/api/t0',
       accept: 0.9, click: { x: 24, y: 12 }, actionType: 1, multi: { count: 1, op: 0 }, ocr: null
     })
+  })
+  it('이미지 다중 검사: 저장값(multi.raw)에 조건이 있을 때만 싣는다', () => {
+    const old = shown(imageStep(0))
+    old.condition = { ...old.condition, image: { ...old.condition.image, multi: { count: '1', op: 0, raw: '' } } }
+    expect(testInputOfStep(old).multi).toBeNull()
+    expect(testInputOfStep(shown(imageStep(0))).multi).toEqual({ count: 1, op: 0 })
   })
   it('기준 화면이 없으면 baseUrl 이 null — 스냅샷으로는 시험할 수 있다', () => {
     expect(testInputOfStep(shown(imageStep(0), { baseImage: { state: 'missing' } })).baseUrl).toBeNull()
@@ -189,6 +204,9 @@ describe('visionVerdict — 스텝의 조건으로 맞음·안 맞음', () => {
     expect([1, 2, 3].map((n) => visionVerdict(multi(2, 1), n).ok)).toEqual([false, true, true])
     expect([1, 2, 3].map((n) => visionVerdict(multi(2, 2), n).ok)).toEqual([true, true, false])
     expect(visionVerdict(multi(2, 1), 3).rule).toEqual({ count: 2, op: 1 })
+    // 실행은 먼저 하나 이상 찾아야 하고 그다음에 개수 조건을 본다 — 0곳은 "n개 이하" 여도 실패다
+    expect(visionVerdict(multi(2, 2), 0)).toEqual({ ok: false, rule: { count: 2, op: 2 } })
+    expect(visionVerdict(multi(1, 1), 0).ok).toBe(false)
   })
   it('동작이 없는데 다중 검사 값을 읽지 못하면 하나 이상', () => {
     expect(visionVerdict({ ...image, actionType: 0, multi: null }, 1)).toEqual({ ok: true, rule: null })

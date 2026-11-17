@@ -43,14 +43,18 @@ export const useVisionTestStore = defineStore('scenarioEditorVisionTest', () => 
     return { kind: 'snapshot', snapshot: shown ? { eqpId: shown.eqpId, fileName: shown.fileName } : null }
   }
 
-  function setTarget(input) { target.value = input?.area ? { kind: input.kind, area: input.area } : null }
+  // 넣은 값을 돌려준다 — 시험 줄이 사라질 때 제가 넣은 것일 때만 비우려고(새 시험 줄이 먼저 붙고 앞 시험 줄이 나중에 사라진다)
+  function setTarget(input) { target.value = input?.area ? { kind: input.kind, area: input.area } : null; return target.value }
 
   function setAccept(text) { acceptText.value = String(text ?? ''); acceptTouched.value = true }
-  // 패널의 정확도 값을 따라간다 — 시험 칸을 손댄 뒤에는 그대로 두고, 스텝이 바뀌면 다시 패널 값으로
+  // 패널의 정확도 값을 따라간다 — 시험 칸을 손댄 뒤에는 그대로 두고, 스텝이 바뀌면 다시 패널 값으로.
+  // uid = 그 스텝을 가리키는 글(시험 줄이 시나리오·판까지 넣어 준다 — 스텝 uid 는 시나리오마다 s0, s1… 로 같다)
+  // 두 자리로 보이되 더 긴 값(0.875)은 줄이지 않는다 — 줄이면 저장된 값과 다른 값으로 시험한다
+  const acceptShown = (v) => (Number(v.toFixed(2)) === v ? v.toFixed(2) : String(v))
   function syncAccept(panelAccept, uid) {
     if (uid !== acceptUid.value) { acceptUid.value = uid; acceptTouched.value = false }
     if (acceptTouched.value) return
-    acceptText.value = typeof panelAccept === 'number' && Number.isFinite(panelAccept) ? panelAccept.toFixed(2) : ''
+    acceptText.value = typeof panelAccept === 'number' && Number.isFinite(panelAccept) ? acceptShown(panelAccept) : ''
   }
 
   function cancel() {

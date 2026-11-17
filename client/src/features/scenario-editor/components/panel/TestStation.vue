@@ -13,7 +13,8 @@ defineOptions({ name: 'TestStation' })
 const props = defineProps({
   input: { type: Object, default: null }, // editor/visionTest 의 시험 입력(이미지·OCR 스텝이 아니면 null)
   editable: { type: Boolean, default: false }, // 편집 패널이면 true — [스텝에 넣기] 가 보인다
-  about: { type: Object, default: null } // 서버 로그에 남길 "무엇을 시험했는지"
+  about: { type: Object, default: null }, // 서버 로그에 남길 "무엇을 시험했는지"
+  scope: { type: String, default: '' } // 연 시나리오·판을 가리키는 글 — 손댄 시험 정확도가 다른 시나리오의 같은 uid 스텝으로 넘어가지 않게
 })
 const emit = defineEmits(['accept'])
 const store = useVisionTestStore()
@@ -30,11 +31,13 @@ const reason = computed(() => blockReason(props.input, { screen: screen.value, a
 const canApply = computed(() => accept.value !== null && accept.value >= 0.5 && accept.value !== props.input?.accept)
 
 // 시험 칸은 패널(읽기 전용이면 스텝)의 정확도를 따라간다 — 이 감시자가 아래 sync 보다 먼저 돈다
-watch(() => [props.input?.uid ?? null, props.input?.accept ?? null], ([uid, panelAccept]) => store.syncAccept(panelAccept, uid), { immediate: true })
+watch(() => [props.input ? `${props.scope}\n${props.input.uid}` : null, props.input?.accept ?? null], ([id, panelAccept]) => store.syncAccept(panelAccept, id), { immediate: true })
 watch(() => [testKey(props.input, screen.value), props.input ? valueKey(props.input, accept.value) : null], ([key, vkey]) => store.sync(key, vkey), { immediate: true })
 
-// 큰 화면이 스냅샷 위에 이 스텝의 영역을 그릴 수 있게 알린다
-watch(() => props.input, (input) => store.setTarget(input), { immediate: true })
+// 큰 화면이 스냅샷 위에 이 스텝의 영역을 그릴 수 있게 알린다. 사라질 때는 제가 넣은 것일 때만 비운다 —
+// 여는 동안 읽기 전용 상세와 편집 패널이 갈리면 새 시험 줄이 먼저 붙고 앞 시험 줄이 나중에 사라진다
+let mine = null
+watch(() => props.input, (input) => { mine = store.setTarget(input) }, { immediate: true })
 
 // "시험 중… n초"
 const now = ref(Date.now())
@@ -47,7 +50,7 @@ watch(running, (on) => {
   timer = setInterval(() => { now.value = Date.now() }, 500)
 }, { immediate: true })
 const seconds = computed(() => Math.max(0, Math.floor((now.value - (run.value.startedAt ?? now.value)) / 1000)))
-onUnmounted(() => { stopTimer(); store.setTarget(null); store.close() })
+onUnmounted(() => { stopTimer(); if (store.target === mine) store.setTarget(null); store.close() })
 
 const start = () => { if (props.input && !reason.value) store.start(props.input, { about: props.about }) }
 const applyAccept = () => { if (canApply.value) emit('accept', accept.value) }
