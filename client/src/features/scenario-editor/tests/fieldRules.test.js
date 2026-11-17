@@ -29,10 +29,44 @@ describe('checkStepFields', () => {
     expect(codes(check(imageStep({ descriptionToEmail: 'a$' })))).toEqual({ desc: 'STEP_DESC_CHARS' })
   })
   it('검색 영역·찾을 그림', () => {
-    expect(codes(check(withCond({ searchArea: { x: 0, y: 0, w: 0, h: 5 } })))).toEqual({ area: 'AREA_INVALID' })
-    expect(codes(check(withCond({ searchArea: { x: 1.5, y: 0, w: 5, h: 5 } })))).toEqual({ area: 'AREA_INVALID' })
+    expect(codes(check(withCond({ searchArea: null })))).toEqual({ area: 'AREA_INVALID' })
+    expect(codes(check(withCond({ searchArea: { x: 0, y: 0, w: 0, h: 5 } })))).toEqual({ area: 'AREA_SIZE_MIN' })
+    expect(codes(check(withCond({ searchArea: { x: 1.5, y: 0, w: 5, h: 5 } })))).toEqual({ area: 'AREA_NOT_INTEGER' })
     const s = imageStep(); s.images = { ...s.images, train: {} }
     expect(codes(check(s))).toEqual({ train: 'TRAIN_IMAGE_MISSING' })
+  })
+  it('검색 영역을 숫자로 넣기: 빈 칸·글자·소수점은 걸린 칸과 함께 막는다(OCR 도 같다)', () => {
+    const r = check(withCond({ searchArea: { x: 'abc', y: 0, w: 5, h: '2.5' } }))
+    expect(r.area).toEqual({ code: 'AREA_NOT_INTEGER', params: { names: 'X·H', keys: ['x', 'h'] }, level: 'error' })
+    expect(check(withCond({ searchArea: { x: 1, y: null, w: 5, h: 5 } })).area).toEqual({ code: 'AREA_FIELD_EMPTY', params: { names: 'Y', keys: ['y'] }, level: 'error' })
+    const o = ocrStep({}); o.condition.searchArea = { x: 0, y: 0, w: 5, h: 'x' }
+    expect(codes(check(o))).toEqual({ area: 'AREA_NOT_INTEGER' })
+    // 패널에서 잘못 친 글자는 영역 밖에 따로 쥔다(areaTyped) — 영역이 바르더라도 막는다
+    expect(check(withCond({ areaTyped: { w: '5o' } })).area).toEqual({ code: 'AREA_NOT_INTEGER', params: { names: 'W', keys: ['w'] }, level: 'error' })
+    expect(codes(check(withCond({ areaTyped: { w: '' } })))).toEqual({ area: 'AREA_FIELD_EMPTY' })
+  })
+  it('검색 영역이 기준 화면 밖: 패널에서 고친 값만 막는다 — 화면 크기(screen)를 알 때만, 적용돼 있던 값(applied)은 둔다', () => {
+    const screen = { w: 100, h: 50 }
+    const applied = withCond({ searchArea: { x: 90, y: 0, w: 20, h: 10 } }) // 작업본의 값이 이미 화면 밖(저장돼 있던 값·붙여 온 스텝)
+    expect(checkStepFields(applied, ctx(applied, { applied, screen }))).toEqual({}) // 고치지 않았다
+    const moved = withCond({ searchArea: { x: 95, y: 0, w: 20, h: 10 } })
+    expect(checkStepFields(moved, ctx(moved, { applied, screen })).area).toEqual({ code: 'AREA_OUT_RIGHT', params: { w: 100, h: 50, sum: 115, keys: ['x', 'w'] }, level: 'error' })
+    const low = withCond({ searchArea: { x: 0, y: 45, w: 20, h: 10 } })
+    expect(codes(checkStepFields(low, ctx(low, { applied, screen })))).toEqual({ area: 'AREA_OUT_BOTTOM' })
+    expect(checkStepFields(moved, ctx(moved, { applied }))).toEqual({}) // 화면 크기를 모른다
+    const neg = withCond({ searchArea: { x: -1, y: 0, w: 20, h: 10 } })
+    expect(codes(checkStepFields(neg, ctx(neg, { applied })))).toEqual({ area: 'AREA_NEGATIVE' })
+    expect(checkStepFields(neg, ctx(neg, { applied: neg }))).toEqual({}) // 적용돼 있던 음수
+  })
+  it('표의 줄 알림(applied 를 주지 않는다)은 음수·화면 밖을 보지 않는다 — 저장 기준에 없는 붙여 온 스텝도', () => {
+    const s = withCond({ searchArea: { x: -5, y: 0, w: 500, h: 10 } })
+    expect(checkStepFields(s, ctx(s, { base: undefined, screen: { w: 100, h: 50 } }))).toEqual({})
+  })
+  it('새 스텝의 영역은 늘 고친 값이다(견줄 값이 없다)', () => {
+    const s = withCond({ searchArea: { x: 95, y: 0, w: 20, h: 10 } })
+    expect(codes(checkStepFields(s, ctx(s, { isNew: true, base: null, screen: { w: 100, h: 50 } })))).toEqual({ area: 'AREA_OUT_RIGHT' })
+    const fit = withCond({ searchArea: { x: 80, y: 40, w: 20, h: 10 } })
+    expect(checkStepFields(fit, ctx(fit, { isNew: true, base: null, screen: { w: 100, h: 50 } }))).toEqual({})
   })
   it('찾을 그림 literal: 공백을 뺀 길이 4 초과이고 4의 배수여야 그림이다(서버 hasImage 와 같다 — 패딩 없는 base64 는 C# 이 못 읽는다)', () => {
     const lit = (literal) => { const s = imageStep(); s.images = { ...s.images, train: { 0: { literal } } }; return codes(check(s)) }

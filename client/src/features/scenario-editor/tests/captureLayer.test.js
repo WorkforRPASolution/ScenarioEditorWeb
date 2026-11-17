@@ -135,6 +135,16 @@ describe('CaptureLayer — 끌어 잡기(기준 화면 픽셀)', () => {
     expect(e.session.working).toBe(edited)
     expect(e.panelDirty()).toBe(true)
   })
+  it('패널의 영역 칸에 잘못 쳐 쥐고 있던 글자(areaTyped)는 영역을 끌어 옮기면 사라진다 — 끌어 놓은 값이 칸에 보인다', async () => {
+    const { e } = panelFixture([imageStep(0), imageStep(1)]) // 10,20 300×200
+    e.updateDraft((d) => ({ ...d, condition: { ...d.condition, areaTyped: { w: '30o' } } }))
+    const w = mountHost(2)
+    place(w, { scale: 2 })
+    await drag(w, '[data-h="body"]', [40, 60], [140, 20]) // 기준 화면 +50, -20
+    expect(e.panel.draft.condition.searchArea).toEqual({ x: 60, y: 0, w: 300, h: 200 })
+    expect('areaTyped' in e.panel.draft.condition).toBe(false)
+    expect(e.panelErrors().area).toBeUndefined()
+  })
   it('영역을 끄는 동안 editStore.areaDragging 을 켜고, 놓거나 층이 사라지면 끈다(찾을 그림 위치 찾기를 미룬다)', async () => {
     const { e } = panelFixture([imageStep(0), imageStep(1)])
     const w = mountHost(1)

@@ -178,8 +178,8 @@ test('② 지금 스냅샷으로 시험 — 영역이 스냅샷에 다 들어오
   await expect(page.getByTestId('se-cap-bar')).toHaveCount(0)
   await expect(result(page)).toHaveCount(0)
   await expect(modeTab(page, 'step')).toHaveAttribute('aria-pressed', 'true')
-  const area = await page.getByTestId('se-detail').locator('[data-station="look"]').innerText()
-  const [ax, ay] = /X\s*(\d+)[^\d]+Y\s*(\d+)/.exec(area).slice(1).map(Number) // 끌어 잡은 영역의 왼쪽 위(픽셀로 맞춰진 값)
+  // 끌어 잡은 영역의 왼쪽 위(픽셀로 맞춰진 값) — 패널 "보는 곳" 의 X·Y 칸
+  const [ax, ay] = await Promise.all(['x', 'y'].map(async (k) => Number(await page.getByTestId('se-detail').locator(`[data-area="${k}"]`).inputValue())))
 
   // ── [시험] 을 누르면 큰 화면이 스냅샷으로 간다. 이 스냅샷에는 그 그림이 없다 → 못 찾음(붉음)과 안내 ──
   await run(page).click()

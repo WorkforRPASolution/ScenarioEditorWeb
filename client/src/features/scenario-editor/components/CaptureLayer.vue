@@ -8,6 +8,7 @@
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useEditStore } from '../stores/editStore'
 import { isRect, normRect, moveRect, resizeRect, handlePoints, tagBox, clickTagBox } from '../editor/capture'
+import { withArea } from '../editor/areaInput'
 import { t } from '../messages'
 import './capture.css'
 
@@ -112,7 +113,7 @@ function onAreaDown(e, handle) {
     const r = handle === 'body' ? moveRect(orig, q.x - start.x, q.y - start.y, W.value, H.value) : resizeRect(orig, handle, q, W.value, H.value)
     const cur = props.draft.condition?.searchArea
     if (cur && cur.x === r.x && cur.y === r.y && cur.w === r.w && cur.h === r.h) return
-    edit.updateDraft((d) => ({ ...d, condition: { ...d.condition, searchArea: r } }))
+    edit.updateDraft((d) => ({ ...d, condition: withArea(d.condition, r) })) // 패널에서 잘못 쳐 쥐고 있던 글자는 끌어 옮긴 영역이 대신한다
   }, null, () => edit.setAreaDrag(false))
   edit.setAreaDrag(true) // track 이 앞 끌기를 끝낸(끈) 뒤에 켠다
 }

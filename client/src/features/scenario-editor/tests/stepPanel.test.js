@@ -21,7 +21,7 @@ describe('StepPanel — 레일과 [적용]', () => {
     expect(w.attributes('data-testid')).toBe('se-detail') // 오른쪽 칸(P1 E2E 와 같은 이름)
     expect(w.find('[data-field="desc"]').element.value).toBe('스텝0')
     expect(w.findAll('[data-station]').map((x) => x.attributes('data-station'))).toEqual(['look', 'find', 'action', 'flow', 'option'])
-    expect(w.find('[data-station="look"]').text()).toContain('X10')
+    expect(w.find('[data-station="look"] [data-area="x"]').element.value).toBe('10') // 영역 좌표는 입력 칸(2026-11-17)
     expect(w.find('[data-field="accept"]').element.value).toBe('0.90')
     expect(w.find('[data-field="multi"]').element.value).toBe('1')
     expect(w.find('[data-testid="se-panel-act-now"]').text()).toContain('마우스 클릭')

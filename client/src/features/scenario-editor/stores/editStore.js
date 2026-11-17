@@ -4,6 +4,7 @@ import { beginSession, restoreSessionOf, draftSessionOf, nextUid, stepNo } from 
 import { copySteps, pasteSteps, detachClip, deleteSteps, moveSteps, setCell, movedRefKeys, applyStep, insertStep, sameOrder, STEP_MAX } from '../editor/commands'
 import { sameStep, canonicalJson, unsavedChanges } from '../editor/diff'
 import { checkStepFields } from '../editor/fieldRules'
+import { withArea } from '../editor/areaInput'
 import { checkPropertyFields } from '../editor/propertyRules'
 import { firstError, CLICK_TYPES } from '../editor/panel'
 import { refUrl, loadBitmap, loadBlob, bitmapOf, isPng, draftImageUrl, newTempId, uploadIdsOf } from '../editor/images'
@@ -58,6 +59,8 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   const moved = shallowRef(new Set())
   // 패널이 초점을 옮길 칸({ field, n } — n 은 같은 칸을 다시 요청해도 감시가 울리게)
   const focusReq = shallowRef(null)
+  // 큰 화면(StepViewer)이 읽은 기준 화면의 크기 { w, h } — 패널에서 숫자로 넣은 검색 영역이 화면 밖인지 볼 때 쓴다. 모르면 null.
+  const screenSize = shallowRef(null)
   const revealReq = ref(0) // 창(저장 창의 막힌 줄·갈 곳 목록)에서 스텝으로 갈 때마다 오른다 — 화면이 접힌 스텝 패널을 편다
   let movedTimer = null
   let bitmapCache = { url: null, promise: null } // 마지막으로 불러온 기준 화면 비트맵(잡기 중 여러 번 자를 때 다시 받지 않게)
@@ -97,6 +100,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     toast.value = null
     dialog.value = null
     focusReq.value = null
+    screenSize.value = null
     pending = null
     pendingLeave = null
     clearMoved()
@@ -255,8 +259,10 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   function panelErrors() {
     const p = panel.value
     if (!p.draft || !session.value?.working) return {}
-    return checkStepFields(p.draft, { working: session.value.working, isNew: p.isNew, base: p.isNew ? null : saveBaseStep(p.uid), user: useEditorStore().me })
+    return checkStepFields(p.draft, { working: session.value.working, isNew: p.isNew, base: p.isNew ? null : saveBaseStep(p.uid), user: useEditorStore().me,
+      applied: p.isNew ? null : p.base, screen: screenSize.value })
   }
+  function setScreenSize(size) { screenSize.value = size && size.w > 0 && size.h > 0 ? { w: size.w, h: size.h } : null }
   function requestFocus(field) { focusReq.value = { field, n: (focusReq.value?.n ?? 0) + 1 } }
   // [적용]: 오류가 있으면 막고 첫 오류 칸으로 초점. 기준과 같으면 아무것도 쌓지 않는다. 저장 기준점과 같은 값이면 그 객체를 다시 쓴다.
   function applyPanel() {
@@ -664,7 +670,8 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     const r = c.stage === 'train' && isRect(area) ? clipRect(value, area) : { x: Math.round(value.x), y: Math.round(value.y), w: Math.round(value.w), h: Math.round(value.h) }
     if (r.w < MIN_CAPTURE || r.h < MIN_CAPTURE) { notify(t('SEW_CAP_TOO_SMALL')); return false }
     if (c.stage === 'area' || c.stage === 'ocr') {
-      if (!sameRect(area, r)) updateDraft((s) => ({ ...s, condition: { ...s.condition, searchArea: r } }))
+      // 패널에서 잘못 쳐 쥐고 있던 글자(areaTyped)는 잡은 영역이 대신한다
+      if (!sameRect(area, r) || d.condition?.areaTyped) updateDraft((s) => ({ ...s, condition: withArea(s.condition, sameRect(area, r) ? area : r) }))
       advance(c)
       return true
     }
@@ -697,10 +704,14 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   }
   // Esc·[취소]: 잡기가 쓴 칸(검색 영역·찾을 그림·찾을 그림 목록·누를 곳)만 잡기 전 값으로. 잡는 사이 패널에서 고친 설명·정확도·갈 곳 등은 남긴다.
   // 누를 곳은 동작 종류가 그대로일 때만 되돌린다(잡는 사이 동작을 바꿨으면 그 선택을 둔다). 결과가 잡기 전과 같으면 그 객체를 다시 쓴다.
-  // 영역·찾을 그림·찾을 그림 목록은 패널에서 고칠 수 없는 칸이라 참조가 다르면 잡기 전 참조로 되돌린다(값이 같으면 같은 객체가 남게).
+  // 찾을 그림·찾을 그림 목록은 패널에서 고칠 수 없고 영역은 잡는 동안 패널의 숫자 칸이 잠기므로, 참조가 다르면 잡기 전 참조로 되돌린다(값이 같으면 같은 객체가 남게).
   function restoreCaptured(cur, before) {
     let s = cur
     if (s.condition?.searchArea !== before.condition?.searchArea) s = { ...s, condition: { ...s.condition, searchArea: before.condition?.searchArea ?? null } }
+    if (canonicalJson(s.condition?.areaTyped) !== canonicalJson(before.condition?.areaTyped)) {
+      const { areaTyped, ...cond } = s.condition
+      s = { ...s, condition: before.condition?.areaTyped ? { ...cond, areaTyped: before.condition.areaTyped } : cond }
+    }
     if (s.images?.train !== before.images?.train) s = { ...s, images: { ...s.images, train: before.images?.train ?? {} } }
     const ti = before.condition?.image?.trainImages
     if (s.condition?.image && before.condition?.image && s.condition.image.trainImages !== ti) {
@@ -917,10 +928,10 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   }
 
   return {
-    session, selection, panel, undo, redo, clip, windowClip, uploads, capture, locating, viewReq, canCapture, toast, dialog, moved, focusReq, revealReq, editable, draftId, spots, spotGen, areaDragging,
+    session, selection, panel, undo, redo, clip, windowClip, uploads, capture, locating, viewReq, canCapture, toast, dialog, moved, focusReq, screenSize, revealReq, editable, draftId, spots, spotGen, areaDragging,
     begin, beginNew, beginRestore, beginFromDraft, markDeleted, markPropertyChanged, forgetDraft, end, rebase, markDraft, run, undoLast, redoLast,
     setSelection, syncFocus, requestSelect, jumpTo, clickRow, panelDirty, notify,
-    openPanel, syncPanel, updateDraft, panelErrors, applyPanel, discardPanel, requestFocus,
+    openPanel, syncPanel, updateDraft, panelErrors, setScreenSize, applyPanel, discardPanel, requestFocus,
     guard, guardKeep, guardDrop, guardApply, setHeader, applyProperty, applyWindows, copyWindows, changeCount, unsavedCount, askLeave, leaveKeep, leaveDrop,
     undoCommand, redoCommand, copySelection, pasteClip, deleteSelection, moveSelected, editCell,
     setUpload, requestView, startCapture, captureNext, cancelCapture, finishCapture, repick, findSpot, setAreaDrag, newOrigin, startNew, startNewFromFile, addNew, setInsertBefore, cancelNew

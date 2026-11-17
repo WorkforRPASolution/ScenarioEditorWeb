@@ -81,6 +81,8 @@ const HINT = 'se-hint-base-image'
 const showHint = ref(safeStorage.get(HINT) !== '1')
 
 watch(src, () => { natural.value = null; failed.value = false })
+// 읽은 기준 화면의 크기를 편집 저장소에 알린다 — 패널에서 숫자로 넣은 검색 영역이 화면 밖인지 본다(그림이 바뀌거나 사라지면 비운다)
+watch(natural, (n) => edit.setScreenSize(n), { flush: 'sync' })
 
 function onLoad(e) { natural.value = { w: e.target.naturalWidth, h: e.target.naturalHeight }; fit() }
 // Esc: 잡기 취소(잡기가 쓴 칸만 되돌린다). 목업 keydown 순서대로 확인 창·다음 스텝 고르기·펼침 메뉴가 먼저 받고,
@@ -97,7 +99,7 @@ function onEsc(e) {
   edit.cancelCapture()
 }
 onMounted(() => document.addEventListener('keydown', onEsc, true))
-onBeforeUnmount(() => document.removeEventListener('keydown', onEsc, true))
+onBeforeUnmount(() => { document.removeEventListener('keydown', onEsc, true); edit.setScreenSize(null) })
 const area = computed(() => step.value?.condition.searchArea)
 const adjustHint = computed(() => editLayer.value && !cap.value && isRect(draft.value?.condition?.searchArea))
 // 패널 그림을 누르면 영역에 맞춰 확대·전체(목업 focusArea·viewAll), 잡기를 시작하면 전체(editStore.viewReq)

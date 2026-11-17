@@ -5,6 +5,7 @@ vi.mock('../api', () => ({ imageUrl: (p) => `http://x/api${p}` }))
 import StepViewer from '../components/StepViewer.vue'
 import CropView from '../components/CropView.vue'
 import { useEditorStore } from '../stores/editorStore'
+import { useEditStore } from '../stores/editStore'
 import { panelFixture, imageStep } from './panelFixture'
 import { t } from '../messages'
 import { thumbView } from '../editor/trainView'
@@ -55,6 +56,21 @@ describe('StepViewer', () => {
     expect(area.attributes('style')).toContain('left: 576px')
     expect(area.attributes('style')).toContain('width: 846px')
     expect(w.text()).toContain('학습 이미지 위치는 저장되지 않아')
+  })
+  it('기준 화면을 읽으면 그 크기를 편집 저장소에 알리고(검색 영역 입력의 화면 밖 검사), 그림이 바뀌거나 사라지면 비운다', async () => {
+    open(step())
+    const edit = useEditStore()
+    const w = mount(StepViewer)
+    expect(edit.screenSize).toBe(null)
+    w.vm.onLoad({ target: { naturalWidth: 1920, naturalHeight: 1200 } }); await w.vm.$nextTick()
+    expect(edit.screenSize).toEqual({ w: 1920, h: 1200 })
+    open(step({ baseImage: { state: 'present', src: 'blob:other' } }))
+    await w.vm.$nextTick()
+    expect(edit.screenSize).toBe(null)
+    w.vm.onLoad({ target: { naturalWidth: 640, naturalHeight: 360 } }); await w.vm.$nextTick()
+    expect(edit.screenSize).toEqual({ w: 640, h: 360 })
+    w.unmount()
+    expect(edit.screenSize).toBe(null)
   })
   it('편집으로 만든 스텝은 뼈대 URL 대신 src(참조에서 만든 URL)를 그대로 쓴다', () => {
     open(step({ baseImage: { state: 'present', src: 'blob:abc' } }))

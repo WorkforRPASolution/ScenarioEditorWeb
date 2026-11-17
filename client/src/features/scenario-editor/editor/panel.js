@@ -117,7 +117,8 @@ export const keyboardTokensDropped = (skStep) => (skStep?.notes ?? []).some((n) 
 // ── 바뀐 값(목업 fieldDiffs) ──
 const FIELDS = [
   ['desc', (s) => s.descriptionToEmail],
-  ['area', (s) => s.condition?.searchArea],
+  // 영역 칸에 잘못 쳐 따로 쥔 글자(areaTyped — editor/areaInput.js)도 영역이 바뀐 것으로 센다
+  ['area', (s) => (s.condition?.areaTyped ? [s.condition.searchArea, s.condition.areaTyped] : s.condition?.searchArea)],
   ['train', (s) => s.images?.train],
   ['base', (s) => s.images?.base],
   ['accept', (s) => s.condition?.image?.accept],

@@ -290,6 +290,36 @@ describe('editStore — 패널', () => {
     const { e } = panelFixture([imageStep(0)], { isCurrent: false })
     expect(e.panel.uid).toBe(null)
   })
+  // 검색 영역을 숫자로 넣기(2026-11-17) — 화면 크기는 큰 화면이 그림을 읽은 뒤 알린다
+  const setArea = (e, a) => e.updateDraft((d) => ({ ...d, condition: { ...d.condition, searchArea: a } }))
+  it('setScreenSize: 큰 화면이 알린 기준 화면 크기로 고친 영역이 화면 밖인지 본다 — 모르면 보지 않는다', () => {
+    const { e } = mk()
+    setArea(e, { x: 900, y: 20, w: 300, h: 200 })
+    expect(e.panelErrors().area).toBeUndefined() // 화면 크기를 아직 모른다
+    e.setScreenSize({ w: 1000, h: 500 })
+    expect(e.screenSize).toEqual({ w: 1000, h: 500 })
+    expect(e.panelErrors().area).toMatchObject({ code: 'AREA_OUT_RIGHT', level: 'error', params: { w: 1000, h: 500, sum: 1200 } })
+    expect(e.applyPanel()).toBe(false)
+    expect(e.focusReq.field).toBe('area')
+    setArea(e, { x: 700, y: 20, w: 300, h: 200 })
+    expect(e.panelErrors().area).toBeUndefined()
+    expect(e.applyPanel()).toBe(true)
+    e.setScreenSize(null)
+    expect(e.screenSize).toBe(null)
+  })
+  it('적용돼 있던 영역이 화면 밖이어도 다른 칸을 고쳐 적용할 수 있다(패널에서 고친 영역만 막는다)', () => {
+    const { e } = panelFixture([imageStep(0, { condition: { ...imageStep(0).condition, searchArea: { x: 900, y: 20, w: 300, h: 200 } } }), imageStep(1)])
+    e.setScreenSize({ w: 1000, h: 500 })
+    setAccept(e, 0.8)
+    expect(e.panelErrors().area).toBeUndefined()
+    expect(e.applyPanel()).toBe(true)
+  })
+  it('다른 시나리오를 열면(begin) 화면 크기를 잊는다', () => {
+    const { e } = mk()
+    e.setScreenSize({ w: 1000, h: 500 })
+    e.begin(skeleton, { canWrite: true })
+    expect(e.screenSize).toBe(null)
+  })
   it('applyPanel: 검사를 통과하면 한 명령으로 작업본에 넣고(알림 "N번 스텝에 적용했습니다"), 다른 스텝은 같은 객체', () => {
     const { e, edited } = mk()
     setAccept(e, 0.8)
