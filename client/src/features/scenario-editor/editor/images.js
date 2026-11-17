@@ -62,3 +62,10 @@ export const draftImageUrl = (draftId, tempId) => imageUrl(`/scenario-editor/dra
 export function newTempId() {
   return `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
 }
+
+// 바이트 머리로 PNG 인지 본다 — 파일 이름·type 을 믿지 않는다(서버도 올릴 그림의 서명만 본다)
+const PNG_HEAD = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
+export async function isPng(blob) {
+  const head = new Uint8Array(await blob.slice(0, 8).arrayBuffer())
+  return head.length === 8 && PNG_HEAD.every((b, i) => head[i] === b)
+}

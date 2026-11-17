@@ -1,13 +1,13 @@
 <script setup>
 // 표 위 도구 줄(목업 renderTable·menuHtml, 조작판 13 multi·20 empty). 읽기 전용이면 그리지 않는다.
-// 새 스텝 만들기(패널 초안·잡기)는 Task 7 — 여기서는 고른 종류를 'new' 로 알린다.
+// [새 스텝 ▾] 은 스냅샷 화면의 [새 스텝] 과 같은 메뉴(NewStepMenu)를 연다(2026-11-17) — 줄·꺼지는 조건·결과가 두 곳에서 같다.
 import { ref, computed, onBeforeUnmount } from 'vue'
 import { useEditStore } from '../stores/editStore'
 import { isContiguous, STEP_MAX } from '../editor/commands'
 import { t } from '../messages'
+import NewStepMenu from './NewStepMenu.vue'
 
 defineOptions({ name: 'StepToolbar' })
-const emit = defineEmits(['new'])
 const edit = useEditStore()
 
 const steps = computed(() => edit.session?.working?.steps ?? [])
@@ -18,18 +18,17 @@ const contiguous = computed(() => sel.value.length > 0 && isContiguous(edit.sess
 const canUp = computed(() => contiguous.value && nos.value[0] > 1)
 const canDown = computed(() => contiguous.value && nos.value[nos.value.length - 1] < steps.value.length)
 const scatteredTitle = computed(() => (sel.value.length > 1 && !contiguous.value ? t('SEW_CMD_REFUSED_NOT_CONTIGUOUS') : undefined))
-// 이미지·OCR 새 스텝은 기존 스텝의 기준 화면에서 잡는다 — 기준 화면 그림(참조)이 있는 스텝이 하나도 없으면 끈다.
-const hasBase = computed(() => steps.value.some((s) => { const b = s.images?.base; return !!b && typeof b === 'object' && 'from' in b }))
 const anchorNo = computed(() => { const a = edit.selection.anchor; return a ? noOf(a) || null : null })
 const clipCount = computed(() => edit.clip?.uids.length ?? 0)
 
 // 펼침 메뉴(새 스텝 ▾ · 붙여넣기 ▾): 표 칸 위에 떠야 해서 body 로 옮기고 버튼 아래에 고정한다.
+const MENU_W = { new: 340, paste: 262 }
 const menu = ref(null)
 function toggleMenu(kind, e) {
   if (menu.value?.kind === kind) { closeMenu(); return }
   const r = e.currentTarget.getBoundingClientRect()
   const vw = window.innerWidth || 1280
-  menu.value = { kind, x: Math.min(Math.max(r.left, 8), Math.max(8, vw - 270)), y: r.bottom + 4 }
+  menu.value = { kind, x: Math.min(Math.max(r.left, 8), Math.max(8, vw - MENU_W[kind] - 8)), y: r.bottom + 4 }
   document.addEventListener('mousedown', onDocDown, true)
   document.addEventListener('keydown', onDocKey)
 }
@@ -46,7 +45,6 @@ function onDocDown(e) {
 function onDocKey(e) { if (e.key === 'Escape') closeMenu() }
 onBeforeUnmount(closeMenu)
 
-function pickNew(kind) { closeMenu(); emit('new', kind) }
 function paste(where) { closeMenu(); edit.pasteClip(where) }
 
 const tool = 'h-7 min-w-7 px-2 rounded-md inline-flex items-center gap-1 whitespace-nowrap text-xs text-gray-700 dark:text-gray-300 hover:enabled:bg-gray-100 dark:hover:enabled:bg-gray-700 disabled:text-gray-400 disabled:opacity-70 dark:disabled:text-gray-600'
@@ -89,19 +87,9 @@ const hint = 'block text-[11px] leading-snug text-gray-500 dark:text-gray-400'
 
     <Teleport to="body">
       <div v-if="menu" ref="menuEl" role="menu" data-testid="se-tool-menu"
-        class="fixed z-40 w-[262px] p-1 bg-white dark:bg-dark-card border border-gray-300 dark:border-dark-border rounded-lg shadow-xl"
-        :style="{ left: `${menu.x}px`, top: `${menu.y}px` }">
-        <template v-if="menu.kind === 'new'">
-          <button type="button" role="menuitem" data-new="image" :class="item" :disabled="!hasBase" @click="pickNew('image')">
-            {{ t('SEW_EDIT_NEW_IMAGE') }}<small :class="hint">{{ hasBase ? t('SEW_EDIT_NEW_IMAGE_HINT') : t('SEW_EDIT_NEW_NO_BASE') }}</small>
-          </button>
-          <button type="button" role="menuitem" data-new="ocr" :class="item" :disabled="!hasBase" @click="pickNew('ocr')">
-            {{ t('SEW_EDIT_NEW_OCR') }}<small :class="hint">{{ hasBase ? t('SEW_EDIT_NEW_OCR_HINT') : t('SEW_EDIT_NEW_NO_BASE') }}</small>
-          </button>
-          <button type="button" role="menuitem" data-new="none" :class="item" @click="pickNew('none')">
-            {{ t('SEW_EDIT_NEW_NONE') }}<small :class="hint">{{ t('SEW_EDIT_NEW_NONE_HINT') }}</small>
-          </button>
-        </template>
+        class="fixed z-40 max-w-[calc(100vw-16px)] p-1 bg-white dark:bg-dark-card border border-gray-300 dark:border-dark-border rounded-lg shadow-xl"
+        :style="{ left: `${menu.x}px`, top: `${menu.y}px`, width: `${MENU_W[menu.kind]}px` }">
+        <NewStepMenu v-if="menu.kind === 'new'" @done="closeMenu" />
         <template v-else>
           <template v-if="anchorNo">
             <button type="button" role="menuitem" data-paste="after" :class="item" @click="paste('after')">

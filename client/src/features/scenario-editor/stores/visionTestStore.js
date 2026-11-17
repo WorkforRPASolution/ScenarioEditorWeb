@@ -7,7 +7,7 @@
 import { ref, shallowRef } from 'vue'
 import { defineStore } from 'pinia'
 import { scenarioEditorApi as api } from '../api'
-import { loadBlob, bitmapOf } from '../editor/images'
+import { loadBlob, bitmapOf, isPng } from '../editor/images'
 import { cropPng } from '../editor/crop'
 import { acceptOf, blockReason, cropOf, tooSmall, toScreen, clickOf, visionVerdict, ocrMeta, testKey, valueKey, ocrLines, confidenceOf } from '../editor/visionTest'
 import { t, errorMessage } from '../messages'
@@ -15,13 +15,7 @@ import { useSnapshotStore } from './snapshotStore'
 
 const IDLE = Object.freeze({ status: 'idle' })
 const MAX_UPLOAD_BYTES = 4 * 1024 * 1024 // 판정 서버가 받는 요청 한도 — 넘으면 올리지 않는다
-const PNG_HEAD = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
 const stop = (key) => Object.assign(new Error(key), { testMessage: t(key) })
-
-async function isPng(blob) {
-  const head = new Uint8Array(await blob.slice(0, 8).arrayBuffer())
-  return head.length === 8 && PNG_HEAD.every((b, i) => head[i] === b)
-}
 
 export const useVisionTestStore = defineStore('scenarioEditorVisionTest', () => {
   const snap = useSnapshotStore()

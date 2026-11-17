@@ -64,3 +64,14 @@ describe('bitmapOf — 판정 서버에 보낼 그림을 풀 때', () => {
     expect(create).toHaveBeenCalledWith(blob, { colorSpaceConversion: 'none' })
   })
 })
+
+import { isPng } from '../editor/images'
+describe('isPng — 바이트 머리로 PNG 인지 본다(파일 이름·type 을 믿지 않는다)', () => {
+  const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
+  it('PNG 서명이면 참, 아니면(JPG·짧은 것·빈 것) 거짓', async () => {
+    expect(await isPng(new Blob([new Uint8Array([...PNG, 1, 2, 3])], { type: 'image/jpeg' }))).toBe(true)
+    expect(await isPng(new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0])], { type: 'image/png' }))).toBe(false)
+    expect(await isPng(new Blob([new Uint8Array(PNG.slice(0, 7))]))).toBe(false)
+    expect(await isPng(new Blob([]))).toBe(false)
+  })
+})

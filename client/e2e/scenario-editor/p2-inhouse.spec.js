@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { asUser, openFromDialog, rows, rowOf, cellOf, toast, selectRow, menu } from './helpers'
+import { asUser, openFromDialog, rows, rowOf, cellOf, toast, selectRow, menu, newItem } from './helpers'
 import { CVD, SOURCE, sewName, idOf, urlOf, apiAs, proxyMode, db, cleanup, leftovers, NONE_LEFT, closeDb } from './sew'
 
 // 사내 쓰기 시험(2026-11-10)에서 나온 요청을 실제 화면으로 확인한다 — 단위 시험만 있던 것들.
@@ -264,10 +264,10 @@ test('⑤ 새 스텝의 넣을 자리를 바꾸면 표가 그 줄로 스크롤�
   const mail = panel(page).locator('em').first()
   await selectRow(page, 's1')
   expect(await inView('s17')).toBe(false)
-  await menu(page, 'se-tool-new', '[data-new="none"]')
+  await menu(page, 'se-tool-new', newItem('none'))
   const where = page.getByTestId('se-new-where')
-  await expect(where).toHaveValue('s1')
-  await expect(mail).toHaveText('메일에 "2. …" 로 나옵니다')
+  await expect(where).toHaveValue('s2') // 고른 2번의 뒤 = 3번 앞(2026-11-17)
+  await expect(mail).toHaveText('메일에 "3. …" 로 나옵니다')
   // 맨 끝 → 마지막 줄이 보이고 그 아래에 초록 줄
   await where.selectOption('')
   await expect.poll(() => inView('s17')).toBe(true)

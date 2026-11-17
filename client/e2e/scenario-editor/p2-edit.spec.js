@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { asUser, openFromDialog, rows, rowAt, rowOf, cellOf, toast, order, selectRow, menu, drag, clickAt } from './helpers'
+import { asUser, openFromDialog, rows, rowAt, rowOf, cellOf, toast, order, selectRow, menu, drag, clickAt, newItem } from './helpers'
 
 // P2-C 편집 명령(설계 §2 완료 조건 2 의 편집 부분). 저장 → 다시 열기는 저장 창이 있는 P2-D E2E 가 맡는다.
 // 시험 데이터: basic NEXT_RULES(1 이미지 · 2 →4/SKIP · 3 도달 불가 · 4 OCR NEXT/→2 · 5 끝), ALL_CONDITIONS(1 이미지 · 2 OCR · 3 대기 · 4 설비 상태).
@@ -28,9 +28,15 @@ test('① 잡아 넣기·삭제 막힘·다른 시나리오 붙여넣기·잘라
   await expect(page.getByTestId('se-tool-paste')).toContainText('1개')
   await expect(cellOf(page, 's1', 'onTrue')).toHaveText('→4')
 
-  // ── 새 이미지 스텝: 기준 화면에서 검색 영역 → 찾을 그림 → 누를 곳을 끌어 잡고 3번 앞에 넣는다 ──
+  // ── 새 이미지 스텝: 고른 1번 스텝의 기준 화면을 빌려 검색 영역 → 찾을 그림 → 누를 곳을 끌어 잡고 3번 앞에 넣는다 ──
+  // (3번은 조건 없는 스텝이라 빌릴 화면이 없다 — 그 줄을 고르면 스텝 줄이 꺼진다. 전에는 말없이 1번 스텝의 화면을 썼다)
   await selectRow(page, 's2')
-  await menu(page, 'se-tool-new', '[data-new="image"]')
+  await page.getByTestId('se-tool-new').click()
+  await expect(page.getByTestId('se-tool-menu').locator('[data-src="step"]')).toContainText('이 스텝에는 기준 화면이 없습니다')
+  await expect(page.getByTestId('se-new-step-image')).toBeDisabled()
+  await page.keyboard.press('Escape')
+  await selectRow(page, 's0')
+  await menu(page, 'se-tool-new', newItem('step-image'))
   const layer = page.getByTestId('se-capture-layer')
   await expect(layer).toHaveAttribute('data-stage', 'area')
   await drag(page, layer, DIALOG)
@@ -43,14 +49,14 @@ test('① 잡아 넣기·삭제 막힘·다른 시나리오 붙여넣기·잘라
   const panel = page.getByTestId('se-detail')
   await expect(panel.locator('[data-station="find"] img')).toHaveCount(1) // 잘라 낸 찾을 그림(blob URL)이 패널에 보인다
   await panel.locator('[data-field="desc"]').fill('새 이미지 스텝')
-  // 넣을 자리: 기본은 [+ 새 스텝]을 누를 때 고른 3번 앞. 다 만든 뒤에도 바꿀 수 있고(맨 끝 → 다시 3번 앞) 표에 초록 줄로 보인다
+  // 넣을 자리: 기본은 [+ 새 스텝]을 누를 때 고른 1번의 뒤(= 2번 앞, 2026-11-17). 다 만든 뒤에도 바꿀 수 있고(맨 끝 → 3번 앞) 표에 초록 줄로 보인다
   const where = page.getByTestId('se-new-where')
-  await expect(where).toHaveValue('s2')
-  await expect(where.locator('option:checked')).toContainText('3번 앞')
-  await expect(rowOf(page, 's2')).toHaveClass(/se-row-ins-before/)
+  await expect(where).toHaveValue('s1')
+  await expect(where.locator('option:checked')).toContainText('2번 앞')
+  await expect(rowOf(page, 's1')).toHaveClass(/se-row-ins-before/)
   await where.selectOption('')
   await expect(rowOf(page, 's4')).toHaveClass(/se-row-ins-after/)
-  await expect(rowOf(page, 's2')).not.toHaveClass(/se-row-ins-before/)
+  await expect(rowOf(page, 's1')).not.toHaveClass(/se-row-ins-before/)
   await where.selectOption('s2')
   await expect(rowOf(page, 's2')).toHaveClass(/se-row-ins-before/)
   await expect(rowOf(page, 's4')).not.toHaveClass(/se-row-ins-after/)

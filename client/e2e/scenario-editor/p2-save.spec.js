@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { asUser, openFromDialog, rows, rowAt, rowOf, cellOf, toast, column, selectRow, menu, pickNext, drag, clickAt } from './helpers'
+import { asUser, openFromDialog, rows, rowAt, rowOf, cellOf, toast, column, selectRow, menu, pickNext, drag, clickAt, newItem } from './helpers'
 import { CVD, SOURCE, sewName, idOf, urlOf, apiAs, noUrls, proxyMode, db, cleanup, leftovers, NONE_LEFT, closeDb } from './sew'
 
 // P2-D 저장·관리 흐름(설계 §2 완료 조건 2 저장 → 다시 열기·4 저장 흐름·5 판 관리·운영 속성의 화면 부분).
@@ -568,7 +568,8 @@ test('⑪ 새 시나리오에서 새로 자른 그림 → 초안 저장 → 새�
   // 붙여 넣은 1번(이미지) 스텝의 기준 화면에서 새 이미지 스텝을 잡아 맨 앞에 넣는다 — 찾을 그림은 새로 자른 그림(올릴 그림)
   const first = await rowAt(page, 0).getAttribute('row-id')
   await selectRow(page, first)
-  await menu(page, 'se-tool-new', '[data-new="image"]')
+  await menu(page, 'se-tool-new', newItem('step-image'))
+  await page.getByTestId('se-new-where').selectOption(first) // 기본은 고른 줄 뒤 — 맨 앞으로 바꾼다
   const layer = page.getByTestId('se-capture-layer')
   await expect(layer).toHaveAttribute('data-stage', 'area')
   await drag(page, layer, DIALOG)

@@ -6,13 +6,14 @@ import { sameStep, canonicalJson, unsavedChanges } from '../editor/diff'
 import { checkStepFields } from '../editor/fieldRules'
 import { checkPropertyFields } from '../editor/propertyRules'
 import { firstError, CLICK_TYPES } from '../editor/panel'
-import { refUrl, loadBitmap, loadBlob, draftImageUrl, newTempId, uploadIdsOf } from '../editor/images'
+import { refUrl, loadBitmap, loadBlob, bitmapOf, isPng, draftImageUrl, newTempId, uploadIdsOf } from '../editor/images'
 import { normalizeWindows, blankWindow } from '../editor/windows'
 import { cropPng, imageDataOf } from '../editor/crop'
 import { locate } from '../editor/locate'
 import { spotKey } from '../editor/trainView'
-import { CAP_FLOWS, MIN_CAPTURE, LOCATE_MS, isRect, clipRect, nextStage, newStepDraft, baseRefFor, firstTrainRef } from '../editor/capture'
+import { CAP_FLOWS, MIN_CAPTURE, LOCATE_MS, isRect, isRef, clipRect, nextStage, newStepDraft, baseRefFor, afterUid, firstTrainRef } from '../editor/capture'
 import { snapshotKey, snapshotBaseProblem, uploadBudgetProblem } from '../editor/snapshotStep'
+import { prepareLocalBase, sizeDiffers } from '../editor/localBase'
 import { newScenarioOf } from '../editor/newScenario'
 import { t } from '../messages'
 import { useEditorStore } from './editorStore'
@@ -42,8 +43,8 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   const windowClip = shallowRef([])
   // 올릴 그림(tempId → Blob). Blob 을 반응형으로 감싸지 않게 shallowRef 이고, 바꿀 때마다 새 Map 으로 바꾼다(setUpload).
   const uploads = shallowRef(new Map())
-  // 기준 화면으로 올린 스냅샷(설비·파일 이름 → tempId, P3-E) — 같은 스냅샷으로 만든 스텝들이 그림 하나를 함께 쓴다. 올릴 그림과 함께 비운다.
-  let snapshotBases = new Map()
+  // 기준 화면으로 올린 스냅샷·그림 파일(키 → tempId, P3-E·2026-11-17) — 같은 그림으로 만든 스텝들이 올릴 그림 하나를 함께 쓴다. 올릴 그림과 함께 비운다.
+  let sharedBases = new Map()
   // 큰 화면 잡기(목업 S.cap): { flow, stage, why, before, train } — before = 잡기 전 패널 초안(Esc 로 되돌린다),
   // train = 누를 곳의 기준(찾을 그림 사각형: 이번에 잡은 것 또는 [다시 찍기]가 기준 화면에서 찾은 자리).
   const capture = shallowRef(null)
@@ -82,7 +83,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     undo.value = []
     redo.value = []
     uploads.value = new Map()
-    snapshotBases = new Map()
+    sharedBases = new Map()
     capture.value = null
     locating.value = false
     viewReq.value = null
@@ -749,58 +750,106 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   }
 
   // ── 새 스텝(목업 startNew·addNew·newcancel, 조작판 7) ──
-  // 넣을 자리의 기준 줄: 고른 스텝, 새 스텝을 만드는 중이면 그 초안이 기억한 줄(고른 자리, 없으면 시작할 때 고른 줄).
-  function insertAnchor() {
+  // 새 스텝의 기준 줄(origin): 고른 스텝, 새 스텝을 만드는 중이면 그 초안이 시작할 때 고른 줄. 화면을 빌릴 줄이자 취소·되돌리기가 돌아갈 줄이다.
+  function originUid() {
     const a = selection.value.anchor
     if (a && workingStep(a)) return a
     const p = panel.value
-    if (!p.isNew) return null
-    return [p.insertBefore, p.origin].find((uid) => uid && workingStep(uid)) ?? null
+    return p.isNew && p.origin && workingStep(p.origin) ? p.origin : null
   }
-  // 종류를 고르면 패널이 새 스텝 초안을 연다. 이미지·OCR 은 고른 스텝(없으면 기준 화면이 있는 첫 스텝)의 기준 화면에서 잡기를 시작한다.
+  // 넣을 자리: 고른 줄 뒤(그 다음 줄 앞, 없으면 맨 끝 — editor/capture afterUid). 새 스텝을 만드는 중에 다시 시작하면 바꿔 둔 자리를 그대로 쓴다.
+  // 표 위 [새 스텝] 과 스냅샷 화면 [새 스텝] 이 같은 자리에 넣는다(2026-11-17 — 그 전에는 고른 줄 앞·맨 끝으로 달랐다).
+  function newPlace() {
+    const a = selection.value.anchor
+    if (a && workingStep(a)) return afterUid(session.value.working, a)
+    const p = panel.value
+    return p.isNew && p.insertBefore && workingStep(p.insertBefore) ? p.insertBefore : null
+  }
+  // 메뉴가 "n번 스텝의 화면" 줄을 그릴 때 쓴다: 빌릴 줄과 그 기준 화면(없으면 base null). 빌릴 줄이 없으면 null.
+  const newOrigin = computed(() => {
+    const uid = session.value?.working ? originUid() : null
+    if (!uid) return null
+    return { uid, no: noOf(uid), base: baseRefFor(session.value.working, uid) }
+  })
+  // 종류를 고르면 패널이 새 스텝 초안을 연다. 이미지·OCR 은 기준 화면에서 잡기를 시작한다 — 화면이 오는 곳은 셋이다(2026-11-17):
+  //   opts.snapshot = { eqpId, fileName, blob }: 떠 있는 스냅샷 그림(P3-E). 누를 때의 그림을 쥐고 간다(확인 창을 거치는 사이 다른 스냅샷을 골라도 바뀌지 않는다).
+  //   opts.file = { key, blob }: 내 PC 의 그림 파일을 PNG 로 준비한 것(startNewFromFile 이 만든다).
+  //   둘 다 없으면 고른 스텝의 기준 화면을 빌린다 — 그 스텝에 기준 화면이 없으면 시작하지 않는다(다른 스텝의 화면으로 넘어가지 않는다).
+  // 스냅샷·파일은 스텝이 없는 시나리오에서도 된다. 그림이 없거나 너무 크면 시작하지 않고 알린다.
   // 패널에 적용 안 한 변경이 있으면 먼저 묻는다(다른 스텝으로 가는 것과 같은 이동).
-  // opts.snapshot(P3-E, 스냅샷 보기의 [새 스텝]) = { eqpId, fileName, blob }: 그 그림을 기준 화면으로 쓴다 — 스텝이 없는 시나리오에서도 된다.
-  // 누를 때 떠 있던 그림을 쥐고 간다(확인 창을 거치는 사이 다른 스냅샷을 골라도 바뀌지 않는다). 그림이 없거나 너무 크면 시작하지 않고 알린다.
-  // opts.end(스냅샷 보기의 [새 스텝] → 조건 없는 스텝, 2026-11-17): 넣을 자리를 맨 끝으로 시작한다 — 스냅샷으로 만드는 스텝과 같은 자리에 쌓이게.
   function startNew(kind, opts = {}) {
     if (!editable.value || (!CAP_FLOWS[kind] && kind !== 'none')) return false
-    const fromSnapshot = !!CAP_FLOWS[kind] && 'snapshot' in opts
-    if (fromSnapshot) {
+    let shared = null
+    if (CAP_FLOWS[kind] && 'snapshot' in opts) {
       const problem = snapshotBaseProblem(opts.snapshot)
       if (problem) { notify(t(problem === 'tooLarge' ? 'SEW_SNAP_STEP_TOO_LARGE' : 'SEW_SNAP_STEP_NO_IMAGE')); return false }
+      shared = { key: snapshotKey(opts.snapshot.eqpId, opts.snapshot.fileName), blob: opts.snapshot.blob }
+    } else if (CAP_FLOWS[kind] && 'file' in opts) {
+      const f = opts.file
+      if (!f?.key || !(f.blob instanceof Blob) || !(f.blob.size > 0)) { notify(t('SEW_NEW_FILE_NOT_IMAGE')); return false }
+      shared = { key: f.key, blob: f.blob }
     }
-    const open = () => openNew(kind, fromSnapshot ? opts.snapshot : null, { end: opts.end === true })
+    const open = () => openNew(kind, shared)
     if (!panelDirty()) return open()
     return guard(open, { action: 'move' })
   }
-  // 스냅샷 그림을 올릴 그림으로 넣고 그 참조를 준다. 이 세션에서 같은 스냅샷을 이미 넣었으면(그 그림이 아직 있으면) 그것을 다시 쓴다.
+  // 그림 파일로 새 이미지·OCR 스텝(2026-11-17 사내 요청): 파일을 PNG 로 준비해(PNG 는 그대로 — editor/localBase) 새 스텝을 시작한다.
+  // 그림이 아니거나 너무 크면 알리고 만들지 않는다. 푸는 사이 세션이 바뀌면 버린다.
+  // 시작한 뒤, 견줄 스텝(고른 스텝, 없으면 기준 화면이 있는 첫 스텝)의 기준 화면과 크기가 다르면 알린다(막지 않는다 —
+  // 좌표는 기준 화면의 픽셀이라 설비 화면 전체를 제 크기로 찍은 그림이 아니면 실행 때 어긋난다).
+  async function startNewFromFile(kind, file) {
+    if (!editable.value || !CAP_FLOWS[kind] || !file) return false
+    const gen = spotGen.value
+    let prepared
+    try {
+      prepared = await prepareLocalBase(file, { decode: bitmapOf, toPng: (b) => cropPng(b, { x: 0, y: 0, w: b.width, h: b.height }), isPng })
+    } catch (err) {
+      if (gen === spotGen.value) notify(t(err?.reason === 'tooLarge' ? 'SEW_NEW_FILE_TOO_LARGE' : 'SEW_NEW_FILE_NOT_IMAGE'))
+      return false
+    }
+    if (gen !== spotGen.value || !editable.value) return false
+    const steps = session.value.working.steps
+    const origin = originUid()
+    const mate = (origin && baseRefFor(session.value.working, origin) ? workingStep(origin) : null) ?? steps.find((x) => isRef(x.images?.base)) ?? null
+    const mateUrl = mate ? refUrl(mate.images.base, imgCtx()) : null
+    const mateNo = mate ? noOf(mate.uid) : 0
+    if (!startNew(kind, { file: prepared })) return false
+    const uid = panel.value.isNew ? panel.value.uid : null
+    if (mateUrl && uid) {
+      loadBitmap(mateUrl).then((b) => {
+        if (gen !== spotGen.value || panel.value.uid !== uid) return
+        if (sizeDiffers({ w: prepared.w, h: prepared.h }, { w: b.width, h: b.height })) notify(t('SEW_NEW_FILE_SIZE_DIFF', { w: prepared.w, h: prepared.h, no: mateNo, bw: b.width, bh: b.height }))
+      }, () => {})
+    }
+    return true
+  }
+  // 함께 쓰는 그림(스냅샷·그림 파일)을 올릴 그림으로 넣고 그 참조를 준다. 이 세션에서 같은 그림(key)을 이미 넣었으면(그 그림이 아직 있으면) 그것을 다시 쓴다.
   // 새로 넣어야 하는데 작업본이 쓰는 올릴 그림과 합쳐 한 번의 저장 한도(합계 50MB·200장)를 넘게 되면 넣지 않고 알린다(null) —
   // 넘은 채로는 초안 저장도 배포도 막혀 만든 스텝을 저장할 길이 없다(P3-E 독립 검토).
-  function snapshotBaseRef(snapshot, working) {
-    const key = snapshotKey(snapshot.eqpId, snapshot.fileName)
-    const known = snapshotBases.get(key)
+  function sharedBaseRef(shared, working) {
+    const known = sharedBases.get(shared.key)
     if (known && uploads.value.has(known)) return { from: 'upload', tempId: known }
-    const over = uploadBudgetProblem(snapshot.blob, uploadIdsOf(working.steps).map((id) => uploads.value.get(id)))
+    const over = uploadBudgetProblem(shared.blob, uploadIdsOf(working.steps).map((id) => uploads.value.get(id)))
     if (over) { notify(t(over === 'files' ? 'SEW_SNAP_STEP_TOO_MANY_FILES' : 'SEW_SNAP_STEP_TOTAL_TOO_LARGE')); return null }
     const tempId = newTempId()
-    setUpload(tempId, snapshot.blob)
-    snapshotBases.set(key, tempId)
+    setUpload(tempId, shared.blob)
+    sharedBases.set(shared.key, tempId)
     return { from: 'upload', tempId }
   }
-  function openNew(kind, snapshot = null, { end = false } = {}) {
+  function openNew(kind, shared = null) {
     const s = session.value
     if (!s?.working) return false
     if (s.working.steps.length >= STEP_MAX) { refused('STEP_LIMIT'); return false }
-    const anchor = insertAnchor()
-    const base = kind === 'none' ? null : snapshot ? snapshotBaseRef(snapshot, s.working) : baseRefFor(s.working, anchor)
-    if (kind !== 'none' && !base) { if (!snapshot) notify(t('SEW_EDIT_NEW_NO_BASE')); return false }
+    const origin = originUid()
+    const insertBefore = newPlace()
+    const base = kind === 'none' ? null : shared ? sharedBaseRef(shared, s.working) : baseRefFor(s.working, origin)
+    if (kind !== 'none' && !base) { if (!shared) notify(t('SEW_EDIT_NEW_NO_BASE')); return false }
     const [uid, next] = nextUid(s, 'n')
     session.value = next
     const draft = newStepDraft(kind, { uid, base })
     capture.value = null
-    // insertBefore = 넣을 자리(그 줄 앞, null 이면 맨 끝 — 만드는 중에 바꿀 수 있다). origin = 시작할 때 고른 줄(기준 화면을 빌린 줄, 취소·되돌리기가 돌아갈 곳).
-    // 스냅샷으로 만드는 스텝은 맨 끝이 기본이다 — 스냅샷을 시각 순서로 넘기며 이어 만들 때 만든 순서대로 쌓인다(고른 줄은 흔히 방금 넣은 스텝이다. 사내 [추가] 도 끝에 붙인다).
-    panel.value = { uid, isNew: true, draft, base: draft, insertBefore: snapshot || end ? null : anchor, origin: anchor, tried: false }
+    // insertBefore = 넣을 자리(그 줄 앞, null 이면 맨 끝 — 만드는 중에 바꿀 수 있다). origin = 시작할 때 고른 줄(화면을 빌린 줄, 취소·되돌리기가 돌아갈 곳).
+    panel.value = { uid, isNew: true, draft, base: draft, insertBefore, origin, tried: false }
     // 표에서 고른 줄을 비운다(새 스텝은 아직 표에 없다). 패널을 먼저 바꿔 두어 초점 감시가 초안을 지우지 않는다.
     selection.value = emptySelection()
     useEditorStore().selectedUid = null
@@ -852,6 +901,6 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     openPanel, syncPanel, updateDraft, panelErrors, applyPanel, discardPanel, requestFocus,
     guard, guardKeep, guardDrop, guardApply, setHeader, applyProperty, applyWindows, copyWindows, changeCount, unsavedCount, askLeave, leaveKeep, leaveDrop,
     undoCommand, redoCommand, copySelection, pasteClip, deleteSelection, moveSelected, editCell,
-    setUpload, requestView, startCapture, captureNext, cancelCapture, finishCapture, repick, findSpot, setAreaDrag, startNew, addNew, setInsertBefore, cancelNew
+    setUpload, requestView, startCapture, captureNext, cancelCapture, finishCapture, repick, findSpot, setAreaDrag, newOrigin, startNew, startNewFromFile, addNew, setInsertBefore, cancelNew
   }
 })

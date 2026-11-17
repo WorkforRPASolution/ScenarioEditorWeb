@@ -593,7 +593,7 @@ test('⑨ 스텝 목록·스텝 패널 접기 — 큰 화면이 그만큼 커지
   // ── 접은 채 스냅샷으로 새 스텝을 시작하면 패널이 펴진다(넣기·취소가 패널에 있다). 스텝 목록은 접힌 채다 ──
   await snapRow(page, '09:13:02').click()
   await page.getByTestId('se-snap-new').click()
-  await page.getByTestId('se-snap-new-image').click()
+  await page.getByTestId('se-new-snapshot-image').click()
   await expect(page.getByTestId('se-right-section')).toBeVisible()
   await expect(page.getByTestId('se-right-rail')).toHaveCount(0)
   await expect(page.getByTestId('se-steps-rail')).toBeVisible()
@@ -815,7 +815,7 @@ test.describe('스냅샷에서 스텝 만들기', () => {
     await dlg.getByTestId('se-new-create').click()
     await expect(dlg).toHaveCount(0)
     await expect(page.getByTestId('se-bar-id')).toHaveText(idOf(NEW))
-    await expect(page.getByTestId('se-table-empty')).toContainText('왼쪽 스냅샷에서 화면을 골라')
+    await expect(page.getByTestId('se-table-empty')).toContainText('왼쪽에서 고른 스냅샷이나 내 PC 의 그림 파일')
     // 고른 스냅샷은 그대로다 — 스냅샷 탭으로 가면 [새 스텝] 이 켜져 있다
     if (!(await page.getByTestId('se-snap-image').isVisible())) await snapMode().click()
     await expect(snapRow(page, '09:13:02')).toHaveAttribute('aria-selected', 'true')
@@ -823,8 +823,22 @@ test.describe('스냅샷에서 스텝 만들기', () => {
     await expect(newBtn).toBeEnabled()
 
     // ── 이미지 스텝: 큰 화면이 스텝 그림으로 바뀌고 그 스냅샷 위에서 잡는다 ──
+    // 메뉴는 표 위 [새 스텝] 과 같다(화면마다 한 줄) — 가운데 영역 밖으로 나가도 잘리지 않고 창 안에 다 보인다
     await newBtn.click()
-    await page.getByTestId('se-snap-new-image').click()
+    const pop = page.getByTestId('se-snap-new-menu')
+    await expect(pop.locator('[data-src="snapshot"]')).toContainText('09:13:02')
+    await expect(pop.locator('[data-src="snapshot"]')).toContainText('클릭 (412, 288)')
+    await expect(pop.locator('[data-src="step"]')).toContainText('표에서 스텝을 고르면 켜집니다')
+    await expect(page.getByTestId('se-new-step-image')).toBeDisabled()
+    await expect(page.getByTestId('se-new-file-image')).toBeEnabled()
+    const popBox = await pop.boundingBox()
+    const vp = page.viewportSize()
+    expect(popBox.x).toBeGreaterThanOrEqual(0)
+    expect(popBox.y).toBeGreaterThanOrEqual(0)
+    expect(popBox.x + popBox.width).toBeLessThanOrEqual(vp.width)
+    expect(popBox.y + popBox.height).toBeLessThanOrEqual(vp.height)
+    await page.getByTestId('se-new-snapshot-image').click()
+    await expect(pop).toHaveCount(0)
     await expect(layer).toHaveAttribute('data-stage', 'area')
     await expect(page.getByTestId('se-cap-bar')).toBeVisible() // 잡는 중에는 탭 자리에 단계 띠가 뜬다
     await expect(page.getByTestId('se-snap-viewer')).toBeHidden()
@@ -843,7 +857,7 @@ test.describe('스냅샷에서 스텝 만들기', () => {
     await expect(snapRow(page, '09:13:02')).toHaveAttribute('aria-selected', 'true')
     await expect(page.getByTestId('se-snap-image')).toBeVisible()
     await newBtn.click()
-    await page.getByTestId('se-snap-new-ocr').click()
+    await page.getByTestId('se-new-snapshot-ocr').click()
     await expect(layer).toHaveAttribute('data-stage', 'ocr')
     await expect.poll(() => naturalOf('se-base-image')).toEqual([SNAP.w, SNAP.h])
     await drag(page, layer, OCR, SNAP)
@@ -855,10 +869,10 @@ test.describe('스냅샷에서 스텝 만들기', () => {
     await expect(rows(page)).toHaveCount(2)
     expect(await column(page, 'desc')).toEqual(['스냅샷 이미지 스텝', '스냅샷 OCR 스텝'])
 
-    // ── 조건 없는 스텝도 스냅샷 보기의 메뉴에서 만든다(사내 요청 2026-11-17) — 스냅샷을 쓰지 않고, 만든 순서대로 맨 끝에 붙는다 ──
+    // ── 조건 없는 스텝도 스냅샷 보기의 메뉴에서 만든다(사내 요청 2026-11-17) — 스냅샷을 쓰지 않고, 방금 넣은 스텝의 뒤(= 맨 끝)에 붙는다 ──
     await snapMode().click()
     await newBtn.click()
-    await page.getByTestId('se-snap-new-none').click()
+    await page.getByTestId('se-new-none').click()
     await expect(page.getByTestId('se-new-where')).toHaveValue('')
     await expect(page.getByTestId('se-panel-kind')).toHaveText('조건 없음')
     await panel.locator('[data-field="desc"]').fill('스냅샷 보기에서 만든 조건 없는 스텝')

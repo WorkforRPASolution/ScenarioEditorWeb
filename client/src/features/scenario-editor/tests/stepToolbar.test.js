@@ -155,29 +155,37 @@ describe('StepToolbar', () => {
     w.unmount()
   })
 
-  it('새 스텝 ▾: 기준 화면이 있는 스텝이 없으면 이미지·OCR 을 끄고 이유를 보인다', async () => {
+  // 새 스텝 ▾ 은 스냅샷 화면의 [새 스텝] 과 같은 메뉴(NewStepMenu)를 연다(2026-11-17) — 줄마다의 규칙은 newStepMenu.test.js
+  const newItem = (w, id) => w.find(`[data-testid="se-new-${id}"]`)
+  it('새 스텝 ▾: 화면마다 한 줄인 메뉴를 연다 — 고른 스텝에 기준 화면이 없으면 스텝 줄이 꺼지고, 조건 없는 스텝을 누르면 시작하고 닫힌다', async () => {
     const noBase = (i) => edStep(i, { condition: { kind: 'none', skipPreprocessing: false }, images: { train: {}, base: { literal: 'AA==' } } })
-    fixture({ steps: [noBase(0), noBase(1)] })
+    const { e } = fixture({ steps: [noBase(0), noBase(1)] })
     const w = mount(StepToolbar, { attachTo: document.body })
     await w.find('[data-testid="se-tool-new"]').trigger('click')
-    const item = (k) => w.find(`[data-new="${k}"]`)
-    expect([off(item('image')), off(item('ocr')), off(item('none'))]).toEqual([true, true, false])
-    expect(item('image').text()).toContain('기준 화면이 있는 스텝이 없습니다')
-    await item('none').trigger('click')
-    expect(w.emitted('new')).toEqual([['none']])
+    expect(w.find('[data-testid="se-tool-menu"] [data-testid="se-new-menu"]').exists()).toBe(true)
+    expect([off(newItem(w, 'snapshot-image')), off(newItem(w, 'step-image')), off(newItem(w, 'step-ocr')), off(newItem(w, 'file-image')), off(newItem(w, 'none'))]).toEqual([true, true, true, false, false])
+    expect(w.find('[data-src="step"]').text()).toContain('이 스텝에는 기준 화면이 없습니다')
+    await newItem(w, 'none').trigger('click')
+    expect(e.panel).toMatchObject({ isNew: true, insertBefore: 's1', origin: 's0' }) // 고른 줄(s0) 뒤
+    expect(e.panel.draft.condition.kind).toBe('none')
+    expect(w.find('[data-testid="se-tool-menu"]').exists()).toBe(false)
     w.unmount()
   })
 
-  it('새 스텝 ▾: 기준 화면이 있으면 이미지·OCR 이 켜진다', async () => {
-    fixture()
+  it('새 스텝 ▾: 고른 스텝에 기준 화면이 있으면 그 스텝의 화면 줄이 켜지고, [이미지] 를 누르면 그 화면으로 잡기를 시작한다', async () => {
+    const { e } = fixture()
     const w = mount(StepToolbar, { attachTo: document.body })
     await w.find('[data-testid="se-tool-new"]').trigger('click')
-    expect(off(w.find('[data-new="image"]'))).toBe(false)
-    expect(w.find('[data-new="image"]').text()).toContain('화면에서 그림을 찾아 누릅니다')
+    expect(off(newItem(w, 'step-image'))).toBe(false)
+    expect(w.find('[data-src="step"]').text()).toContain('1번 스텝의 화면')
+    await newItem(w, 'step-image').trigger('click')
+    expect(e.panel.draft.images.base).toEqual({ from: 'source', id: 's0-bi' })
+    expect(e.capture).toMatchObject({ stage: 'area' })
+    expect(w.find('[data-testid="se-tool-menu"]').exists()).toBe(false)
     w.unmount()
   })
 
-  it('빈 시나리오(목업 조작판 20): 이미지·OCR 새 스텝은 꺼지고(이유), 다른 시나리오에서 복사해 둔 묶음은 맨 끝에 붙인다', async () => {
+  it('빈 시나리오(목업 조작판 20): 빌릴 화면이 없어 스텝 줄은 꺼지고(이유), 다른 시나리오에서 복사해 둔 묶음은 맨 끝에 붙인다', async () => {
     const a = fixture()
     a.e.setSelection({ uids: ['s1', 's2'], anchor: 's1' })
     a.e.copySelection(false)
@@ -188,9 +196,9 @@ describe('StepToolbar', () => {
     a.e.begin(a.s.skeleton, { canWrite: true })
     const w = mountHost()
     await tool(w, 'new').trigger('click')
-    const item = (k) => w.find(`[data-new="${k}"]`)
-    expect([off(item('image')), off(item('ocr')), off(item('none'))]).toEqual([true, true, false])
-    expect(item('ocr').text()).toContain('기준 화면이 있는 스텝이 없습니다')
+    // 스텝이 없으면 빌릴 화면이 없다 — 스냅샷도 고르지 않았으니 그림 파일과 조건 없는 스텝만 켜져 있다
+    expect([off(newItem(w, 'snapshot-image')), off(newItem(w, 'step-image')), off(newItem(w, 'step-ocr')), off(newItem(w, 'file-ocr')), off(newItem(w, 'none'))]).toEqual([true, true, true, false, false])
+    expect(w.find('[data-src="step"]').text()).toContain('표에서 스텝을 고르면 켜집니다')
     await tool(w, 'new').trigger('click') // 닫기
     expect(off(tool(w, 'paste'))).toBe(false)
     expect(tool(w, 'paste').text()).toContain('2개')
@@ -201,7 +209,7 @@ describe('StepToolbar', () => {
     expect(a.e.session.working.steps[1].next.onTrue).toStrictEqual({ kind: 'unresolved', value: 1 }) // s2 성공 → s0(묶음 밖)
     expect(a.e.session.working.steps[0].images.base.from).toBe('other')
     await tool(w, 'new').trigger('click')
-    expect(off(item('image'))).toBe(false) // 붙여 온 기준 화면이 생겼다
+    expect(off(newItem(w, 'step-image'))).toBe(false) // 붙여 온(골라진) 스텝의 기준 화면을 빌릴 수 있다
     w.unmount()
   })
 

@@ -5,9 +5,10 @@
 // 메모 줄(P3-C): 메모가 있으면 글·작성자·[고치기]·[지우기], 없으면 [메모 쓰기]. 메모 창은 창을 연 스냅샷(파일 이름)에 쓴다.
 // [받기 ▾](P3-D): 목록에서 고른 줄(하나 또는 여러 줄)을 그림만·좌표 포함으로 받는다 — 진행·결과는 받기 저장소와 DownloadDialog.
 // [이력 보기](P3-D): 이력이 남는 태그 스냅샷(태그이고 txn ≥ 99999 — 서버의 hasHistory)에서만 켜진다. 창은 연 때의 설비·txn 으로 받는다.
-// [새 스텝 ▾](P3-E): 떠 있는 그림을 기준 화면으로 이미지·OCR 스텝을 만든다 — 고칠 수 있는 시나리오가 열려 있고 그림이 그려져 있을 때만(DC-038).
-//   조건 없는 스텝도 여기서 만든다(사내 요청 2026-11-17 — 스냅샷을 보며 스텝을 이어 만들 때 표 위 도구 줄로 가지 않게). 그림을 쓰지 않아 그림이 없어도 된다.
+// [새 스텝 ▾](P3-E): 표 위 [새 스텝] 과 같은 메뉴(NewStepMenu, 2026-11-17)를 연다 — 지금 스냅샷·고른 스텝의 화면·그림 파일로 이미지·OCR 스텝을, 또는 조건 없는 스텝을 만든다.
+//   버튼은 고칠 수 있는 시나리오가 열려 있으면 켜지고, 스냅샷 줄은 그림이 떠 있을 때만 켜진다(DC-038 — 메뉴가 본다).
 //   넘기는 것은 화면이 그리고 있는 그 그림의 바이트다(snap.shownImage — 다시 받지 않는다, DC-071·DC-075). 큰 화면은 화면(ScenarioEditorView)의 감시자가 스텝 그림으로 돌린다.
+//   메뉴는 body 로 옮겨 버튼 위쪽의 고정 자리에 그린다 — 가운데 영역이 넘침을 잘라 그 안에 두면 좁은 화면에서 잘린다.
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useSnapshotStore } from '../../stores/snapshotStore'
 import { useEditorStore } from '../../stores/editorStore'
@@ -18,6 +19,7 @@ import { clickPoint } from '../../editor/snapshotList'
 import { t } from '../../messages'
 import ViewerModeTabs from './ViewerModeTabs.vue'
 import TestLayer from '../TestLayer.vue'
+import NewStepMenu from '../NewStepMenu.vue'
 import MemoDialog from './MemoDialog.vue'
 import DownloadDialog from './DownloadDialog.vue'
 import HistoryDialog from './HistoryDialog.vue'
@@ -80,6 +82,18 @@ const menu = ref(null)
 const dlOpen = computed(() => menu.value === 'dl')
 const newOpen = computed(() => menu.value === 'new')
 const toggleMenu = (kind) => { menu.value = menu.value === kind ? null : kind }
+// 새 스텝 메뉴의 자리: 버튼의 왼쪽 끝에 맞추되 창 밖으로 나가지 않게, 이동 줄이 화면 아래쪽이라 위로 연다
+const NEW_MENU_W = 340
+const newPos = ref({ left: 8, bottom: 8 })
+function toggleNew(e) {
+  if (menu.value !== 'new') {
+    const r = e.currentTarget.getBoundingClientRect()
+    const vw = window.innerWidth || 1280
+    const vh = window.innerHeight || 800
+    newPos.value = { left: Math.min(Math.max(r.left, 8), Math.max(8, vw - NEW_MENU_W - 8)), bottom: Math.max(8, vh - r.top + 4) }
+  }
+  toggleMenu('new')
+}
 const dlCount = computed(() => snap.pickedItems.length)
 const dlLabel = computed(() => (dlCount.value > 1 ? t('SEW_SNAP_DL_N', { n: dlCount.value }) : t('SEW_SNAP_DL')))
 const dlOff = computed(() => !dlCount.value || dl.job.status === 'running')
@@ -88,9 +102,10 @@ function download(withCircle) {
   dl.start(withCircle)
 }
 
-// ── 새 스텝(스냅샷을 기준 화면으로) ──
+// ── 새 스텝 ──
 const edit = useEditStore()
 const newBox = ref(null)
+const newMenu = ref(null)
 // 버튼이 꺼진 까닭(없으면 켜짐): 쓰기 권한 없음 → 시나리오 없음(여는 중 포함) → 지워짐·읽기 전용
 const newWhy = computed(() => {
   if (editor.me && !editor.me.canWrite) return t('SEW_SNAP_STEP_NO_WRITE')
@@ -98,18 +113,11 @@ const newWhy = computed(() => {
   if (!edit.editable) return t(edit.session.readOnly === 'deleted' ? 'SEW_SNAP_STEP_DELETED' : edit.session.readOnly === 'noWrite' ? 'SEW_SNAP_STEP_NO_WRITE' : 'SEW_SNAP_STEP_READ_ONLY')
   return undefined
 })
-// 이미지·OCR 항목이 꺼진 까닭: 그림이 그려져 있지 않음(DC-038). 조건 없는 스텝은 그림을 쓰지 않아 늘 켜져 있다
-const imageWhy = computed(() => (!src.value || !natural.value ? t('SEW_SNAP_STEP_NO_IMAGE') : undefined))
-function newStep(kind) {
-  menu.value = null
-  if (kind === 'none') edit.startNew('none', { end: true })
-  else edit.startNew(kind, { snapshot: snap.shownImage() })
-}
 
 // 메뉴 바깥을 누르거나 Esc 를 누르면 닫는다
 function onDocDown(e) {
   const box = menu.value === 'dl' ? dlBox.value : menu.value === 'new' ? newBox.value : null
-  if (menu.value && !box?.contains(e.target)) menu.value = null
+  if (menu.value && !box?.contains(e.target) && !newMenu.value?.contains(e.target)) menu.value = null
 }
 function onDocKey(e) { if (e.key === 'Escape' && menu.value) menu.value = null }
 onMounted(() => { document.addEventListener('mousedown', onDocDown); document.addEventListener('keydown', onDocKey) })
@@ -192,12 +200,12 @@ defineExpose({ onLoad, fit })
       </span>
       <span ref="newBox" class="relative shrink-0">
         <button type="button" class="h-7 px-2 rounded-lg text-xs font-medium bg-primary-500 hover:enabled:bg-primary-600 text-white disabled:opacity-50 whitespace-nowrap" :disabled="!!newWhy" :title="newWhy"
-          :aria-expanded="newOpen ? 'true' : 'false'" aria-haspopup="menu" data-testid="se-snap-new" @click="toggleMenu('new')">＋ {{ t('SEW_SNAP_STEP') }} ▾</button>
-        <span v-if="newOpen" class="se-snap-menu" role="menu">
-          <button type="button" role="menuitem" :disabled="!!imageWhy" :title="imageWhy ?? t('SEW_SNAP_STEP_IMAGE_HINT')" data-testid="se-snap-new-image" @click="newStep('image')">{{ t('SEW_SNAP_STEP_IMAGE') }}</button>
-          <button type="button" role="menuitem" :disabled="!!imageWhy" :title="imageWhy ?? t('SEW_SNAP_STEP_OCR_HINT')" data-testid="se-snap-new-ocr" @click="newStep('ocr')">{{ t('SEW_SNAP_STEP_OCR') }}</button>
-          <button type="button" role="menuitem" :title="t('SEW_SNAP_STEP_NONE_HINT')" data-testid="se-snap-new-none" @click="newStep('none')">{{ t('SEW_SNAP_STEP_NONE') }}</button>
-        </span>
+          :aria-expanded="newOpen ? 'true' : 'false'" aria-haspopup="menu" data-testid="se-snap-new" @click="toggleNew">＋ {{ t('SEW_SNAP_STEP') }} ▾</button>
+        <Teleport to="body">
+          <div v-if="newOpen" ref="newMenu" class="se-new-pop" role="menu" data-testid="se-snap-new-menu" :style="{ left: `${newPos.left}px`, bottom: `${newPos.bottom}px` }">
+            <NewStepMenu @done="menu = null" />
+          </div>
+        </Teleport>
       </span>
       <span v-if="snap.notice" class="ml-3 text-xs text-amber-700 dark:text-amber-300 truncate" role="status" data-testid="se-snap-notice">{{ snap.notice }}</span>
     </div>

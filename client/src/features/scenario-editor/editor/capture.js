@@ -126,12 +126,19 @@ export function newStepDraft(kind, { uid, base }) {
   }
 }
 
-// 새 스텝의 기준 화면: 고른 스텝의 기준 화면 참조, 없으면 기준 화면(참조)이 있는 첫 스텝의 것, 하나도 없으면 null.
+// 고른 스텝의 기준 화면 참조 — 새 이미지·OCR 스텝이 "고른 스텝의 화면" 을 빌릴 때 쓴다. 그 스텝에 기준 화면이 없거나 고른 줄이 없으면 null.
+// 다른 스텝(첫 스텝)의 화면으로 넘어가지 않는다(2026-11-17 — 어느 화면이 쓰였는지 알 수 없어 "이상한 그림이 골라진다" 는 사내 보고).
 export function baseRefFor(working, anchorUid) {
+  const a = anchorUid == null ? null : (working?.steps ?? []).find((s) => s.uid === anchorUid)
+  return a && isRef(a.images?.base) ? a.images.base : null
+}
+
+// 새 스텝의 넣을 자리: 고른 줄 뒤 — 그 다음 줄의 uid(그 줄 앞에 넣는다). 마지막 줄이거나 고른 줄이 없으면 null(맨 끝).
+// 넣은 스텝이 골라지므로 이어 만들면 만든 순서대로 쌓인다(2026-11-17 — 표 위 [새 스텝] 과 스냅샷 화면 [새 스텝] 의 자리를 하나로 맞췄다).
+export function afterUid(working, anchorUid) {
   const steps = working?.steps ?? []
-  const a = anchorUid == null ? null : steps.find((s) => s.uid === anchorUid)
-  if (a && isRef(a.images?.base)) return a.images.base
-  return steps.find((s) => isRef(s.images?.base))?.images.base ?? null
+  const i = anchorUid == null ? -1 : steps.findIndex((s) => s.uid === anchorUid)
+  return i < 0 ? null : (steps[i + 1]?.uid ?? null)
 }
 
 // 찾을 그림 참조(키 0 먼저, 없으면 가장 작은 키). 그림이 아닌 literal 은 없는 것으로 본다.

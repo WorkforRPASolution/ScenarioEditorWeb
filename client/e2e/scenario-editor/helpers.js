@@ -42,6 +42,8 @@ export async function selectRow(page, uid) {
   await cellOf(page, uid, 'no').click()
   await expect(rowOf(page, uid)).toHaveClass(/ag-row-selected/)
 }
+// 표 위 [새 스텝 ▾] 메뉴의 한 칸(NewStepMenu) — id = 'snapshot-image'·'step-ocr'·'file-image'·'none' …
+export const newItem = (id) => `[data-testid="se-new-${id}"]`
 export async function menu(page, opener, item) {
   await page.getByTestId(opener).click()
   await page.getByTestId('se-tool-menu').locator(item).click()

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { CAP_FLOWS, captureFlow, nextStage, normRect, moveRect, resizeRect, handlePoints, areaView, newStepDraft, baseRefFor, isRect } from '../editor/capture'
+import { CAP_FLOWS, captureFlow, nextStage, normRect, moveRect, resizeRect, handlePoints, areaView, newStepDraft, baseRefFor, afterUid, isRect } from '../editor/capture'
 
 describe('잡기 흐름(목업 CAP_FLOW·capNext)', () => {
   it('새 스텝 흐름: 이미지 = 영역 → 그림 → 누를 곳, OCR = 문자 영역', () => {
@@ -104,16 +104,27 @@ describe('새 스텝 초안(서버 assemble 이 origin 없는 스텝에 쓰는 �
     expect(d.action).toEqual({ type: 11, typeName: 'RunCommand', raw: '', command: '' })
     expect(d.images).toEqual({ train: {}, base: { literal: 'AA==' } })
   })
-  it('기준 화면: 고른 스텝의 참조, 없으면 기준 화면(참조)이 있는 첫 스텝, 하나도 없으면 null', () => {
+  it('기준 화면 빌리기: 고른 스텝의 참조만 — 없으면 null', () => {
     const w = { steps: [
       { uid: 'a', images: { base: { literal: 'AA==' } } },
       { uid: 'b', images: { base: { from: 'source', id: 's1-bi' } } },
       { uid: 'c', images: { base: { from: 'upload', tempId: 't1' } } }
     ] }
     expect(baseRefFor(w, 'c')).toEqual({ from: 'upload', tempId: 't1' })
-    expect(baseRefFor(w, 'a')).toEqual({ from: 'source', id: 's1-bi' })
-    expect(baseRefFor(w, null)).toEqual({ from: 'source', id: 's1-bi' })
-    expect(baseRefFor({ steps: [w.steps[0]] }, 'a')).toBe(null)
+    expect(baseRefFor(w, 'b')).toEqual({ from: 'source', id: 's1-bi' })
+    // 고른 스텝에 기준 화면이 없거나 고른 줄이 없으면 빌리지 않는다 — 다른 스텝(첫 스텝)의 화면으로 넘어가지 않는다(2026-11-17)
+    expect(baseRefFor(w, 'a')).toBe(null)
+    expect(baseRefFor(w, null)).toBe(null)
+    expect(baseRefFor(w, '없는줄')).toBe(null)
+  })
+  it('넣을 자리(afterUid): 고른 줄 뒤 = 그 다음 줄의 앞, 마지막 줄이거나 고른 줄이 없으면 맨 끝(null)', () => {
+    const w = { steps: [{ uid: 'a' }, { uid: 'b' }, { uid: 'c' }] }
+    expect(afterUid(w, 'a')).toBe('b')
+    expect(afterUid(w, 'b')).toBe('c')
+    expect(afterUid(w, 'c')).toBe(null)
+    expect(afterUid(w, null)).toBe(null)
+    expect(afterUid(w, '없는줄')).toBe(null)
+    expect(afterUid(null, 'a')).toBe(null)
   })
 })
 

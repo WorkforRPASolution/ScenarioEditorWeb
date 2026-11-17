@@ -408,14 +408,14 @@ describe('패널 — 잡기 버튼·[다시 찍기]·새 스텝 넣기', () => {
   })
   it('새 스텝: 머리 "+"·넣을 자리 고르기·[취소]·[넣기], 칸 오류는 [넣기]를 누른 뒤에 보인다', async () => {
     const { s, e, edited } = panelFixture([imageStep(0), noneStep(1, { next: { onTrue: { kind: 'end', value: 'SUCCESS' }, onFalse: { kind: 'end', value: 'FAIL' } } })])
-    s.select('s1')
+    s.select('s0')
     e.startNew('none')
     const uid = e.panel.uid
     const w = mountPanel()
     await nextTick()
     expect(w.text()).toContain(t('SEW_PANEL_NEW_TITLE'))
     expect(w.find('[data-testid="se-panel-foot"]').exists()).toBe(false)
-    // 넣을 자리: 스텝마다 "N번 앞 — 설명" 과 맨 끝, 기본은 [+ 새 스텝]을 누를 때 고른 줄
+    // 넣을 자리: 스텝마다 "N번 앞 — 설명" 과 맨 끝, 기본은 [+ 새 스텝]을 누를 때 고른 줄의 뒤(= 그 다음 줄 앞, 2026-11-17)
     const where = w.find('[data-testid="se-new-where"]')
     expect(where.attributes('aria-label')).toBe(t('SEW_PANEL_NEW_WHERE'))
     expect(where.findAll('option').map((o) => o.text())).toEqual(['1번 앞 — 스텝0', '2번 앞 — 스텝1', t('SEW_PANEL_NEW_WHERE_END')])
@@ -447,8 +447,8 @@ describe('패널 — 잡기 버튼·[다시 찍기]·새 스텝 넣기', () => {
     await nextTick()
     await input(w, '[data-field="desc"]', '재시작')
     await input(w, '[data-field="cmd"]', 'restart.bat')
-    // 설명 칸 위의 메일 번호는 넣을 자리를 따른다 — 1번 앞이면 1번, 맨 끝이면 3번(2026-11-10, 전에는 늘 맨 끝 번호였다)
-    expect(w.text()).toContain(t('SEW_PANEL_DESC_MAIL', { n: 1, desc: '재시작' }))
+    // 설명 칸 위의 메일 번호는 넣을 자리를 따른다 — 1번 뒤(2번 앞)면 2번, 맨 끝이면 3번(2026-11-10, 전에는 늘 맨 끝 번호였다)
+    expect(w.text()).toContain(t('SEW_PANEL_DESC_MAIL', { n: 2, desc: '재시작' }))
     await w.find('[data-testid="se-new-where"]').setValue('')
     expect(e.panel.insertBefore).toBe(null)
     expect(w.text()).toContain(t('SEW_PANEL_DESC_MAIL', { n: 3, desc: '재시작' }))

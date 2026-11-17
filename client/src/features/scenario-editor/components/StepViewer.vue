@@ -87,7 +87,7 @@ function onLoad(e) { natural.value = { w: e.target.naturalWidth, h: e.target.nat
 // 입력 칸(글자 칸·고르기·내용 편집) 안의 Esc 는 그 칸 몫이라 듣지 않는다. 확인 창보다 먼저 판단하도록 capture 단계에서 듣는다.
 // 창(ModalShell·메모 창·달력)과 스냅샷 쪽 펼침 메뉴가 열려 있을 때의 Esc 도 그쪽 몫이고, 큰 화면이 스냅샷 모드라 잡기가 보이지 않을 때는
 // 듣지 않는다(P3-E 독립 검토 — 잡는 중에 스냅샷을 보러 갔다가 메뉴를 Esc 로 닫으면 잡은 영역·그림이 조용히 사라졌다).
-const POPUPS = '[data-testid="se-picker"], [data-testid="se-tool-menu"], [data-se-modal], [role="dialog"], [role="alertdialog"], .se-snap-menu'
+const POPUPS = '[data-testid="se-picker"], [data-testid="se-tool-menu"], [data-testid="se-snap-new-menu"], [data-se-modal], [role="dialog"], [role="alertdialog"], .se-snap-menu'
 const snap = useSnapshotStore()
 function onEsc(e) {
   if (e.key !== 'Escape' || !edit.capture || edit.dialog || snap.mode === 'snapshot') return
