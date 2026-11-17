@@ -161,6 +161,7 @@ notepad server\.env
 | [5] | `SE_WEB_DB_URI` | 사내 WebManager 의 `WEBMANAGER_DB_URI` 값을 **그대로** 넣는다(DB 이름·계정·`authSource` 가 이미 맞다). `WEBMANAGER_DB_URI` 라는 변수를 새로 만들지 않고 이 변수에 넣는다. `MONGODB_URI` 의 계정을 쓰려면 DB 이름만 WebManager DB 이름으로 바꾸고, **`authSource` 가 없으면 끝에 `?authSource=EARS` 를 붙인다**(안 붙이면 인증에 실패해 서버가 뜨지 않는다) |
 | [6] | `EARS_INTERFACE_URL` | 사내 InterfaceServer 주소. **`http://<호스트>:<포트>` 까지만** 적는다 — 앞의 `http://` 를 빼거나 뒤에 `/EARS/Interface`·`/` 를 붙이지 않는다(서버가 붙인다). 사내 WebManager 설정과 같은 값을 쓰되, 그 값이 이 PC 에서 닿지 않으면(쿠버네티스 안쪽 이름 등) 이 PC 의 데스크톱 편집기가 쓰는 주소를 쓴다: 데스크톱 편집기 로그의 `EARSInterfaceSrv: <호스트>:<포트>` 줄(시작할 때 찍는다) 앞에 `http://` 를 붙인다 |
 | [6] | `EARS_INTERFACE_MAX_REQUEST_MB` | 사내 InterfaceServer 의 `max-content-length`(MB). 모르면 `100` 그대로 |
+| [6] | `EARS_INTERFACE_GRPC_ADDR`·`EARS_INTERFACE_GRPC_TIMEOUT_MS`·`SE_VISION_TEST_CONCURRENCY` | Vision·OCR 시험(P4) 설정이다. **시험 줄을 쓰려면 주소만 채운다** — `EARS_INTERFACE_GRPC_ADDR=<호스트>:<포트>`(`http://` 를 붙이지 않는다). InterfaceServer 의 **판정 창구**(`VISION_PORT`) 주소이고 `EARS_INTERFACE_URL` 과 포트가 다르다: 이 PC 의 데스크톱 편집기 로그의 `EARSInterfaceSrv_Thrift: <호스트>:<포트>` 줄 값을 그대로 쓴다. 나머지 둘은 예시 값 그대로(`12000`·`2`). 비워 두면 시험 줄의 [시험] 만 "판정 시험 주소가 설정되지 않았습니다" 로 끝나고 다른 기능은 그대로다. 쓸 때의 주의는 아래 "Vision·OCR 시험을 쓸 때" |
 | [4] | `SE_USER_SINGLEID` | WRITE 권한이 있는 본인 SingleID |
 | [9] | `SE_LINK_PREPROCESSING_SOP` | (선택) 전처리 설정 창에 보일 안내 문서 주소(`http://`·`https://`). 비워 두면 링크가 보이지 않는다. 읽기 시험 때 만든 `.env` 에는 이 줄이 없을 수 있다 — 없어도 된다 |
 | [10] | `CASSANDRA_*`·`SE_SNAPSHOT_PARTITION_TZ`·`SE_DISPLAY_TZ`·`SE_SNAPSHOT_PRESENCE_CONCURRENCY`·`HTTP_WEB_SERVER_URL` | 스냅샷·이력(P3) 설정이다. **스냅샷 화면을 쓰려면 채운다** — `CASSANDRA_CONTACT_POINTS`(운영 Cassandra 호스트만, 여러 대면 쉼표)·`CASSANDRA_PORT`·`CASSANDRA_LOCAL_DC`(운영 cqlsh 의 `select data_center from system.local;` 값)·`CASSANDRA_KEYSPACE`·`CASSANDRA_USERNAME`·`CASSANDRA_PASSWORD`(읽기 권한만 있으면 된다 — 웹은 `SELECT` 만 보낸다). 이력 보기는 `HTTP_WEB_SERVER_URL`(`http://<호스트>:<포트>`)을 채운다. 나머지 줄은 예시 값 그대로 둔다. 비워 두면: `CASSANDRA_CONTACT_POINTS` 가 비어 있으면 서버는 Cassandra 에 연결하지 않고 스냅샷 패널만 "주소가 설정되지 않았습니다" 를 보이며, `HTTP_WEB_SERVER_URL` 이 비어 있으면 [이력 보기] 창에만 그 안내가 나온다 — 읽기·쓰기 시험만 할 때는 비워 둬도 된다. 값이 틀리면 화면에는 "받지 못했습니다" 만 나오고 무엇이 틀렸는지는 서버 창의 로그(`스냅샷 저장소(Cassandra) 오류 → …`)에 남는다. 2026-11-16 사내 PC 한 대에서 값을 넣어 보기·메모·받기·이력·스냅샷에서 스텝 만들기를 확인했다(쓸 때의 주의는 아래 "스냅샷 화면을 쓸 때"). 사전 점검(`tools\inhouse\preflight.js`)이 이 구역의 꼴과 연결, 서버를 거친 실제 조회를 본다(아래 4 — 모두 `경고` 이고 멈춤이 아니다). 읽기·쓰기 시험 때 만든 `.env` 에는 이 구역이 없을 수 있다 — 쓰려면 `server\.env.inhouse.example` 의 구역 `[10]` 을 옮겨 적는다 |
@@ -186,6 +187,11 @@ InterfaceServer 는 연결만 열었다 닫는다(요청은 보내지 않는다)
   - `경고 HISTORY_DOWN`·`HISTORY_UNREADABLE`: 이력 서버 주소가 틀렸거나 이력 서버가 아닌 주소.
   - 무엇이 틀렸는지는 서버 창의 로그(`스냅샷 저장소(Cassandra) 오류 → …`·`이력 서버(HttpWebServer) …`)에 남는다.
 - **서버는 뜬 때의 설정을 쓴다.** `.env` 를 고쳤으면 서버를 다시 띄운 뒤 다시 돌린다 — 다시 띄우지 않으면 같은 경고가 나오고, 반대로 맞는 값으로 떠 있는 서버는 `.env` 를 틀리게 고쳐도 통과로 보인다.
+
+Vision·OCR 시험 설정(구역 `[6]` 의 `EARS_INTERFACE_GRPC_ADDR`)도 본다. 모두 **`경고`** 다 — 시험을 쓰지 않으면 `경고 VISION_UNSET` 은 두어도 된다.
+
+- 주소의 꼴(`<호스트>:<포트>` — `http://` 나 경로가 붙으면 `VISION_ADDR_FORMAT`), 저장 주소(`EARS_INTERFACE_URL`)와 호스트·포트가 같으면 `VISION_ADDR_SAME_AS_HTTP`(판정 창구는 다른 포트다), 시간 제한이 10초 이하면 `VISION_TIMEOUT_SHORT`(InterfaceServer 가 판정 서버를 10초까지 기다린다), 동시 수.
+- 이 PC 에서 그 주소에 연결되는지(연결만 열었다 닫는다): `경고 VISION_UNREACHABLE`. 연결되어도 판정 서버가 떠 있는지는 시험을 눌러 봐야 안다.
 
 첫 실행에서는 서버를 아직 띄우지 않았으므로 `경고 SERVER_DOWN` 이 나오는 것이 맞다(이때는 스냅샷·이력의 실제 조회도 보지 않는다).
 
@@ -278,4 +284,16 @@ npm run dev
 - **스냅샷에서 스텝 만들기**: 만든 스텝을 배포하는 것은 쓰기 시험과 같은 규칙이다 — `SEW_TEST_<날짜>` 시나리오에만 배포한다(위 "사내 쓰기 시험").
 - **부담을 줄이는 설정**: 설비 고르기의 스냅샷 유무 표시가 운영 Cassandra 에 부담이면 `SE_SNAPSHOT_PRESENCE_CONCURRENCY` 를 낮추거나 `0` 으로 끈다(사내 측정 2026-11-16: 새로 띄운 뒤 처음 약 3초).
 - **여러 날·전체**: 한 번에 10만 줄까지 받고, 넘으면 늦은 것부터 남기고 알린다. 스냅샷이 아주 많은 설비에서 [전체] 가 느리면 날짜를 좁힌다.
+
+## Vision·OCR 시험을 쓸 때 (사내)
+
+`server\.env` 의 구역 `[6]` 에 `EARS_INTERFACE_GRPC_ADDR` 을 채우면 이미지·OCR 스텝의 "찾는 것" 아래 **시험** 줄에서 판정 서버에 물어볼 수 있다(위 "사내 쓰기 시험 → 3. 설정" 표). 쓰기 권한이 없어도, 옛 버전을 열었어도 된다.
+
+- **무엇을 하나**: [시험] 을 누르면 시험할 화면(스텝의 기준 화면, 또는 왼쪽 스냅샷 패널에서 고른 "지금 스냅샷")에서 **검색 영역만 잘라** 찾을 그림과 함께 보낸다. 이미지 스텝은 찾은 곳마다 점수·좌표가 표로 나오고 큰 화면에 주황 사각형과 누를 곳(첫 결과)이 그려진다. OCR 스텝은 맞음·안 맞음과 읽은 글·신뢰도가 나온다.
+- **아무것도 저장하지 않는다**: 시험은 스텝·초안·운영 데이터를 바꾸지 않는다. 시험 정확도 칸은 시험에만 쓰고, [스텝에 넣기] 를 눌러야 패널의 정확도 칸에 들어간다(그 뒤 [적용]·배포는 평소와 같다).
+- **운영에 주는 것**: 시험 요청은 **실제 설비 복구가 쓰는 판정 서버**로 간다. Vision 은 계산만 한다. **OCR 은 판정 서버가 요청마다 그림·결과 파일을 디스크에 남기고, 도는 동안 그 서버의 실제 복구 OCR 을 기다리게 한다**(데스크톱 편집기의 OCR 시험도 같다). 그래서 웹은 OCR 을 한 번에 하나, Vision 을 한꺼번에 `SE_VISION_TEST_CONCURRENCY`(기본 2)개, 사용자 한 명은 한 번에 하나만 보낸다 — 넘으면 기다리게 하지 않고 "다른 시험이 돌고 있습니다" 로 알린다.
+- **실제 실행과 다른 점**: 시험은 그림이 그 화면에 보이는지만 본다. 실제 실행은 창을 정리한(전처리) 뒤의 화면에서 **배포된 값**으로 판정한다. 데스크톱 편집기의 시험은 스냅샷 전체에서 찾으므로 검색 영역 밖의 것이 더 나올 수 있다.
+- **문구로 가리기**: "판정 시험 주소가 설정되지 않았습니다" = `EARS_INTERFACE_GRPC_ADDR` 이 비었다 · "중계 서버에 연결하지 못했습니다" = 주소·포트가 틀렸거나 방화벽 · "판정 서버가 10초 안에 답하지 않았습니다…" = InterfaceServer 에는 닿았지만 판정 서버가 없거나, 오류가 났거나, 늦다(InterfaceServer 가 까닭을 알려 주지 않는다) · "보낼 그림이 너무 큽니다(4MB 까지)" = 검색 영역을 줄인다. 자세한 것은 서버 창의 로그(`판정 시험 …`)에 남는다 — 그림·OCR 값·읽은 글은 남기지 않는다.
+- **끊어도 끝까지 간다**: [시험] 을 누른 뒤 다른 스텝으로 가면 화면은 결과를 버리지만 판정 서버는 그 요청을 끝까지 처리한다(InterfaceServer 가 취소를 넘기지 않는다). 그동안(길어야 12초) 다시 누르면 "다른 시험이 돌고 있습니다" 가 나올 수 있다.
+- **사내에서 볼 것**(설계 §12): 기준 화면에서 잘라 만든 찾을 그림으로 그 기준 화면을 시험했을 때 점수가 1 에 가까운가, 같은 스텝을 데스크톱 편집기로 시험한 것과 찾은 수·좌표·OCR 읽은 글이 맞는가, 틀린 주소를 넣었을 때 위 문구대로 나오는가.
 
