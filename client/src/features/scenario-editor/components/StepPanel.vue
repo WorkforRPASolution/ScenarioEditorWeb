@@ -100,7 +100,7 @@ async function focusField(field) {
 watch(() => edit.focusReq, (r) => { if (r) focusField(r.field) })
 const apply = () => edit.applyPanel()
 // 새 스텝: 넣을 자리(고른 스텝)의 지금 번호, [넣기]가 막힌 이유(칸마다 하나, 같은 문구는 한 번)
-// 넣을 자리(2026-11-10): 스텝마다 "N번 앞 — 설명" 과 맨 끝(값 ''). 기본은 [+ 새 스텝]을 누를 때 고른 줄이고 만드는 중에 바꿀 수 있다.
+// 넣을 자리(2026-11-10): 스텝마다 "N번 앞 — 설명" 과 맨 끝(값 ''). 기본은 [+ 새 스텝]을 누를 때 고른 줄의 뒤(= 그 다음 줄 앞, 2026-11-17)이고 만드는 중에 바꿀 수 있다.
 const whereOptions = computed(() => steps.value.map((s, i) => ({ value: s.uid, label: t('SEW_PANEL_NEW_WHERE_BEFORE', { no: i + 1 }) + (s.descriptionToEmail ? ` — ${s.descriptionToEmail}` : '') })))
 const whereValue = computed(() => (p.value.isNew && steps.value.some((s) => s.uid === p.value.insertBefore) ? p.value.insertBefore : ''))
 // 메일에 나올 번호: 새 스텝은 넣을 자리의 번호(그 줄 앞이면 그 줄 번호, 맨 끝이면 마지막 다음)

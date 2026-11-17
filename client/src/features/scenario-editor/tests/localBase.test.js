@@ -23,13 +23,22 @@ describe('그림 파일을 기준 화면으로(localBase)', () => {
     expect(localBaseKey(a)).not.toBe(localBaseKey(fileOf('screen.png', 10, { lastModified: 1 })))
     expect(localBaseKey(a)).not.toBe(snapshotKey('file', 'screen.png'))
   })
-  it('PNG 는 바이트 그대로 쓰고 크기를 함께 준다', async () => {
-    const f = fileOf('screen.png', 10)
+  it('PNG 는 바이트 그대로 쓰고 크기를 함께 준다 — 파일 참조가 아니라 메모리로 옮긴 사본이다(고른 뒤 디스크의 파일이 바뀌거나 지워져도 읽힌다)', async () => {
+    const f = new File([new Uint8Array([9, 8, 7, 6, 5])], 'screen.png', { type: '', lastModified: 1763254800000 })
     const d = deps()
     const r = await prepareLocalBase(f, d)
-    expect(r).toEqual({ key: localBaseKey(f), blob: f, w: 1920, h: 1080 })
+    expect(r).toMatchObject({ key: localBaseKey(f), w: 1920, h: 1080 })
+    expect(r.blob).not.toBe(f)
+    expect(r.blob).not.toBeInstanceOf(File)
+    expect(r.blob.type).toBe('image/png')
+    expect([...new Uint8Array(await r.blob.arrayBuffer())]).toEqual([9, 8, 7, 6, 5])
     expect(d.decode).toHaveBeenCalledWith(f)
     expect(d.toPng).not.toHaveBeenCalled()
+  })
+  it('PNG 파일을 읽지 못하면(고르자마자 지워짐) notImage', async () => {
+    const f = fileOf('gone.png', 10)
+    f.arrayBuffer = () => Promise.reject(new Error('NotFoundError'))
+    await expect(prepareLocalBase(f, deps())).rejects.toMatchObject({ reason: 'notImage' })
   })
   it('PNG 가 아니면(JPG·BMP) PNG 로 바꾼 것을 쓴다 — 서버는 PNG 만 받는다', async () => {
     const f = fileOf('screen.jpg', 10, { type: 'image/jpeg' })
@@ -52,7 +61,7 @@ describe('그림 파일을 기준 화면으로(localBase)', () => {
     const big = sized('big.png', SNAPSHOT_BASE_MAX_BYTES + 1)
     await expect(prepareLocalBase(big, deps())).rejects.toMatchObject({ reason: 'tooLarge' })
     const ok = sized('ok.png', SNAPSHOT_BASE_MAX_BYTES)
-    await expect(prepareLocalBase(ok, deps())).resolves.toMatchObject({ blob: ok })
+    await expect(prepareLocalBase(ok, deps())).resolves.toMatchObject({ key: localBaseKey(ok) })
     // 바꾼 PNG 가 넘을 때도
     const huge = { size: SNAPSHOT_BASE_MAX_BYTES + 1 }
     await expect(prepareLocalBase(fileOf('a.bmp', 10, { type: 'image/bmp' }), deps({ isPng: vi.fn(async () => false), toPng: vi.fn(async () => huge) }))).rejects.toMatchObject({ reason: 'tooLarge' })

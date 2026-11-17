@@ -108,6 +108,18 @@ describe('NewStepMenu', () => {
     expect(row(w, 'snapshot').text()).toContain(MESSAGES.SEW_NEW_SRC_SNAPSHOT_NO_IMAGE)
     expect(off(tid(w, 'se-new-snapshot-ocr'))).toBe(true)
   })
+  it('그림은 남아 있어도 목록에서 고른 줄이 없으면(큰 화면도 비어 있다) 스냅샷 줄은 꺼진다 — 글과 버튼이 어긋나지 않는다', async () => {
+    panelFixture([imageStep(0)])
+    const snap = useSnapshotStore()
+    await snap.pickEquipment('SEWT_A01', { select: false })
+    vi.spyOn(snap, 'shownImage').mockReturnValue({ eqpId: 'SEWT_A01', fileName: name(0), blob: new Blob(['x']) })
+    snap.image = { status: 'ready', name: name(0), url: 'blob:left', error: '' }
+    const w = mount(NewStepMenu, { attachTo: document.body })
+    expect(snap.selected).toBe(null)
+    expect(row(w, 'snapshot').attributes('data-off')).toBe('true')
+    expect(row(w, 'snapshot').text()).toContain(MESSAGES.SEW_NEW_SRC_SNAPSHOT_PICK)
+    expect(off(tid(w, 'se-new-snapshot-image'))).toBe(true)
+  })
   it('고른 줄이 없거나 고른 스텝에 기준 화면이 없으면 스텝 줄이 꺼지고 까닭이 적힌다', async () => {
     const { s, e, w } = await setup()
     e.setSelection({ uids: [], anchor: null })

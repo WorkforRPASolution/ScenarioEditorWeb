@@ -45,6 +45,8 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   const uploads = shallowRef(new Map())
   // 기준 화면으로 올린 스냅샷·그림 파일(키 → tempId, P3-E·2026-11-17) — 같은 그림으로 만든 스텝들이 올릴 그림 하나를 함께 쓴다. 올릴 그림과 함께 비운다.
   let sharedBases = new Map()
+  // 그림 파일 고르기의 요청 번호 — 푸는 사이 다른 파일을 또 고르면 앞의 것을 버린다
+  let fileSeq = 0
   // 큰 화면 잡기(목업 S.cap): { flow, stage, why, before, train } — before = 잡기 전 패널 초안(Esc 로 되돌린다),
   // train = 누를 곳의 기준(찾을 그림 사각형: 이번에 잡은 것 또는 [다시 찍기]가 기준 화면에서 찾은 자리).
   const capture = shallowRef(null)
@@ -759,9 +761,15 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   }
   // 넣을 자리: 고른 줄 뒤(그 다음 줄 앞, 없으면 맨 끝 — editor/capture afterUid). 새 스텝을 만드는 중에 다시 시작하면 바꿔 둔 자리를 그대로 쓴다.
   // 표 위 [새 스텝] 과 스냅샷 화면 [새 스텝] 이 같은 자리에 넣는다(2026-11-17 — 그 전에는 고른 줄 앞·맨 끝으로 달랐다).
+  // 여러 줄을 골랐으면 고른 줄들 가운데 맨 아래 줄의 뒤다(기준 줄 뒤면 묶음 가운데로 들어간다 — 붙여넣은 직후도 그렇다).
   function newPlace() {
     const a = selection.value.anchor
-    if (a && workingStep(a)) return afterUid(session.value.working, a)
+    if (a && workingStep(a)) {
+      const picked = new Set(selection.value.uids)
+      let last = a
+      for (const st of session.value.working.steps) if (picked.has(st.uid)) last = st.uid
+      return afterUid(session.value.working, last)
+    }
     const p = panel.value
     return p.isNew && p.insertBefore && workingStep(p.insertBefore) ? p.insertBefore : null
   }
@@ -789,7 +797,13 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
       if (!f?.key || !(f.blob instanceof Blob) || !(f.blob.size > 0)) { notify(t('SEW_NEW_FILE_NOT_IMAGE')); return false }
       shared = { key: f.key, blob: f.blob }
     }
-    const open = () => openNew(kind, shared)
+    // 기준 줄·넣을 자리는 누를 때의 것을 쥐고 간다 — 확인 창에서 [버리고 이동] 하면 만들던 새 스텝이 버려지며 선택이 바뀐다
+    const place = { origin: originUid(), insertBefore: newPlace() }
+    const open = () => {
+      const ok = openNew(kind, shared, place)
+      if (ok) opts.opened?.()
+      return ok
+    }
     if (!panelDirty()) return open()
     return guard(open, { action: 'move' })
   }
@@ -797,51 +811,59 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   // 그림이 아니거나 너무 크면 알리고 만들지 않는다. 푸는 사이 세션이 바뀌면 버린다.
   // 시작한 뒤, 견줄 스텝(고른 스텝, 없으면 기준 화면이 있는 첫 스텝)의 기준 화면과 크기가 다르면 알린다(막지 않는다 —
   // 좌표는 기준 화면의 픽셀이라 설비 화면 전체를 제 크기로 찍은 그림이 아니면 실행 때 어긋난다).
+  // 푸는 사이 다른 파일을 또 고르면 뒤의 것만 쓴다(fileSeq). 크기 견주기는 새 스텝이 실제로 열린 뒤에 한다 — 확인 창을 거쳐 열려도 알린다.
   async function startNewFromFile(kind, file) {
     if (!editable.value || !CAP_FLOWS[kind] || !file) return false
     const gen = spotGen.value
+    const seq = ++fileSeq
+    const stale = () => gen !== spotGen.value || seq !== fileSeq
     let prepared
     try {
       prepared = await prepareLocalBase(file, { decode: bitmapOf, toPng: (b) => cropPng(b, { x: 0, y: 0, w: b.width, h: b.height }), isPng })
     } catch (err) {
-      if (gen === spotGen.value) notify(t(err?.reason === 'tooLarge' ? 'SEW_NEW_FILE_TOO_LARGE' : 'SEW_NEW_FILE_NOT_IMAGE'))
+      if (!stale()) notify(t(err?.reason === 'tooLarge' ? 'SEW_NEW_FILE_TOO_LARGE' : 'SEW_NEW_FILE_NOT_IMAGE'))
       return false
     }
-    if (gen !== spotGen.value || !editable.value) return false
+    if (stale() || !editable.value) return false
     const steps = session.value.working.steps
     const origin = originUid()
     const mate = (origin && baseRefFor(session.value.working, origin) ? workingStep(origin) : null) ?? steps.find((x) => isRef(x.images?.base)) ?? null
     const mateUrl = mate ? refUrl(mate.images.base, imgCtx()) : null
     const mateNo = mate ? noOf(mate.uid) : 0
-    if (!startNew(kind, { file: prepared })) return false
-    const uid = panel.value.isNew ? panel.value.uid : null
-    if (mateUrl && uid) {
+    const opened = () => {
+      const uid = panel.value.uid
+      if (!mateUrl) return
       loadBitmap(mateUrl).then((b) => {
         if (gen !== spotGen.value || panel.value.uid !== uid) return
         if (sizeDiffers({ w: prepared.w, h: prepared.h }, { w: b.width, h: b.height })) notify(t('SEW_NEW_FILE_SIZE_DIFF', { w: prepared.w, h: prepared.h, no: mateNo, bw: b.width, bh: b.height }))
       }, () => {})
     }
-    return true
+    return startNew(kind, { file: prepared, opened })
   }
   // 함께 쓰는 그림(스냅샷·그림 파일)을 올릴 그림으로 넣고 그 참조를 준다. 이 세션에서 같은 그림(key)을 이미 넣었으면(그 그림이 아직 있으면) 그것을 다시 쓴다.
   // 새로 넣어야 하는데 작업본이 쓰는 올릴 그림과 합쳐 한 번의 저장 한도(합계 50MB·200장)를 넘게 되면 넣지 않고 알린다(null) —
   // 넘은 채로는 초안 저장도 배포도 막혀 만든 스텝을 저장할 길이 없다(P3-E 독립 검토).
   function sharedBaseRef(shared, working) {
     const known = sharedBases.get(shared.key)
-    if (known && uploads.value.has(known)) return { from: 'upload', tempId: known }
-    const over = uploadBudgetProblem(shared.blob, uploadIdsOf(working.steps).map((id) => uploads.value.get(id)))
+    const kept = known && uploads.value.has(known) ? known : null
+    const used = uploadIdsOf(working.steps)
+    // 이미 어느 스텝이 쓰는 그림이면 더 올리는 것이 없다. 남아 있기만 한 그림(시작했다 취소한 것)은 새로 올리는 것과 같이 한도를 본다
+    if (kept && used.includes(kept)) return { from: 'upload', tempId: kept }
+    const over = uploadBudgetProblem(kept ? uploads.value.get(kept) : shared.blob, used.map((id) => uploads.value.get(id)))
     if (over) { notify(t(over === 'files' ? 'SEW_SNAP_STEP_TOO_MANY_FILES' : 'SEW_SNAP_STEP_TOTAL_TOO_LARGE')); return null }
+    if (kept) return { from: 'upload', tempId: kept }
     const tempId = newTempId()
     setUpload(tempId, shared.blob)
     sharedBases.set(shared.key, tempId)
     return { from: 'upload', tempId }
   }
-  function openNew(kind, shared = null) {
+  function openNew(kind, shared, place) {
     const s = session.value
     if (!s?.working) return false
     if (s.working.steps.length >= STEP_MAX) { refused('STEP_LIMIT'); return false }
-    const origin = originUid()
-    const insertBefore = newPlace()
+    // 확인 창을 거치는 사이 지워진 줄은 버린다(자리는 맨 끝으로, 빌릴 줄은 없음으로)
+    const origin = place.origin && workingStep(place.origin) ? place.origin : null
+    const insertBefore = place.insertBefore && workingStep(place.insertBefore) ? place.insertBefore : null
     const base = kind === 'none' ? null : shared ? sharedBaseRef(shared, s.working) : baseRefFor(s.working, origin)
     if (kind !== 'none' && !base) { if (!shared) notify(t('SEW_EDIT_NEW_NO_BASE')); return false }
     const [uid, next] = nextUid(s, 'n')

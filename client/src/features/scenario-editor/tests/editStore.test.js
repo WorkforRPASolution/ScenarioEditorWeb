@@ -2063,7 +2063,9 @@ describe('editStore — 새 스텝의 화면과 넣을 자리(2026-11-17)', () =
     const f = pngFile()
     expect(await e.startNewFromFile('image', f)).toBe(true)
     const base = e.panel.draft.images.base
-    expect(e.uploads.get(base.tempId)).toBe(f)
+    const up = e.uploads.get(base.tempId)
+    expect(up).not.toBe(f) // 파일 참조가 아니라 메모리의 사본 — 고른 뒤 디스크의 파일이 바뀌어도 읽힌다
+    expect([...new Uint8Array(await up.arrayBuffer())]).toEqual([...new Uint8Array(await f.arrayBuffer())])
     expect(fx.cropPng).not.toHaveBeenCalled()
     expect(e.capture).toMatchObject({ stage: 'area' })
   })
@@ -2144,5 +2146,92 @@ describe('editStore — 새 스텝의 화면과 넣을 자리(2026-11-17)', () =
     await Promise.resolve(); await Promise.resolve()
     expect(fx.loadBitmap).not.toHaveBeenCalled()
     expect(b.toast).toBe(null)
+  })
+
+  // ── 독립 검토 반영(2026-11-17) ──
+  it('검토 2: 적용 안 한 변경이 있어 확인 창을 거친 뒤에도 그림 파일의 크기가 다르면 알린다', async () => {
+    const { s, e } = mk()
+    s.select('s1')
+    fx.loadBitmap.mockResolvedValue({ width: 1280, height: 1024 })
+    e.updateDraft((d) => ({ ...d, descriptionToEmail: '바뀜' }))
+    expect(await e.startNewFromFile('image', pngFile())).toBe(false) // 먼저 묻는다
+    expect(e.dialog).toMatchObject({ kind: 'guard', action: 'move' })
+    expect(fx.loadBitmap).not.toHaveBeenCalled()
+    e.guardDrop()
+    expect(e.panel.isNew).toBe(true)
+    await vi.waitFor(() => expect(e.toast?.text).toBe(t('SEW_NEW_FILE_SIZE_DIFF', { w: 1920, h: 1080, no: 2, bw: 1280, bh: 1024 })))
+  })
+  it('검토 2: 확인 창에서 [계속 고치기] 를 누르면 올릴 그림을 남기지 않고 알림도 없다', async () => {
+    const { e } = mk()
+    e.updateDraft((d) => ({ ...d, descriptionToEmail: '바뀜' }))
+    expect(await e.startNewFromFile('image', pngFile())).toBe(false)
+    e.guardKeep()
+    await Promise.resolve(); await Promise.resolve()
+    expect(e.uploads.size).toBe(0)
+    expect(e.panel.isNew).toBe(false)
+    expect(fx.loadBitmap).not.toHaveBeenCalled()
+  })
+  it('검토 3: 값을 넣은 새 스텝을 두고 다시 시작해 [버리고 이동] 해도 바꿔 둔 넣을 자리와 시작할 때 고른 줄은 그대로다', () => {
+    const { s, e } = mk()
+    s.select('s0')
+    e.startNew('none')
+    expect(e.setInsertBefore(null)).toBe(true) // 맨 끝으로
+    e.updateDraft(validNone)
+    expect(e.startNew('image')).toBe(false) // 묻는다
+    e.guardDrop()
+    expect(e.panel).toMatchObject({ isNew: true, insertBefore: null, origin: 's0' })
+    expect(e.panel.draft.images.base).toEqual({ from: 'source', id: 's0-bi' })
+    expect(e.setInsertBefore('s2')).toBe(true)
+    e.updateDraft((d) => ({ ...d, descriptionToEmail: 'x' }))
+    expect(e.startNew('none')).toBe(false)
+    e.guardDrop()
+    expect(e.panel).toMatchObject({ isNew: true, insertBefore: 's2', origin: 's0' })
+  })
+  it('검토 4: 여러 줄을 골랐으면 넣을 자리는 고른 줄들 가운데 맨 아래 줄의 뒤다 — 묶음 가운데로 들어가지 않는다', () => {
+    const { e } = mk([imageStep(0), imageStep(1), imageStep(2), noneStep(3)])
+    e.setSelection({ uids: ['s0', 's1', 's2'], anchor: 's0' })
+    e.startNew('none')
+    expect(e.panel).toMatchObject({ insertBefore: 's3', origin: 's0' })
+    e.cancelNew()
+    e.setSelection({ uids: ['s3', 's1'], anchor: 's3' }) // 떨어진 줄 — 맨 아래 줄(s3)이 마지막이라 맨 끝
+    e.startNew('none')
+    expect(e.panel).toMatchObject({ insertBefore: null, origin: 's3' })
+    e.cancelNew()
+    e.setSelection({ uids: ['s2', 's0'], anchor: 's2' })
+    e.startNew('none')
+    expect(e.panel).toMatchObject({ insertBefore: 's3', origin: 's2' })
+  })
+  it('검토 6: 취소했던 그림(올릴 그림에 남아 있지만 스텝이 쓰지 않는다)을 다시 쓸 때도 합계 한도를 본다', async () => {
+    const MB = 1048576
+    const sizedBlob = (mb) => { const b = new Blob(['x'], { type: 'image/png' }); Object.defineProperty(b, 'size', { value: mb * MB }); return b }
+    const fileOf = (key, mb) => ({ key, blob: sizedBlob(mb), w: 10, h: 10 })
+    const { e } = mk()
+    const a = fileOf('file\nA', 9)
+    expect(e.startNew('ocr', { file: a })).toBe(true)
+    e.cancelNew() // A 는 올릴 그림에 남지만 어느 스텝도 쓰지 않는다
+    // 다른 그림으로 작업본을 45MB 까지 채운다(스텝 다섯, 9MB 씩)
+    for (let i = 0; i < 5; i++) {
+      expect(e.startNew('ocr', { file: fileOf(`file\nB${i}`, 9) })).toBe(true)
+      await e.captureNext({ x: 1, y: 2, w: 50, h: 20 })
+      e.updateDraft((d) => ({ ...d, descriptionToEmail: `파일 ${i}`, condition: { ...d.condition, ocr: { ...d.condition.ocr, op: 1, text: 'A' } } }))
+      expect(e.addNew()).toBe(true)
+    }
+    expect(e.startNew('ocr', { file: a })).toBe(false) // 45 + 9 > 50
+    expect(e.toast.text).toBe(t('SEW_SNAP_STEP_TOTAL_TOO_LARGE'))
+    expect(e.panel.isNew).toBe(false)
+  })
+  it('검토(추측): 그림을 푸는 사이 다른 파일을 또 고르면 뒤의 것만 새 스텝이 된다', async () => {
+    const { e } = mk()
+    let first
+    fx.bitmapOf.mockReturnValueOnce(new Promise((r) => { first = r }))
+    const p1 = e.startNewFromFile('image', pngFile('slow.png', [1]))
+    expect(await e.startNewFromFile('ocr', pngFile('fast.png', [2, 2]))).toBe(true)
+    const uid = e.panel.uid
+    first({ width: 1920, height: 1080 })
+    expect(await p1).toBe(false)
+    expect(e.panel.uid).toBe(uid)
+    expect(e.panel.draft.condition.kind).toBe('ocr')
+    expect(e.dialog).toBe(null)
+    expect(e.uploads.size).toBe(1)
   })
 })

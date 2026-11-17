@@ -22,12 +22,13 @@ const snapshotRow = computed(() => {
   const shown = snap.shownImage()
   const item = snap.selected
   const url = shown ? snap.image.url : null
-  const on = !!shown && brokenUrl.value !== url
+  // 목록에서 고른 줄이 있어야 한다 — 그림만 남아 있고 고른 줄이 없으면 큰 화면도 비어 있다
+  const on = !!shown && !!item && brokenUrl.value !== url
   const what = item ? (item.kind === 'tag' ? t(`SEW_SNAP_TAG_${item.tag}`) : t('SEW_SNAP_INFO_CLICK', { x: item.x, y: item.y })) : ''
   return {
     src: 'snapshot', on, label: t('SEW_NEW_SRC_SNAPSHOT'), pic: on ? url : null,
-    sub: on && item ? `${item.time} · ${what}` : t(item ? 'SEW_NEW_SRC_SNAPSHOT_NO_IMAGE' : 'SEW_NEW_SRC_SNAPSHOT_PICK'),
-    title: on && item ? `${snap.eqpId} ${item.date ?? snap.date} ${item.time}` : undefined
+    sub: on ? `${item.time} · ${what}` : t(item ? 'SEW_NEW_SRC_SNAPSHOT_NO_IMAGE' : 'SEW_NEW_SRC_SNAPSHOT_PICK'),
+    title: on ? `${snap.eqpId} ${item.date ?? snap.date} ${item.time}` : undefined
   }
 })
 const stepRow = computed(() => {
