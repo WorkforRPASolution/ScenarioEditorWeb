@@ -3,6 +3,7 @@
 // 쓸 수 있는 세션은 패널 초안(고른 스텝의 초안 또는 아직 표에 없는 새 스텝)을 그리고, 그 위의 잡기 층(CaptureLayer)이
 // 영역 끌기·손잡이·끌어 잡기·누를 곳 찍기를 맡는다. 잡기 중에는 머리에 단계 띠와 [취소], 아래에 안내 줄(목업 renderViewer).
 // 잡기 밖에서는 기준 화면에서 찾은 찾을 그림 자리와 누를 곳을 늘 그린다(SpotLayer — 한 곳 찾았을 때만, 읽기 전용에서도).
+// [누를 곳 보기](패널·상세의 작은 버튼 → editStore.clickShow)를 누르면 그 누를 곳에 스냅샷 클릭 점과 같은 점(ClickDot)을 CLICK_SHOW_MS 동안 깜빡인다.
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
 import { useEditStore } from '../stores/editStore'
@@ -12,6 +13,7 @@ import { imageSrc } from '../editor/display'
 import { refUrl } from '../editor/images'
 import { areaView, isRect, isRef } from '../editor/capture'
 import { hitsOf } from '../editor/visionTest'
+import { CLICK_SHOW_MS } from '../editor/trainView'
 import { t } from '../messages'
 import { safeStorage } from '../composables/useSafeStorage'
 import { useTrainSpot } from '../composables/useTrainSpot'
@@ -19,6 +21,7 @@ import { usePanZoom } from '../composables/usePanZoom'
 import CaptureLayer from './CaptureLayer.vue'
 import SpotLayer from './SpotLayer.vue'
 import TestLayer from './TestLayer.vue'
+import ClickDot from './ClickDot.vue'
 import './capture.css'
 
 defineOptions({ name: 'StepViewer' })
@@ -115,6 +118,29 @@ watch(() => edit.viewReq, (r) => {
   if (r.kind === 'all') fit()
   else if (r.kind === 'area' && isRect(draft.value?.condition?.searchArea)) focusArea(draft.value.condition.searchArea)
 })
+// ── [누를 곳 보기] ── 깜빡이는 동안의 자리는 지금의 찾은 자리 + 누를 곳이다(누를 곳을 고치면 따라간다). 시험 결과가 떠 있어 + 표시를 숨긴 동안에도 그린다.
+// 다시 누르면 처음부터 세고(점을 새로 그려 깜빡임도 처음부터), 다른 스텝으로 가거나 잡기를 시작하면 끝낸다. 누를 곳이 화면 밖이면(확대·이동) 전체로 맞춘다.
+const flashing = ref(false)
+let flashTimer = null
+function stopFlash() { clearTimeout(flashTimer); flashTimer = null; flashing.value = false }
+const flashAt = computed(() => (flashing.value && !cap.value ? spot.marks.value?.click ?? null : null))
+function inView(p) {
+  const el = box.value
+  if (!el || !(el.clientWidth > 0 && el.clientHeight > 0)) return true
+  const sx = view.tx + p.x * view.scale
+  const sy = view.ty + p.y * view.scale
+  return sx >= 0 && sy >= 0 && sx <= el.clientWidth && sy <= el.clientHeight
+}
+watch(() => edit.clickShow, (r) => {
+  const at = r && !cap.value ? spot.marks.value?.click : null
+  if (!at) return
+  clearTimeout(flashTimer)
+  flashing.value = true
+  flashTimer = setTimeout(stopFlash, CLICK_SHOW_MS)
+  if (!inView(at)) fit()
+})
+watch([shownUid, () => !!cap.value], stopFlash)
+onBeforeUnmount(stopFlash)
 const areaValid = computed(() => !!area.value && ['x', 'y', 'w', 'h'].every((k) => Number.isFinite(area.value[k])))
 const areaStyle = computed(() => areaValid.value && { left: `${area.value.x}px`, top: `${area.value.y}px`, width: `${area.value.w}px`, height: `${area.value.h}px`, borderWidth: `${2 / view.scale}px` })
 const closeHint = () => { showHint.value = false; safeStorage.set(HINT, '1') }
@@ -170,6 +196,8 @@ defineExpose({ onLoad, fit })
           :style="areaStyle" data-testid="se-search-area" />
         <SpotLayer v-if="natural && spotMarks" :natural="natural" :scale="view.scale" :train="spotMarks.train" :click="spotMarks.click" :labels="spotLabels" />
         <TestLayer v-if="natural && !cap" :natural="natural" :scale="view.scale" mode="step" />
+        <ClickDot v-if="natural && flashAt" :key="edit.clickShow?.n" :x="flashAt.x" :y="flashAt.y" :scale="view.scale" :title="t('SEW_TEST_TAG_CLICK')"
+          data-testid="se-click-flash" :data-x="flashAt.x" :data-y="flashAt.y" />
       </div>
     </div>
   </div>

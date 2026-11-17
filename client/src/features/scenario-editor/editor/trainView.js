@@ -8,6 +8,9 @@ import { imageSrc } from './display'
 import { isRect, isRef, firstTrainRef } from './capture'
 import { CLICK_TYPES } from './panel'
 
+// [누를 곳 보기] 로 큰 화면에 점을 깜빡여 보이는 시간 — 깜빡임 한 번이 1초(snapshot.css)라 다섯 번이다
+export const CLICK_SHOW_MS = 5000
+
 const finite = (v) => typeof v === 'number' && Number.isFinite(v)
 const areaOf = (a) => ({ x: a.x, y: a.y, w: a.w, h: a.h })
 

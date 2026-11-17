@@ -3,6 +3,7 @@
 // 동작 종류 바꾸기(사내 콤보 11개) + 동작별 입력. 이미지가 아니면 마우스 클릭 셋은 고를 수 없고 이유를 보인다(옛 값은 그대로 두고 안내만).
 // 보존 전용 동작은 원래 값을 보이고 고치지 못한다(목록에도 없다 — 다른 동작을 고르면 바뀐다).
 // 이미지 스텝의 마우스 클릭은 누를 곳 [찍기]/[다시 찍기](목업 repick, 조작판 4~6): 기준 화면에서 찾을 그림을 찾아 한 곳이면 누를 곳만 찍는다.
+// 그 앞의 작은 버튼 [누를 곳 보기](ClickShowButton, 2026-11-17 사내 요청)는 큰 화면의 스텝 그림에서 누를 곳을 잠깐 깜빡여 보인다.
 import { ref, computed, watch } from 'vue'
 import { useEditStore } from '../../stores/editStore'
 import { ACTION_ORDER, CLICK_TYPES, PRESERVE_ONLY, newAction, actionBlocked, actionName } from '../../editor/panel'
@@ -12,6 +13,7 @@ import { t, LABELS } from '../../messages'
 import FieldError from './FieldError.vue'
 import ActionIcon from './ActionIcon.vue'
 import ClickAction from './actions/ClickAction.vue'
+import ClickShowButton from './ClickShowButton.vue'
 import WheelAction from './actions/WheelAction.vue'
 import KeyboardAction from './actions/KeyboardAction.vue'
 import WaitAction from './actions/WaitAction.vue'
@@ -77,9 +79,10 @@ const canRepick = computed(() => kind.value === 'image' && isRect(props.draft.co
     <div class="mt-2" data-testid="se-panel-act-body">
       <KeptAction v-if="kept" :action="action" />
       <ClickAction v-else-if="CLICK_TYPES.includes(type)" :action="action" :errs="errs" :kind="kind" :outside="clickOutside" @update="update">
-        <template #repick>
+        <template v-if="kind === 'image'" #repick>
+          <ClickShowButton class="ml-auto" :draft="draft" />
           <button type="button" data-testid="se-repick" :disabled="!canRepick" :title="edit.canCapture ? t('SEW_CAP_REPICK_TITLE') : t('SEW_CAP_NO_BASE_IMAGE')"
-            class="ml-auto shrink-0 h-7 px-2 rounded-md text-xs font-medium text-primary-700 dark:text-primary-300 hover:enabled:bg-primary-50 dark:hover:enabled:bg-primary-900/30 disabled:text-gray-400 disabled:opacity-60"
+            class="shrink-0 h-7 px-2 rounded-md text-xs font-medium text-primary-700 dark:text-primary-300 hover:enabled:bg-primary-50 dark:hover:enabled:bg-primary-900/30 disabled:text-gray-400 disabled:opacity-60"
             @click="edit.repick()">{{ edit.locating ? t('SEW_CAP_LOCATING') : hasClick ? t('SEW_CAP_REPICK') : t('SEW_CAP_PICK') }}</button>
         </template>
       </ClickAction>

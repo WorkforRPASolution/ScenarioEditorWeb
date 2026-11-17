@@ -8,6 +8,7 @@ import { t, LABELS, noteMessage } from '../messages'
 import { targetLabel, targetKind, multiLabel, actionDetails, conditionLabel, actionLabel, intervalSec, stepExtraRows } from '../format'
 import CropView from './CropView.vue'
 import TestStation from './panel/TestStation.vue'
+import ClickShowButton from './panel/ClickShowButton.vue'
 import '../pills.css'
 
 defineOptions({ name: 'StepDetail' })
@@ -26,6 +27,7 @@ const ocrValue = (o) => (o.op >= 1 && o.op <= 4 ? show(o.text) : o.op === 7 || o
 const markerFor = (ti) => (ti.key === 0 && s.value?.action.click?.basis === 'trainImage' ? s.value.action.click : null)
 // 클릭 지점이 학습 이미지 밖이면 썸네일을 넓히고, 기준 화면에서 학습 이미지를 한 곳 찾으면 넓힌 곳을 기준 화면으로 채운다(보기 기능 — 읽기 전용에서도)
 const spot = useTrainSpot(() => (s.value ? { step: s.value } : null))
+const showClick = computed(() => c.value?.kind === 'image' && s.value?.action.click?.basis === 'trainImage')
 const retryText = computed(() => {
   const r = s.value?.retry ?? {}
   return `${show(r.limit)}회 · ${Number.isFinite(r.intervalMs) ? `${intervalSec(r.intervalMs)}초` : '—'}`
@@ -108,7 +110,12 @@ const lab = 'text-[11px] font-semibold text-gray-500 dark:text-gray-400 mb-2'
       <div :class="sec">
         <div :class="lab">동작</div>
         <dl class="grid grid-cols-[110px_1fr] gap-y-1 text-xs">
-          <template v-for="[k, v] in actionDetails(s.action)" :key="k"><dt class="text-gray-500">{{ k }}</dt><dd class="break-all" :class="k === '저장 값' ? 'font-mono' : ''">{{ v }}</dd></template>
+          <template v-for="[k, v] in actionDetails(s.action)" :key="k">
+            <dt class="text-gray-500">{{ k }}</dt>
+            <!-- 이미지 스텝의 마우스 클릭: 좌표 옆에 큰 화면의 스텝 그림에서 누를 곳을 잠깐 깜빡여 보는 작은 버튼(편집 패널과 같은 것) -->
+            <dd v-if="k === '좌표' && showClick" class="flex items-center gap-1.5">{{ v }}<ClickShowButton class="-my-1.5" :step="s" /></dd>
+            <dd v-else class="break-all" :class="k === '저장 값' ? 'font-mono' : ''">{{ v }}</dd>
+          </template>
         </dl>
       </div>
 

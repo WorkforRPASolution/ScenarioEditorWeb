@@ -925,6 +925,16 @@ describe('editStore — 큰 화면 잡기·[다시 찍기]·새 스텝(Task 7)',
     expect(e.viewReq).toMatchObject({ kind: 'all' })
     expect(e.viewReq.n).toBeGreaterThan(n)
   })
+  it('누를 곳 보기 요청: 누를 때마다 번호가 오르고(큰 화면이 그때마다 다시 깜빡인다), 세션이 바뀌면 비운다', () => {
+    const { e } = mk()
+    expect(e.clickShow).toBe(null)
+    e.showClick()
+    expect(e.clickShow).toEqual({ n: 1 })
+    e.showClick()
+    expect(e.clickShow).toEqual({ n: 2 })
+    e.end()
+    expect(e.clickShow).toBe(null)
+  })
   it('올릴 그림 목록은 바꿀 때마다 새 Map(화면이 따라 그린다)', async () => {
     const { e } = mk()
     const before = e.uploads

@@ -59,9 +59,14 @@ test('① 설비 고르기 → 하루 목록 → 그림·클릭 점 → 그림 �
   // 점이 깜빡이고 고리가 퍼져 나가 눈에 띈다(사내 요청) — 점의 크기·자리는 바뀌지 않는다
   const motion = () => dot.evaluate((el) => [getComputedStyle(el).animationName, getComputedStyle(el, '::after').animationName])
   expect(await motion()).toEqual(['se-snap-dot-blink', 'se-snap-dot-ping'])
+  // 점은 빨강(흰 테·어두운 가는 테), 고리는 청록의 빈 고리 — 붉은 화면에서도 둘 중 하나는 보인다(사내 요청 2026-11-17)
+  const look = await dot.evaluate((el) => [getComputedStyle(el).backgroundColor, getComputedStyle(el).borderTopColor, getComputedStyle(el, '::after').backgroundImage])
+  expect(look[0]).toBe('rgb(220, 38, 38)')
+  expect(look[1]).toBe('rgb(255, 255, 255)')
+  expect(look[2]).toContain('rgb(34, 211, 238)')
   // OS 의 애니메이션 효과를 꺼 둔 PC(움직임 줄이기 — 사내 PC·원격 접속에 흔하다)에서도 깜빡인다. 퍼지는 움직임만 뺀다
   await page.emulateMedia({ reducedMotion: 'reduce' })
-  expect(await motion()).toEqual(['se-snap-dot-blink', 'se-snap-dot-blink'])
+  expect(await motion()).toEqual(['se-snap-dot-blink', 'se-snap-dot-fade'])
   await page.emulateMedia({ reducedMotion: 'no-preference' })
 
   // ── 목록에는 있는데 그림이 없는 스냅샷: 앞 그림을 비우고 이유를 보인다. 이동은 계속 된다 ──

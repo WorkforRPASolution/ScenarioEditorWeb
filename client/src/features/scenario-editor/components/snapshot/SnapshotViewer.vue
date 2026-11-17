@@ -19,6 +19,7 @@ import { clickPoint } from '../../editor/snapshotList'
 import { t } from '../../messages'
 import ViewerModeTabs from './ViewerModeTabs.vue'
 import TestLayer from '../TestLayer.vue'
+import ClickDot from '../ClickDot.vue'
 import NewStepMenu from '../NewStepMenu.vue'
 import MemoDialog from './MemoDialog.vue'
 import DownloadDialog from './DownloadDialog.vue'
@@ -41,12 +42,6 @@ watch([() => snap.image.name, () => snap.image.url], () => { natural.value = nul
 function onLoad(e) { natural.value = { w: e.target.naturalWidth, h: e.target.naturalHeight }; fit() }
 
 const point = computed(() => (src.value ? clickPoint(item.value, natural.value) : null))
-// 점은 그림과 같은 변환 상자 안에 있다 — 확대해도 화면에서 같은 크기가 되게 배율로 나눈다
-const DOT = 12
-const dotStyle = computed(() => point.value && {
-  left: `${point.value.x}px`, top: `${point.value.y}px`, width: `${DOT / view.scale}px`, height: `${DOT / view.scale}px`,
-  marginLeft: `${-DOT / 2 / view.scale}px`, marginTop: `${-DOT / 2 / view.scale}px`, borderWidth: `${2 / view.scale}px`
-})
 const error = computed(() => (snap.image.status === 'error' ? snap.image.error : broken.value ? t('SEW_SNAP_IMAGE_FAILED') : ''))
 
 // ── 메모 ──
@@ -161,7 +156,8 @@ defineExpose({ onLoad, fit })
       <div v-if="item && src" class="absolute left-0 top-0 origin-top-left"
         :style="{ transform: `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`, width: natural ? `${natural.w}px` : 'auto', height: natural ? `${natural.h}px` : 'auto' }">
         <img :key="src" :src="src" alt="" class="block max-w-none shadow-md" data-testid="se-snap-image" draggable="false" @load="onLoad" @error="broken = true" />
-        <div v-if="dotStyle" class="se-snap-dot absolute rounded-full bg-red-600 border-solid border-white pointer-events-none" :style="dotStyle" :title="t('SEW_SNAP_DOT')" data-testid="se-snap-dot" />
+        <!-- 클릭한 곳: 그림과 같은 변환 상자 안의 점(ClickDot — 확대해도 화면에서 같은 크기) -->
+        <ClickDot v-if="point" :x="point.x" :y="point.y" :scale="view.scale" :title="t('SEW_SNAP_DOT')" data-testid="se-snap-dot" />
         <!-- Vision·OCR 시험(P4): 이 스냅샷으로 시험한 결과와 시험할 스텝의 검색 영역 -->
         <TestLayer v-if="natural" :natural="natural" :scale="view.scale" mode="snapshot" />
       </div>

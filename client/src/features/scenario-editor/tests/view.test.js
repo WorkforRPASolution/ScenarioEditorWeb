@@ -213,6 +213,19 @@ describe('ScenarioEditorView', () => {
       await w.vm.$nextTick()
       expect(snap.mode).toBe('step')
     })
+    it('[누를 곳 보기] 를 누르면 스텝 그림으로 돌아온다(스냅샷을 보던 중이어도 — 누를 때마다)', async () => {
+      const w = await openScenario([imageStep('a')])
+      const snap = useSnapshotStore()
+      const edit = useEditStore()
+      snap.showSnapshot()
+      edit.showClick()
+      await w.vm.$nextTick()
+      expect(snap.mode).toBe('step')
+      snap.showSnapshot()
+      edit.showClick()
+      await w.vm.$nextTick()
+      expect(snap.mode).toBe('step')
+    })
     it('스텝 표를 넓게 펼친 채(큰 화면이 가려짐) 스냅샷을 고르면 넓게 보기를 풀어 그림이 보이게 한다', async () => {
       api.snapshotDays.mockReturnValue(ok({ eqpId: 'E', latest: '2026-11-11', today: '2026-11-11', oldest: '2026-10-27', days: null, truncated: false }))
       const row = { fileName: '5_[1][2].png', ms: 5, time: '09:00:00', shift: 'DAY', kind: 'click', tag: null, x: 1, y: 2, txn: null, hasHistory: false, memo: null, daysLeft: 15 }
