@@ -31,7 +31,7 @@ function showSnapshot(snap) {
   return state
 }
 const imageDone = (input, over = {}) => ({
-  status: 'done', kind: 'image', key: testKey(input, BASE), valueKey: valueKey(input, 0.9), screen: 'base',
+  status: 'done', kind: 'image', key: testKey(input, BASE), valueKey: valueKey(input, 0.9), screen: 'base', accept: 0.9,
   results: [{ score: 0.97314, x: 96, y: 150 }, { score: 0.93, x: 96, y: 206 }], train: { w: 255, h: 96 }, click: { x: 120, y: 162 },
   verdict: { ok: true, rule: null }, crop: { x: 10, y: 20, w: 300, h: 200 }, size: { w: 1920, h: 1200 }, ms: 404, picked: 0, stale: false, ...over
 })
@@ -252,6 +252,20 @@ describe('시험 줄 — 상태와 결과', () => {
     expect(at(w, 'se-test-head').attributes('data-ok')).toBe('false')
     expect(all(w, 'se-test-row')).toHaveLength(0)
     expect(all(w, 'se-test-note').map((n) => n.text())).toEqual([t('SEW_TEST_NOTE_NONE'), t('SEW_TEST_NOTE')])
+    // 판정 서버는 정확도를 넘은 곳만 알려 준다 — 점수를 보려면 낮춰서 다시 시험하라고 알린다
+    expect(at(w, 'se-test-lower').text()).toBe(t('SEW_TEST_NOTE_LOWER'))
+    w.unmount()
+  })
+
+  it('정확도를 낮추라는 안내는 못 찾았을 때만 — 찾았으면(조건에 안 맞아도) 없고, 정확도 0 으로 시험했으면 없다', async () => {
+    const input = IMAGE()
+    const w = mountRow({ input })
+    store.run = imageDone(input, { verdict: { ok: false, rule: { count: 3, op: 1 } } })
+    await w.vm.$nextTick()
+    expect(at(w, 'se-test-lower').exists()).toBe(false)
+    store.run = imageDone(input, { results: [], click: null, verdict: { ok: false, rule: null }, accept: 0 })
+    await w.vm.$nextTick()
+    expect(at(w, 'se-test-lower').exists()).toBe(false)
     w.unmount()
   })
 

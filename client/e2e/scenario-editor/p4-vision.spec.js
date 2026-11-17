@@ -186,6 +186,7 @@ test('② 지금 스냅샷으로 시험 — 영역이 스냅샷에 다 들어오
   await expect(head(page)).toHaveText(/^찾지 못했습니다 · \d+ms$/)
   await expect(head(page)).toHaveAttribute('data-ok', 'false')
   await expect(result(page)).toContainText('판정 서버가 그림을 읽지 못했을 때도 못 찾은 것으로 답합니다.')
+  await expect(page.getByTestId('se-test-lower')).toHaveText('시험 정확도를 낮춰 다시 시험하면 비슷한 곳의 점수를 볼 수 있습니다(판정 서버는 정확도를 넘은 곳만 알려 줍니다).')
   await expect(modeTab(page, 'snapshot')).toHaveAttribute('aria-pressed', 'true')
   await expect(shot.getByTestId('se-test-hit')).toHaveCount(0)
   expect(await calls()).toHaveLength(1)

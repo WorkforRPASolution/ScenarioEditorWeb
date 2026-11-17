@@ -135,7 +135,7 @@ export const useVisionTestStore = defineStore('scenarioEditorVisionTest', () => 
       const data = res.data.data
       if (input.kind === 'image') {
         const results = toScreen(data.results, p.crop)
-        finish({ status: 'done', results, train: p.train, click: clickOf(input, results[0]), verdict: visionVerdict(input, results.length), crop: p.crop, size: p.size, ms: data.ms, picked: 0 })
+        finish({ status: 'done', accept, results, train: p.train, click: clickOf(input, results[0]), verdict: visionVerdict(input, results.length), crop: p.crop, size: p.size, ms: data.ms, picked: 0 })
       } else {
         finish({ status: 'done', accepted: data.accepted === true, lines: ocrLines(data.found), confidence: confidenceOf(data.confidence), numeric: input.ocr.op >= 5, noSuffix: !input.ocr.multi, ms: data.ms })
       }

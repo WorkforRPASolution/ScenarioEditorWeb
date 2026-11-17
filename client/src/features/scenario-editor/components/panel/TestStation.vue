@@ -123,6 +123,8 @@ const cell = 'px-1.5 py-0.5 text-right tabular-nums'
                 </table>
               </div>
               <p v-if="ruleText" class="mt-1 text-gray-700 dark:text-gray-200" data-testid="se-test-rule">{{ ruleText }}</p>
+              <!-- 판정 서버는 정확도를 넘은 곳만 돌려준다 — 못 찾았을 때 얼마나 비슷했는지는 낮춰서 다시 물어야 안다 -->
+              <p v-if="!results.length && run.accept > 0" class="mt-1 leading-snug text-gray-700 dark:text-gray-200" data-testid="se-test-lower">{{ t('SEW_TEST_NOTE_LOWER') }}</p>
               <p v-if="!results.length" class="mt-1 leading-snug text-gray-500 dark:text-gray-400" data-testid="se-test-note">{{ t('SEW_TEST_NOTE_NONE') }}</p>
             </template>
             <template v-else>

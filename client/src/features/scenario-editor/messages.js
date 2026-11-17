@@ -78,6 +78,7 @@ export const MESSAGES = {
   SEW_TEST_RULE_2: '{count}개 이하',
   SEW_TEST_NOTE: '시험은 그림이 화면에 보이는지만 봅니다. 실제 실행은 창을 정리한 뒤의 화면에서 배포된 값으로 판정합니다.',
   SEW_TEST_NOTE_NONE: '판정 서버가 그림을 읽지 못했을 때도 못 찾은 것으로 답합니다.',
+  SEW_TEST_NOTE_LOWER: '시험 정확도를 낮춰 다시 시험하면 비슷한 곳의 점수를 볼 수 있습니다(판정 서버는 정확도를 넘은 곳만 알려 줍니다).',
   SEW_TEST_OCR_OK: '맞음 · {ms}ms',
   SEW_TEST_OCR_NO: '안 맞음 · {ms}ms',
   SEW_TEST_OCR_READ: '읽은 글',

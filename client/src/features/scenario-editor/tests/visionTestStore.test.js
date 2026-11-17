@@ -67,6 +67,12 @@ describe('Vision 시험', () => {
     })
     expect(snap.mode).toBe('step')
   })
+  it('결과에 시험한 정확도를 남긴다(못 찾았을 때 "낮춰서 다시" 안내가 쓴다)', async () => {
+    api.visionTest.mockResolvedValue(ok({ results: [], ms: 10, bytes: 1 }))
+    store.setAccept('0.75')
+    await store.start(IMAGE())
+    expect(store.run).toMatchObject({ status: 'done', accept: 0.75, results: [] })
+  })
   it('시험 정확도 칸의 값을 보낸다 — 패널 값과 달라도', async () => {
     api.visionTest.mockResolvedValue(ok({ results: [], ms: 380, bytes: 1 }))
     store.setAccept('0.4')
