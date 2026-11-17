@@ -135,7 +135,7 @@ describe('messages', () => {
     expect(fieldMessage({ code: 'NEXT_UNRESOLVED' })).toBe('갈 곳을 고르세요.')
   })
   it('P2 편집 코드(편집기·편집 저장소·편집 부품)에는 화면 문구(한글 글자)를 직접 쓰지 않는다 — 문구는 messages.js 한 곳', () => {
-    const files = import.meta.glob(['../editor/*.js', '../stores/editStore.js', '../stores/saveFlow.js', '../stepRows.js', '../components/{StepToolbar,TargetPicker,EditDialogs,MultiSelection,StepPanel,CaptureLayer,SaveDialog,NewScenarioDialog}.vue', '../components/panel/**/*.vue', '../components/save/*.vue', '../components/newScenario/*.vue', '../components/load/*.vue', '../stores/snapshotStore.js', '../components/snapshot/*.vue', '../stores/visionTestStore.js'],
+    const files = import.meta.glob(['../editor/*.js', '../stores/editStore.js', '../stores/saveFlow.js', '../stepRows.js', '../components/{StepToolbar,TargetPicker,EditDialogs,MultiSelection,StepPanel,CaptureLayer,SaveDialog,NewScenarioDialog,TestLayer}.vue', '../components/panel/**/*.vue', '../components/save/*.vue', '../components/newScenario/*.vue', '../components/load/*.vue', '../stores/snapshotStore.js', '../components/snapshot/*.vue', '../stores/visionTestStore.js'],
       { query: '?raw', import: 'default', eager: true })
     expect(Object.keys(files).length).toBeGreaterThan(30)
     const bad = []

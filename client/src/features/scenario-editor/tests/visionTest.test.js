@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest'
 vi.mock('../api', () => ({ imageUrl: (p) => `http://x/api${p}` }))
 import {
   testInputOfDraft, testInputOfStep, acceptOf, acceptWarn, blockReason, cropOf, tooSmall, toScreen, clickOf, visionVerdict, ocrMeta,
-  testKey, valueKey, ocrLines, confidenceOf, aboutOf
+  testKey, valueKey, ocrLines, confidenceOf, aboutOf, hitsOf
 } from '../editor/visionTest'
 import { imageStep, ocrStep, noneStep, eqpStep } from './panelFixture'
 
@@ -249,5 +249,29 @@ describe('aboutOf — 로그에 남길 "무엇을 시험했는지"', () => {
     expect(aboutOf({ process: 'P', model: 'M', name: 'N' }, 3)).toEqual({ process: 'P', model: 'M', scenario: 'N', step: 3 })
     expect(aboutOf(null, 0)).toEqual({})
     expect(aboutOf({ process: 'P' }, null)).toEqual({ process: 'P' })
+  })
+})
+
+describe('hitsOf — 큰 화면에 겹쳐 그릴 찾은 곳', () => {
+  const done = { status: 'done', kind: 'image', screen: 'base', results: [{ score: 1, x: 96, y: 150 }, { score: 0.9, x: 96, y: 206 }], train: { w: 255, h: 96 }, click: { x: 120, y: 162 }, picked: 1, stale: false }
+  it('찾은 곳마다 찾을 그림 크기의 사각형(왼쪽 위 = 결과 좌표)·고른 줄·첫 결과의 누를 곳', () => {
+    expect(hitsOf(done, 'step')).toEqual({
+      rects: [{ no: 1, x: 96, y: 150, w: 255, h: 96, picked: false }, { no: 2, x: 96, y: 206, w: 255, h: 96, picked: true }],
+      click: { x: 120, y: 162 }, stale: false
+    })
+    expect(hitsOf({ ...done, click: null, stale: true }, 'step')).toMatchObject({ click: null, stale: true })
+  })
+  it('시험한 화면의 모드에서만: 기준 화면 → 스텝 그림, 지금 스냅샷 → 스냅샷', () => {
+    expect(hitsOf(done, 'snapshot')).toBe(null)
+    expect(hitsOf({ ...done, screen: 'snapshot' }, 'snapshot')).not.toBe(null)
+    expect(hitsOf({ ...done, screen: 'snapshot' }, 'step')).toBe(null)
+  })
+  it('결과가 없으면(시험 전·시험 중·실패·OCR·0건) 그리지 않는다', () => {
+    expect(hitsOf({ status: 'idle' }, 'step')).toBe(null)
+    expect(hitsOf({ status: 'running', kind: 'image', screen: 'base' }, 'step')).toBe(null)
+    expect(hitsOf({ status: 'error', kind: 'image', screen: 'base', message: 'x' }, 'step')).toBe(null)
+    expect(hitsOf({ status: 'done', kind: 'ocr', screen: 'base', accepted: true, lines: [] }, 'step')).toBe(null)
+    expect(hitsOf({ ...done, results: [], click: null }, 'step')).toBe(null)
+    expect(hitsOf(null, 'step')).toBe(null)
   })
 })

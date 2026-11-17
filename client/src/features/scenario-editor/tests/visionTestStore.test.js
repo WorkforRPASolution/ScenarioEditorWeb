@@ -97,6 +97,12 @@ describe('Vision 시험', () => {
     expect(store.run).toMatchObject({ status: 'done', screen: 'snapshot', results: [{ score: 1, x: 505, y: 306 }], size: { w: 640, h: 360 } })
     expect(snap.mode).toBe('snapshot')
   })
+  it('기준 화면으로 시험하면 큰 화면을 스텝 그림으로 돌린다(스냅샷을 보고 있었어도)', async () => {
+    snap.showSnapshot()
+    api.visionTest.mockResolvedValue(ok({ results: [], ms: 10, bytes: 1 }))
+    await store.start(IMAGE())
+    expect(snap.mode).toBe('step')
+  })
 })
 
 describe('보내지 않는 경우', () => {
@@ -256,5 +262,18 @@ describe('시험 정확도 칸과 시험할 화면', () => {
     expect(store.screenNow()).toEqual({ kind: 'snapshot', snapshot: { eqpId: 'E1', fileName: 'a.png' } })
     store.setScreen('other')
     expect(store.screen).toBe('snapshot')
+  })
+  it('시험 줄이 보이는 스텝(target): 큰 화면이 스냅샷 위에 그 스텝의 영역을 그릴 때 쓴다 — 결과를 지워도 남는다', () => {
+    expect(store.target).toBe(null)
+    store.setTarget(IMAGE())
+    expect(store.target).toEqual({ kind: 'image', area: { x: 10, y: 20, w: 300, h: 200 } })
+    store.close()
+    expect(store.target).toEqual({ kind: 'image', area: { x: 10, y: 20, w: 300, h: 200 } })
+    store.setTarget({ ...OCR(), area: null })
+    expect(store.target).toBe(null)
+    store.setTarget(OCR())
+    expect(store.target).toEqual({ kind: 'ocr', area: { x: 1, y: 2, w: 30, h: 10 } })
+    store.setTarget(null)
+    expect(store.target).toBe(null)
   })
 })

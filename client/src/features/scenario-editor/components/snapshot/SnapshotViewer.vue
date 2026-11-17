@@ -16,6 +16,7 @@ import { usePanZoom } from '../../composables/usePanZoom'
 import { clickPoint } from '../../editor/snapshotList'
 import { t } from '../../messages'
 import ViewerModeTabs from './ViewerModeTabs.vue'
+import TestLayer from '../TestLayer.vue'
 import MemoDialog from './MemoDialog.vue'
 import DownloadDialog from './DownloadDialog.vue'
 import HistoryDialog from './HistoryDialog.vue'
@@ -150,6 +151,8 @@ defineExpose({ onLoad, fit })
         :style="{ transform: `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`, width: natural ? `${natural.w}px` : 'auto', height: natural ? `${natural.h}px` : 'auto' }">
         <img :key="src" :src="src" alt="" class="block max-w-none shadow-md" data-testid="se-snap-image" draggable="false" @load="onLoad" @error="broken = true" />
         <div v-if="dotStyle" class="se-snap-dot absolute rounded-full bg-red-600 border-solid border-white pointer-events-none" :style="dotStyle" :title="t('SEW_SNAP_DOT')" data-testid="se-snap-dot" />
+        <!-- Vision·OCR 시험(P4): 이 스냅샷으로 시험한 결과와 시험할 스텝의 검색 영역 -->
+        <TestLayer v-if="natural" :natural="natural" :scale="view.scale" mode="snapshot" />
       </div>
     </div>
     <div v-if="item" class="min-h-9 px-3 py-1 flex items-center gap-2 border-t border-gray-200 dark:border-dark-border text-xs shrink-0" :class="memo ? 'se-snap-memo-bar' : ''" data-testid="se-snap-memo">

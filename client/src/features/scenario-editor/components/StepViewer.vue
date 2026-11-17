@@ -7,15 +7,18 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
 import { useEditStore } from '../stores/editStore'
 import { useSnapshotStore } from '../stores/snapshotStore'
+import { useVisionTestStore } from '../stores/visionTestStore'
 import { imageSrc } from '../editor/display'
 import { refUrl } from '../editor/images'
 import { areaView, isRect, isRef } from '../editor/capture'
+import { hitsOf } from '../editor/visionTest'
 import { t } from '../messages'
 import { safeStorage } from '../composables/useSafeStorage'
 import { useTrainSpot } from '../composables/useTrainSpot'
 import { usePanZoom } from '../composables/usePanZoom'
 import CaptureLayer from './CaptureLayer.vue'
 import SpotLayer from './SpotLayer.vue'
+import TestLayer from './TestLayer.vue'
 import './capture.css'
 
 defineOptions({ name: 'StepViewer' })
@@ -53,7 +56,10 @@ const cap = computed(() => (draft.value ? edit.capture : null))
 const capNow = computed(() => (cap.value ? cap.value.flow.indexOf(cap.value.stage) : -1))
 // 찾은 그림·누를 곳: 고치는 중이면 패널 초안(패널 썸네일과 같은 값), 아니면 보는 스텝. 잡는 동안은 잡기 층이 그린다.
 const spot = useTrainSpot(() => (draft.value ? { draft: draft.value } : step.value ? { step: step.value } : null))
-const spotMarks = computed(() => (cap.value ? null : spot.marks.value))
+// Vision 시험 결과(P4)가 이 화면에 떠 있는 동안에는 평소의 찾은 그림 표시를 숨긴다 — 시험이 찾은 곳(TestLayer)과 겹친다
+const vision = useVisionTestStore()
+const testShown = computed(() => !cap.value && !!hitsOf(vision.run, 'step'))
+const spotMarks = computed(() => (cap.value || testShown.value ? null : spot.marks.value))
 const spotLabels = computed(() => (draft.value ? { train: t('SEW_CAP_TAG_FOUND'), click: t('SEW_CAP_TAG_CLICK') } : { train: t('SEW_UI_TAG_TRAIN'), click: t('SEW_UI_TAG_CLICK') }))
 // [그림은 그대로 두기]: 고른 스텝의 영역을 다시 잡고 그림 단계에 왔을 때만(목업 cap:keep)
 const canKeep = computed(() => cap.value?.stage === 'train' && cap.value.flow[0] !== 'train' && !isNew.value
@@ -131,7 +137,8 @@ defineExpose({ onLoad, fit })
         <slot name="lead" />
         <span v-if="isNew" class="font-semibold text-gray-800 dark:text-gray-100">{{ t('SEW_CAP_NEW_TITLE') }}</span>
         <span v-else-if="step" class="font-semibold text-gray-800 dark:text-gray-100">스텝 {{ step.no }} 기준 화면</span>
-        <span v-if="adjustHint" class="text-gray-500 truncate">{{ t('SEW_CAP_ADJUST_HINT') }}</span>
+        <span v-if="testShown" class="text-gray-500 truncate" data-testid="se-test-view-hint">{{ t('SEW_TEST_VIEW_HINT') }}</span>
+        <span v-else-if="adjustHint" class="text-gray-500 truncate">{{ t('SEW_CAP_ADJUST_HINT') }}</span>
         <span v-else-if="!draft && step && step.condition.kind === 'image'" class="text-gray-500 truncate">{{ spotMarks ? t('SEW_UI_TRAIN_FOUND') : t('SEW_UI_TRAIN_NOT_STORED') }}</span>
         <span v-else-if="!draft && step && step.condition.kind === 'ocr'" class="text-gray-500">{{ t('SEW_UI_OCR_AREA_HINT') }}</span>
       </template>
@@ -158,6 +165,7 @@ defineExpose({ onLoad, fit })
         <div v-else-if="natural && areaStyle && !draft" class="absolute" :class="step.condition.kind === 'ocr' ? 'border-solid border-violet-600 bg-violet-500/10' : 'border-dashed border-primary-500 bg-primary-500/5'"
           :style="areaStyle" data-testid="se-search-area" />
         <SpotLayer v-if="natural && spotMarks" :natural="natural" :scale="view.scale" :train="spotMarks.train" :click="spotMarks.click" :labels="spotLabels" />
+        <TestLayer v-if="natural && !cap" :natural="natural" :scale="view.scale" mode="step" />
       </div>
     </div>
   </div>

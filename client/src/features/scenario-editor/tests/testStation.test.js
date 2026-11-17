@@ -355,6 +355,18 @@ describe('시험 줄 — 상태와 결과', () => {
     w.unmount()
   })
 
+  it('시험 줄이 보이는 스텝의 영역을 저장소에 알린다(큰 화면이 스냅샷 위에 그린다) — 사라지면 비운다', async () => {
+    const w = mountRow({ input: IMAGE() })
+    expect(store.target).toEqual({ kind: 'image', area: { x: 10, y: 20, w: 300, h: 200 } })
+    await w.setProps({ input: OCR() })
+    expect(store.target).toEqual({ kind: 'ocr', area: { x: 1, y: 2, w: 30, h: 10 } })
+    await w.setProps({ input: null })
+    expect(store.target).toBe(null)
+    await w.setProps({ input: IMAGE() })
+    w.unmount()
+    expect(store.target).toBe(null)
+  })
+
   it('[닫기] 는 결과를 지우고, 시험 줄이 사라져도(다른 화면으로) 지운다', async () => {
     const input = IMAGE()
     const w = mountRow({ input })

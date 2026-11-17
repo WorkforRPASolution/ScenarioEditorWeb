@@ -14,6 +14,7 @@ import StepPanel from '../components/StepPanel.vue'
 import EditDialogs from '../components/EditDialogs.vue'
 import { useEditStore } from '../stores/editStore'
 import { useSnapshotStore } from '../stores/snapshotStore'
+import { useVisionTestStore } from '../stores/visionTestStore'
 import ModalShell from '../components/ModalShell.vue'
 import { areaView } from '../editor/capture'
 import { t } from '../messages'
@@ -643,6 +644,52 @@ describe('StepViewer — 기준 화면에서 찾은 그림·누를 곳을 늘 �
     expect([...e.spots.values()]).toEqual([{ found: 'many' }])
     expect(w.find(SPOT).exists()).toBe(false)
     expect(w.text()).toContain(t('SEW_UI_TRAIN_NOT_STORED'))
+    w.unmount()
+  })
+
+  it('시험 결과(Vision)가 떠 있는 동안에는 찾은 그림 표시를 숨기고 시험이 찾은 곳을 그린다 — 닫으면 돌아온다. 잡는 동안에는 그리지 않는다', async () => {
+    const { e } = panelFixture([imageStep(0), imageStep(1)])
+    const vt = useVisionTestStore()
+    const w = await mountViewer()
+    expect(w.find(SPOT).exists()).toBe(true)
+    expect(w.find('[data-testid="se-test-hit"]').exists()).toBe(false)
+    vt.run = { status: 'done', kind: 'image', key: 'k', valueKey: 'v', screen: 'base', results: [{ score: 1, x: 40, y: 50 }, { score: 0.9, x: 300, y: 200 }], train: { w: 20, h: 10 }, click: { x: 64, y: 62 }, verdict: { ok: true, rule: null }, picked: 0, stale: false }
+    await nextTick()
+    expect(w.find(SPOT).exists()).toBe(false)
+    expect(w.findAll('[data-testid="se-test-hit"]').length).toBe(2)
+    expect(w.find('[data-testid="se-test-click"]').attributes('data-x')).toBe('64')
+    // 스냅샷으로 시험한 결과는 스텝 그림에 그리지 않는다(찾은 그림 표시는 그대로)
+    vt.run = { ...vt.run, screen: 'snapshot' }
+    await nextTick()
+    expect(w.find('[data-testid="se-test-hit"]').exists()).toBe(false)
+    expect(w.find(SPOT).exists()).toBe(true)
+    vt.run = { ...vt.run, screen: 'base' }
+    expect(e.startCapture(['click'])).toBe(true)
+    await nextTick()
+    expect(w.find('[data-testid="se-test-hit"]').exists()).toBe(false)
+    e.cancelCapture()
+    vt.close()
+    await nextTick(); await settle()
+    expect(w.find('[data-testid="se-test-hit"]').exists()).toBe(false)
+    expect(w.find(SPOT).exists()).toBe(true)
+    w.unmount()
+  })
+
+  it('시험 결과가 떠 있는 동안 머리 줄은 시험 결과의 색을 알린다 — "학습 이미지 위치는 저장되지 않아…" 로 바뀌지 않는다', async () => {
+    const ti = { condition: { ...imageStep(0).condition, image: { ...imageStep(0).condition.image, trainImages: [{ key: 0, type: true, url: '/u/s0-train-0' }] } } }
+    panelFixture([imageStep(0), imageStep(1)], { canWrite: false, skOver: { s0: ti } })
+    const vt = useVisionTestStore()
+    const w = await mountViewer()
+    expect(w.text()).toContain(t('SEW_UI_TRAIN_FOUND'))
+    vt.run = { status: 'done', kind: 'image', key: 'k', valueKey: 'v', screen: 'base', results: [{ score: 1, x: 40, y: 50 }], train: { w: 20, h: 10 }, click: null, verdict: { ok: true, rule: null }, picked: 0, stale: false }
+    await nextTick()
+    expect(w.find(SPOT).exists()).toBe(false)
+    expect(w.findAll('[data-testid="se-test-hit"]').length).toBe(1)
+    expect(w.text()).toContain(t('SEW_TEST_VIEW_HINT'))
+    expect(w.text()).not.toContain(t('SEW_UI_TRAIN_FOUND'))
+    expect(w.text()).not.toContain(t('SEW_UI_TRAIN_NOT_STORED'))
+    vt.close(); await nextTick(); await settle()
+    expect(w.text()).toContain(t('SEW_UI_TRAIN_FOUND'))
     w.unmount()
   })
 })

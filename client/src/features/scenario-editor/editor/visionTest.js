@@ -149,6 +149,17 @@ export function confidenceOf(text) {
   return { values, min: values.length ? Math.min(...values) : null }
 }
 
+// 큰 화면 겹침(TestLayer)이 그릴 것 — 찾은 곳마다 찾을 그림 크기의 사각형(왼쪽 위 = 결과 좌표)과 첫 결과의 누를 곳.
+// mode = 그 층이 붙은 보기('step' | 'snapshot'). 시험한 화면의 모드가 아니거나 그릴 결과가 없으면 null.
+export function hitsOf(run, mode) {
+  if (run?.status !== 'done' || run.kind !== 'image' || !run.results?.length || !run.train) return null
+  if ((run.screen === 'snapshot' ? 'snapshot' : 'step') !== mode) return null
+  return {
+    rects: run.results.map((r, i) => ({ no: i + 1, x: r.x, y: r.y, w: run.train.w, h: run.train.h, picked: i === run.picked })),
+    click: run.click ?? null, stale: !!run.stale
+  }
+}
+
 // 서버 로그에 남길 "무엇을 시험했는지". open = { process, model, name }(연 시나리오), no = 스텝 번호
 export function aboutOf(open, no) {
   const out = {}

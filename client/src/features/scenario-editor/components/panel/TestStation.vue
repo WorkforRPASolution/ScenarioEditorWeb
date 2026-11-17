@@ -33,6 +33,9 @@ const canApply = computed(() => accept.value !== null && accept.value >= 0.5 && 
 watch(() => [props.input?.uid ?? null, props.input?.accept ?? null], ([uid, panelAccept]) => store.syncAccept(panelAccept, uid), { immediate: true })
 watch(() => [testKey(props.input, screen.value), props.input ? valueKey(props.input, accept.value) : null], ([key, vkey]) => store.sync(key, vkey), { immediate: true })
 
+// 큰 화면이 스냅샷 위에 이 스텝의 영역을 그릴 수 있게 알린다
+watch(() => props.input, (input) => store.setTarget(input), { immediate: true })
+
 // "시험 중… n초"
 const now = ref(Date.now())
 let timer = null
@@ -44,7 +47,7 @@ watch(running, (on) => {
   timer = setInterval(() => { now.value = Date.now() }, 500)
 }, { immediate: true })
 const seconds = computed(() => Math.max(0, Math.floor((now.value - (run.value.startedAt ?? now.value)) / 1000)))
-onUnmounted(() => { stopTimer(); store.close() })
+onUnmounted(() => { stopTimer(); store.setTarget(null); store.close() })
 
 const start = () => { if (props.input && !reason.value) store.start(props.input, { about: props.about }) }
 const applyAccept = () => { if (canApply.value) emit('accept', accept.value) }

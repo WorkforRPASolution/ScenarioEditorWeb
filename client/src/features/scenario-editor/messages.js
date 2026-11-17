@@ -102,6 +102,7 @@ export const MESSAGES = {
   SEW_TEST_TAG_FOUND: '찾은 곳 {n}',
   SEW_TEST_TAG_CLICK: '누를 곳',
   SEW_TEST_TAG_AREA: '검색 영역',
+  SEW_TEST_VIEW_HINT: '주황 = 시험이 찾은 곳 · 붉은 점 = 누를 곳(첫 결과)',
 
   SEW_NOTE_CONDITION_UNKNOWN: '해석할 수 없는 조건 종류입니다(Variable 등). 원래 값을 그대로 둡니다.',
   SEW_NOTE_ACTION_INVALID: '알 수 없는 동작 번호입니다. 에이전트가 이 시나리오를 거부할 수 있습니다.',

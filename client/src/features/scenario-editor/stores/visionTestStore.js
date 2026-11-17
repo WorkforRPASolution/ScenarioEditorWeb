@@ -30,6 +30,8 @@ export const useVisionTestStore = defineStore('scenarioEditorVisionTest', () => 
   const acceptTouched = ref(false)
   const acceptUid = ref(null)
   const run = shallowRef(IDLE)
+  // 시험 줄이 보이는 스텝의 영역 — 큰 화면이 스냅샷 위에 그릴 때 쓴다(결과와 따로, 시험 줄이 알린다)
+  const target = shallowRef(null)
   let seq = 0
   let controller = null
 
@@ -40,6 +42,8 @@ export const useVisionTestStore = defineStore('scenarioEditorVisionTest', () => 
     const shown = snap.shownImage()
     return { kind: 'snapshot', snapshot: shown ? { eqpId: shown.eqpId, fileName: shown.fileName } : null }
   }
+
+  function setTarget(input) { target.value = input?.area ? { kind: input.kind, area: input.area } : null }
 
   function setAccept(text) { acceptText.value = String(text ?? ''); acceptTouched.value = true }
   // 패널의 정확도 값을 따라간다 — 시험 칸을 손댄 뒤에는 그대로 두고, 스텝이 바뀌면 다시 패널 값으로
@@ -137,5 +141,5 @@ export const useVisionTestStore = defineStore('scenarioEditorVisionTest', () => 
     return true
   }
 
-  return { screen, acceptText, acceptTouched, run, setScreen, screenNow, setAccept, syncAccept, start, close, sync, pick }
+  return { screen, acceptText, acceptTouched, run, target, setTarget, setScreen, screenNow, setAccept, syncAccept, start, close, sync, pick }
 })
