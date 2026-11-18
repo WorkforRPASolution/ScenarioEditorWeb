@@ -57,5 +57,6 @@ router.get('/test-run/equipment', c.requireTestRun, asyncHandler(c.testRunEquipm
 router.get('/test-run/scenario', c.requireTestRun, asyncHandler(c.testRunScenario)) // 시나리오 하나의 실행 정보(막는 까닭·운영 속성·현재 판·방금 요청)
 router.post('/test-run/requests', c.requireTestRun, asyncHandler(c.testRunRequest)) // 설비 한 대에 실행 요청
 router.post('/test-run/status', c.requireTestRun, asyncHandler(c.testRunStatus)) // 내 실행(runId)의 요청 결과와 실행 상태
+router.post('/test-run/recipients', c.requireTestRun, asyncHandler(c.testRunRecipients)) // 고른 설비들의 결과 메일 수신 묶음·주소(읽기)
 
 module.exports = router

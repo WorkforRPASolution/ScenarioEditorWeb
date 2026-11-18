@@ -133,6 +133,12 @@ function createEarsRepository(getDb, mongo) {
     findRecoveriesAt: (pairs) => (pairs.length
       ? col('EQP_AUTO_RECOVERY').find({ $or: pairs.map((p) => ({ eqpid: p.eqpId, txn_seq: p.txnSeq, ears_code: p.name })) }, { projection: RECOVERY_FIELDS }).maxTimeMS(RUN_MAX).toArray()
       : Promise.resolve([])),
+    // 결과 메일 수신인(P5 설계 §5.5) — 발송 서버(HttpWebServer·EmailingAgent)가 보는 것과 같은 조건으로 읽는다. 읽기만.
+    findEmailRules: (name) => col('EMAIL_RECIPIENTS')
+      .find({ app: 'ARS', code: name }, { projection: { _id: 0, emailCategory: 1, process: 1, model: 1, line: 1 } }).maxTimeMS(RUN_MAX).toArray(),
+    findEmailInfos: (categories) => (categories.length
+      ? col('EMAILINFO').find({ project: 'ARS', category: { $in: categories } }, { projection: { _id: 0, category: 1, accounts: 1 } }).maxTimeMS(RUN_MAX).toArray()
+      : Promise.resolve([])),
     hasNameRule: async () => (await getDb().listCollections({ name: 'SC_NAME_RULE' }, { nameOnly: true }).toArray()).length > 0,
     findNameRule: () => col('SC_NAME_RULE').find({}, { projection: { _id: 0 } }).maxTimeMS(MAX).toArray()
   })

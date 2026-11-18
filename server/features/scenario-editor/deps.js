@@ -77,6 +77,8 @@ function build(env = process.env) {
   const { createActionClient } = require('./clients/actionClient')
   const { createTestRunService } = require('./service/testRunService')
   out.testRun = createTestRunService({ repo, web, hash, gridfs, scopes, client: createActionClient({ env, log }), env, log, now })
+  const { createRecipientService } = require('./service/recipientService')
+  out.recipients = createRecipientService({ repo, scopes, env })
   return out
 }
 

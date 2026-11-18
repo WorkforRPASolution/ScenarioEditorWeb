@@ -320,5 +320,9 @@ async function testRunRequest(req, res) {
 async function testRunStatus(req, res) {
   ok(res, await getDeps().testRun.status(req.seUser, req.body))
 }
+// 결과 메일 수신인 — 고른 설비들의 수신 묶음과 주소(실제 발송 규칙으로 계산한 미리 보기)
+async function testRunRecipients(req, res) {
+  ok(res, await getDeps().recipients.forEquipment(req.seUser, req.body))
+}
 
-module.exports = { testRunEquipment, testRunScenario, testRunRequest, testRunStatus, requireTestRun, visionTest, ocrTest, history, saveMemo, removeMemo, memoList, requireMemoWrite, equipment, snapshotPresence, snapshotDays, snapshotList, snapshotImage, links, reviewScenario, savePerformance, sameName, searchUsers, nameRule, setEnabled, removeScenario, deploy, deployVerify, deployFinish, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, counts, versions, open, dataCheck, image }
+module.exports = { testRunEquipment, testRunScenario, testRunRequest, testRunStatus, testRunRecipients, requireTestRun, visionTest, ocrTest, history, saveMemo, removeMemo, memoList, requireMemoWrite, equipment, snapshotPresence, snapshotDays, snapshotList, snapshotImage, links, reviewScenario, savePerformance, sameName, searchUsers, nameRule, setEnabled, removeScenario, deploy, deployVerify, deployFinish, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, counts, versions, open, dataCheck, image }

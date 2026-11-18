@@ -292,3 +292,19 @@ describe('earsRepository 시험 실행 읽기 (P5)', () => {
     expect(names.filter((n) => /recover/i.test(n) && !/^find/.test(n))).toEqual([])
   })
 })
+
+describe('earsRepository 결과 메일 수신인 읽기 (P5 설계 §5.5)', () => {
+  it('findEmailRules: EMAIL_RECIPIENTS 의 app ARS · code = 시나리오 이름 — 발송 서버가 보는 네 칸만', async () => {
+    const f = fakeDb({ rows: [{ process: 'P' }] })
+    expect(await repoOf(f).findEmailRules('RUN_A')).toEqual([{ process: 'P' }])
+    expect(f.calls[0]).toMatchObject({ name: 'EMAIL_RECIPIENTS', filter: { app: 'ARS', code: 'RUN_A' }, options: { projection: { _id: 0, emailCategory: 1, process: 1, model: 1, line: 1 } }, maxTimeMS: 5000 })
+  })
+  it('findEmailInfos: EMAILINFO 의 project ARS · 묶음 이름들 — 조회 한 번, 빈 목록이면 부르지 않는다', async () => {
+    const f = fakeDb({ rows: [] })
+    await repoOf(f).findEmailInfos(['A', 'B'])
+    expect(f.calls[0]).toMatchObject({ name: 'EMAILINFO', filter: { project: 'ARS', category: { $in: ['A', 'B'] } }, options: { projection: { _id: 0, category: 1, accounts: 1 } }, maxTimeMS: 5000 })
+    const empty = fakeDb()
+    expect(await repoOf(empty).findEmailInfos([])).toEqual([])
+    expect(empty.calls).toHaveLength(0)
+  })
+})

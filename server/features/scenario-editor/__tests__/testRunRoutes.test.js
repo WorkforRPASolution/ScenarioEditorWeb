@@ -152,3 +152,16 @@ describe('경로와 서비스', () => {
     expect((await get('/test-run/equipment?process=SEWCVD&model=SEWMODELA')).status).toBe(200) // 서버는 살아 있다
   })
 })
+
+describe('POST /test-run/recipients (P5 설계 §5.5)', () => {
+  it('문을 지나고 본문을 서비스에 넘긴다', async () => {
+    const seen = []
+    fake.recipients = { forEquipment: async (user, body) => { seen.push([user.singleid, body]); return { groups: [] } } }
+    const body = { process: 'P', model: 'M', name: 'N', eqpIds: ['E1'] }
+    const res = await post('/test-run/recipients', body)
+    expect([res.status, (await res.json()).data]).toEqual([200, { groups: [] }])
+    expect(seen).toEqual([['sew_multi', body]])
+    const reader = await post('/test-run/recipients', body, { 'X-SE-User': 'sew_reader' })
+    expect([reader.status, (await reader.json()).code]).toEqual([403, 'WRITE_FORBIDDEN'])
+  })
+})
