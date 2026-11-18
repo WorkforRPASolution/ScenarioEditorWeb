@@ -3,7 +3,7 @@ import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
 import { useEditStore } from '../stores/editStore'
 import { useSaveFlow } from '../stores/saveFlow'
-import { t, noteMessage } from '../messages'
+import { t, noteMessage, MESSAGES } from '../messages'
 import { barFieldErrors } from '../editor/fieldRules'
 import { formatCrtime, scenarioTypeLabel, enabledLabel } from '../format'
 import PropertyDialog from './PropertyDialog.vue'
@@ -12,6 +12,8 @@ import DataCheckDialog from './DataCheckDialog.vue'
 import SaveDialog from './SaveDialog.vue'
 import ScenarioDeleteDialog from './ScenarioDeleteDialog.vue'
 import PreprocessDialog from './PreprocessDialog.vue'
+import TestRunDialog from './testrun/TestRunDialog.vue'
+import { useTestRunStore } from '../stores/testRunStore'
 import { windowsSummary, windowsFromHeader } from '../editor/windows'
 
 defineOptions({ name: 'ScenarioBar' })
@@ -20,6 +22,14 @@ defineEmits(['load', 'new'])
 const store = useEditorStore()
 const edit = useEditStore()
 const flow = useSaveFlow()
+// [시험 실행](P5 설계 §4.1): 시나리오를 열지 않아도 보이고 눌린다 — 창 안에서 공정·모델·시나리오를 고른다.
+// 쓸 수 있는가와 꺼진 까닭은 서버가 /me 의 testRun 으로 알려 준다(쓰기 권한 없음·읽기 전용 서버·서버에서 꺼 둠·사용자 바꾸기). 서버가 요청마다 다시 본다.
+const testRun = useTestRunStore()
+const runGate = computed(() => {
+  const g = store.me?.testRun
+  if (!g) return null
+  return { enabled: g.enabled === true, title: g.enabled === true ? '' : MESSAGES[`SEW_RUN_OFF_${g.reason}`] ?? MESSAGES[`SEW_ERR_${g.reason}`] ?? '' }
+})
 const showProperty = ref(false)
 // [시나리오 지우기…](2026-11-10): 쓸 수 있는 사용자가 서버에 있는 시나리오를 열었을 때만 — 새 시나리오(아직 배포 전)·원본이 지워진 초안·
 // 이미 지워진 화면에는 없다. 누르면 불러오기 창의 지우기 확인 창이 그대로 뜬다(이름을 그대로 쳐야 지워진다).
@@ -129,6 +139,8 @@ const btn = 'h-8 px-3 rounded-lg text-sm'
   <div class="bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:border-dark-border px-3 py-2 flex items-center gap-3 flex-wrap" data-testid="se-bar">
     <button :class="btn" class="bg-primary-500 hover:bg-primary-600 text-white font-medium" data-testid="se-load" @click="$emit('load')">{{ t('SEW_UI_LOAD') }}</button>
     <button v-if="canCreate" :class="btn" class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-100 font-medium" data-testid="se-new" @click="$emit('new')">{{ t('SEW_NEW_OPEN') }}</button>
+    <button v-if="runGate" :class="btn" class="bg-gray-200 dark:bg-gray-700 hover:enabled:bg-gray-300 dark:hover:enabled:bg-gray-600 text-gray-800 dark:text-gray-100 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+      :disabled="!runGate.enabled" :title="runGate.title" data-testid="se-test-run" @click="testRun.show()">{{ t('SEW_RUN_OPEN') }}</button>
     <button v-if="edit.editable" :class="[btn, unsaved ? 'bg-primary-500 hover:bg-primary-600 text-white' : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-100']" class="font-medium" data-testid="se-save" @click="onSave">{{ t('SEW_SAVE_OPEN') }}{{ unsaved ? ` (${unsaved})` : '' }}</button>
     <template v-if="sk">
       <div class="min-w-0">
@@ -202,5 +214,6 @@ const btn = 'h-8 px-3 rounded-lg text-sm'
     <SaveDialog @bar="focusBar" @property="openProperty" @windows="openPreprocess" />
     <PreprocessDialog v-model="showPreprocess" :focus="preprocessFocus" />
     <ScenarioDeleteDialog v-model="showDelete" />
+    <TestRunDialog />
   </div>
 </template>

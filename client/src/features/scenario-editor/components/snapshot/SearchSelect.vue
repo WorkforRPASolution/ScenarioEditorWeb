@@ -16,6 +16,8 @@ const props = defineProps({
   allLabel: { type: String, required: true },
   testid: { type: String, required: true },
   disabled: { type: Boolean, default: false },
+  // 맨 위 "전체" 줄을 두지 않는다 — 꼭 하나를 골라야 하는 자리(시험 실행 창의 공정·모델·시나리오)
+  noAll: { type: Boolean, default: false },
   // 항목 옆에 붙일 글(스냅샷 있는 설비 수) — (항목) => { text, title }. 목록이 열려 있을 때만 부른다
   noteOf: { type: Function, default: null }
 })
@@ -30,7 +32,7 @@ watch(() => props.modelValue, (v) => { if (!open.value) text.value = v })
 const needle = computed(() => (text.value === props.modelValue ? '' : text.value.trim()))
 const found = computed(() => filterOptions(props.options, needle.value))
 // 친 글자가 없을 때만 맨 위에 "전체" 줄('')을 둔다
-const rows = computed(() => (needle.value ? found.value.items : ['', ...found.value.items]))
+const rows = computed(() => (needle.value || props.noAll ? found.value.items : ['', ...found.value.items]))
 const notes = computed(() => (props.noteOf ? rows.value.map((o) => props.noteOf(o)) : null))
 // 친 글자가 있으면 맞는 첫 줄이 Enter 대상이다
 watch([needle, open], () => { active.value = needle.value && rows.value.length ? 0 : -1 })

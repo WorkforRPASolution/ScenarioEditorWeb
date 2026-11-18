@@ -33,6 +33,35 @@ describe('ScenarioBar', () => {
   beforeEach(() => setActivePinia(createPinia()))
   const mountBar = () => mount(ScenarioBar, { global: { stubs: { ModalShell: ModalStub } } })
 
+  describe('[시험 실행] 버튼(P5 설계 §4.1)', () => {
+    it('시나리오를 열지 않아도 보이고 눌린다 — 누르면 시험 실행 창이 열린다', async () => {
+      const store = useEditorStore()
+      store.me = { singleid: 'u', canWrite: true, testRun: { enabled: true, reason: null } }
+      const w = mountBar()
+      const btn = w.find('[data-testid="se-test-run"]')
+      expect(btn.text()).toBe(t('SEW_RUN_OPEN'))
+      expect(btn.attributes('disabled')).toBeUndefined()
+      const { useTestRunStore } = await import('../stores/testRunStore')
+      expect(useTestRunStore().open).toBe(false)
+      await btn.trigger('click')
+      expect(useTestRunStore().open).toBe(true)
+    })
+    it('쓸 수 없으면 꺼지고 까닭이 title 에 — 쓰기 권한 없음·읽기 전용 서버·서버에서 꺼 둠·사용자 바꾸기', () => {
+      const store = useEditorStore()
+      for (const reason of ['WRITE_FORBIDDEN', 'WRITE_DISABLED', 'TEST_RUN_DISABLED', 'TEST_RUN_DEV_USER', 'TEST_RUN_USER_AMBIGUOUS']) {
+        store.me = { singleid: 'u', canWrite: false, testRun: { enabled: false, reason } }
+        const btn = mountBar().find('[data-testid="se-test-run"]')
+        expect(btn.attributes('disabled'), reason).toBeDefined()
+        expect(btn.attributes('title'), reason).toBe(MESSAGES[`SEW_RUN_OFF_${reason}`])
+      }
+    })
+    it('서버가 시험 실행 정보를 주지 않으면(옛 서버) 버튼을 두지 않는다', () => {
+      const store = useEditorStore()
+      store.me = { singleid: 'u', canWrite: true }
+      expect(mountBar().find('[data-testid="se-test-run"]').exists()).toBe(false)
+    })
+  })
+
   it('스텝을 바꾸면 시나리오 경고 줄에서도 낡은 NO_SUCCESS 가 빠진다(경고 수와 같게)', async () => {
     const next = { onTrue: { kind: 'end', value: 'FAIL' }, onFalse: { kind: 'end', value: 'FAIL' } }
     const step = { uid: 's0', origin: 0, condition: { kind: 'none', skipPreprocessing: false }, action: { type: 0 }, retry: { limit: 0, intervalMs: 2000 }, next, descriptionToEmail: 'a', images: { train: {}, base: null } }
