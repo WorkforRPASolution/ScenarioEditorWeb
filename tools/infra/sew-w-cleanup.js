@@ -1,5 +1,5 @@
 'use strict'
-// 시험이 만든 SEW_W_ 시나리오와 시험 사용자의 웹 기록을 지운다(공유 로컬 EARS — 시드 시나리오·다른 데이터는 건드리지 않는다).
+// 시험이 만든 SEW_W_ 시나리오와 시험 사용자의 웹 기록, 시험 설비(SEWT_)의 메모·실행 기록·시험 실행 요청 기록을 지운다(공유 로컬 EARS — 시드 시나리오·다른 데이터는 건드리지 않는다).
 // 배포 통합 시험(server/…/integration/deploy.int.test.js)과 저장 E2E(client/e2e/scenario-editor/p2-save.spec.js)가 함께 쓰고, 실패해도 부른다.
 // 지우는 것: SC_PROPERTY(SEW 공정·SEW_W_ 이름) · GridFS 판(fs.files 메타데이터) · Redis 해시(SEW*-*)의 SEW_W_ 필드 ·
 //            웹 전용 DB 의 시험 사용자 초안·배포 기록·초안 그림(seDraftImages).
@@ -91,4 +91,16 @@ async function cleanupSewMemos({ env, db }) {
   return (await db.collection('ARS_USER_MEMO').deleteMany({ eqpid: /^SEWT_/ })).deletedCount
 }
 
-module.exports = { cleanupSewW, cleanupSewMemos, assertLocalTargets, TEST_USERS, WEB_DB }
+// 시험 실행(P5)의 흔적 — 시험 설비(SEWT_)의 실행 기록(EQP_AUTO_RECOVERY — CommandServer 흉내가 넣은 것)만 지운다. 컬렉션은 그대로 둔다.
+async function cleanupSewRecovery({ env, db }) {
+  assertLocalTargets(env)
+  return (await db.collection('EQP_AUTO_RECOVERY').deleteMany({ eqpid: /^SEWT_/ })).deletedCount
+}
+// 웹 전용 DB 의 시험 실행 요청 기록 가운데 시험 설비 것만 — 남겨 두면 "방금 요청함" 이 다음 시험을 막는다.
+async function cleanupSewTestRuns({ env, webDb }) {
+  assertLocalTargets(env)
+  if (webDb.databaseName !== WEB_DB) throw new Error(`웹 전용 DB 가 ${WEB_DB} 가 아니다: ${webDb.databaseName} — 아무것도 지우지 않았다`)
+  return (await webDb.collection('SCENARIO_EDITOR_TEST_RUNS').deleteMany({ eqpId: /^SEWT_/ })).deletedCount
+}
+
+module.exports = { cleanupSewW, cleanupSewMemos, cleanupSewRecovery, cleanupSewTestRuns, assertLocalTargets, TEST_USERS, WEB_DB }

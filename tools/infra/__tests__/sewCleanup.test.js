@@ -142,3 +142,28 @@ describe('cleanupSewMemos — 시험 설비(SEWT_)의 스냅샷 메모만 지운
     expect(db.calls).toEqual([])
   })
 })
+
+describe('시험 실행(P5)의 흔적 — 시험 설비(SEWT_)의 실행 기록과 요청 기록만 지운다', () => {
+  const { cleanupSewRecovery, cleanupSewTestRuns } = require('../sew-w-cleanup')
+  it('cleanupSewRecovery: EQP_AUTO_RECOVERY 에서 eqpid 가 SEWT_ 로 시작하는 문서만 — 컬렉션은 그대로 둔다', async () => {
+    const db = fakeDb('EARS')
+    expect(await cleanupSewRecovery({ env: LOCAL, db })).toBe(1)
+    expect(db.calls).toEqual([{ c: 'EQP_AUTO_RECOVERY', op: 'deleteMany', filter: { eqpid: /^SEWT_/ } }])
+  })
+  it('cleanupSewTestRuns: 웹 전용 DB 의 요청 기록 가운데 SEWT_ 설비 것만', async () => {
+    const webDb = fakeDb(WEB_DB)
+    expect(await cleanupSewTestRuns({ env: LOCAL, webDb })).toBe(1)
+    expect(webDb.calls).toEqual([{ c: 'SCENARIO_EDITOR_TEST_RUNS', op: 'deleteMany', filter: { eqpId: /^SEWT_/ } }])
+  })
+  it('루프백이 아니거나 env 가 없거나 웹 DB 이름이 다르면 아무것도 지우지 않고 던진다', async () => {
+    const db = fakeDb('EARS')
+    const webDb = fakeDb(WEB_DB)
+    const REMOTE = { ...LOCAL, MONGODB_URI: 'mongodb://10.1.2.3:27017/EARS' }
+    await expect(cleanupSewRecovery({ env: REMOTE, db })).rejects.toThrow('루프백')
+    await expect(cleanupSewRecovery({ db })).rejects.toThrow()
+    await expect(cleanupSewTestRuns({ env: REMOTE, webDb })).rejects.toThrow('루프백')
+    const wrong = fakeDb('WEB_MANAGER')
+    await expect(cleanupSewTestRuns({ env: LOCAL, webDb: wrong })).rejects.toThrow('SE_WEB_DEV')
+    expect([...db.calls, ...webDb.calls, ...wrong.calls]).toEqual([])
+  })
+})
