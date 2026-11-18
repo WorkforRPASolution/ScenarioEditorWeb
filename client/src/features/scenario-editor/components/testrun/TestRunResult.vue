@@ -47,6 +47,7 @@ const rows = computed(() => (r.value?.items ?? []).map((x) => {
       <button v-if="running" type="button" class="h-7 px-2.5 rounded-md text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600" data-testid="se-run-stop" @click="run.stop()">{{ t('SEW_RUN_STOP') }}</button>
       <button type="button" class="h-7 px-2.5 rounded-md text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600" data-testid="se-run-status-refresh" @click="run.refreshStatus()">{{ t('SEW_RUN_STATUS_REFRESH') }}</button>
       <span v-if="r.statusFailed" class="se-run-err" role="status" data-testid="se-run-status-failed">{{ t('SEW_RUN_STATUS_FAILED') }}</span>
+      <span class="se-run-auto" role="status" :data-ended="r.autoEnded ? 'true' : undefined" data-testid="se-run-auto-note">{{ t(r.autoEnded ? 'SEW_RUN_STATUS_AUTO_ENDED' : 'SEW_RUN_STATUS_AUTO') }}</span>
     </div>
     <p v-if="r.halt" class="se-run-note" data-kind="block" role="alert" data-testid="se-run-halt">{{ t(r.halt.key, r.halt.params) }}</p>
     <div class="se-run-tbl">

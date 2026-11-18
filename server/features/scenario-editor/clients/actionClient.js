@@ -17,7 +17,7 @@ function createActionClient({ env = process.env, fetch = globalThis.fetch, log =
     const ms = typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : NaN
     return Number.isFinite(ms) && ms >= 1000 && ms <= 60000 ? ms : DEFAULT_TIMEOUT_MS
   }
-  const warn = (kind, cause) => { if (log) log.warn(`시험 실행 요청(InterfaceServer /EARS/Action) ${kind} — ${cause}`) }
+  const warn = (kind, cause) => { if (log) log.warn(`시나리오 실행 요청(InterfaceServer /EARS/Action) ${kind} — ${cause}`) }
 
   // 주소는 부를 때마다 읽는다(시험이 고장 주입 중계로 바꿨다가 되돌린다)
   async function send({ process: proc, model, eqpId, name, line, txn, body }) {

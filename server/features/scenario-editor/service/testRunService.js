@@ -122,7 +122,7 @@ function createTestRunService({ repo, web, hash, gridfs, scopes, client, env = p
     // 사용자 다시 읽기 — 목록을 본 뒤 권한을 잃었을 수 있다
     const docs = await repo.findUsers(user.singleid)
     if (!docs.length) throw seError(403, 'USER_NOT_REGISTERED', '편집기 사용자로 등록되지 않았습니다')
-    if (docs.length > 1) throw seError(403, 'TEST_RUN_USER_AMBIGUOUS', '같은 아이디의 사용자 문서가 여럿이라 시험 실행을 할 수 없습니다')
+    if (docs.length > 1) throw seError(403, 'TEST_RUN_USER_AMBIGUOUS', '같은 아이디의 사용자 문서가 여럿이라 시나리오 실행을 할 수 없습니다')
     const fresh = parseUser(docs[0])
     if (!fresh.canWrite) throw seError(403, 'WRITE_FORBIDDEN', 'WRITE 권한이 없습니다')
     await scopes.assertAllowed(fresh, req.process, req.model)
@@ -141,7 +141,7 @@ function createTestRunService({ repo, web, hash, gridfs, scopes, client, env = p
     if (active >= limits.concurrency) throw seError(429, 'TEST_RUN_BUSY', '다른 실행 요청을 보내고 있습니다', { scope: 'server' })
     users.add(id)
     active += 1
-    const head = `시험 실행 user=${id} run=${req.runId} ${req.process}/${req.model}/${req.name} eqp=${req.eqpId} step=${req.startStep} reason=${req.reason.kind}`
+    const head = `시나리오 실행 user=${id} run=${req.runId} ${req.process}/${req.model}/${req.name} eqp=${req.eqpId} step=${req.startStep} reason=${req.reason.kind}`
     const done = (result) => {
       if (log) log.info(`${head} → ${result.outcome}${typeof result.detail === 'string' && result.outcome !== 'failed' ? `(${result.detail})` : ''} ${now() - started}ms`)
       return result
@@ -210,7 +210,7 @@ function createTestRunService({ repo, web, hash, gridfs, scopes, client, env = p
         rivals = await web.findRivalTestRuns({ user: user.singleid, runId: body.runId, process, model, name, eqpIds: seeks.map((r) => r.eqpId), since: from - LATE_MS })
       }
     } catch (e) {
-      if (log) log.warn(`시험 실행 상태 조회 실패 user=${user.singleid} run=${body.runId}: ${(e && e.code) || (e && e.message) || e}`)
+      if (log) log.warn(`시나리오 실행 상태 조회 실패 user=${user.singleid} run=${body.runId}: ${(e && e.code) || (e && e.message) || e}`)
       throw seError(503, 'TEST_RUN_STATUS_FAILED', '실행 상태를 읽지 못했습니다')
     }
     const recOf = (r) => ({ eqpId: r.eqpId, name: r.name, userInfo: r.userInfo, startStep: r.startStep, userText: r.userText, sentAt: r.sentAt })

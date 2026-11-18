@@ -28,6 +28,8 @@
 .se-run-field > span:first-child { font-weight: 700; }
 .se-run-hint { font-size: 11px; color: #6b7280; }
 .se-run-err { font-size: 11px; color: #dc2626; }
+.se-run-auto { font-size: 11px; color: #6b7280; }
+.se-run-auto[data-ended='true'] { padding: 2px 8px; border-radius: 6px; background: #fef3c7; color: #92400e; font-weight: 600; }
 .se-run-props { margin: 0; display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 3px 10px; padding: 8px 10px; border-radius: 6px; background: #f9fafb; font-size: 12px; }
 .se-run-props dt { color: #6b7280; }
 .se-run-props dd { margin: 0; min-width: 0; }
@@ -53,5 +55,7 @@
 .dark .se-run-pill[data-tone='warn'] { background: rgba(120, 53, 15, .45); color: #fcd34d; }
 .dark .se-run-pill[data-tone='run'] { background: rgba(21, 94, 117, .5); color: #67e8f9; }
 .dark .se-run-err { color: #f87171; }
+.dark .se-run-auto { color: #94a3b8; }
+.dark .se-run-auto[data-ended='true'] { background: rgba(120, 53, 15, .35); color: #fcd34d; }
 .dark .se-run-props { background: #1e293b; }
 .dark .se-run-bar { background: #334155; }

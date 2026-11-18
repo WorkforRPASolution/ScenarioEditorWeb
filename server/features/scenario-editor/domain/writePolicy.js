@@ -28,10 +28,10 @@ function memoDenial(user, { writeDisabled }) {
 // 순서대로 처음 걸리는 것을 준다: 같은 아이디의 사용자 문서가 여럿 → 서버에서 꺼 둠 → 읽기 전용 서버 → 사용자 바꾸기가 켜진 서버 → WRITE 없음.
 // 사용자 바꾸기(SE_DEV_USER_OVERRIDE)는 헤더 하나로 다른 사람의 이름이 되는 개발용 기능이다 — EARS 가 이 PC 밖이면 그 이름으로 실제 설비에 실행되지 않게 막는다.
 function testRunDenial(user, { writeDisabled, enabled, devOverride, earsLoopback }) {
-  if (user.duplicateUserDocs > 1) return denial('TEST_RUN_USER_AMBIGUOUS', '같은 아이디의 사용자 문서가 여럿이라 시험 실행을 할 수 없습니다')
-  if (!enabled) return denial('TEST_RUN_DISABLED', '이 서버는 시험 실행을 꺼 두었습니다')
+  if (user.duplicateUserDocs > 1) return denial('TEST_RUN_USER_AMBIGUOUS', '같은 아이디의 사용자 문서가 여럿이라 시나리오 실행을 할 수 없습니다')
+  if (!enabled) return denial('TEST_RUN_DISABLED', '이 서버는 시나리오 실행을 꺼 두었습니다')
   if (writeDisabled) return DISABLED()
-  if (devOverride && !earsLoopback) return denial('TEST_RUN_DEV_USER', '개발용 사용자 바꾸기가 켜진 서버에서는 시험 실행을 할 수 없습니다')
+  if (devOverride && !earsLoopback) return denial('TEST_RUN_DEV_USER', '개발용 사용자 바꾸기가 켜진 서버에서는 시나리오 실행을 할 수 없습니다')
   if (!user.canWrite) return denial('WRITE_FORBIDDEN', 'WRITE 권한이 없습니다')
   return null
 }

@@ -202,9 +202,9 @@ describe('실행 상태', () => {
     expect(needsStatus(item({ sentAt: NOW - 700_000 }), NOW)).toBe(false)
     expect(isFinal(item({ found: 1, status: 'StartScenario' }), NOW)).toBe(false)
   })
-  it('다시 읽을 간격: 마지막 요청 뒤 1분은 3초, 그 뒤 10초, 15분에서 멈춘다', () => {
-    expect(pollDelay(0)).toBe(3000)
-    expect(pollDelay(59_000)).toBe(3000)
+  it('다시 읽을 간격: 마지막 요청 뒤 1분은 5초, 그 뒤 10초, 15분에서 멈춘다', () => {
+    expect(pollDelay(0)).toBe(5000)
+    expect(pollDelay(59_000)).toBe(5000)
     expect(pollDelay(60_000)).toBe(10000)
     expect(pollDelay(899_000)).toBe(10000)
     expect(pollDelay(900_000)).toBeNull()

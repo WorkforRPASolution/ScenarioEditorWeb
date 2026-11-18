@@ -82,6 +82,18 @@ describe('messages', () => {
       expect(m, c).not.toBe(MESSAGES.SEW_ERR_UNKNOWN)
     }
   })
+  it('화면 문구의 말: "시나리오 실행"(시험 실행이 아니다)·"버전"(판이 아니다)·맥 전용 기호(⌘) 없음 — 2026-11-18 사내 요청', () => {
+    for (const [k, v] of Object.entries(MESSAGES)) {
+      if (typeof v !== 'string') continue
+      expect(v, k).not.toContain('시험 실행')
+      expect(v, k).not.toContain('⌘')
+      // "판정"·"판단" 은 다른 말이다
+      expect(v.replace(/판정|판단/g, ''), k).not.toMatch(/판/)
+    }
+    expect(MESSAGES.SEW_RUN_OPEN).toBe('시나리오 실행')
+    expect(MESSAGES.SEW_RUN_TITLE).toBe('시나리오 실행')
+    expect(MESSAGES.SEW_RUN_STATUS_REFRESH).toBe('상태 조회')
+  })
   it('시험 실행(P5): 서버 code 와 설비 하나의 결과(OUTCOMES)·화면의 결과 셋에 모두 문구가 있다', () => {
     const codes = serverErrorCodes()
     expect(codes).toEqual(expect.arrayContaining(['TEST_RUN_DISABLED', 'TEST_RUN_DEV_USER', 'TEST_RUN_USER_AMBIGUOUS', 'TEST_RUN_PROPERTY', 'TEST_RUN_NAME', 'TEST_RUN_SCENARIO_OFF',

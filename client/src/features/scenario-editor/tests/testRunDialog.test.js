@@ -265,7 +265,24 @@ describe('결과', () => {
     expect(store.stage).toBe('pick')
     expect([...store.picked]).toEqual(['A02'])
   })
-  it('실행 상태 열: 찾은 기록의 상태 글과 등록 시각, 조회가 실패하면 알리고 [상태 새로 고침]', async () => {
+  it('결과 위에 "15분까지만 자동" 안내와 [상태 조회] 가 늘 있고, 자동으로 읽기가 끝나면 그 줄이 끝났다는 안내로 바뀐다', async () => {
+    api.testRunStatus.mockImplementation(() => ok({ now: 5000, items: [
+      { eqpId: 'A01', outcome: 'accepted', detail: null, sentAt: 4000, found: 1, status: 'StartScenario', retry: '0/0/10', txnSeq: 4100, createDate: null },
+      { eqpId: 'A02', outcome: 'accepted', detail: null, sentAt: 4000, found: 1, status: 'Success', retry: '0/0/10', txnSeq: 4200, createDate: null }
+    ] }))
+    await ran([{ outcome: 'accepted' }, { outcome: 'accepted' }])
+    await new Promise((r) => setTimeout(r, 20))
+    await flushPromises()
+    expect(q('se-run-status-refresh').textContent).toBe('상태 조회')
+    expect(q('se-run-auto-note').textContent).toBe(t('SEW_RUN_STATUS_AUTO'))
+    expect(q('se-run-auto-note').textContent).toContain('15분')
+    expect(q('se-run-auto-note').dataset.ended).toBeUndefined()
+    store.run = { ...store.run, autoEnded: true }
+    await flushPromises()
+    expect(q('se-run-auto-note').textContent).toBe(t('SEW_RUN_STATUS_AUTO_ENDED'))
+    expect(q('se-run-auto-note').dataset.ended).toBe('true')
+  })
+  it('실행 상태 열: 찾은 기록의 상태 글과 등록 시각, 조회가 실패하면 알리고 [상태 조회]', async () => {
     api.testRunStatus.mockImplementationOnce(() => ok({ now: 5000, items: [
       { eqpId: 'A01', outcome: 'accepted', detail: null, sentAt: 4000, found: 1, status: 'StartScenario', retry: '0/2/10', txnSeq: 4100, createDate: '2026-11-18T10:20:30.123+09:00' },
       { eqpId: 'A02', outcome: 'accepted', detail: null, sentAt: 4000, found: 2, status: 'Success', retry: '0/2/10', txnSeq: 4200, createDate: '2026-11-18T10:20:31.000+09:00' }

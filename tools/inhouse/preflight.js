@@ -229,9 +229,9 @@ const TEST_RUN_NUMBERS = [
 const ACTION_RELAY_WAIT_MS = 10000 // InterfaceServer 가 안에서 기다리는 시간
 function checkTestRunEnv(env) {
   if (env.SE_TEST_RUN !== '1') {
-    return [warn('TEST_RUN_OFF', 'SE_TEST_RUN 이 1 이 아니다 — [시험 실행] 버튼이 꺼지고 API 도 막힌다. 시험 실행을 쓰지 않으면 그대로 둔다(쓰려면 1)')]
+    return [warn('TEST_RUN_OFF', 'SE_TEST_RUN 이 1 이 아니다 — [시나리오 실행] 버튼이 꺼지고 API 도 막힌다. 시나리오 실행을 쓰지 않으면 그대로 둔다(쓰려면 1)')]
   }
-  const out = [warn('TEST_RUN_ON', 'SE_TEST_RUN=1 — 시험 실행이 켜져 있다. 누르면 실제 설비에서 시나리오가 돈다 — 시험해도 되는 설비와 해가 없는 시나리오로만 한다(README "시험 실행을 쓸 때")')]
+  const out = [warn('TEST_RUN_ON', 'SE_TEST_RUN=1 — 시나리오 실행이 켜져 있다. 누르면 실제 설비에서 시나리오가 돈다 — 시험해도 되는 설비와 해가 없는 시나리오로만 한다(README "시나리오 실행을 쓸 때")')]
   const valid = {}
   for (const [name, min, max, fallback, code] of TEST_RUN_NUMBERS) {
     const raw = text(env[name])

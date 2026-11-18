@@ -162,7 +162,7 @@ export function isFinal(item, now) {
 export const needsStatus = (item, now) => !isFinal(item, now)
 // 다시 읽을 간격(ms). elapsed = 마지막 요청 뒤 지난 시간. null 이면 그만 읽는다
 export function pollDelay(elapsed) {
-  if (elapsed < 60_000) return 3000
+  if (elapsed < 60_000) return 5000
   return elapsed < 15 * 60_000 ? 10_000 : null
 }
 // 실행 상태 조회의 답을 줄에 덮는다. 응답을 놓친 줄(lost)은 서버의 요청 기록으로 결과를 고친다 — 아직 보내는 중(sending)이면 모름 그대로.

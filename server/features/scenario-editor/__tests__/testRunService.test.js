@@ -360,7 +360,7 @@ describe('request — 설비 한 대의 실행 요청', () => {
   it('요청마다 로그 한 줄 — 직접 친 사유 글은 남기지 않는다', async () => {
     const t = setup()
     await run(t, { reason: { kind: 'other', text: '비밀스러운 사유' } })
-    const line = t.lines.find((l) => l.includes('시험 실행'))
+    const line = t.lines.find((l) => l.includes('시나리오 실행 user='))
     expect(line).toContain('user=sew_multi')
     expect(line).toContain('run=run-12345678')
     expect(line).toContain('SEWCVD/SEWMODELA/RUN_A')

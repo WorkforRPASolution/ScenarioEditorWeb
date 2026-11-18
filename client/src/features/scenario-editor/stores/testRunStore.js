@@ -18,7 +18,7 @@ import {
 const STORE_KEY = 'se-test-run'
 const BUSY_RETRIES = 20
 const BUSY_WAIT_MS = 1000
-const STATUS_GAP_MS = 3000 // 보내는 동안 실행 상태를 읽는 간격
+const STATUS_GAP_MS = 5000 // 보내는 동안 실행 상태를 읽는 간격
 const RECIPIENTS_WAIT_MS = 300 // 설비를 고르는 동안 수신인을 묶어서 받는다
 const IDLE = Object.freeze({ status: 'idle', message: '' })
 const LIMITS = Object.freeze({ maxEquipment: 200, recentMin: 10 })
@@ -44,7 +44,8 @@ export const useTestRunStore = defineStore('scenarioEditorTestRun', () => {
   const startStep = ref('1')
   const stage = ref('pick') // pick · confirm · running · done
   const again = ref(false)
-  // { id, process, model, name, startStep, startDelay, items, halt, now, nowAt, lastSentAt, statusFailed }
+  // { id, process, model, name, startStep, startDelay, items, halt, now, nowAt, lastSentAt, statusFailed, autoEnded }
+  // autoEnded = 15분이 지나 저절로 읽기를 멈췄고 끝나지 않은 줄이 남았다(화면이 알린다 — [상태 조회] 로만 읽는다)
   const run = shallowRef(null)
   let touched = false // 사용자가 무엇이든 골랐는가 — 그 뒤에는 열 때 처음 값을 넣지 않는다
   let listSeq = 0
@@ -256,7 +257,7 @@ export const useTestRunStore = defineStore('scenarioEditorTestRun', () => {
     const base = { runId: newRunId(), process, model, name, startStep: step, reason }
     const againFor = again.value ? confirmedRecent : new Set()
     run.value = {
-      id: base.runId, process, model, name, startStep: step, startDelay: info.value.data?.startDelay ?? 0, halt: null, now: null, nowAt: null, lastSentAt: Date.now(), statusFailed: false,
+      id: base.runId, process, model, name, startStep: step, startDelay: info.value.data?.startDelay ?? 0, halt: null, now: null, nowAt: null, lastSentAt: Date.now(), statusFailed: false, autoEnded: false,
       items: [...picked.value].sort(byId).map((eqpId) => ({ eqpId, outcome: 'waiting', detail: null, lost: false, sentAt: undefined, found: 0, status: null, retry: null, txnSeq: null, createDate: null }))
     }
     stage.value = 'running'
@@ -316,7 +317,7 @@ export const useTestRunStore = defineStore('scenarioEditorTestRun', () => {
     const r = run.value
     if (!r || reading === r.id) return
     const need = r.items.filter((x) => needsStatus(x, nowOf(r)))
-    if (!need.length) return
+    if (!need.length) { if (r.autoEnded) run.value = { ...r, autoEnded: false }; return }
     reading = r.id
     try {
       const pinned = Object.fromEntries(need.filter((x) => x.found && Number.isFinite(x.txnSeq)).map((x) => [x.eqpId, x.txnSeq]))
@@ -334,7 +335,10 @@ export const useTestRunStore = defineStore('scenarioEditorTestRun', () => {
     if (stage.value !== 'done') return // 보내는 동안에는 보내는 쪽이 간격을 잰다
     const cur = run.value
     const delay = pollDelay(Date.now() - cur.lastSentAt)
-    if (delay !== null && cur.items.some((x) => needsStatus(x, nowOf(cur)))) schedule(delay)
+    const more = cur.items.some((x) => needsStatus(x, nowOf(cur)))
+    const ended = delay === null && more
+    if (cur.autoEnded !== ended) run.value = { ...cur, autoEnded: ended }
+    if (delay !== null && more) schedule(delay)
   }
 
   // [다시 고르기]: 고르기로 돌아가고 접수·모름이었던 설비의 선택을 푼다. 설비·방금 요청을 다시 읽는다.
