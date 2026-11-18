@@ -130,6 +130,13 @@ describe('webRepository 시험 실행 요청 기록 (P5)', () => {
     const c = { sort: vi.fn(() => c), limit: vi.fn(() => c), maxTimeMS: vi.fn(() => c), toArray: vi.fn(async () => rows) }
     return c
   }
+  it('findRivalTestRuns: 같은 사용자가 같은 시나리오·설비들에 한 다른 실행의 기록(보냈거나 보냈을 수 있는 것) — 실행 기록을 요청마다 나눠 주는 데 쓴다', async () => {
+    const { col, repo } = fake()
+    const c = cursor([])
+    col(RUNS).find.mockReturnValue(c)
+    await repo.findRivalTestRuns({ user: 'u', runId: 'run-12345678', process: 'P', model: 'M', name: 'N', eqpIds: ['A', 'B'], since: 500 })
+    expect(col(RUNS).find.mock.calls[0][0]).toEqual({ user: 'u', runId: { $ne: 'run-12345678' }, process: 'P', model: 'M', name: 'N', eqpId: { $in: ['A', 'B'] }, sentAt: { $gte: 500 }, state: { $in: ['sending', 'accepted', 'unknown'] } })
+  })
   it('인덱스: (runId, eqpId) 유일 · (eqpId, name, sentAt) · createdAt 90일 뒤 지움', async () => {
     const { col, repo } = fake()
     await repo.ensureIndexes()

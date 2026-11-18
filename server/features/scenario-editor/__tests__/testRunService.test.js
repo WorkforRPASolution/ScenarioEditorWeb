@@ -58,12 +58,13 @@ function setup(over = {}) {
     findRecentTestRuns: async (q) => { note('findRecentTestRuns', [q]); return state.recent.filter((r) => !q.eqpIds || q.eqpIds.includes(r.eqpId)) },
     insertTestRun: async (doc) => { note('insertTestRun', [doc]); return { inserted: state.inserted } },
     updateTestRun: async (...a) => { note('updateTestRun', a); if (state.updateError) throw state.updateError },
-    findTestRuns: async (...a) => { note('findTestRuns', a); return state.runs }
+    findTestRuns: async (...a) => { note('findTestRuns', a); return state.runs },
+    findRivalTestRuns: async (q) => { note('findRivalTestRuns', [q]); return state.rivals ?? [] }
   }
   const hash = { hkeys: async (key) => { note('hkeys', [key]); return state.fields } }
   const gridfs = { findVersionStats: async (p, m, versions) => { note('findVersionStats', [p, m, versions]); return new Map(versions.map((v) => [v.name, { stepCount: state.stepCount, sizeBytes: 1 }])) } }
   const scopes = {
-    assertAllowed: async (user, p, m) => { note('assertAllowed', [user.singleid, p, m]); if (!state.allowed) throw seError(403, 'PROCESS_FORBIDDEN', '공정 권한 밖의 공정·모델입니다') },
+    assertAllowed: async (user, p, m) => { note('assertAllowed', [user.singleid, p, m, user.processRaw]); if (!state.allowed) throw seError(403, 'PROCESS_FORBIDDEN', '공정 권한 밖의 공정·모델입니다') },
     scopeFor: async () => ({ valid: state.cached })
   }
   const client = { send: async (req) => { note('send', [req]); if (state.sendGate) await state.sendGate; if (state.sendError) throw state.sendError; return state.received } }
@@ -85,7 +86,7 @@ describe('equipment — 고른 공정·모델의 설비', () => {
       { eqpId: 'SEWT_CVD_OFF', line: 'SEWLINE1', ipAddr: '10.99.1.1', ipAddrL: '', onoff: 'unreadable' }
     ])
     expect(out.limits).toEqual({ maxEquipment: 200, recentMin: 10 })
-    expect(t.of('assertAllowed')[0].args).toEqual(['sew_multi', 'SEWCVD', 'SEWMODELA'])
+    expect(t.of('assertAllowed')[0].args.slice(0, 3)).toEqual(['sew_multi', 'SEWCVD', 'SEWMODELA'])
     expect(t.of('findOnoff')).toHaveLength(1)
     expect(t.of('findOnoff')[0].args[0]).toEqual(['SEWT_CVD_A01', 'SEWT_CVD_A02', 'SEWT_CVD_OFF'])
   })
@@ -214,6 +215,23 @@ describe('request — 설비 한 대의 실행 요청', () => {
     const t = setup({ userDocs: [{ ...USER_DOC, name: '새 이름' }] })
     await t.service.request({ ...USER, name: '캐시 이름' }, { ...REQ, '@UserInfo': '남의 이름 - other' })
     expect(JSON.parse(t.of('send')[0].args[0].body)['@UserInfo']).toBe('새 이름 - sew_multi')
+  })
+  it('공정 판단과 설비 범위도 다시 읽은 사용자로 한다 — 목록을 본 뒤 공정이 바뀌었으면 캐시의 공정으로 보내지 않는다', async () => {
+    const t = setup({ userDocs: [{ ...USER_DOC, process: 'SEWPHOTO' }] })
+    // 캐시의 사용자(USER)는 SEWCVD·SEWETCH 다. 다시 읽은 문서는 SEWPHOTO 뿐 — 공정 검사에 그 값이 가고, SEWCVD 설비는 범위 밖이 된다
+    expect(await run(t)).toEqual({ outcome: 'forbidden' })
+    expect(t.of('assertAllowed')[0].args).toEqual(['sew_multi', 'SEWCVD', 'SEWMODELA', 'SEWPHOTO'])
+    expect(t.of('send')).toHaveLength(0)
+  })
+  it('검사가 오래 걸려(20초 넘게) 브라우저가 포기했을 수 있으면 보내지 않는다 — 기록도 넣지 않는다', async () => {
+    const t = setup()
+    const realFresh = t.state.fresh
+    Object.defineProperty(t.state, 'fresh', { get() { t.state.now += 21_000; return realFresh } }) // 설비를 다시 읽는 데 21초
+    expect(await caught(run(t))).toMatchObject({ statusCode: 503, code: 'TEST_RUN_SLOW' })
+    expect(t.of('insertTestRun')).toHaveLength(0)
+    expect(t.of('send')).toHaveLength(0)
+    Object.defineProperty(t.state, 'fresh', { value: realFresh })
+    expect(await run(t, { runId: 'run-22222222' })).toEqual({ outcome: 'accepted' }) // 자리는 풀렸다
   })
   it('공정 권한 밖이면 403', async () => {
     const t = setup({ allowed: false })
@@ -381,7 +399,7 @@ describe('status — 내 실행의 요청 결과와 실행 상태', () => {
     expect(t.of('findTestRuns')[0].args).toEqual(['run-12345678', 'sew_multi'])
     expect(t.of('findRecoveries')).toHaveLength(1)
     // 시각 창: 가장 이른 sentAt − 여유 ~ 가장 늦은 doneAt + 10분
-    expect(t.of('findRecoveries')[0].args[0]).toEqual({ eqpIds: ['SEWT_CVD_A01', 'SEWT_CVD_A02'], from: NOW - 20_000 - 120_000, to: NOW - 9_000 + 600_000 })
+    expect(t.of('findRecoveries')[0].args[0]).toEqual({ eqpIds: ['SEWT_CVD_A01', 'SEWT_CVD_A02'], from: NOW - 20_000 - 120_000, to: NOW - 9_000 + 600_000, name: 'RUN_A' })
   })
   it('기록이 아직 없으면 found 0 · 상태 null. 남의 문서(@UserInfo·시작 스텝이 다름)는 고르지 않는다', async () => {
     const t = setup({ runs: [rec('SEWT_CVD_A01')], recoveries: [doc('SEWT_CVD_A01', NOW - 19_000, { params: { '@UserInfo': '남 - other', '@StartStep': '2', UserText: 'INSPECTION' } })] })
@@ -402,6 +420,24 @@ describe('status — 내 실행의 요청 결과와 실행 상태', () => {
     const out = await get(t, { runId: 'run-12345678', pinned: { SEWT_CVD_A01: NOW - 19_500 } })
     expect(t.of('findRecoveries')).toHaveLength(0)
     expect(out.items[0]).toMatchObject({ found: 0, status: null })
+  })
+  it('같은 사람의 앞선 실행(rival)에 더 가까운 문서는 이 실행의 것으로 보지 않는다 — 방금 다시 실행했을 때 앞 실행의 끝 상태가 붙지 않는다', async () => {
+    // 앞 실행이 60초 전에 같은 설비·시나리오·사유·시작 스텝으로 나갔고 그 문서는 NotStarted 로 끝났다. 새 실행의 문서는 아직 없다
+    const t = setup({
+      runs: [rec('SEWT_CVD_A01')],
+      rivals: [rec('SEWT_CVD_A01', { runId: 'run-00000000', sentAt: NOW - 80_000 }), rec('SEWT_CVD_A01', { runId: 'run-00000001', sentAt: NOW - 80_000, startStep: 1 })],
+      recoveries: [doc('SEWT_CVD_A01', NOW - 79_700, { status: 'NotStarted' })]
+    })
+    expect((await get(t)).items[0]).toMatchObject({ found: 0, status: null })
+    expect(t.of('findRivalTestRuns')[0].args[0]).toEqual({ user: 'sew_multi', runId: 'run-12345678', process: 'SEWCVD', model: 'SEWMODELA', name: 'RUN_A', eqpIds: ['SEWT_CVD_A01'], since: NOW - 20_000 - 120_000 - 600_000 })
+    // 새 실행의 문서가 생기면 그것을 고른다
+    t.state.recoveries = [doc('SEWT_CVD_A01', NOW - 79_700, { status: 'NotStarted' }), doc('SEWT_CVD_A01', NOW - 19_600)]
+    expect((await get(t)).items[0]).toMatchObject({ found: 1, status: 'Wait', txnSeq: NOW - 19_600 })
+  })
+  it('찾아 둔 줄(pinned)도 서버가 다시 가린다 — 남의 문서의 txn 을 줘도 집히지 않는다', async () => {
+    const theirs = doc('SEWT_CVD_A01', NOW - 19_500, { status: 'Success', params: { '@UserInfo': '남 - other', '@StartStep': '2', UserText: 'INSPECTION' } })
+    const t = setup({ runs: [rec('SEWT_CVD_A01')], recoveries: [theirs] })
+    expect((await get(t, { runId: 'run-12345678', pinned: { SEWT_CVD_A01: NOW - 19_500 } })).items[0]).toMatchObject({ found: 0, status: null, txnSeq: null })
   })
   it('연결 못 함(down)으로 끝난 줄은 실행 기록을 묻지 않는다. 실패·모름은 묻는다', async () => {
     const t = setup({ runs: [rec('SEWT_CVD_A01', { state: 'down' }), rec('SEWT_CVD_A02', { state: 'unknown' }), rec('SEWT_CVD_OFF', { state: 'failed', detail: '까닭' })] })

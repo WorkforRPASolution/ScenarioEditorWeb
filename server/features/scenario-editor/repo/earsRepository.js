@@ -127,8 +127,9 @@ function createEarsRepository(getDb, mongo) {
       .find({ process: key.process, eqpModel: key.model, scname: key.name }, { promoteValues: false, projection: { _id: 0, property: 1, scCategory: 1 } })
       .limit(3).maxTimeMS(RUN_MAX).toArray(),
     // 실행 기록 — 운영 인덱스 (eqpid, txn_seq)의 앞 두 칸을 탄다. 이름으로 hint 를 걸지 않는다(유일 인덱스가 세 칸으로 바뀔 예정 — ARS-044).
-    findRecoveries: ({ eqpIds, from, to }) => (eqpIds.length
-      ? col('EQP_AUTO_RECOVERY').find({ eqpid: { $in: eqpIds }, txn_seq: { $gte: from, $lte: to } }, { projection: RECOVERY_FIELDS }).limit(RECOVERY_LIMIT).maxTimeMS(RUN_MAX).toArray()
+    // 그 시나리오의 편집기 실행(SE)만 — 알람 조치가 많은 설비에서 한도(1,000건)에 내 문서가 밀려나지 않게 좁힌다.
+    findRecoveries: ({ eqpIds, from, to, name }) => (eqpIds.length
+      ? col('EQP_AUTO_RECOVERY').find({ eqpid: { $in: eqpIds }, txn_seq: { $gte: from, $lte: to }, ears_code: name, trigger_by: 'SE' }, { projection: RECOVERY_FIELDS }).limit(RECOVERY_LIMIT).maxTimeMS(RUN_MAX).toArray()
       : Promise.resolve([])),
     findRecoveriesAt: (pairs) => (pairs.length
       ? col('EQP_AUTO_RECOVERY').find({ $or: pairs.map((p) => ({ eqpid: p.eqpId, txn_seq: p.txnSeq, ears_code: p.name })) }, { projection: RECOVERY_FIELDS }).maxTimeMS(RUN_MAX).toArray()

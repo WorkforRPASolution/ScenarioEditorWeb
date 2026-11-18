@@ -174,7 +174,9 @@ const toNum = (v) => {
 }
 const textOrNull = (v) => (typeof v === 'string' ? v : null)
 
-function pickRecovery(docs, rec, skewMs) {
+// rivals = 같은 사람이 같은 설비·시나리오·시작 스텝·사유로 한 **다른 요청**의 보낸 시각들 — 그쪽에 더 가까운 문서는 그 요청의 것이다.
+// (방금 다시 실행했을 때, 새 실행의 문서가 아직 없는 사이 앞 실행의 끝난 문서가 새 실행의 것으로 보이지 않게)
+function pickRecovery(docs, rec, skewMs, rivals = []) {
   const hits = []
   for (const d of Array.isArray(docs) ? docs : []) {
     if (!isObj(d) || d.eqpid !== rec.eqpId || d.ears_code !== rec.name || d.trigger_by !== 'SE' || !isObj(d.params)) continue
@@ -182,6 +184,8 @@ function pickRecovery(docs, rec, skewMs) {
     if (p['@UserInfo'] !== rec.userInfo || p['@StartStep'] !== String(rec.startStep) || p.UserText !== rec.userText) continue
     const txn = toNum(d.txn_seq)
     if (txn === null || txn < rec.sentAt - skewMs) continue
+    const mine = Math.abs(txn - rec.sentAt)
+    if (rivals.some((at) => Math.abs(txn - at) < mine)) continue
     hits.push({ d, txn })
   }
   if (!hits.length) return { found: 0, doc: null }

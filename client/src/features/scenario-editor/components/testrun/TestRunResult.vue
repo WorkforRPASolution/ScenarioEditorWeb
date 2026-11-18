@@ -15,7 +15,8 @@ const running = computed(() => run.stage === 'running')
 const progress = computed(() => {
   const p = { done: sum.value.done, total: sum.value.total }
   if (running.value) return t('SEW_RUN_PROGRESS_SENDING', p)
-  return r.value?.halt ? t('SEW_RUN_PROGRESS_STOPPED', p) : t('SEW_RUN_PROGRESS_DONE', p)
+  // 멈췄을 때는 보내지 않은 설비를 세지 않는다("멈췄습니다 3 / 5")
+  return r.value?.halt ? t('SEW_RUN_PROGRESS_STOPPED', { done: sum.value.done - sum.value.skipped, total: sum.value.total }) : t('SEW_RUN_PROGRESS_DONE', p)
 })
 const TONES = { accepted: 'ok', failed: 'bad', unknown: 'warn', down: 'bad', sending: 'run' }
 const now = computed(() => (r.value?.now === null || r.value?.now === undefined ? Date.now() : r.value.now + (Date.now() - r.value.nowAt)))

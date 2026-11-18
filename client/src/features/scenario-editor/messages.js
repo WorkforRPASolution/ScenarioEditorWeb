@@ -66,6 +66,7 @@ export const MESSAGES = {
   SEW_ERR_TEST_RUN_DUPLICATE: '이 실행에서 이미 보낸 설비입니다.',
   SEW_ERR_TEST_RUN_BUSY: '다른 실행 요청을 보내고 있습니다. 잠시 뒤 다시 해 보세요.',
   SEW_ERR_TEST_RUN_STATUS_FAILED: '실행 상태를 읽지 못했습니다.',
+  SEW_ERR_TEST_RUN_SLOW: '서버의 검사가 오래 걸려 실행 요청을 보내지 않았습니다. 잠시 뒤 다시 해 보세요.',
   // 시험 실행 창(P5 설계 §4)
   SEW_RUN_OPEN: '시험 실행',
   SEW_RUN_OFF_TEST_RUN_DISABLED: '이 서버는 시험 실행을 꺼 두었습니다(서버 설정 SE_TEST_RUN).',
@@ -166,6 +167,7 @@ export const MESSAGES = {
   SEW_RUN_MAIL_SKIP: '{list}일 때는 메일을 보내지 않는 시나리오입니다.',
   SEW_RUN_WHY_NO_SCENARIO: '시나리오를 고르세요.',
   SEW_RUN_WHY_LOADING: '읽는 중입니다.',
+  SEW_RUN_WHY_INFO_FAILED: '시나리오 정보를 읽지 못했습니다. [새로 고침] 을 눌러 보세요.',
   SEW_RUN_WHY_NO_EQP: '설비를 고르세요.',
   SEW_RUN_WHY_LIMIT: '한 번에 {max}대까지 실행할 수 있습니다.',
   SEW_RUN_CANNOT: '실행할 수 없습니다: {why}',

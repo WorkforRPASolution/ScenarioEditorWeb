@@ -205,7 +205,7 @@ test('② 연 시나리오가 미리 골라진다 · 모델을 바꾸면 시나�
   await tid(page, 'se-run-confirm-ok').click()
   await expect(tid(page, 'se-run-halt')).toHaveText('접수 여부를 모르는 설비가 연달아 세 대라 멈췄습니다. 남은 설비는 보내지 않았습니다.')
   await expect(tid(page, 'se-run-outcome')).toHaveText(['접수 여부 모름', '접수 여부 모름', '접수 여부 모름', '보내지 않음', '보내지 않음'])
-  await expect(tid(page, 'se-run-progress')).toHaveText('멈췄습니다 5 / 5')
+  await expect(tid(page, 'se-run-progress')).toHaveText('멈췄습니다 3 / 5')
   await expect(tid(page, 'se-run-result-summary')).toHaveText('요청 접수 0 · 보내지 않음 2 · 실패 0 · 모름 3')
   await control('PUT', '/server/on')
   // [다시 고르기]: 모름이었던 세 대의 선택이 풀리고 보내지 않은 두 대만 남는다

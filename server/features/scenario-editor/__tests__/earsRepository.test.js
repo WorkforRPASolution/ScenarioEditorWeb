@@ -266,11 +266,12 @@ describe('earsRepository 시험 실행 읽기 (P5)', () => {
       options: { promoteValues: false, projection: { _id: 0, property: 1, scCategory: 1 } }, limit: 3, maxTimeMS: RUN_MS
     })
   })
-  it('findRecoveries: 설비들과 txn_seq 범위로 조회 한 번, 1,000건까지 — hint 를 걸지 않는다', async () => {
+  it('findRecoveries: 설비들과 txn_seq 범위 + 그 시나리오의 SE 실행만 — 조회 한 번, 1,000건까지, hint 를 걸지 않는다', async () => {
     const f = fakeDb({ rows: [] })
-    await repoOf(f).findRecoveries({ eqpIds: ['A', 'B'], from: 100, to: 200 })
+    await repoOf(f).findRecoveries({ eqpIds: ['A', 'B'], from: 100, to: 200, name: 'RUN_A' })
     const c = f.calls[0]
-    expect(c).toMatchObject({ name: 'EQP_AUTO_RECOVERY', filter: { eqpid: { $in: ['A', 'B'] }, txn_seq: { $gte: 100, $lte: 200 } }, limit: 1000, maxTimeMS: RUN_MS })
+    // 알람 조치가 많은 설비에서 1,000건 한도에 내 문서가 밀려나지 않게 시나리오·SE 로 좁힌다(인덱스는 앞 두 칸을 탄다)
+    expect(c).toMatchObject({ name: 'EQP_AUTO_RECOVERY', filter: { eqpid: { $in: ['A', 'B'] }, txn_seq: { $gte: 100, $lte: 200 }, ears_code: 'RUN_A', trigger_by: 'SE' }, limit: 1000, maxTimeMS: RUN_MS })
     expect(c.options.hint).toBeUndefined()
     expect(c.options.projection).toEqual({ _id: 0, eqpid: 1, txn_seq: 1, ears_code: 1, trigger_by: 1, status: 1, retry: 1, create_date: 1, params: 1 })
     const empty = fakeDb()
@@ -286,10 +287,19 @@ describe('earsRepository 시험 실행 읽기 (P5)', () => {
     expect(await repoOf(empty).findRecoveriesAt([])).toEqual([])
     expect(empty.calls).toHaveLength(0)
   })
-  it('운영 DB 에 쓰는 함수를 더하지 않았다', () => {
-    const names = Object.keys(repoOf(fakeDb()))
-    for (const n of ['findEquipmentFresh', 'findOnoff', 'findRunPropertyDocs', 'findRecoveries', 'findRecoveriesAt']) expect(names).toContain(n)
-    expect(names.filter((n) => /recover/i.test(n) && !/^find/.test(n))).toEqual([])
+  it('시험 실행이 부르는 저장소 함수는 모두 읽기다 — 운영 DB 에 쓰지 않는다', async () => {
+    const f = fakeDb({ rows: [] })
+    const r = repoOf(f)
+    await r.findEquipmentFresh('A')
+    await r.findOnoff(['A'])
+    await r.findRunPropertyDocs(key)
+    await r.findRecoveries({ eqpIds: ['A'], from: 1, to: 2, name: 'S' })
+    await r.findRecoveriesAt([{ eqpId: 'A', txnSeq: 1, name: 'S' }])
+    await r.findEmailRules('S')
+    await r.findEmailInfos(['C'])
+    await r.findUsers('u')
+    expect(f.calls.length).toBeGreaterThanOrEqual(9)
+    expect([...new Set(f.calls.map((c) => c.op))]).toEqual(['find'])
   })
 })
 

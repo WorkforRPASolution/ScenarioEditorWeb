@@ -85,7 +85,7 @@ describe('messages', () => {
   it('시험 실행(P5): 서버 code 와 설비 하나의 결과(OUTCOMES)·화면의 결과 셋에 모두 문구가 있다', () => {
     const codes = serverErrorCodes()
     expect(codes).toEqual(expect.arrayContaining(['TEST_RUN_DISABLED', 'TEST_RUN_DEV_USER', 'TEST_RUN_USER_AMBIGUOUS', 'TEST_RUN_PROPERTY', 'TEST_RUN_NAME', 'TEST_RUN_SCENARIO_OFF',
-      'TEST_RUN_NOT_DEPLOYED', 'TEST_RUN_VERSION_UNREADABLE', 'TEST_RUN_START_STEP', 'TEST_RUN_LIMIT', 'TEST_RUN_DUPLICATE', 'TEST_RUN_BUSY', 'TEST_RUN_STATUS_FAILED']))
+      'TEST_RUN_NOT_DEPLOYED', 'TEST_RUN_VERSION_UNREADABLE', 'TEST_RUN_START_STEP', 'TEST_RUN_LIMIT', 'TEST_RUN_DUPLICATE', 'TEST_RUN_BUSY', 'TEST_RUN_STATUS_FAILED', 'TEST_RUN_SLOW']))
     // 200 응답 안의 outcome 은 위 시험이 보지 못한다 — 서버의 값 목록을 소스에서 읽어 견준다
     const src = readFileSync(join(__dirname, '../../../../../server/features/scenario-editor/domain/testRun.js'), 'utf8')
     const outcomes = /const OUTCOMES = \[([^\]]+)\]/.exec(src)[1].split(',').map((x) => x.trim().replace(/'/g, ''))

@@ -21,6 +21,8 @@ const STEP_COUNT_TTL_MS = 60_000
 const SENDING_STALE_MS = 60_000
 // CommandServer 는 받은 뒤 10분 안이면 늦게라도 등록·실행한다(설계 §3)
 const LATE_MS = 10 * 60_000
+// 검사(여러 번의 DB 읽기)가 이보다 오래 걸렸으면 보내지 않는다 — 브라우저는 30초에 포기한다. 포기한 뒤에 늦게 나가면 사용자가 모르는 실행이 된다.
+const SEND_DEADLINE_MS = 20_000
 // 실행 기록을 찾아볼 요청 결과(연결 못 함은 보내지 않았다)
 const LOOKUP_STATES = new Set(['accepted', 'failed', 'unknown', 'sending'])
 const RUN_ID = /^[A-Za-z0-9-]{8,64}$/
@@ -155,6 +157,7 @@ function createTestRunService({ repo, web, hash, gridfs, scopes, client, env = p
           return done({ outcome: 'recent', detail: { by: last.user, at: last.sentAt } })
         }
       }
+      if (now() - started > SEND_DEADLINE_MS) throw seError(503, 'TEST_RUN_SLOW', '검사가 오래 걸려 실행 요청을 보내지 않았습니다')
       const userInfo = userInfoOf(fresh)
       const userText = userTextOf(req.reason)
       const sentAt = now()
@@ -195,15 +198,16 @@ function createTestRunService({ repo, web, hash, gridfs, scopes, client, env = p
     const seeks = lookups.filter((r) => !Object.prototype.hasOwnProperty.call(pinned, r.eqpId))
     let pinDocs = []
     let seekDocs = []
+    let rivals = []
     try {
       // 찾아 둔 줄은 정확히 집고, 나머지는 조회 한 번으로(설비들 + txn_seq 범위)
       if (pins.length) pinDocs = await repo.findRecoveriesAt(pins.map((r) => ({ eqpId: r.eqpId, txnSeq: pinned[r.eqpId], name: r.name })))
       if (seeks.length) {
-        seekDocs = await repo.findRecoveries({
-          eqpIds: seeks.map((r) => r.eqpId),
-          from: Math.min(...seeks.map((r) => r.sentAt)) - skewMs,
-          to: Math.max(...seeks.map((r) => r.doneAt ?? at)) + LATE_MS
-        })
+        const from = Math.min(...seeks.map((r) => r.sentAt)) - skewMs
+        const { process, model, name } = records[0] // 한 실행의 기록은 시나리오가 같다
+        seekDocs = await repo.findRecoveries({ eqpIds: seeks.map((r) => r.eqpId), from, to: Math.max(...seeks.map((r) => r.doneAt ?? at)) + LATE_MS, name })
+        // 같은 사람이 이 설비·시나리오에 한 다른 실행 — 그쪽에 더 가까운 문서는 그 실행의 것이다(pickRecovery 의 rivals)
+        rivals = await web.findRivalTestRuns({ user: user.singleid, runId: body.runId, process, model, name, eqpIds: seeks.map((r) => r.eqpId), since: from - LATE_MS })
       }
     } catch (e) {
       if (log) log.warn(`시험 실행 상태 조회 실패 user=${user.singleid} run=${body.runId}: ${(e && e.code) || (e && e.message) || e}`)
@@ -218,7 +222,8 @@ function createTestRunService({ repo, web, hash, gridfs, scopes, client, env = p
         const p = pickRecovery(exact, recOf(r), skewMs)
         if (p.doc) found = { found: 1, ...p.doc }
       } else if (seeks.includes(r)) {
-        const p = pickRecovery(seekDocs, recOf(r), skewMs)
+        const others = rivals.filter((x) => x.eqpId === r.eqpId && x.startStep === r.startStep && x.userText === r.userText).map((x) => x.sentAt)
+        const p = pickRecovery(seekDocs, recOf(r), skewMs, others)
         if (p.doc) found = { found: p.found, ...p.doc }
       }
       const outcome = r.state === 'sending' && at - r.sentAt > SENDING_STALE_MS ? 'unknown' : r.state

@@ -79,8 +79,9 @@ export function openRelation(sel, opened) {
 }
 
 // [실행] 이 꺼지는 까닭 → { key, params? } | null (버튼의 title 과 바닥 줄에 보인다)
-export function blockReason({ name, loading, info, picked, max, reasonErr, stepErr }) {
+export function blockReason({ name, loading, info, infoFailed = false, picked, max, reasonErr, stepErr }) {
   if (!name) return { key: 'SEW_RUN_WHY_NO_SCENARIO' }
+  if (infoFailed) return { key: 'SEW_RUN_WHY_INFO_FAILED' }
   if (loading || !info) return { key: 'SEW_RUN_WHY_LOADING' }
   if (info.blocks?.length) return { key: `SEW_ERR_${info.blocks[0]}` }
   if (!picked) return { key: 'SEW_RUN_WHY_NO_EQP' }
@@ -98,7 +99,8 @@ const NOT_SENT = ['off', 'recent', 'forbidden', 'mismatch', 'badValue', 'down', 
 
 export function summarize(items) {
   const n = (list) => items.filter((x) => list.includes(x.outcome)).length
-  return { total: items.length, done: items.length - n(PENDING), accepted: n(['accepted']), notSent: n(NOT_SENT), failed: n(['failed']), unknown: n(['unknown']) }
+  // skipped = 중지·멈춤으로 보내지 않은 줄(notSent 에도 든다) — "멈췄습니다 n / 전체" 는 이것을 빼고 센다
+  return { total: items.length, done: items.length - n(PENDING), accepted: n(['accepted']), notSent: n(NOT_SENT), failed: n(['failed']), unknown: n(['unknown']), skipped: n(['skipped']) }
 }
 // 접수 여부 모름·연결 못 함이 연달아 세 번이면 남은 설비를 보내지 않는다(CommandServer 가 죽어 있으면 설비마다 5~12초씩 기다린다)
 export function shouldStop(items, limit = 3) {

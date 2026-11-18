@@ -219,6 +219,18 @@ describe('pickRecovery — 내 요청의 실행 기록 고르기', () => {
     expect(r.found).toBe(3)
     expect(r.doc).toMatchObject({ status: 'StartScenario', txnSeq: 1_000_900 })
   })
+  it('같은 사람이 같은 설비·시나리오에 한 다른 요청(rivals)에 더 가까운 문서는 그 요청의 것이다 — 앞선 실행의 끝난 기록을 새 실행의 것으로 보지 않는다', () => {
+    // 앞 실행 A(sentAt 940_000)의 문서가 940_300 에 있다. 새 실행 B(REC, sentAt 1_000_000)의 문서는 아직 없다
+    const old = doc({ txn_seq: Long.fromNumber(940_300), status: 'NotStarted' })
+    expect(pickRecovery([old], REC, SKEW)).toMatchObject({ found: 1 }) // rivals 를 모르면 뽑힌다(여유 안이라)
+    expect(pickRecovery([old], REC, SKEW, [940_000])).toEqual({ found: 0, doc: null })
+    // B 의 문서가 생기면 그것만 B 의 것이다
+    const mine = doc({ txn_seq: Long.fromNumber(1_000_400), status: 'Wait' })
+    expect(pickRecovery([old, mine], REC, SKEW, [940_000])).toMatchObject({ found: 1, doc: { status: 'Wait', txnSeq: 1_000_400 } })
+    // 뒤에 한 요청(rival 이 더 늦다)의 문서도 내 것이 아니다. 같은 거리면 내 것으로 둔다
+    expect(pickRecovery([doc({ txn_seq: 1_060_200 })], REC, SKEW, [1_060_000]).found).toBe(0)
+    expect(pickRecovery([doc({ txn_seq: 1_030_000 })], REC, SKEW, [1_060_000]).found).toBe(1)
+  })
   it('txn_seq 를 수로 읽지 못하는 문서·문서가 아닌 것은 뺀다', () => {
     expect(pickRecovery([doc({ txn_seq: 'x' }), null, 3], REC, SKEW).found).toBe(0)
     expect(pickRecovery(undefined, REC, SKEW)).toEqual({ found: 0, doc: null })

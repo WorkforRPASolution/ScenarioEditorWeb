@@ -142,6 +142,27 @@ describe('고르기와 비우기', () => {
     expect(store.targets.message).toBeTruthy()
     expect(store.scenarios.status).toBe('ready')
   })
+  it('모델을 바꾸면 앞 모델의 설비 줄을 바로 비운다. 설비를 다시 읽지 못하면 선택도 비운다', async () => {
+    await ready()
+    store.click('A01', {})
+    const slow = defer()
+    api.testRunEquipment.mockImplementationOnce(() => slow.promise)
+    store.setModel('M2')
+    expect(store.targets.items).toEqual([]) // 읽는 동안 앞 모델의 줄이 남아 눌리지 않는다
+    slow.resolve({ data: { data: { equipment: EQP, limits: { maxEquipment: 200, recentMin: 10 } } } })
+    await flushPromises()
+    store.click('A01', {})
+    api.testRunEquipment.mockImplementationOnce(() => fail(503, 'UPSTREAM_DOWN'))
+    store.reload()
+    await flushPromises()
+    expect([store.targets.status, store.targets.items, [...store.picked]]).toEqual(['error', [], []])
+  })
+  it('시나리오 정보를 읽지 못했으면 [실행] 의 까닭이 "읽는 중" 이 아니라 읽지 못했다는 것이다', async () => {
+    api.testRunScenario.mockImplementationOnce(() => fail(503, 'UPSTREAM_DOWN'))
+    await ready()
+    store.click('A01', {})
+    expect(store.block).toEqual({ key: 'SEW_RUN_WHY_INFO_FAILED' })
+  })
   it('설비 고르기: 줄·더하기·범위·머리 칸 — OFF 설비는 골라지지 않고, 검색으로 가려진 선택은 남는다', async () => {
     await ready()
     store.click('A01', {})
@@ -179,6 +200,13 @@ describe('편집기에 연 시나리오와의 관계', () => {
     store.setName('RUN_OFF')
     expect(store.relation).toBe('none')
   })
+  it('연 뒤에 다른 사람이 새 판을 배포했으면(현재 판의 crtime 이 다르다) 현재 판 그대로가 아니다 — 스텝 설명을 보이지 않는다', async () => {
+    editor.skeleton = { process: 'P1', model: 'M1', name: 'RUN_A', version: { crtime: 1500, isCurrent: true }, steps: [{ uid: 's0', descriptionToEmail: '옛 1번', notes: [] }] }
+    await ready()
+    expect(store.info.data.current.crtime).toBe(2000)
+    expect(store.relation).toBe('old')
+    expect(store.stepDesc).toBeNull()
+  })
   it('저장하지 않은 고침이 있으면 dirty', async () => {
     editor.skeleton = { process: 'P1', model: 'M1', name: 'RUN_A', version: { crtime: 2000, isCurrent: true }, steps: [] }
     const edit = useEditStore()
@@ -196,7 +224,7 @@ describe('실행', () => {
   it('확인을 거쳐 설비 ID 순으로 한 번에 하나씩 보낸다 — 실행마다 같은 runId, 사유·시작 스텝·again 을 싣는다', async () => {
     await picked(['A03', 'A01'])
     store.reasonKind = 'other'; store.reasonText = ' 점검 '; store.startStep = '2'
-    store.ask()
+    await store.ask()
     expect(store.stage).toBe('confirm')
     const gate = defer()
     api.testRunRequest.mockImplementationOnce(() => gate.promise)
@@ -217,36 +245,51 @@ describe('실행', () => {
   })
   it('막혀 있으면 확인으로 넘어가지 않는다', async () => {
     await ready()
-    store.ask()
+    await store.ask()
     expect(store.stage).toBe('pick')
   })
   it('확인 창의 "방금 요청한 설비에도 다시 보낸다" 를 켜면 again 으로 보낸다. 방금 요청한 설비를 알려 준다', async () => {
     api.testRunScenario.mockImplementation(() => ok({ ...INFO, recent: [{ eqpId: 'A02', by: 'kim', at: 4000 }, { eqpId: 'A04', by: 'lee', at: 4100 }] }))
     await picked(['A01', 'A02'])
     expect(store.recentPicked).toEqual([{ eqpId: 'A02', by: 'kim', at: 4000 }])
-    store.ask(); store.again = true
+    await store.ask(); store.again = true
     await store.start()
-    expect(api.testRunRequest.mock.calls.map((c) => c[0].again)).toEqual([true, true])
+    // 확인 창에 보인 설비(A02)에만 again 을 싣는다 — 보이지 않은 설비(A01)는 그 사이 누가 요청했어도 서버의 "방금 요청함" 이 막는다
+    expect(api.testRunRequest.mock.calls.map((c) => [c[0].eqpId, c[0].again])).toEqual([['A01', false], ['A02', true]])
+  })
+  it('확인으로 넘어갈 때 시나리오 정보를 다시 읽는다 — 그 사이 다른 사람이 요청한 설비가 확인 창에 보이고, 그 사이 막혔으면 넘어가지 않는다', async () => {
+    await picked(['A01', 'A02'])
+    expect(store.recentPicked).toEqual([])
+    api.testRunScenario.mockImplementation(() => ok({ ...INFO, recent: [{ eqpId: 'A01', by: 'lee', at: 4500 }] }))
+    await store.ask()
+    expect(store.stage).toBe('confirm')
+    expect(store.recentPicked).toEqual([{ eqpId: 'A01', by: 'lee', at: 4500 }])
+    store.cancel()
+    api.testRunScenario.mockImplementation(() => ok({ ...INFO, isEnabled: false, blocks: ['TEST_RUN_SCENARIO_OFF'] }))
+    await store.ask()
+    expect(store.stage).toBe('pick')
+    expect(store.block).toEqual({ key: 'SEW_ERR_TEST_RUN_SCENARIO_OFF' })
   })
   it('설비마다의 결과(보내지 않음·실패)는 그대로 적고 다음 설비로 간다', async () => {
     api.testRunRequest.mockImplementationOnce(() => ok({ outcome: 'off' })).mockImplementationOnce(() => ok({ outcome: 'failed', detail: '까닭' })).mockImplementationOnce(() => ok({ outcome: 'recent', detail: { by: 'kim', at: 1 } }))
     await picked()
-    store.ask(); await store.start()
+    await store.ask(); await store.start()
     expect(store.run.items.map((x) => [x.outcome, x.detail ?? null])).toEqual([['off', null], ['failed', '까닭'], ['recent', { by: 'kim', at: 1 }]])
     expect(store.run.halt).toBeNull()
   })
   it('응답을 받지 못한 설비(시간 초과·끊김)는 접수 여부 모름 + lost 로 두고 다시 보내지 않는다', async () => {
     api.testRunRequest.mockImplementationOnce(() => Promise.reject({ code: 'ECONNABORTED', request: {} }))
     await picked(['A01', 'A02'])
-    store.ask(); await store.start()
+    await store.ask(); await store.start()
     expect(store.run.items[0]).toMatchObject({ outcome: 'unknown', lost: true })
+    expect(Number.isFinite(store.run.items[0].sentAt)).toBe(true) // 서버의 기록이 없어도 화면이 보낸 시각으로 "등록 확인 중 → 아직 기록 없음 → 기록 없음" 이 흐른다
     expect(store.run.items[1].outcome).toBe('accepted')
     expect(api.testRunRequest).toHaveBeenCalledTimes(2)
   })
   it('모름·연결 못 함이 연달아 세 번이면 멈추고 남은 설비는 보내지 않는다', async () => {
     api.testRunRequest.mockImplementation(() => ok({ outcome: 'unknown' }))
     await picked(['A01', 'A02', 'A03', 'A04'])
-    store.ask(); await store.start()
+    await store.ask(); await store.start()
     expect(api.testRunRequest).toHaveBeenCalledTimes(3)
     expect(store.run.items.map((x) => x.outcome)).toEqual(['unknown', 'unknown', 'unknown', 'skipped'])
     expect(store.run.halt).toEqual({ key: 'SEW_RUN_HALT_STREAK' })
@@ -256,7 +299,7 @@ describe('실행', () => {
     vi.useFakeTimers()
     api.testRunRequest.mockImplementationOnce(() => fail(429, 'TEST_RUN_BUSY', { scope: 'server' })).mockImplementationOnce(() => fail(429, 'TEST_RUN_BUSY')).mockImplementation(() => ok({ outcome: 'accepted' }))
     await picked(['A01'])
-    store.ask()
+    await store.ask()
     const done = store.start()
     await vi.advanceTimersByTimeAsync(2100)
     await done
@@ -267,7 +310,7 @@ describe('실행', () => {
     api.testRunRequest.mockReset()
     api.testRunRequest.mockImplementation(() => fail(429, 'TEST_RUN_BUSY'))
     await picked(['A01', 'A02'])
-    store.ask()
+    await store.ask()
     const stuck = store.start()
     await vi.advanceTimersByTimeAsync(25_000)
     await stuck
@@ -278,7 +321,7 @@ describe('실행', () => {
   it('요청 전체가 막히는 오류(그 사이 권한을 잃음·시나리오가 꺼짐)는 그 자리에서 멈추고 까닭을 남긴다', async () => {
     api.testRunRequest.mockImplementationOnce(() => ok({ outcome: 'accepted' })).mockImplementationOnce(() => fail(409, 'TEST_RUN_SCENARIO_OFF'))
     await picked()
-    store.ask(); await store.start()
+    await store.ask(); await store.start()
     expect(store.run.items.map((x) => x.outcome)).toEqual(['accepted', 'skipped', 'skipped'])
     expect(store.run.halt.key).toBe('SEW_RUN_HALT_ERROR')
     expect(store.run.halt.params.message).toContain('꺼져')
@@ -288,7 +331,7 @@ describe('실행', () => {
     const gate = defer()
     api.testRunRequest.mockImplementationOnce(() => gate.promise)
     await picked()
-    store.ask()
+    await store.ask()
     const done = store.start()
     await flushPromises()
     store.stop()
@@ -302,7 +345,7 @@ describe('실행', () => {
     const gate = defer()
     api.testRunRequest.mockImplementationOnce(() => gate.promise)
     await picked(['A01', 'A02'])
-    store.ask()
+    await store.ask()
     const done = store.start()
     await flushPromises()
     expect(store.pending).toBe(2)
@@ -317,13 +360,13 @@ describe('실행', () => {
   it('[다시 고르기]: 고르기로 돌아가고 접수·모름이었던 설비의 선택을 푼다. 결과는 지운다', async () => {
     api.testRunRequest.mockImplementationOnce(() => ok({ outcome: 'accepted' })).mockImplementationOnce(() => ok({ outcome: 'failed', detail: 'x' })).mockImplementationOnce(() => ok({ outcome: 'off' }))
     await picked()
-    store.ask(); await store.start()
+    await store.ask(); await store.start()
     store.pickAgain()
     await flushPromises()
     expect(store.stage).toBe('pick')
     expect([...store.picked].sort()).toEqual(['A02', 'A03'])
     expect(store.run).toBeNull()
-    expect(api.testRunScenario).toHaveBeenCalledTimes(2) // 방금 요청을 다시 읽는다
+    expect(api.testRunScenario).toHaveBeenCalledTimes(3) // 고를 때 · 확인으로 넘어갈 때 · 다시 고를 때(방금 요청을 다시 읽는다)
   })
 })
 
@@ -372,7 +415,7 @@ describe('실행 상태 다시 읽기', () => {
   async function ran(ids = ['A01', 'A02']) {
     await ready()
     for (const id of ids) store.click(id, { toggle: true })
-    store.ask()
+    await store.ask()
     await store.start()
   }
   it('보낸 뒤 실행 상태를 읽어 줄에 덮는다 — 찾은 줄은 pinned 로 다시 묻는다', async () => {
@@ -415,6 +458,16 @@ describe('실행 상태 다시 읽기', () => {
     await store.refreshStatus()
     expect(store.run.statusFailed).toBe(false)
     expect(store.run.items[0].status).toBe('Success')
+  })
+  it('서버에 이 실행의 기록이 없다(404)는 실패가 아니다 — 응답을 놓친 요청이 기록 전에 끝난 것이다', async () => {
+    vi.useFakeTimers()
+    api.testRunRequest.mockImplementation(() => Promise.reject({ code: 'ECONNABORTED', request: {} }))
+    api.testRunStatus.mockImplementation(() => fail(404, 'NOT_FOUND'))
+    await ran(['A01'])
+    await vi.advanceTimersByTimeAsync(0)
+    expect(api.testRunStatus).toHaveBeenCalledTimes(1)
+    expect(store.run.statusFailed).toBe(false)
+    expect(store.run.items[0]).toMatchObject({ outcome: 'unknown', lost: true })
   })
   it('창을 닫으면 멈추고, 다시 열면 한 번 읽는다', async () => {
     vi.useFakeTimers()

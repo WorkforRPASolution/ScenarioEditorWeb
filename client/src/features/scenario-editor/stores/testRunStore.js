@@ -51,7 +51,8 @@ export const useTestRunStore = defineStore('scenarioEditorTestRun', () => {
   let eqpSeq = 0
   let infoSeq = 0
   let stopped = false
-  let reading = false
+  let reading = null // 실행 상태를 읽는 중인 실행(run.id) — 앞 실행의 늦은 조회가 새 실행의 다시 읽기를 막지 않게 실행마다 가른다
+  let confirmedRecent = new Set() // 확인 창에 "방금 요청함" 으로 보인 설비 — again 은 이 설비에만 싣는다
   let timer = null
   let mailSeq = 0
   let mailTimer = null
@@ -65,7 +66,10 @@ export const useTestRunStore = defineStore('scenarioEditorTestRun', () => {
     const sk = editor.skeleton
     if (!sk || sk.isNew) return null
     const s = edit.session
-    return { process: sk.process, model: sk.model, name: sk.name, unsaved: edit.unsavedCount, current: sk.version?.isCurrent === true && !s?.restoredFrom && !s?.fromDraft }
+    // 현재 판 그대로인가: 연 때 현재 판이었고, **지금도** 그 판이 현재 판이다(연 뒤에 다른 사람이 새 판을 배포했으면 스텝 번호가 다를 수 있다)
+    const nowCrtime = info.value.data?.current?.crtime
+    const current = sk.version?.isCurrent === true && !s?.restoredFrom && !s?.fromDraft && nowCrtime !== undefined && sk.version.crtime === nowCrtime
+    return { process: sk.process, model: sk.model, name: sk.name, unsaved: edit.unsavedCount, current }
   }
   const relation = computed(() => openRelation(sel.value, openedScenario()))
   // 그 번호 스텝의 설명 — 편집기의 번호와 설비에서 도는 번호가 같다고 말할 수 있을 때만(현재 판 그대로 열어 둠)
@@ -81,7 +85,7 @@ export const useTestRunStore = defineStore('scenarioEditorTestRun', () => {
   const reasonErr = computed(() => reasonError(reasonKind.value, reasonText.value))
   const stepErr = computed(() => stepError(startStep.value, info.value.data?.current?.stepCount ?? null))
   const block = computed(() => blockReason({
-    name: sel.value.name, loading: loading.value, info: info.value.data, picked: picked.value.size, max: targets.value.limits.maxEquipment,
+    name: sel.value.name, loading: loading.value, info: info.value.data, infoFailed: info.value.status === 'error', picked: picked.value.size, max: targets.value.limits.maxEquipment,
     reasonErr: reasonErr.value, stepErr: stepErr.value
   }))
   // 고른 설비 가운데 방금 이 시나리오의 실행을 요청한 설비(누가·언제)
@@ -114,13 +118,15 @@ export const useTestRunStore = defineStore('scenarioEditorTestRun', () => {
       const can = new Set(selectableIds(d.equipment))
       if ([...picked.value].some((x) => !can.has(x))) picked.value = new Set([...picked.value].filter((x) => can.has(x)))
     } catch (e) {
-      if (id === eqpSeq) targets.value = { ...failed(e), items: [], limits: targets.value.limits }
+      // 읽지 못했으면 줄도 선택도 비운다 — 앞의 줄이 남은 채 [실행] 이 켜지지 않게
+      if (id === eqpSeq) { targets.value = { ...failed(e), items: [], limits: targets.value.limits }; clearPicked() }
     }
   }
-  async function loadInfo() {
+  // keep = 읽는 동안 앞의 값을 보인 채로(확인으로 넘어갈 때의 다시 읽기 — 화면이 깜빡이지 않게)
+  async function loadInfo({ keep = false } = {}) {
     const { process, model, name } = sel.value
     const id = ++infoSeq
-    info.value = { status: 'loading', message: '', data: null }
+    info.value = { status: 'loading', message: '', data: keep ? info.value.data : null }
     try {
       const data = (await api.testRunScenario(process, model, name)).data.data
       if (id === infoSeq) info.value = { status: 'ready', message: '', data }
@@ -169,6 +175,7 @@ export const useTestRunStore = defineStore('scenarioEditorTestRun', () => {
       return
     }
     safeStorage.set(STORE_KEY, JSON.stringify({ process: sel.value.process, model }))
+    targets.value = { ...IDLE, items: [], limits: targets.value.limits } // 읽는 동안 앞 모델의 설비 줄이 남아 눌리지 않게
     loadScenarios()
     loadEquipment()
   }
@@ -222,9 +229,13 @@ export const useTestRunStore = defineStore('scenarioEditorTestRun', () => {
   }
   function toggleAllShown(on) { picked.value = toggleAll(picked.value, selectableIds(shown.value), on) }
 
-  function ask() {
+  // 확인으로 넘어가기 전에 시나리오 정보를 다시 읽는다 — 창을 연 뒤 다른 사람이 요청한 설비(방금 요청)와 그 사이 생긴 막는 까닭을 지금 값으로 보인다
+  async function ask() {
+    if (block.value || stage.value !== 'pick') return
+    await loadInfo({ keep: true })
     if (block.value || stage.value !== 'pick') return
     again.value = false
+    confirmedRecent = new Set(recentPicked.value.map((r) => r.eqpId))
     stage.value = 'confirm'
   }
   function cancel() { if (stage.value === 'confirm') stage.value = 'pick' }
@@ -241,7 +252,9 @@ export const useTestRunStore = defineStore('scenarioEditorTestRun', () => {
     const { process, model, name } = sel.value
     const reason = reasonKind.value === 'other' ? { kind: 'other', text: reasonText.value.trim() } : { kind: reasonKind.value }
     const step = Number(String(startStep.value).trim())
-    const base = { runId: newRunId(), process, model, name, startStep: step, reason, again: again.value }
+    // again 은 확인 창에 "방금 요청함" 으로 보인 설비에만 싣는다 — 사용자가 보지 못한 설비의 보호까지 풀지 않는다(서버가 그 설비는 recent 로 막는다)
+    const base = { runId: newRunId(), process, model, name, startStep: step, reason }
+    const againFor = again.value ? confirmedRecent : new Set()
     run.value = {
       id: base.runId, process, model, name, startStep: step, startDelay: info.value.data?.startDelay ?? 0, halt: null, now: null, nowAt: null, lastSentAt: Date.now(), statusFailed: false,
       items: [...picked.value].sort(byId).map((eqpId) => ({ eqpId, outcome: 'waiting', detail: null, lost: false, sentAt: undefined, found: 0, status: null, retry: null, txnSeq: null, createDate: null }))
@@ -253,10 +266,11 @@ export const useTestRunStore = defineStore('scenarioEditorTestRun', () => {
     const count = run.value.items.length
     send: for (let i = 0; i < count; i++) {
       if (stopped) break
-      setItem(i, { outcome: 'sending' })
+      setItem(i, { outcome: 'sending', sentAt: Date.now() }) // 서버의 기록을 받기 전까지는 화면이 보낸 시각으로 잰다
       for (let tries = 0; ; tries++) {
         try {
-          const r = (await api.testRunRequest({ ...base, eqpId: run.value.items[i].eqpId })).data.data
+          const eqpId = run.value.items[i].eqpId
+          const r = (await api.testRunRequest({ ...base, eqpId, again: againFor.has(eqpId) })).data.data
           setItem(i, { outcome: r.outcome, detail: r.detail ?? null })
           break
         } catch (e) {
@@ -300,20 +314,22 @@ export const useTestRunStore = defineStore('scenarioEditorTestRun', () => {
   }
   async function refreshStatus() {
     const r = run.value
-    if (!r || reading) return
+    if (!r || reading === r.id) return
     const need = r.items.filter((x) => needsStatus(x, nowOf(r)))
     if (!need.length) return
-    reading = true
+    reading = r.id
     try {
       const pinned = Object.fromEntries(need.filter((x) => x.found && Number.isFinite(x.txnSeq)).map((x) => [x.eqpId, x.txnSeq]))
       const d = (await api.testRunStatus({ runId: r.id, pinned })).data.data
       if (run.value?.id !== r.id) return
       run.value = { ...run.value, items: applyStatus(run.value.items, d.items), now: d.now, nowAt: Date.now(), statusFailed: false }
-    } catch {
-      if (run.value?.id === r.id) run.value = { ...run.value, statusFailed: true }
-      return
+    } catch (e) {
+      if (run.value?.id !== r.id) return
+      // 서버에 이 실행의 기록이 없다(404) — 응답을 놓친 요청이 기록 전에 끝난 것이다. 실패가 아니다(줄은 시간이 지나면 "기록 없음" 이 된다)
+      if (errorCode(e) !== 'NOT_FOUND') { run.value = { ...run.value, statusFailed: true }; return }
+      run.value = { ...run.value, statusFailed: false }
     } finally {
-      reading = false
+      if (reading === r.id) reading = null
     }
     if (stage.value !== 'done') return // 보내는 동안에는 보내는 쪽이 간격을 잰다
     const cur = run.value

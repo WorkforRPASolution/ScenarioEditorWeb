@@ -123,7 +123,7 @@ describe('고르기', () => {
     await type(q('se-run-step'), '2')
     expect(q('se-run-step-warn').textContent).toBe(t('SEW_RUN_STEP_MISMATCH', { n: 2 }))
     // 현재 판 그대로 열어 둔 시나리오는 그 번호 스텝의 설명을 보인다
-    editor.skeleton = { process: 'P1', model: 'M1', name: 'RUN_A', version: { crtime: 2000, isCurrent: true }, steps: [{ uid: 's0', descriptionToEmail: '알람 창 찾기', notes: [] }, { uid: 's1', descriptionToEmail: 'Reset 누르기', notes: [] }] }
+    editor.skeleton = { process: 'P1', model: 'M1', name: 'RUN_A', version: { crtime: INFO.current.crtime, isCurrent: true }, steps: [{ uid: 's0', descriptionToEmail: '알람 창 찾기', notes: [] }, { uid: 's1', descriptionToEmail: 'Reset 누르기', notes: [] }] }
     await flushPromises()
     expect(q('se-run-step-warn')).toBeNull()
     expect(q('se-run-step-desc').textContent).toBe(t('SEW_RUN_STEP_DESC', { n: 2, desc: 'Reset 누르기' }))
@@ -290,7 +290,7 @@ describe('결과', () => {
     q('se-run-confirm-ok').click(); await flushPromises()
     expect(q('se-run-halt').textContent).toBe(t('SEW_RUN_HALT_STREAK'))
     expect(qa('se-run-outcome').map((o) => o.textContent.trim())).toEqual([...Array(3).fill(t('SEW_RUN_OUTCOME_unknown')), t('SEW_RUN_OUTCOME_skipped')])
-    expect(q('se-run-progress').textContent).toBe(t('SEW_RUN_PROGRESS_STOPPED', { done: 4, total: 4 }))
+    expect(q('se-run-progress').textContent).toBe(t('SEW_RUN_PROGRESS_STOPPED', { done: 3, total: 4 })) // 보내지 않은 설비는 세지 않는다
   })
   it('보내는 중에 닫으려 하면 묻는다 — [계속 보내기] 는 그대로, [닫기] 는 남은 설비를 보내지 않는다', async () => {
     let release

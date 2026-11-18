@@ -133,6 +133,10 @@ function createWebRepository(getWebDb, mongo) {
     },
     // 내 실행의 기록만 — 남의 runId 는 빈 목록이다
     findTestRuns: (runId, user) => runs().find({ runId, user }).sort({ eqpId: 1 }).maxTimeMS(MAX).toArray(),
+    // 같은 사용자가 같은 시나리오·설비들에 한 다른 실행의 기록 — 실행 기록(EQP_AUTO_RECOVERY)을 요청마다 나눠 주는 데 쓴다
+    findRivalTestRuns: ({ user, runId, process, model, name, eqpIds, since }) => runs()
+      .find({ user, runId: { $ne: runId }, process, model, name, eqpId: { $in: eqpIds }, sentAt: { $gte: since }, state: { $in: SENT_STATES } })
+      .limit(RECENT_LIMIT).maxTimeMS(MAX).toArray(),
     countTestRuns: (runId) => runs().countDocuments({ runId }, { maxTimeMS: MAX }),
     // 그 시나리오로 since(ms) 뒤에 보낸 기록, 늦은 것부터 — 누가 보냈든 본다. eqpIds 를 주면 그 설비만.
     findRecentTestRuns: ({ process, model, name, since, eqpIds }) => runs()

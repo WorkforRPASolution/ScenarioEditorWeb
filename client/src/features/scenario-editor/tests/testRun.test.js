@@ -105,6 +105,7 @@ describe('[실행] 이 꺼지는 까닭', () => {
     expect(why({ name: '', loading: true, picked: 0 })).toEqual({ key: 'SEW_RUN_WHY_NO_SCENARIO' })
     expect(why({ loading: true, picked: 0 })).toEqual({ key: 'SEW_RUN_WHY_LOADING' })
     expect(why({ info: null })).toEqual({ key: 'SEW_RUN_WHY_LOADING' })
+    expect(why({ info: null, infoFailed: true })).toEqual({ key: 'SEW_RUN_WHY_INFO_FAILED' })
     expect(why({ info: { blocks: ['TEST_RUN_SCENARIO_OFF', 'TEST_RUN_NAME'], current: null }, picked: 0 })).toEqual({ key: 'SEW_ERR_TEST_RUN_SCENARIO_OFF' })
     expect(why({ picked: 0, reasonErr: 'EMPTY' })).toEqual({ key: 'SEW_RUN_WHY_NO_EQP' })
     expect(why({ picked: 201 })).toEqual({ key: 'SEW_RUN_WHY_LIMIT', params: { max: 200 } })
@@ -119,7 +120,7 @@ describe('결과', () => {
   it('요약: 요청 접수 · 보내지 않음(OFF·방금·보낼 수 없음·연결 못 함·건너뜀) · 실패 · 모름', () => {
     const items = [it0('a', 'accepted'), it0('b', 'off'), it0('c', 'recent'), it0('d', 'forbidden'), it0('e', 'mismatch'), it0('f', 'badValue'),
       it0('g', 'failed'), it0('h', 'unknown'), it0('i', 'down'), it0('j', 'skipped'), it0('k', 'waiting'), it0('l', 'sending')]
-    expect(summarize(items)).toEqual({ total: 12, done: 10, accepted: 1, notSent: 7, failed: 1, unknown: 1 })
+    expect(summarize(items)).toEqual({ total: 12, done: 10, accepted: 1, notSent: 7, failed: 1, unknown: 1, skipped: 1 })
   })
   it('보냈거나 보냈을 수 있는 결과', () => {
     expect(SENT_OUTCOMES).toEqual(['accepted', 'unknown'])

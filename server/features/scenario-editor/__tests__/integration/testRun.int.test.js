@@ -111,7 +111,9 @@ describe('실행 기록(EQP_AUTO_RECOVERY) — 흉내가 실제 규칙대로 넣
     const sentAt = Date.now()
     expect(classifyAction(await send(A01, 'RUN_PROPS', params))).toEqual({ outcome: 'accepted' })
     await fake.idle()
-    const docs = await repo.findRecoveries({ eqpIds: ['SEWT_CVD_A01', 'SEWT_CVD_A02'], from: sentAt - SKEW, to: Date.now() + 600_000 })
+    const docs = await repo.findRecoveries({ eqpIds: ['SEWT_CVD_A01', 'SEWT_CVD_A02'], from: sentAt - SKEW, to: Date.now() + 600_000, name: 'RUN_PROPS' })
+    // 다른 시나리오의 이름으로는 읽히지 않는다(조회가 시나리오·SE 로 좁힌다)
+    expect(await repo.findRecoveries({ eqpIds: ['SEWT_CVD_A01'], from: sentAt - SKEW, to: Date.now() + 600_000, name: 'ALL_CONDITIONS' })).toEqual([])
     const rec = { eqpId: 'SEWT_CVD_A01', name: 'RUN_PROPS', ...params, sentAt }
     const { found, doc } = pickRecovery(docs, rec, SKEW)
     expect(found).toBe(1)
@@ -144,8 +146,9 @@ describe('실행 기록(EQP_AUTO_RECOVERY) — 흉내가 실제 규칙대로 넣
     for (const [target, name] of cases) expect(classifyAction(await send(target, name, PARAMS))).toEqual({ outcome: 'accepted' })
     await fake.idle()
     expect(fake.errors).toEqual([])
-    const docs = await repo.findRecoveries({ eqpIds: ['SEWT_ETCH_B01', 'SEWT_CVD_A01', 'SEWT_CVD_B01'], from, to: Date.now() + 600_000 })
-    expect(docs.filter((d) => ['DISABLED', 'RUN_BAD_CATEGORY', 'DUP_PROPERTY'].includes(d.ears_code))).toEqual([])
+    for (const name of ['DISABLED', 'RUN_BAD_CATEGORY', 'DUP_PROPERTY']) {
+      expect(await repo.findRecoveries({ eqpIds: ['SEWT_ETCH_B01', 'SEWT_CVD_A01', 'SEWT_CVD_B01'], from, to: Date.now() + 600_000, name })).toEqual([])
+    }
   })
 })
 
