@@ -234,3 +234,61 @@ describe('earsRepository 메모 (ARS_USER_MEMO)', () => {
     expect(f.calls).toHaveLength(1)
   })
 })
+
+describe('earsRepository 시험 실행 읽기 (P5)', () => {
+  const RUN_MS = 5000
+  it('findEquipmentFresh: 그 설비 ID 의 EQP_INFO·AGENT_INFO 문서를 목록과 같은 조건으로', async () => {
+    const f = fakeDb({ rows: [{ eqpId: 'SEWT_CVD_A01' }] })
+    const r = await repoOf(f).findEquipmentFresh('SEWT_CVD_A01')
+    expect(r).toEqual({ eqps: [{ eqpId: 'SEWT_CVD_A01' }], agents: [{ eqpId: 'SEWT_CVD_A01' }] })
+    const eqp = f.calls.find((c) => c.name === 'EQP_INFO')
+    const agent = f.calls.find((c) => c.name === 'AGENT_INFO')
+    expect(eqp.filter).toEqual({ eqpId: 'SEWT_CVD_A01', webmanagerUse: 1 })
+    expect(eqp.options).toEqual({ projection: { _id: 0 } })
+    expect(agent.filter).toEqual({ eqpId: 'SEWT_CVD_A01', arsagentJava: 1 })
+    expect(eqp.maxTimeMS).toBe(RUN_MS)
+    expect(agent.maxTimeMS).toBe(RUN_MS)
+  })
+  it('findOnoff: 설비들의 onoff 를 조회 한 번으로 — 빈 목록이면 DB 를 부르지 않는다', async () => {
+    const f = fakeDb({ rows: [{ eqpId: 'A', onoff: 0 }] })
+    expect(await repoOf(f).findOnoff(['A', 'B'])).toEqual([{ eqpId: 'A', onoff: 0 }])
+    expect(f.calls).toHaveLength(1)
+    expect(f.calls[0]).toMatchObject({ name: 'EQP_INFO', filter: { eqpId: { $in: ['A', 'B'] }, webmanagerUse: 1 }, options: { projection: { _id: 0, eqpId: 1, onoff: 1 } }, maxTimeMS: RUN_MS })
+    const empty = fakeDb()
+    expect(await repoOf(empty).findOnoff([])).toEqual([])
+    expect(empty.calls).toHaveLength(0)
+  })
+  it('findRunPropertyDocs: 키 세 칸으로(property 가 없는 문서도 센다), 값의 형을 올리지 않고, 세 건까지', async () => {
+    const f = fakeDb({ rows: [{}] })
+    await repoOf(f).findRunPropertyDocs(key)
+    expect(f.calls[0]).toMatchObject({
+      name: 'SC_PROPERTY', filter: { process: 'SEWCVD', eqpModel: 'M1', scname: 'SEW_W_A' },
+      options: { promoteValues: false, projection: { _id: 0, property: 1, scCategory: 1 } }, limit: 3, maxTimeMS: RUN_MS
+    })
+  })
+  it('findRecoveries: 설비들과 txn_seq 범위로 조회 한 번, 1,000건까지 — hint 를 걸지 않는다', async () => {
+    const f = fakeDb({ rows: [] })
+    await repoOf(f).findRecoveries({ eqpIds: ['A', 'B'], from: 100, to: 200 })
+    const c = f.calls[0]
+    expect(c).toMatchObject({ name: 'EQP_AUTO_RECOVERY', filter: { eqpid: { $in: ['A', 'B'] }, txn_seq: { $gte: 100, $lte: 200 } }, limit: 1000, maxTimeMS: RUN_MS })
+    expect(c.options.hint).toBeUndefined()
+    expect(c.options.projection).toEqual({ _id: 0, eqpid: 1, txn_seq: 1, ears_code: 1, trigger_by: 1, status: 1, retry: 1, create_date: 1, params: 1 })
+    const empty = fakeDb()
+    expect(await repoOf(empty).findRecoveries({ eqpIds: [], from: 1, to: 2 })).toEqual([])
+    expect(empty.calls).toHaveLength(0)
+  })
+  it('findRecoveriesAt: 찾아 둔 문서를 (설비, txn_seq, 이름)으로 정확히 집는다 — 조회 한 번', async () => {
+    const f = fakeDb({ rows: [] })
+    await repoOf(f).findRecoveriesAt([{ eqpId: 'A', txnSeq: 11, name: 'S' }, { eqpId: 'B', txnSeq: 22, name: 'S' }])
+    expect(f.calls).toHaveLength(1)
+    expect(f.calls[0]).toMatchObject({ name: 'EQP_AUTO_RECOVERY', filter: { $or: [{ eqpid: 'A', txn_seq: 11, ears_code: 'S' }, { eqpid: 'B', txn_seq: 22, ears_code: 'S' }] }, maxTimeMS: RUN_MS })
+    const empty = fakeDb()
+    expect(await repoOf(empty).findRecoveriesAt([])).toEqual([])
+    expect(empty.calls).toHaveLength(0)
+  })
+  it('운영 DB 에 쓰는 함수를 더하지 않았다', () => {
+    const names = Object.keys(repoOf(fakeDb()))
+    for (const n of ['findEquipmentFresh', 'findOnoff', 'findRunPropertyDocs', 'findRecoveries', 'findRecoveriesAt']) expect(names).toContain(n)
+    expect(names.filter((n) => /recover/i.test(n) && !/^find/.test(n))).toEqual([])
+  })
+})

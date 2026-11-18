@@ -3,9 +3,14 @@
 // 쓰는 필드(SC_PROPERTY): scCategory·trCategory(Int64), property.Owners, property.IsEnabled,
 // performance(새 대상은 전체, 심의·성과 수정은 performance.* 필드). 본문·BI·property 전체는 setscenario 로만 쓴다.
 // 쓰는 문서(ARS_USER_MEMO): 새 메모(일곱 필드)·memo·webEditedBy·webEditedAt, 지우기.
+// 시험 실행(P5)은 읽기만 한다 — 실행 기록(EQP_AUTO_RECOVERY)은 CommandServer 가 쓴다.
 const { withMongoErrors } = require('../errors')
 
 const MAX = 20000
+// 시험 실행 요청 안의 읽기 — 설비 한 대의 요청이 오래 걸리지 않게 짧게 둔다(P5 설계 §5.2)
+const RUN_MAX = 5000
+const RECOVERY_FIELDS = { _id: 0, eqpid: 1, txn_seq: 1, ears_code: 1, trigger_by: 1, status: 1, retry: 1, create_date: 1, params: 1 }
+const RECOVERY_LIMIT = 1000
 
 const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
@@ -103,6 +108,30 @@ function createEarsRepository(getDb, mongo) {
     },
     findUserNames: (singleids) => (singleids.length
       ? col('ARS_USER_INFO').find({ singleid: { $in: singleids } }, { projection: { _id: 0, singleid: 1, name: 1 } }).maxTimeMS(MAX).toArray()
+      : Promise.resolve([])),
+    // ── 시험 실행(P5 설계 §5.2·§5.4) ── 모두 읽기다. 캐시를 거치지 않는 지금 값(Q-090).
+    // 그 설비 ID 의 문서를 목록(findEquipment·findAgents)과 같은 조건으로 — 같은 규칙(joinEquipment·applyEquipmentRules)에 넣는다
+    findEquipmentFresh: async (eqpId) => {
+      const [eqps, agents] = await Promise.all([
+        col('EQP_INFO').find({ eqpId, webmanagerUse: 1 }, { projection: { _id: 0 } }).maxTimeMS(RUN_MAX).toArray(),
+        col('AGENT_INFO').find({ eqpId, arsagentJava: 1 }, { projection: { _id: 0, eqpId: 1 } }).maxTimeMS(RUN_MAX).toArray()
+      ])
+      return { eqps, agents }
+    },
+    findOnoff: (eqpIds) => (eqpIds.length
+      ? col('EQP_INFO').find({ eqpId: { $in: eqpIds }, webmanagerUse: 1 }, { projection: { _id: 0, eqpId: 1, onoff: 1 } }).maxTimeMS(RUN_MAX).toArray()
+      : Promise.resolve([])),
+    // CommandServer 가 보는 것과 같은 문서들(property 가 없는 문서도 센다 — 1건이 아니면 실행되지 않는다).
+    // 값의 형을 올리지 않는다(promoteValues: false) — CommandServer 는 Int32·Int64 만 읽고 Double 은 기본값으로 읽는다(domain/testRun.readRunProperty).
+    findRunPropertyDocs: (key) => col('SC_PROPERTY')
+      .find({ process: key.process, eqpModel: key.model, scname: key.name }, { promoteValues: false, projection: { _id: 0, property: 1, scCategory: 1 } })
+      .limit(3).maxTimeMS(RUN_MAX).toArray(),
+    // 실행 기록 — 운영 인덱스 (eqpid, txn_seq)의 앞 두 칸을 탄다. 이름으로 hint 를 걸지 않는다(유일 인덱스가 세 칸으로 바뀔 예정 — ARS-044).
+    findRecoveries: ({ eqpIds, from, to }) => (eqpIds.length
+      ? col('EQP_AUTO_RECOVERY').find({ eqpid: { $in: eqpIds }, txn_seq: { $gte: from, $lte: to } }, { projection: RECOVERY_FIELDS }).limit(RECOVERY_LIMIT).maxTimeMS(RUN_MAX).toArray()
+      : Promise.resolve([])),
+    findRecoveriesAt: (pairs) => (pairs.length
+      ? col('EQP_AUTO_RECOVERY').find({ $or: pairs.map((p) => ({ eqpid: p.eqpId, txn_seq: p.txnSeq, ears_code: p.name })) }, { projection: RECOVERY_FIELDS }).maxTimeMS(RUN_MAX).toArray()
       : Promise.resolve([])),
     hasNameRule: async () => (await getDb().listCollections({ name: 'SC_NAME_RULE' }, { nameOnly: true }).toArray()).length > 0,
     findNameRule: () => col('SC_NAME_RULE').find({}, { projection: { _id: 0 } }).maxTimeMS(MAX).toArray()

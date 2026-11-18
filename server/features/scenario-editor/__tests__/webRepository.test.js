@@ -123,3 +123,62 @@ describe('webRepository', () => {
     expect(await repo.updateDeploy('r1', {}).catch((e) => e)).toMatchObject({ statusCode: 503, code: 'UPSTREAM_DOWN', message: '웹 전용 DB 에 닿지 못했습니다' })
   })
 })
+
+describe('webRepository 시험 실행 요청 기록 (P5)', () => {
+  const RUNS = 'SCENARIO_EDITOR_TEST_RUNS'
+  const cursor = (rows = []) => {
+    const c = { sort: vi.fn(() => c), limit: vi.fn(() => c), maxTimeMS: vi.fn(() => c), toArray: vi.fn(async () => rows) }
+    return c
+  }
+  it('인덱스: (runId, eqpId) 유일 · (eqpId, name, sentAt) · createdAt 90일 뒤 지움', async () => {
+    const { col, repo } = fake()
+    await repo.ensureIndexes()
+    expect(col(RUNS).createIndex.mock.calls).toEqual([
+      [{ runId: 1, eqpId: 1 }, { unique: true }],
+      [{ eqpId: 1, name: 1, sentAt: -1 }],
+      [{ createdAt: 1 }, { expireAfterSeconds: 90 * 24 * 3600 }]
+    ])
+  })
+  it('insertTestRun: 색인을 먼저 만들고 넣는다 — 같은 실행·설비가 이미 있으면 넣지 않았다고 알린다', async () => {
+    const { col, repo } = fake()
+    const doc = { runId: 'run-12345678', eqpId: 'SEWT_CVD_A01', state: 'sending' }
+    expect(await repo.insertTestRun(doc)).toEqual({ inserted: true })
+    expect(col(RUNS).createIndex).toHaveBeenCalled()
+    expect(col(RUNS).insertOne.mock.calls[0][0]).toBe(doc)
+    col(RUNS).insertOne.mockRejectedValueOnce(Object.assign(new Error('E11000 duplicate key'), { code: 11000 }))
+    expect(await repo.insertTestRun(doc)).toEqual({ inserted: false })
+    col(RUNS).insertOne.mockRejectedValueOnce(new Error('boom'))
+    await expect(repo.insertTestRun(doc)).rejects.toThrow('boom')
+  })
+  it('updateTestRun: 그 실행·설비의 기록만 고친다', async () => {
+    const { col, repo } = fake()
+    await repo.updateTestRun('run-12345678', 'SEWT_CVD_A01', { state: 'accepted', doneAt: 5 })
+    const [filter, update] = col(RUNS).updateOne.mock.calls[0]
+    expect(filter).toEqual({ runId: 'run-12345678', eqpId: 'SEWT_CVD_A01' })
+    expect(update).toEqual({ $set: { state: 'accepted', doneAt: 5 } })
+  })
+  it('findTestRuns: 내 실행의 기록만(남의 runId 는 빈 목록), 설비 ID 순', async () => {
+    const { col, repo } = fake()
+    const c = cursor([{ eqpId: 'A' }])
+    col(RUNS).find.mockReturnValueOnce(c)
+    expect(await repo.findTestRuns('run-12345678', 'sew_multi')).toEqual([{ eqpId: 'A' }])
+    expect(col(RUNS).find.mock.calls[0][0]).toEqual({ runId: 'run-12345678', user: 'sew_multi' })
+    expect(c.sort).toHaveBeenCalledWith({ eqpId: 1 })
+  })
+  it('countTestRuns: 그 실행의 기록 수', async () => {
+    const { col, repo } = fake()
+    col(RUNS).countDocuments = vi.fn(async () => 7)
+    expect(await repo.countTestRuns('run-12345678')).toBe(7)
+    expect(col(RUNS).countDocuments.mock.calls[0][0]).toEqual({ runId: 'run-12345678' })
+  })
+  it('findRecentTestRuns: 그 시나리오로 since 뒤에 보낸(보내는 중·접수·모름) 기록을 늦은 것부터 — 누가 보냈든', async () => {
+    const { col, repo } = fake()
+    const c = cursor([])
+    col(RUNS).find.mockReturnValue(c)
+    await repo.findRecentTestRuns({ process: 'P', model: 'M', name: 'N', since: 1000 })
+    expect(col(RUNS).find.mock.calls[0][0]).toEqual({ process: 'P', model: 'M', name: 'N', sentAt: { $gte: 1000 }, state: { $in: ['sending', 'accepted', 'unknown'] } })
+    expect(c.sort).toHaveBeenCalledWith({ sentAt: -1 })
+    await repo.findRecentTestRuns({ process: 'P', model: 'M', name: 'N', since: 1000, eqpIds: ['A'] })
+    expect(col(RUNS).find.mock.calls[1][0]).toMatchObject({ eqpId: { $in: ['A'] } })
+  })
+})
