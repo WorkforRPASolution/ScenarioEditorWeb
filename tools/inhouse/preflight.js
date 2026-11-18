@@ -217,6 +217,37 @@ function checkVisionEnv(env) {
   return out
 }
 
+// 시험 실행(P5 설계 §5.6, 구역 [6]) — 모두 경고다. 꺼 두면 버튼만 꺼지고, 틀린 값은 서버가 말없이 기본값으로 돈다.
+// 사용자 바꾸기가 켜져 있는 것은 checkEnv 가 멈춤(DEV_USER_OVERRIDE_ON)으로 이미 막는다 — 서버도 그 조합에서는 시험 실행을 받지 않는다.
+const TEST_RUN_NUMBERS = [
+  ['EARS_ACTION_TIMEOUT_MS', 1000, 60000, 12000, 'TEST_RUN_TIMEOUT_FORMAT'],
+  ['SE_TEST_RUN_MAX_EQP', 1, 200, 200, 'TEST_RUN_MAX_EQP_FORMAT'],
+  ['SE_TEST_RUN_CONCURRENCY', 1, 5, 1, 'TEST_RUN_CONCURRENCY_FORMAT'],
+  ['SE_TEST_RUN_RECENT_MIN', 1, 60, 10, 'TEST_RUN_RECENT_FORMAT'],
+  ['SE_TEST_RUN_CLOCK_SKEW_SEC', 0, 3600, 120, 'TEST_RUN_SKEW_FORMAT']
+]
+const ACTION_RELAY_WAIT_MS = 10000 // InterfaceServer 가 안에서 기다리는 시간
+function checkTestRunEnv(env) {
+  if (env.SE_TEST_RUN !== '1') {
+    return [warn('TEST_RUN_OFF', 'SE_TEST_RUN 이 1 이 아니다 — [시험 실행] 버튼이 꺼지고 API 도 막힌다. 시험 실행을 쓰지 않으면 그대로 둔다(쓰려면 1)')]
+  }
+  const out = [warn('TEST_RUN_ON', 'SE_TEST_RUN=1 — 시험 실행이 켜져 있다. 누르면 실제 설비에서 시나리오가 돈다 — 시험해도 되는 설비와 해가 없는 시나리오로만 한다(README "시험 실행을 쓸 때")')]
+  const valid = {}
+  for (const [name, min, max, fallback, code] of TEST_RUN_NUMBERS) {
+    const raw = text(env[name])
+    if (raw === '') continue
+    if (/^\d+$/.test(raw) && Number(raw) >= min && Number(raw) <= max) valid[name] = Number(raw)
+    else out.push(warn(code, `${name} 가 ${min}~${max} 의 정수가 아니다 — 서버는 말없이 ${fallback} 으로 돈다`))
+  }
+  if (valid.EARS_ACTION_TIMEOUT_MS !== undefined && valid.EARS_ACTION_TIMEOUT_MS <= ACTION_RELAY_WAIT_MS) {
+    out.push(warn('TEST_RUN_TIMEOUT_SHORT', `EARS_ACTION_TIMEOUT_MS 가 ${ACTION_RELAY_WAIT_MS} 이하다 — InterfaceServer 는 안에서 10초까지 기다린다. 그보다 짧으면 늦은 요청이 모두 "접수 여부 모름" 이 된다. 12000 을 권한다`))
+  }
+  if (valid.SE_TEST_RUN_CONCURRENCY > 1) {
+    out.push(warn('TEST_RUN_CONCURRENCY_MANY', 'SE_TEST_RUN_CONCURRENCY 가 1 보다 크다 — InterfaceServer 는 실행 요청을 한 번에 하나씩 처리한다(로컬 실측). 늘려도 그 안에서 줄을 서고, 줄이 길면 뒤의 요청이 "접수 여부 모름" 이 된다. 1 을 권한다'))
+  }
+  return out
+}
+
 // 주소가 비었거나 꼴이 틀리면 묻지 않는다(checkVisionEnv 가 알린다).
 async function visionConnectCheck({ env, connect = tcpConnect }) {
   const target = visionTarget(env)
@@ -378,6 +409,7 @@ async function run({ argv, readEnv = readEnvFile, fetch = globalThis.fetch, conn
     ...checkEnv(env), ...(await interfaceCheck({ env, connect })), ...checkName(args),
     ...checkSnapshotEnv(env), ...(await snapshotConnectCheck({ env, connect })),
     ...checkVisionEnv(env), ...(await visionConnectCheck({ env, connect })),
+    ...checkTestRunEnv(env),
     ...(await remoteChecks({ api, fetch, ...args }))
   ]
   if (!findings.some((f) => f.code === 'SERVER_DOWN')) findings.push(...(await snapshotRemoteChecks({ api, fetch, env })))
@@ -388,7 +420,7 @@ async function run({ argv, readEnv = readEnvFile, fetch = globalThis.fetch, conn
   return stops ? 1 : 0
 }
 
-module.exports = { checkEnv, checkName, remoteChecks, interfaceCheck, checkSnapshotEnv, snapshotConnectCheck, snapshotRemoteChecks, checkVisionEnv, visionConnectCheck, parseArgs, apiBase, run }
+module.exports = { checkEnv, checkName, remoteChecks, interfaceCheck, checkSnapshotEnv, snapshotConnectCheck, snapshotRemoteChecks, checkVisionEnv, visionConnectCheck, checkTestRunEnv, parseArgs, apiBase, run }
 
 if (require.main === module) {
   run({ argv: process.argv.slice(2) }).then((code) => { process.exitCode = code }, (err) => { console.error(err.message); process.exitCode = 1 })

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
-const { checkEnv, checkName, remoteChecks, interfaceCheck, checkSnapshotEnv, snapshotConnectCheck, snapshotRemoteChecks, checkVisionEnv, visionConnectCheck, parseArgs, apiBase, run } = require('../preflight')
+const { checkEnv, checkName, remoteChecks, interfaceCheck, checkSnapshotEnv, snapshotConnectCheck, snapshotRemoteChecks, checkVisionEnv, visionConnectCheck, checkTestRunEnv, parseArgs, apiBase, run } = require('../preflight')
 
 // 사내 쓰기 시험 프로필(server/.env.inhouse.example 을 채운 꼴) — 멈춤도 경고도 없다
 const GOOD = {
@@ -444,6 +444,40 @@ describe('visionConnectCheck — 이 PC 에서 판정 시험 창구(gRPC)에 연
   })
 })
 
+describe('checkTestRunEnv — 시험 실행 설정(구역 [6], 모두 경고)', () => {
+  const RUN = { SE_TEST_RUN: '1', EARS_ACTION_TIMEOUT_MS: '12000', SE_TEST_RUN_MAX_EQP: '200', SE_TEST_RUN_CONCURRENCY: '1', SE_TEST_RUN_RECENT_MIN: '10', SE_TEST_RUN_CLOCK_SKEW_SEC: '120' }
+  it('꺼 두었으면 TEST_RUN_OFF 하나만 — 버튼이 꺼진다고 알린다(다른 값은 보지 않는다)', () => {
+    for (const v of [undefined, '', '0', 'true']) {
+      const out = checkTestRunEnv({ ...GOOD, ...RUN, SE_TEST_RUN: v, SE_TEST_RUN_MAX_EQP: 'abc' })
+      expect(codes(out), String(v)).toEqual(['warn:TEST_RUN_OFF'])
+      expect(out[0].message).toContain('SE_TEST_RUN')
+    }
+  })
+  it('켜 두었으면 실제 설비에서 돈다는 것을 알린다 — 값이 맞으면 그것 하나', () => {
+    const out = checkTestRunEnv({ ...GOOD, ...RUN })
+    expect(codes(out)).toEqual(['warn:TEST_RUN_ON'])
+    expect(out[0].message).toContain('실제 설비')
+    expect(codes(checkTestRunEnv({ ...GOOD, SE_TEST_RUN: '1' }))).toEqual(['warn:TEST_RUN_ON']) // 나머지는 비면 기본값
+  })
+  it('범위 밖·수가 아닌 값은 서버가 말없이 기본값으로 돈다고 알린다', () => {
+    const one = (over) => codes(checkTestRunEnv({ ...GOOD, ...RUN, ...over })).filter((c) => c !== 'warn:TEST_RUN_ON')
+    for (const bad of ['abc', '999', '60001', '1.5']) expect(one({ EARS_ACTION_TIMEOUT_MS: bad }), bad).toEqual(['warn:TEST_RUN_TIMEOUT_FORMAT'])
+    for (const bad of ['0', '201', 'x']) expect(one({ SE_TEST_RUN_MAX_EQP: bad }), bad).toEqual(['warn:TEST_RUN_MAX_EQP_FORMAT'])
+    for (const bad of ['0', '6', 'x']) expect(one({ SE_TEST_RUN_CONCURRENCY: bad }), bad).toEqual(['warn:TEST_RUN_CONCURRENCY_FORMAT'])
+    for (const bad of ['0', '61', 'x']) expect(one({ SE_TEST_RUN_RECENT_MIN: bad }), bad).toEqual(['warn:TEST_RUN_RECENT_FORMAT'])
+    for (const bad of ['-1', '3601', 'x']) expect(one({ SE_TEST_RUN_CLOCK_SKEW_SEC: bad }), bad).toEqual(['warn:TEST_RUN_SKEW_FORMAT'])
+    expect(one({ SE_TEST_RUN_CLOCK_SKEW_SEC: '0', SE_TEST_RUN_MAX_EQP: '1', SE_TEST_RUN_CONCURRENCY: '1', SE_TEST_RUN_RECENT_MIN: '60', EARS_ACTION_TIMEOUT_MS: '60000' })).toEqual([])
+    expect(one({ SE_TEST_RUN_CONCURRENCY: '5' })).toEqual(['warn:TEST_RUN_CONCURRENCY_MANY']) // 꼴은 맞다 — 권하지 않을 뿐
+  })
+  it('시간 제한이 InterfaceServer 의 10초 이하면 까닭을 알린다', () => {
+    const out = checkTestRunEnv({ ...GOOD, ...RUN, EARS_ACTION_TIMEOUT_MS: '10000' })
+    expect(codes(out)).toEqual(['warn:TEST_RUN_ON', 'warn:TEST_RUN_TIMEOUT_SHORT'])
+  })
+  it('동시 수를 1 보다 크게 두면 InterfaceServer 가 한 번에 하나씩 처리한다는 것을 알린다', () => {
+    expect(codes(checkTestRunEnv({ ...GOOD, ...RUN, SE_TEST_RUN_CONCURRENCY: '3' }))).toEqual(['warn:TEST_RUN_ON', 'warn:TEST_RUN_CONCURRENCY_MANY'])
+  })
+})
+
 describe('명령 줄', () => {
   it('인자: --env(기본 server/.env)·--name·--process·--model, 모르는 인자는 던진다', () => {
     expect(parseArgs([])).toEqual({ env: 'server/.env' })
@@ -479,7 +513,7 @@ describe('명령 줄', () => {
     expect(await run({ argv: [], readEnv: () => ({ ...GOOD, ...SNAP, ...VISION }), fetch, connect, log: (l) => lines.push(l) })).toBe(0)
     const text = lines.join('\n')
     for (const code of ['CASSANDRA_UNREACHABLE', 'HISTORY_UNREACHABLE', 'SNAPSHOT_DOWN']) expect(text).toContain(`경고  ${code}`)
-    expect(text).toContain('통과(경고 3)')
+    expect(text).toContain('통과(경고 4)') // 위 셋 + 시험 실행을 꺼 둠(TEST_RUN_OFF)
     expect(text).not.toContain('secretpw')
     lines.length = 0
     // 설정 꼴 점검도 함께 돈다
