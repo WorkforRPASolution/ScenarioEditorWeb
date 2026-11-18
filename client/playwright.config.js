@@ -1,16 +1,18 @@
 import { defineConfig, devices } from '@playwright/test'
-import { SERVER_PORT, CLIENT_PORT, FAULT_PROXY, FAULT_PROXY_URL, FAULT_CONTROL_URL, JUDGE_CONTROL_PORT, JUDGE_CONTROL_URL, JUDGE_GRPC_ADDR, serverEnv } from './e2e/env.js'
+import { SERVER_PORT, CLIENT_PORT, FAULT_PROXY, FAULT_PROXY_URL, FAULT_CONTROL_URL, JUDGE_CONTROL_PORT, JUDGE_CONTROL_URL, JUDGE_GRPC_ADDR, COMMAND_CONTROL_PORT, COMMAND_CONTROL_URL, serverEnv } from './e2e/env.js'
 
 // 단독판: 로그인 setup 프로젝트 없음. 시험 데이터 `npm run seed -- reset basic anomaly` 가 먼저다.
 // 저장소 루트에서 `npm run e2e` 로 돌린다(루트에 @playwright/test).
 // 서버(3100)·클라이언트(5180)를 시험이 직접 띄우고 끝나면 내린다. 5173 은 다른 프로젝트 Vite 가 쓸 수 있어 피하고,
-// 이미 떠 있는 서버를 다시 쓰지 않는다(다른 앱이나 다른 환경 변수로 뜬 서버를 시험하지 않게) — 포트(3100·5180·3196·3197·3198)가 비어 있어야 한다.
+// 이미 떠 있는 서버를 다시 쓰지 않는다(다른 앱이나 다른 환경 변수로 뜬 서버를 시험하지 않게) — 포트(3100·5180·3194·3195·3196·3197·3198)가 비어 있어야 한다.
 // 서버 주소·포트와 클라이언트가 부를 API 주소는 env 로 고정한다 — 로컬 server/.env·client/.env 값과 상관없이 같은 곳을 시험한다
 // (dotenv·Vite 는 이미 있는 환경 변수를 .env 로 덮어쓰지 않는다).
 // 저장 E2E(p2-save)는 InterfaceServer 컨테이너로 SEW_W_ 시나리오를 배포한다. 서버의 InterfaceServer 주소는 고장 주입 중계(3197)이고
 // 중계가 server/.env 의 EARS_INTERFACE_URL(없으면 localhost:8080)로 보낸다. 평소 pass, 결과 모름 시험만 제어 포트(3198)로 slow500 을 잠깐 켠다.
 // Vision·OCR 시험 E2E(p4-vision)는 흉내 판정 서버를 띄워 전용 ZooKeeper(is-zookeeper)에 올린다 — InterfaceServer 컨테이너가 떠 있어야 하고,
 // 판정 통합 시험·실측 도구와 동시에 돌리지 않는다(서로의 노드를 지운다). 내릴 때 노드를 지우도록 SIGTERM 으로 끝낸다(zkCli 한 번이 1초쯤).
+// 시험 실행 E2E(p5-test-run)는 CommandServer 흉내(3195, 제어 3194)를 띄운다 — 로컬 InterfaceServer 가 실행 요청을 그리로 넘긴다
+// (infra/is/conf 의 ARSCommandServerAddress). 시험 실행 통합 시험과 동시에 돌리지 않는다(둘 다 3195 를 쓴다).
 const CLIENT_URL = `http://localhost:${CLIENT_PORT}`
 const INTERFACE_URL = serverEnv().EARS_INTERFACE_URL || 'http://localhost:8080'
 
@@ -34,6 +36,14 @@ export default defineConfig({
       timeout: 60_000
     },
     {
+      command: `node tools/infra/fake-command-control-server.js --control ${COMMAND_CONTROL_PORT}`,
+      cwd: '..',
+      url: `${COMMAND_CONTROL_URL}/health`,
+      reuseExistingServer: false,
+      gracefulShutdown: { signal: 'SIGTERM', timeout: 10_000 },
+      timeout: 30_000
+    },
+    {
       command: `node tools/infra/fault-proxy-server.js --target ${INTERFACE_URL} --port ${FAULT_PROXY.port} --control ${FAULT_PROXY.control}`,
       cwd: '..',
       url: `${FAULT_CONTROL_URL}/health`,
@@ -46,7 +56,8 @@ export default defineConfig({
       url: `http://127.0.0.1:${SERVER_PORT}/api/health`,
       env: {
         PORT: String(SERVER_PORT), HOST: '127.0.0.1', SE_DEV_USER_OVERRIDE: '1', ALLOWED_ORIGINS: `http://localhost:5173,${CLIENT_URL}`,
-        EARS_INTERFACE_URL: FAULT_PROXY_URL, EARS_INTERFACE_GRPC_ADDR: JUDGE_GRPC_ADDR, EARS_INTERFACE_GRPC_TIMEOUT_MS: '12000', SE_VISION_TEST_CONCURRENCY: '2'
+        EARS_INTERFACE_URL: FAULT_PROXY_URL, EARS_INTERFACE_GRPC_ADDR: JUDGE_GRPC_ADDR, EARS_INTERFACE_GRPC_TIMEOUT_MS: '12000', SE_VISION_TEST_CONCURRENCY: '2',
+        SE_TEST_RUN: '1', EARS_ACTION_TIMEOUT_MS: '12000', SE_TEST_RUN_MAX_EQP: '200', SE_TEST_RUN_CONCURRENCY: '1', SE_TEST_RUN_RECENT_MIN: '10', SE_TEST_RUN_CLOCK_SKEW_SEC: '120'
       },
       reuseExistingServer: false,
       timeout: 120_000

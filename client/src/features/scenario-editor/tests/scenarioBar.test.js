@@ -38,7 +38,7 @@ describe('ScenarioBar', () => {
       const store = useEditorStore()
       store.me = { singleid: 'u', canWrite: true, testRun: { enabled: true, reason: null } }
       const w = mountBar()
-      const btn = w.find('[data-testid="se-test-run"]')
+      const btn = w.find('[data-testid="se-run-open"]')
       expect(btn.text()).toBe(t('SEW_RUN_OPEN'))
       expect(btn.attributes('disabled')).toBeUndefined()
       const { useTestRunStore } = await import('../stores/testRunStore')
@@ -50,7 +50,7 @@ describe('ScenarioBar', () => {
       const store = useEditorStore()
       for (const reason of ['WRITE_FORBIDDEN', 'WRITE_DISABLED', 'TEST_RUN_DISABLED', 'TEST_RUN_DEV_USER', 'TEST_RUN_USER_AMBIGUOUS']) {
         store.me = { singleid: 'u', canWrite: false, testRun: { enabled: false, reason } }
-        const btn = mountBar().find('[data-testid="se-test-run"]')
+        const btn = mountBar().find('[data-testid="se-run-open"]')
         expect(btn.attributes('disabled'), reason).toBeDefined()
         expect(btn.attributes('title'), reason).toBe(MESSAGES[`SEW_RUN_OFF_${reason}`])
       }
@@ -58,7 +58,7 @@ describe('ScenarioBar', () => {
     it('서버가 시험 실행 정보를 주지 않으면(옛 서버) 버튼을 두지 않는다', () => {
       const store = useEditorStore()
       store.me = { singleid: 'u', canWrite: true }
-      expect(mountBar().find('[data-testid="se-test-run"]').exists()).toBe(false)
+      expect(mountBar().find('[data-testid="se-run-open"]').exists()).toBe(false)
     })
   })
 

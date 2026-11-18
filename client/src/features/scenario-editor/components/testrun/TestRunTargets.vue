@@ -58,8 +58,9 @@ const onRow = (e, ev) => run.click(e.eqpId, { toggle: ev.ctrlKey || ev.metaKey, 
             <td @click.stop="run.click(e.eqpId, { toggle: true })"><input type="checkbox" :checked="run.picked.has(e.eqpId)" :disabled="e.onoff !== 'on'" :aria-label="e.eqpId" /></td>
             <td class="se-run-mono">{{ e.eqpId }}</td>
             <td>{{ e.line }}</td>
-            <td class="se-run-mono">{{ e.ipAddrL ? `${e.ipAddr} · ${e.ipAddrL}` : e.ipAddr }}</td>
-            <td>
+            <!-- IP 둘·OFF 안내는 칸 안에서 줄을 바꾼다 — 표가 옆으로 넘쳐 "방금 요청" 칸이 잘리지 않게 -->
+            <td class="se-run-mono wrap">{{ e.ipAddr }}<template v-if="e.ipAddrL"> <span class="whitespace-nowrap">· {{ e.ipAddrL }}</span></template></td>
+            <td class="wrap">
               <span v-if="e.onoff === 'on'" class="se-run-pill" data-tone="ok">{{ t('SEW_RUN_ON') }}</span>
               <template v-else><span class="se-run-pill" data-tone="bad">{{ e.onoff === 'off' ? t('SEW_RUN_OFF') : t('SEW_RUN_UNREADABLE') }}</span> {{ t('SEW_RUN_OFF_HINT') }}</template>
             </td>

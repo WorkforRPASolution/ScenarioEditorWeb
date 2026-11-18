@@ -52,7 +52,7 @@ const rows = computed(() => (r.value?.items ?? []).map((x) => {
       <table>
         <thead><tr><th>{{ t('SEW_RUN_COL_ID') }}</th><th>{{ t('SEW_RUN_COL_OUTCOME') }}</th><th>{{ t('SEW_RUN_COL_STATE') }}</th><th>{{ t('SEW_RUN_COL_CREATED') }}</th></tr></thead>
         <tbody>
-          <tr v-for="row in rows" :key="row.x.eqpId" :data-id="row.x.eqpId" data-off="true" data-testid="se-run-result-row">
+          <tr v-for="row in rows" :key="row.x.eqpId" :data-id="row.x.eqpId" data-testid="se-run-result-row">
             <td class="se-run-mono">{{ row.x.eqpId }}</td>
             <td class="wrap"><span class="se-run-pill" :data-tone="TONES[row.x.outcome] ?? 'idle'" data-testid="se-run-outcome">{{ t(`SEW_RUN_OUTCOME_${row.x.outcome}`) }}</span> <span v-if="row.detail" class="se-run-hint">{{ row.detail }}</span></td>
             <td class="wrap"><span v-if="row.state" class="se-run-pill" :data-tone="row.state.tone" data-testid="se-run-state">{{ row.state.text }}</span><template v-else>—</template></td>

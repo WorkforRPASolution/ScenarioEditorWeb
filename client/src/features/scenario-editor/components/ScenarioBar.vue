@@ -140,7 +140,7 @@ const btn = 'h-8 px-3 rounded-lg text-sm'
     <button :class="btn" class="bg-primary-500 hover:bg-primary-600 text-white font-medium" data-testid="se-load" @click="$emit('load')">{{ t('SEW_UI_LOAD') }}</button>
     <button v-if="canCreate" :class="btn" class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-100 font-medium" data-testid="se-new" @click="$emit('new')">{{ t('SEW_NEW_OPEN') }}</button>
     <button v-if="runGate" :class="btn" class="bg-gray-200 dark:bg-gray-700 hover:enabled:bg-gray-300 dark:hover:enabled:bg-gray-600 text-gray-800 dark:text-gray-100 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-      :disabled="!runGate.enabled" :title="runGate.title" data-testid="se-test-run" @click="testRun.show()">{{ t('SEW_RUN_OPEN') }}</button>
+      :disabled="!runGate.enabled" :title="runGate.title" data-testid="se-run-open" @click="testRun.show()">{{ t('SEW_RUN_OPEN') }}</button>
     <button v-if="edit.editable" :class="[btn, unsaved ? 'bg-primary-500 hover:bg-primary-600 text-white' : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-100']" class="font-medium" data-testid="se-save" @click="onSave">{{ t('SEW_SAVE_OPEN') }}{{ unsaved ? ` (${unsaved})` : '' }}</button>
     <template v-if="sk">
       <div class="min-w-0">

@@ -17,6 +17,10 @@ export const FAULT_CONTROL_URL = `http://127.0.0.1:${FAULT_PROXY.control}`
 export const JUDGE_CONTROL_PORT = 3196
 export const JUDGE_CONTROL_URL = `http://127.0.0.1:${JUDGE_CONTROL_PORT}`
 export const JUDGE_GRPC_ADDR = '127.0.0.1:9310'
+// CommandServer 흉내(tools/infra/fake-command-control-server.js)의 제어 포트. 흉내는 3195 에서 듣는다 — 로컬 InterfaceServer 설정의
+// ARSCommandServerAddress(host.docker.internal:3195)가 그리로 시험 실행 요청을 넘긴다.
+export const COMMAND_CONTROL_PORT = 3194
+export const COMMAND_CONTROL_URL = `http://127.0.0.1:${COMMAND_CONTROL_PORT}`
 
 // server/.env 값(서버가 읽는 것과 같은 파일, dotenv 로 해석). 없으면 빈 값.
 export function serverEnv() {
