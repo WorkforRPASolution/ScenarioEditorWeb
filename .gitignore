@@ -30,6 +30,8 @@ playwright-report/
 infra/is/dist/
 # SnapShotServer 실행 파일 사본 (tools/infra/prepare-ss.sh 가 채운다). 계정이 든 infra/.env 는 위 .env 규칙으로 빠진다.
 infra/ss/dist/
+# CommandServer 실행 파일 사본 (tools/infra/prepare-cs.sh 가 채운다 — 시험 실행 P5 의 실제 CommandServer 맞춤 확인)
+infra/cs/dist/
 # HttpWebServer(로컬 이력 서버) 실행 파일 사본 (tools/infra/prepare-hws.sh 가 채운다)
 infra/hws/dist/
 # 시나리오 생성기 출력

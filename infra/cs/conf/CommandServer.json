@@ -1,0 +1,12 @@
+{
+  "_comment": "ScenarioEditorWeb 로컬 맞춤 확인용(시험 실행 P5 — tools/infra/check-command-compat.js). 전용 Redis(cs-redis)·전용 ZooKeeper(is-zookeeper)·로컬 Mongo(EARS)만 쓴다. Kafka 는 없다(키가 없으면 발행이 꺼진다). 사내 설정과 무관.",
+  "VirtualPublicIpAddress": "127.0.0.1",
+  "HttpWebServerAddress": "127.0.0.1",
+  "ZookeeperQuorum": "is-zookeeper:2181",
+  "RedisSentinelConnection": "cs-redis:6379",
+  "RVResponseTimeOut": "10 seconds",
+  "JobWorkerCount": 1,
+  "RVWorkerCount": 1,
+  "TriggerControlWithDBInfo": false,
+  "MongoDBUrl": "mongodb://host.docker.internal:27017/EARS"
+}

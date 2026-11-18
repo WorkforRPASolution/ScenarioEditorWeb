@@ -123,3 +123,47 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     mem_limit: 1g
+
+  # ── 프로필 cs(평소에는 뜨지 않는다): 시험 실행(P5)의 실제 CommandServer 맞춤 확인 — tools/infra/check-command-compat.js ──
+  # 자동 시험은 CommandServer 흉내(tools/infra/fake-command-server.js, 호스트 3195)를 쓴다. 이 프로필은 같은 포트(127.0.0.1:3195)에 실제 CommandServer 를 띄워
+  # 웹이 읽는 실행 기록(EQP_AUTO_RECOVERY)의 모양·상태·운영 속성 읽기가 실제와 같은지 한 번 본다 — 흉내·통합 시험·E2E 와 동시에 띄우지 않는다.
+  # Redis 는 전용(cs-redis — 지연 키·에이전트 정보·VB- 키가 공용 ars-redis 에 남지 않게), ZooKeeper 는 is-zookeeper, Mongo 는 로컬 EARS.
+  # 에이전트가 없으므로 실행 기록은 Wait·NotStarted 까지만 간다. -DMODE=DEBUG 로 RV 를 쓰지 않는다. 끝나면 `--profile cs rm -sf cs-redis command-server`.
+  cs-redis:
+    profiles: [cs]
+    image: redis:5.0.6-alpine
+    command: ["redis-server", "--requirepass", "visuallove", "--notify-keyspace-events", "Ex"]
+    ports:
+      - "127.0.0.1:16399:6379"
+  command-server:
+    profiles: [cs]
+    image: eclipse-temurin:8-jre
+    depends_on:
+      cs-redis:
+        condition: service_started
+      is-zookeeper:
+        condition: service_healthy
+    environment:
+      HOST_IP: 127.0.0.1
+      HTTP_PORT: "3195"
+      HTTP_WEB_SRV_PORT: "8082"
+      TZ: Asia/Seoul
+    volumes:
+      - ./cs/dist:/opt/cs:ro
+      - ./cs/conf:/ears/conf/CommandServer:ro
+    command:
+      - java
+      - -Xmx512m
+      - -DMODE=DEBUG
+      - -Duser.timezone=Asia/Seoul
+      - -DEEG_BASE=/ears
+      - -Dlog4j.configuration=file:/ears/conf/CommandServer/log4j.properties
+      - -cp
+      - /opt/cs/CommandServer.jar:/opt/cs/lib/*
+      - com.sec.eeg.ars.actor.Master
+      - start
+    ports:
+      - "127.0.0.1:3195:3195"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    mem_limit: 1g
