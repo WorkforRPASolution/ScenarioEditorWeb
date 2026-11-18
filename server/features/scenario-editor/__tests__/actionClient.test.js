@@ -50,6 +50,10 @@ describe('actionClient.send', () => {
       expect(await client.send(REQ)).toEqual({ kind: 'notSent', cause: code })
     }
   })
+  it('fetch 가 막는 포트(bad port)는 보내지 않은 것이다', async () => {
+    const e = Object.assign(new TypeError('fetch failed'), { cause: new Error('bad port') })
+    expect(await createActionClient({ env: {}, fetch: fakeFetch(e).fetch }).send(REQ)).toEqual({ kind: 'notSent', cause: 'BAD_PORT' })
+  })
   it('http:// 로 시작하지 않는 주소는 부르지 않고 보내지 않은 것으로', async () => {
     const f = fakeFetch({ status: 200, text: '' })
     const client = createActionClient({ env: { EARS_INTERFACE_URL: 'is.local:8080' }, fetch: f.fetch })

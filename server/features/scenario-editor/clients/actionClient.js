@@ -33,8 +33,10 @@ function createActionClient({ env = process.env, fetch = globalThis.fetch, log =
       })
       return { kind: 'response', status: res.status, text: await res.text() }
     } catch (e) {
-      const cause = (e && e.cause && e.cause.code) || (e && e.name) || 'ERROR'
-      const kind = NOT_SENT_CODES.has(cause) ? 'notSent' : 'noResponse'
+      // fetch 는 몇몇 포트(1·7·22 …)로는 아예 연결하지 않는다 — code 없이 'bad port' 로 던진다
+      const badPort = e && e.cause && e.cause.message === 'bad port'
+      const cause = badPort ? 'BAD_PORT' : (e && e.cause && e.cause.code) || (e && e.name) || 'ERROR'
+      const kind = badPort || NOT_SENT_CODES.has(cause) ? 'notSent' : 'noResponse'
       warn(kind, cause)
       return { kind, cause }
     }
