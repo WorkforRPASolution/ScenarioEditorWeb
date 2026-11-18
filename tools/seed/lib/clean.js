@@ -23,6 +23,8 @@ async function clean(ctx) {
   r.users = (await ctx.db.collection('ARS_USER_INFO').deleteMany({ singleid: /^sew_/ })).deletedCount
   // 시험 설비의 스냅샷 메모(P3-C). 컬렉션은 지우지 않는다 — 문서만.
   r.memos = (await ctx.db.collection('ARS_USER_MEMO').deleteMany({ eqpid: /^SEWT_/ })).deletedCount
+  // 시험 설비의 실행 기록(P5 — CommandServer 흉내가 넣은 것). 컬렉션은 지우지 않는다 — 문서만.
+  r.recoveries = (await ctx.db.collection('EQP_AUTO_RECOVERY').deleteMany({ eqpid: /^SEWT_/ })).deletedCount
   return r
 }
 

@@ -14,7 +14,9 @@ const equipment = [
   eq('SEWT_BADMAIL', 'SEWCVD', 'SEWMODELA', 9, { emailcategory: 'A-B-C' }),
   eq('SEWT_DUP01', 'SEWCVD', 'SEWMODELA', 10),
   eq('SEWT_PRX01', 'SEWCVD', 'SEWMODELA', 11, { localpc: 1, ipAddr: '10.99.11.1', ipAddrL: '192.168.0.11' }),
-  eq('SEWT_PRX02', 'SEWCVD', 'SEWMODELA', 12, { localpc: 1, ipAddr: '10.99.11.1', ipAddrL: '192.168.0.11' })
+  eq('SEWT_PRX02', 'SEWCVD', 'SEWMODELA', 12, { localpc: 1, ipAddr: '10.99.11.1', ipAddrL: '192.168.0.11' }),
+  // 시험 실행(P5): 자동조치 OFF 설비 — 유효 설비지만 실행 요청을 보내지 않는다
+  eq('SEWT_CVD_OFF', 'SEWCVD', 'SEWMODELA', 13, { onoff: 0 })
 ]
 // SEWT_DUP01 은 AGENT_INFO 두 문서 → 조인 결과에 두 번(EQP_INFO.eqpId 는 로컬 유일 인덱스라 그쪽 중복은 못 만든다)
 const agents = [...equipment.map((e) => ({ eqpId: e.eqpId, arsagentJava: 1 })), { eqpId: 'SEWT_DUP01', arsagentJava: 1 }]

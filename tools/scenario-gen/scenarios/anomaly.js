@@ -16,6 +16,9 @@ module.exports = [
       steps: [S('image', 'MouseLeftClick', 'NEXT', 'FAIL', 'missing', ['BASE_IMAGE_MISSING']), S('none', 'None', 'SUCCESS', 'FAIL', 'notNeeded')] } },
   { name: 'PROPERTYLESS', process: 'SEWCVD', model: 'SEWMODELB', desc: 'property 없는 문서', load: 'propertyless', build: one,
     expect: { list: { visible: false, status: [] }, open: { ok: false, status: 404, code: 'NOT_FOUND' } } },
+  // 시험 실행(P5): scCategory 가 Int64 가 아니다(Int32) — 웹은 열지만 CommandServer 는 실행 요청을 말없이 버린다
+  { name: 'RUN_BAD_CATEGORY', process: 'SEWCVD', model: 'SEWMODELA', desc: '유형(scCategory)이 Int32', load: 'badCategory', build: one,
+    expect: { list: { visible: true, status: [] }, open: { ok: true }, scenarioNotes: [], steps: [S('none', 'None', 'SUCCESS', 'FAIL', 'notNeeded')] } },
   {
     name: 'BAD_VALUES', process: 'SEWCVD', model: 'SEWMODELB', desc: '해석이 깨지는 값',
     build: (w) => {

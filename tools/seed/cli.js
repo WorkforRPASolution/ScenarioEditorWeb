@@ -43,6 +43,7 @@ async function loadScenario(ctx, { dir, meta }) {
   }
   if (meta.load === 'dupProperty') await anomaly.dupProperty(ctx, { ...base, ...v(meta.versions) })
   if (meta.load === 'emptyBiVersion') await anomaly.emptyBiVersion(ctx, { ...base, ...v(meta.versions), crtime: last.crtime })
+  if (meta.load === 'badCategory') await anomaly.badCategory(ctx, base)
   return last
 }
 

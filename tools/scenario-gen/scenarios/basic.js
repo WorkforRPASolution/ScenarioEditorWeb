@@ -56,6 +56,19 @@ module.exports = [
     ], { header: { targetWindow: { agentFinds: false, reasonCode: 'TEXT_EMPTY' } }, scenarioNotes: ['TARGET_WINDOW_DIFFERS'] })
   },
   {
+    // 시험 실행(P5): 운영 속성이 기본값이 아니다 — 시작 지연·재시도·우선순위·후속 시나리오·메일 생략
+    name: 'RUN_PROPS', process: 'SEWCVD', model: 'SEWMODELA', desc: '시험 실행 — 운영 속성',
+    build: (w) => {
+      w.targetWindow(...TW)
+      Object.assign(w.sc.property, {
+        StartDelay: 30, RetryCnt: 2, RetryInterval: 10, Priority: 5, DoNotSendEmailWhenSuccess: true, DoNotSendEmailWhenStop: true,
+        NextScenarioIfSuccess: { Name: 'ALL_ACTIONS', Text: '동작 16종' }, NextScenarioIfFail: { Name: 'ALL_CONDITIONS', Text: '조건 4종' }
+      })
+      for (let i = 1; i <= 3; i++) w.none({ action: [6, '1000'], desc: `대기 ${i}`, next: i === 3 ? [SUCCESS, FAIL] : [NEXT, FAIL] })
+    },
+    expect: ok([S('none', 'Wait', 'NEXT', 'FAIL', 'notNeeded'), S('none', 'Wait', 'NEXT', 'FAIL', 'notNeeded'), S('none', 'Wait', 'SUCCESS', 'FAIL', 'notNeeded')])
+  },
+  {
     name: 'NEXT_RULES', process: 'SEWCVD', model: 'SEWMODELA', desc: '다음 스텝 규칙',
     build: (w) => {
       w.targetWindow(...TW)

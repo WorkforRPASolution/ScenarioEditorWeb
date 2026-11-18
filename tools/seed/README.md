@@ -7,6 +7,7 @@
   - 이력(P3-D)도 함께 넣는다: 오늘 태그 한 벌의 txn 에 스텝 셋(`data/history.js` — 둘째 설명에 `<`·`&`·작은따옴표). 로컬 이력 서버(HttpWebServer, `server/.env` 의 `HTTP_WEB_SERVER_URL`)의 `POST /ARS/AppendHistory` 로 넣고(사내에서 판정 서버가 넣는 길), 지울 때는 Cassandra `ars.historylog` 에서 `SEWT_` 설비 줄만 지운다. **이력 서버 주소가 루프백이 아니면 넣지 않고 멈춘다.** 주소가 비어 있으면 알리고 건너뛴다(이력 보기 시험이 실패한다).
   - 넣는 것(2026-11-12 기준 목록 26줄·그림 25장, 640×360 PNG): `SEWT_PHOTO_A01` 오늘 클릭 12장(근무조 경계 포함)·태그 다섯 종 한 벌(같은 txn)·같은 ms 의 클릭과 태그·목록에만 있는 한 장, 어제 클릭 3장, 14일 반 전 클릭 1장("1일 뒤 삭제"); `SEWT_CVD_A01` 오늘 2장. "오늘" 은 돌린 때의 KST 날짜다.
   - 파티션 연·월·일은 스냅샷 서버(WriteWorker)처럼 파일 ms 를 KST 로 읽어 정하고 TTL 은 주지 않는다(테이블 기본 15일).
+- 시험 실행(P5, 2026-11-18): 설비 `SEWT_CVD_OFF`(자동조치 OFF — `onoff: 0`), 시나리오 `RUN_PROPS`(basic — 시작 지연 30·재시도 2회 10초·우선순위 5·후속 성공 `ALL_ACTIONS`·실패 `ALL_CONDITIONS`·메일 생략 성공·중지)·`RUN_BAD_CATEGORY`(anomaly — 적재 뒤 `scCategory` 를 Int32 로 바꾼다. CommandServer 는 이런 문서의 실행 요청을 말없이 버린다). `clean`·`reset` 은 `SEWT_` 설비의 실행 기록(`EQP_AUTO_RECOVERY` — CommandServer 흉내가 넣은 것)도 지운다(문서만).
 - 2026-11-01 기준 적재 결과(`reset basic anomaly`, 약 1초): SC_PROPERTY SEW 23 · fs.files SEW 24 · Redis DB0 키 6개(`SEW{CVD,ETCH,PHOTO}-SEWMODEL{A,B}`) · 설비 12(AGENT_INFO 13) · 사용자 6. 공유 로컬 EARS 의 SEW 가 아닌 EQP_INFO 82건은 그대로.
 - 시나리오 해시는 Redis DB0 에서 확인했다(설계 §3.1).
 - `npm run seed -- big` (2026-11-01): `big/BIG_200 setscenario crtime=1793535641775` — HTTP 200, askTimeout 없음. setscenario 6.7초(명령 전체 37.7초, 대부분은 110MB BI 생성). 적재 후 SC_PROPERTY SEW 24 · fs.files SEW 25(BIG_200 114,881,881바이트, 청크 110개) · `SEWPHOTO-SEWMODELA` 해시 필드 4개.

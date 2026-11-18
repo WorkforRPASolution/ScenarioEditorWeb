@@ -12,9 +12,9 @@ const results = generate(['basic', 'anomaly'], out)
 const read = (dir, f) => readFileSync(join(dir, f), 'utf8')
 
 describe('생성기', () => {
-  it('basic 16개 + anomaly 8개', () => {
-    expect(results.filter((r) => r.meta.set === 'basic')).toHaveLength(16)
-    expect(results.filter((r) => r.meta.set === 'anomaly')).toHaveLength(8)
+  it('basic 17개 + anomaly 9개', () => {
+    expect(results.filter((r) => r.meta.set === 'basic')).toHaveLength(17)
+    expect(results.filter((r) => r.meta.set === 'anomaly')).toHaveLength(9)
   })
   it.each(results.map((r) => [r.meta.name, r]))('%s: 기대 스텝 수 = 본문 스텝 수 = BI 항목 수', (_, r) => {
     const v = r.meta.versions
@@ -33,14 +33,14 @@ describe('생성기', () => {
     writeFileSync(join(stray, 'meta.json'), '{}')
     generate(['anomaly'], dir)
     expect(existsSync(stray)).toBe(false)
-    expect(readdirSync(join(dir, 'anomaly'))).toHaveLength(8)
+    expect(readdirSync(join(dir, 'anomaly'))).toHaveLength(9)
   })
   it('요청하지 않은 묶음 폴더는 건드리지 않는다', () => {
     const dir = mkdtempSync(join(tmpdir(), 'sew-gen-sets-'))
     generate(['basic'], dir)
     generate(['anomaly'], dir)
-    expect(readdirSync(join(dir, 'basic'))).toHaveLength(16)
-    expect(readdirSync(join(dir, 'anomaly'))).toHaveLength(8)
+    expect(readdirSync(join(dir, 'basic'))).toHaveLength(17)
+    expect(readdirSync(join(dir, 'anomaly'))).toHaveLength(9)
   })
   it('공정·모델 이름에 - 가 없다(사내 전제, Q-007)', () => {
     for (const r of results) expect(`${r.meta.process}${r.meta.model}`).not.toContain('-')

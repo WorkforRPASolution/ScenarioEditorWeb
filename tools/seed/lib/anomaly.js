@@ -1,6 +1,6 @@
 'use strict'
 // InterfaceServer 로는 만들 수 없는 이상 데이터를 직접 쓴다. 이 파일만 SC_PROPERTY·GridFS 에 직접 쓴다.
-const { Long } = require('mongodb')
+const { Long, Int32 } = require('mongodb')
 
 async function dupProperty(ctx, { process, model, name, property }) {
   await ctx.db.collection('SC_PROPERTY').insertOne({ process, eqpModel: model, scname: name, property: JSON.parse(property) })
@@ -47,4 +47,9 @@ async function propertyless(ctx, { process, model, name, propertyType }) {
   await ctx.db.collection('SC_PROPERTY').insertOne({ process, eqpModel: model, scname: name, scCategory: Long.fromNumber(propertyType), trCategory: Long.fromNumber(0) })
 }
 
-module.exports = { dupProperty, noRedisField, emptyBiVersion, propertyless }
+// scCategory 를 Int32 로 바꾼다(사내는 Int64 로 쓴다). CommandServer 는 getInt64 로 읽어 이런 문서의 실행 요청을 말없이 버린다(P5 설계 §3).
+async function badCategory(ctx, { process, model, name, propertyType }) {
+  await ctx.db.collection('SC_PROPERTY').updateOne({ process, eqpModel: model, scname: name, property: { $exists: true } }, { $set: { scCategory: new Int32(propertyType) } })
+}
+
+module.exports = { dupProperty, noRedisField, emptyBiVersion, propertyless, badCategory }
