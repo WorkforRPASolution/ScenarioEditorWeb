@@ -93,6 +93,57 @@ function readRunProperty(raw) {
   }
 }
 
+// ── 설정(P5 설계 §5.6) — 요청마다 읽는다 ──
+const isLoopback = (h) => {
+  const x = String(h).toLowerCase().replace(/^\[|\]$/g, '')
+  return x === 'localhost' || x === '::1' || /^127(\.\d{1,3}){3}$/.test(x)
+}
+// "host:port"·"[::1]:port" → 호스트
+function hostOf(hp) {
+  const s = hp.trim()
+  if (s.startsWith('[')) { const end = s.indexOf(']'); return end > 0 ? s.slice(1, end) : s }
+  return (s.match(/:/g) || []).length > 1 ? s : s.split(':')[0]
+}
+// mongodb://[계정@]호스트[:포트][,호스트…]/DB?… → 호스트들. mongodb+srv 는 DNS 이름 하나다. 해석하지 못하면 빈 목록.
+function mongoHosts(uri) {
+  const m = /^mongodb(\+srv)?:\/\/(.*)$/.exec(uri)
+  if (!m) return []
+  const authority = m[2].split(/[/?]/)[0]
+  const hosts = authority.slice(authority.lastIndexOf('@') + 1)
+  return m[1] ? [hosts] : hosts.split(',').filter(Boolean).map(hostOf)
+}
+function urlHosts(url) {
+  if (!/^https?:\/\//i.test(url)) return []
+  try { return [new URL(url).hostname] } catch { return [] }
+}
+const allLoopback = (value, hostsOf) => {
+  const v = typeof value === 'string' ? value.trim() : ''
+  if (!v) return true // 비어 있으면 연결 코드의 기본값(localhost)
+  const hosts = hostsOf(v)
+  return hosts.length > 0 && hosts.every(isLoopback)
+}
+// 문(writePolicy.testRunDenial)에 넘길 값. earsLoopback = 운영 Mongo 와 InterfaceServer 가 모두 이 PC 안인가(해석하지 못하는 주소는 믿지 않는다).
+function testRunFlags(env) {
+  return {
+    enabled: env.SE_TEST_RUN === '1',
+    devOverride: env.SE_DEV_USER_OVERRIDE === '1',
+    earsLoopback: allLoopback(env.MONGODB_URI, mongoHosts) && allLoopback(env.EARS_INTERFACE_URL, urlHosts)
+  }
+}
+const intIn = (raw, min, max, fallback) => {
+  const s = typeof raw === 'string' ? raw.trim() : ''
+  const n = /^\d+$/.test(s) ? Number(s) : NaN
+  return n >= min && n <= max ? n : fallback
+}
+function testRunLimits(env) {
+  return {
+    maxEquipment: intIn(env.SE_TEST_RUN_MAX_EQP, 1, 200, 200),
+    concurrency: intIn(env.SE_TEST_RUN_CONCURRENCY, 1, 5, 1), // InterfaceServer 의 recovery 일꾼은 하나다(실측) — 늘려도 그 안에서 줄을 선다
+    recentMin: intIn(env.SE_TEST_RUN_RECENT_MIN, 1, 60, 10),
+    skewMs: intIn(env.SE_TEST_RUN_CLOCK_SKEW_SEC, 0, 3600, 120) * 1000
+  }
+}
+
 // ── InterfaceServer /EARS/Action 이 준 것 → 결과 ──
 // "보내지 않았다" 고 말할 수 있는 것은 down 뿐이다. 모르는 것(unknown)은 CommandServer 가 받았을 수 있다 — 10분 동안 "안 됐다" 고 단정하지 않는다(설계 §3).
 function classifyAction(received) {
@@ -140,5 +191,5 @@ function pickRecovery(docs, rec, skewMs) {
 
 module.exports = {
   OUTCOMES, REASON_KINDS, REASON_MAX, validateRequest, userTextOf, userInfoOf, buildParams, headerValueOk, delayKeyOk, readOnoff,
-  readRunProperty, isInt64, classifyAction, pickRecovery
+  readRunProperty, isInt64, classifyAction, pickRecovery, testRunFlags, testRunLimits
 }

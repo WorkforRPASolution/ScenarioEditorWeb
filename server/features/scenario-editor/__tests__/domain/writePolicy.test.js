@@ -55,3 +55,33 @@ describe('requireMemoWrite', () => {
     expect([n.called, n.err]).toEqual([true, undefined])
   })
 })
+
+describe('testRunDenial — 시험 실행의 문(P5 설계 §5.2)', () => {
+  const { testRunDenial } = require('../../domain/writePolicy')
+  const USER = { canWrite: true, duplicateUserDocs: 1 }
+  const OPEN = { writeDisabled: false, enabled: true, devOverride: false, earsLoopback: true }
+  const code = (user, flags) => testRunDenial({ ...USER, ...user }, { ...OPEN, ...flags })?.code ?? null
+
+  it('WRITE 사용자·켜 둔 서버면 통과', () => {
+    expect(testRunDenial(USER, OPEN)).toBeNull()
+  })
+  it('막는 것마다 403 과 code', () => {
+    expect(testRunDenial({ ...USER, duplicateUserDocs: 2 }, OPEN)).toMatchObject({ status: 403, code: 'TEST_RUN_USER_AMBIGUOUS' })
+    expect(testRunDenial(USER, { ...OPEN, enabled: false })).toMatchObject({ status: 403, code: 'TEST_RUN_DISABLED' })
+    expect(testRunDenial(USER, { ...OPEN, writeDisabled: true })).toMatchObject({ status: 403, code: 'WRITE_DISABLED' })
+    expect(testRunDenial(USER, { ...OPEN, devOverride: true, earsLoopback: false })).toMatchObject({ status: 403, code: 'TEST_RUN_DEV_USER' })
+    expect(testRunDenial({ ...USER, canWrite: false }, OPEN)).toMatchObject({ status: 403, code: 'WRITE_FORBIDDEN' })
+  })
+  it('사용자 바꾸기는 EARS 가 루프백이면 막지 않는다(로컬 개발·E2E)', () => {
+    expect(code({}, { devOverride: true, earsLoopback: true })).toBeNull()
+    expect(code({}, { devOverride: false, earsLoopback: false })).toBeNull()
+  })
+  it('순서: 같은 아이디 여럿 → 꺼 둠 → 읽기 전용 서버 → 사용자 바꾸기 → WRITE 없음', () => {
+    const all = { writeDisabled: true, enabled: false, devOverride: true, earsLoopback: false }
+    expect(code({ canWrite: false, duplicateUserDocs: 3 }, all)).toBe('TEST_RUN_USER_AMBIGUOUS')
+    expect(code({ canWrite: false }, all)).toBe('TEST_RUN_DISABLED')
+    expect(code({ canWrite: false }, { ...all, enabled: true })).toBe('WRITE_DISABLED')
+    expect(code({ canWrite: false }, { ...all, enabled: true, writeDisabled: false })).toBe('TEST_RUN_DEV_USER')
+    expect(code({ canWrite: false }, { ...all, enabled: true, writeDisabled: false, earsLoopback: true })).toBe('WRITE_FORBIDDEN')
+  })
+})

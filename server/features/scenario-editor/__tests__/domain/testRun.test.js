@@ -227,3 +227,32 @@ describe('pickRecovery — 내 요청의 실행 기록 고르기', () => {
     expect(pickRecovery([doc({ status: 3, retry: undefined, create_date: null })], REC, SKEW).doc).toEqual({ status: null, retry: null, txnSeq: 1_000_500, createDate: null })
   })
 })
+
+describe('설정 읽기 — testRunFlags·testRunLimits', () => {
+  const { testRunFlags, testRunLimits } = require('../../domain/testRun')
+  const LOCAL = { MONGODB_URI: 'mongodb://localhost:27017/EARS', EARS_INTERFACE_URL: 'http://127.0.0.1:8080' }
+
+  it('SE_TEST_RUN 은 "1" 일 때만 켜짐, 사용자 바꾸기는 SE_DEV_USER_OVERRIDE "1"', () => {
+    expect(testRunFlags({ ...LOCAL, SE_TEST_RUN: '1', SE_DEV_USER_OVERRIDE: '1' })).toEqual({ enabled: true, devOverride: true, earsLoopback: true })
+    for (const v of [undefined, '', '0', 'true', 'yes', ' 1']) expect(testRunFlags({ ...LOCAL, SE_TEST_RUN: v }).enabled).toBe(false)
+    expect(testRunFlags({ ...LOCAL, SE_DEV_USER_OVERRIDE: '0' }).devOverride).toBe(false)
+  })
+  it('EARS 가 루프백인가: Mongo 의 모든 호스트와 InterfaceServer 주소의 호스트', () => {
+    const lo = (env) => testRunFlags(env).earsLoopback
+    expect(lo(LOCAL)).toBe(true)
+    expect(lo({})).toBe(true) // 비어 있으면 연결 코드의 기본값(localhost)
+    expect(lo({ MONGODB_URI: 'mongodb://user:p%40ss@127.0.0.1:27017,localhost:27018/EARS?replicaSet=rs', EARS_INTERFACE_URL: 'http://[::1]:8080' })).toBe(true)
+    expect(lo({ ...LOCAL, MONGODB_URI: 'mongodb://10.1.2.3:27017/EARS' })).toBe(false)
+    expect(lo({ ...LOCAL, MONGODB_URI: 'mongodb://localhost:27017,10.1.2.3:27017/EARS' })).toBe(false)
+    expect(lo({ ...LOCAL, MONGODB_URI: 'mongodb+srv://cluster.example.com/EARS' })).toBe(false)
+    expect(lo({ ...LOCAL, EARS_INTERFACE_URL: 'http://is.company.local:8080' })).toBe(false)
+    expect(lo({ ...LOCAL, EARS_INTERFACE_URL: 'is.company.local:8080' })).toBe(false) // 해석하지 못하는 주소는 루프백이라고 믿지 않는다
+    expect(lo({ ...LOCAL, MONGODB_URI: 'not-a-uri' })).toBe(false)
+  })
+  it('한도: 범위 밖·수가 아니면 기본값', () => {
+    expect(testRunLimits({})).toEqual({ maxEquipment: 200, concurrency: 1, recentMin: 10, skewMs: 120000 })
+    expect(testRunLimits({ SE_TEST_RUN_MAX_EQP: '50', SE_TEST_RUN_CONCURRENCY: '3', SE_TEST_RUN_RECENT_MIN: '5', SE_TEST_RUN_CLOCK_SKEW_SEC: '0' })).toEqual({ maxEquipment: 50, concurrency: 3, recentMin: 5, skewMs: 0 })
+    expect(testRunLimits({ SE_TEST_RUN_MAX_EQP: '201', SE_TEST_RUN_CONCURRENCY: '6', SE_TEST_RUN_RECENT_MIN: '0', SE_TEST_RUN_CLOCK_SKEW_SEC: '3601' })).toEqual({ maxEquipment: 200, concurrency: 1, recentMin: 10, skewMs: 120000 })
+    expect(testRunLimits({ SE_TEST_RUN_MAX_EQP: 'abc', SE_TEST_RUN_CONCURRENCY: '1.5', SE_TEST_RUN_RECENT_MIN: '', SE_TEST_RUN_CLOCK_SKEW_SEC: '-1' })).toEqual({ maxEquipment: 200, concurrency: 1, recentMin: 10, skewMs: 120000 })
+  })
+})

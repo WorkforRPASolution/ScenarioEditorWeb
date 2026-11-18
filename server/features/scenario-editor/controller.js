@@ -2,7 +2,8 @@
 const { getDeps } = require('./deps')
 const { seError } = require('./errors')
 const { hasFullScope } = require('./domain/processPermission')
-const { writeDenial, reviewDenial, memoDenial } = require('./domain/writePolicy')
+const { writeDenial, reviewDenial, memoDenial, testRunDenial } = require('./domain/writePolicy')
+const { testRunFlags } = require('./domain/testRun')
 const { linksFromEnv } = require('./domain/links')
 
 const ok = (res, data) => res.json({ success: true, data })
@@ -14,11 +15,16 @@ async function loadUser(req, res, next) {
   next()
 }
 
+// 시험 실행의 문(P5) — 설정은 요청마다 읽는다. /me 가 같은 판단을 알려 화면이 버튼을 미리 끄고 까닭을 보인다.
+const testRunGate = (req) => testRunDenial(req.seUser, { writeDisabled: req.app.locals.seWriteDisabled === true, ...testRunFlags(process.env) })
+
 async function me(req, res) {
   const u = req.seUser
+  const gate = testRunGate(req)
   ok(res, {
     singleid: u.singleid, name: u.name, processRaw: u.processRaw, processes: u.processes, isMaster: u.isMaster, canWrite: u.canWrite,
-    authorityManager: u.authorityManager, authorityManagerValid: u.authorityManagerValid, authorityName: u.authorityName, duplicateUserDocs: u.duplicateUserDocs
+    authorityManager: u.authorityManager, authorityManagerValid: u.authorityManagerValid, authorityName: u.authorityName, duplicateUserDocs: u.duplicateUserDocs,
+    testRun: { enabled: gate === null, reason: gate ? gate.code : null }
   })
 }
 
@@ -117,6 +123,11 @@ function requireReviewer(req, res, next) {
 
 function requireMemoWrite(req, res, next) {
   const denial = memoDenial(req.seUser, { writeDisabled: writeDisabled(req) })
+  return denial ? denyWith(denial, next) : next()
+}
+
+function requireTestRun(req, res, next) {
+  const denial = testRunGate(req)
   return denial ? denyWith(denial, next) : next()
 }
 
@@ -294,4 +305,4 @@ async function ocrTest(req, res) {
   await runTest(res, () => getDeps().visionTest.ocr(req.seUser, { source: req.seTest.source, meta: req.seMeta }))
 }
 
-module.exports = { visionTest, ocrTest, history, saveMemo, removeMemo, memoList, requireMemoWrite, equipment, snapshotPresence, snapshotDays, snapshotList, snapshotImage, links, reviewScenario, savePerformance, sameName, searchUsers, nameRule, setEnabled, removeScenario, deploy, deployVerify, deployFinish, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, counts, versions, open, dataCheck, image }
+module.exports = { requireTestRun, visionTest, ocrTest, history, saveMemo, removeMemo, memoList, requireMemoWrite, equipment, snapshotPresence, snapshotDays, snapshotList, snapshotImage, links, reviewScenario, savePerformance, sameName, searchUsers, nameRule, setEnabled, removeScenario, deploy, deployVerify, deployFinish, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, counts, versions, open, dataCheck, image }

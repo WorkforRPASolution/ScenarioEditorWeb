@@ -43,6 +43,20 @@ describe('/me·/scopes·/cache/refresh', () => {
     expect(res.status).toBe(200)
     expect((await res.json()).data).toMatchObject({ singleid: 'sew_multi', canWrite: true, authorityName: 'Manager', duplicateUserDocs: 1 })
   })
+  it('/me 의 testRun: 시험 실행을 쓸 수 있는가와 막힌 까닭(code) — 화면이 버튼을 미리 끈다', async () => {
+    const get = async (headers = {}) => (await (await fetch(`${base}/me`, { headers })).json()).data.testRun
+    const before = process.env.SE_TEST_RUN
+    try {
+      delete process.env.SE_TEST_RUN
+      expect(await get()).toEqual({ enabled: false, reason: 'TEST_RUN_DISABLED' })
+      process.env.SE_TEST_RUN = '1'
+      expect(await get()).toEqual({ enabled: true, reason: null })
+      expect(await get({ 'X-SE-User': 'sew_reader' })).toEqual({ enabled: false, reason: 'WRITE_FORBIDDEN' })
+    } finally {
+      if (before === undefined) delete process.env.SE_TEST_RUN
+      else process.env.SE_TEST_RUN = before
+    }
+  })
   it('미등록 사용자는 모든 API 가 403 USER_NOT_REGISTERED', async () => {
     for (const p of ['/me', '/scopes']) {
       const res = await fetch(`${base}${p}`, { headers: { 'X-SE-User': 'sew_none' } })
