@@ -305,4 +305,20 @@ async function ocrTest(req, res) {
   await runTest(res, () => getDeps().visionTest.ocr(req.seUser, { source: req.seTest.source, meta: req.seMeta }))
 }
 
-module.exports = { requireTestRun, visionTest, ocrTest, history, saveMemo, removeMemo, memoList, requireMemoWrite, equipment, snapshotPresence, snapshotDays, snapshotList, snapshotImage, links, reviewScenario, savePerformance, sameName, searchUsers, nameRule, setEnabled, removeScenario, deploy, deployVerify, deployFinish, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, counts, versions, open, dataCheck, image }
+// ── 시험 실행(P5 설계 §6) — 네 경로 모두 requireTestRun 을 지난다 ──
+async function testRunEquipment(req, res) {
+  ok(res, await getDeps().testRun.equipment(req.seUser, need(req.query.process, 'process'), need(req.query.model, 'model')))
+}
+async function testRunScenario(req, res) {
+  ok(res, await getDeps().testRun.scenario(req.seUser, need(req.query.process, 'process'), need(req.query.model, 'model'), need(req.query.name, 'name')))
+}
+// 설비 한 대의 실행 요청. 브라우저가 응답 전에 끊어도 끊지 않는다 — 서비스는 기록·보내기를 끝까지 하고(자리를 쥔 채), 받을 사람이 없는 답은 버린다.
+// 화면은 응답을 놓친 설비를 다시 보내지 않고 실행 상태 조회로 요청 기록에서 결과를 되찾는다.
+async function testRunRequest(req, res) {
+  await runTest(res, () => getDeps().testRun.request(req.seUser, req.body))
+}
+async function testRunStatus(req, res) {
+  ok(res, await getDeps().testRun.status(req.seUser, req.body))
+}
+
+module.exports = { testRunEquipment, testRunScenario, testRunRequest, testRunStatus, requireTestRun, visionTest, ocrTest, history, saveMemo, removeMemo, memoList, requireMemoWrite, equipment, snapshotPresence, snapshotDays, snapshotList, snapshotImage, links, reviewScenario, savePerformance, sameName, searchUsers, nameRule, setEnabled, removeScenario, deploy, deployVerify, deployFinish, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, counts, versions, open, dataCheck, image }

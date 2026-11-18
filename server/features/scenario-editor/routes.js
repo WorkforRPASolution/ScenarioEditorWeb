@@ -51,5 +51,11 @@ router.get('/history/:eqpId/:txn', asyncHandler(c.history))
 // WRITE 권한·읽기 전용 서버(seWriteDisabled)를 보지 않는다(아무것도 쓰지 않는다, 사내 데스크톱도 누구나 시험한다). 부담은 서비스가 동시 수로 묶는다.
 router.post('/vision-test', testUpload(['source', 'train']), asyncHandler(c.visionTest))
 router.post('/ocr-test', testUpload(['source']), asyncHandler(c.ocrTest))
+// 시험 실행(P5) — 설비에 시나리오 실행을 요청한다. 실제 설비를 움직이는 일이라 쓰기로 본다:
+// WRITE + 서버 스위치(SE_TEST_RUN=1) + 읽기 전용 서버가 아님 + (EARS 가 이 PC 밖이면) 사용자 바꾸기가 꺼져 있음. 설비·시나리오 검사는 서비스가 요청마다 다시 한다.
+router.get('/test-run/equipment', c.requireTestRun, asyncHandler(c.testRunEquipment)) // 고른 공정·모델의 설비(자동조치 지금 값)
+router.get('/test-run/scenario', c.requireTestRun, asyncHandler(c.testRunScenario)) // 시나리오 하나의 실행 정보(막는 까닭·운영 속성·현재 판·방금 요청)
+router.post('/test-run/requests', c.requireTestRun, asyncHandler(c.testRunRequest)) // 설비 한 대에 실행 요청
+router.post('/test-run/status', c.requireTestRun, asyncHandler(c.testRunStatus)) // 내 실행(runId)의 요청 결과와 실행 상태
 
 module.exports = router

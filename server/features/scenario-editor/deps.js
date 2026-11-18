@@ -73,6 +73,10 @@ function build(env = process.env) {
   const { createVisionTestService } = require('./service/visionTestService')
   out.visionClient = createVisionClient({ env, log })
   out.visionTest = createVisionTestService({ client: out.visionClient, env, log })
+  // 시험 실행(P5) — InterfaceServer /EARS/Action 으로 설비에 실행을 요청한다. 주소(EARS_INTERFACE_URL)·스위치(SE_TEST_RUN)·한도는 부를 때 읽는다.
+  const { createActionClient } = require('./clients/actionClient')
+  const { createTestRunService } = require('./service/testRunService')
+  out.testRun = createTestRunService({ repo, web, hash, gridfs, scopes, client: createActionClient({ env, log }), env, log, now })
   return out
 }
 
