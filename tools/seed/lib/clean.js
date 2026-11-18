@@ -25,6 +25,9 @@ async function clean(ctx) {
   r.memos = (await ctx.db.collection('ARS_USER_MEMO').deleteMany({ eqpid: /^SEWT_/ })).deletedCount
   // 시험 설비의 실행 기록(P5 — CommandServer 흉내가 넣은 것). 컬렉션은 지우지 않는다 — 문서만.
   r.recoveries = (await ctx.db.collection('EQP_AUTO_RECOVERY').deleteMany({ eqpid: /^SEWT_/ })).deletedCount
+  // 시험 수신 묶음·규칙(P5) — SEW 것만
+  r.emailInfos = (await ctx.db.collection('EMAILINFO').deleteMany({ project: 'ARS', category: /^SEW-/ })).deletedCount
+  r.emailRules = (await ctx.db.collection('EMAIL_RECIPIENTS').deleteMany({ app: 'ARS', process: /^SEW/ })).deletedCount
   return r
 }
 

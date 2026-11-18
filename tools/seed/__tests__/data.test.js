@@ -40,3 +40,25 @@ describe('시험 실행(P5) 데이터', () => {
     expect(anomaly.find((s) => s.name === 'RUN_BAD_CATEGORY')).toMatchObject({ process: 'SEWCVD', model: 'SEWMODELA', load: 'badCategory' })
   })
 })
+
+describe('시험 실행(P5) 수신인 데이터', () => {
+  const { emailInfos, emailRules } = require('../data/emails')
+  it('묶음 이름은 SEW- 로 시작하고(정리가 이것으로 지운다) 규칙은 SEW 공정 것만', () => {
+    expect(emailInfos.length).toBeGreaterThanOrEqual(2)
+    for (const d of emailInfos) expect([d.project, d.category.startsWith('SEW-'), Array.isArray(d.accounts)]).toEqual(['ARS', true, true])
+    for (const r of emailRules) expect([r.app, r.process.startsWith('SEW'), r.emailCategory.startsWith('SEW-')]).toEqual(['ARS', true, true])
+  })
+  it('RUN_PROPS 는 규칙(라인 all)으로 SEW-RUN-NIGHT, 그 밖의 시나리오는 설비의 묶음 — SEWT_DUP01 의 묶음은 주소가 등록돼 있지 않다', () => {
+    const { categoryOf } = require(D + 'recipients')
+    const a01 = equipment.find((e) => e.eqpId === 'SEWT_CVD_A01')
+    const dup = equipment.find((e) => e.eqpId === 'SEWT_DUP01')
+    const rulesOf = (name) => emailRules.filter((r) => r.code === name)
+    expect(categoryOf(rulesOf('RUN_PROPS'), a01)).toMatchObject({ category: 'SEW-RUN-NIGHT', source: 'rule' })
+    expect(categoryOf(rulesOf('ALL_CONDITIONS'), a01)).toMatchObject({ category: 'SEW-SEWCVD-SEWMODELA-MAIL', source: 'equipment' })
+    expect(categoryOf(rulesOf('ALL_CONDITIONS'), dup).category).toBe('SEW-SEWCVD-SEWMODELA-NONE')
+    const names = emailInfos.map((d) => d.category)
+    expect(names).toContain('SEW-RUN-NIGHT')
+    expect(names).toContain('SEW-SEWCVD-SEWMODELA-MAIL')
+    expect(names).not.toContain('SEW-SEWCVD-SEWMODELA-NONE')
+  })
+})

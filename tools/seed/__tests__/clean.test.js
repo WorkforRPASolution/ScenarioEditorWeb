@@ -25,7 +25,7 @@ describe('clean', () => {
     const { ctx, calls } = fakeCtx()
     const r = await clean(ctx)
     const f = (name) => calls.deleteMany.find((c) => c.name === name).filter
-    expect(calls.deleteMany.map((c) => c.name).sort()).toEqual(['AGENT_INFO', 'ARS_USER_INFO', 'ARS_USER_MEMO', 'EQP_AUTO_RECOVERY', 'EQP_INFO', 'SC_PROPERTY'])
+    expect(calls.deleteMany.map((c) => c.name).sort()).toEqual(['AGENT_INFO', 'ARS_USER_INFO', 'ARS_USER_MEMO', 'EMAILINFO', 'EMAIL_RECIPIENTS', 'EQP_AUTO_RECOVERY', 'EQP_INFO', 'SC_PROPERTY'])
     expect(String(f('SC_PROPERTY').process)).toBe('/^SEW/')
     expect(String(f('EQP_INFO').eqpId)).toBe('/^SEWT_/')
     expect(String(f('AGENT_INFO').eqpId)).toBe('/^SEWT_/')
@@ -34,13 +34,16 @@ describe('clean', () => {
     expect(Object.keys(f('ARS_USER_MEMO'))).toEqual(['eqpid'])
     expect(String(f('EQP_AUTO_RECOVERY').eqpid)).toBe('/^SEWT_/') // 시험 설비의 실행 기록(P5 — CommandServer 흉내가 넣은 것)
     expect(Object.keys(f('EQP_AUTO_RECOVERY'))).toEqual(['eqpid'])
+    // 시험 수신 묶음(P5) — 로컬 EARS 의 다른 EMAILINFO·EMAIL_RECIPIENTS 는 건드리지 않는다
+    expect([f('EMAILINFO').project, String(f('EMAILINFO').category)]).toEqual(['ARS', '/^SEW-/'])
+    expect([f('EMAIL_RECIPIENTS').app, String(f('EMAIL_RECIPIENTS').process)]).toEqual(['ARS', '/^SEW/'])
     expect(calls.find).toHaveLength(1)
     expect(calls.find[0].name).toBe('fs.files')
     expect(String(calls.find[0].filter['metadata.process'])).toBe('/^SEW/')
     expect(calls.bucketDelete).toEqual(['f1', 'f2'])
     expect(calls.scan.every((a) => a[0] === 'MATCH' && a[1] === 'SEW*-*')).toBe(true)
     expect(calls.del).toEqual([['SEWCVD-SEWMODELA', 'SEWETCH-SEWMODELB']])
-    expect(r).toEqual({ scProperty: 1, gridfsFiles: 2, redisKeys: 2, eqpInfo: 1, agentInfo: 1, users: 1, memos: 1, recoveries: 1 })
+    expect(r).toEqual({ scProperty: 1, gridfsFiles: 2, redisKeys: 2, eqpInfo: 1, agentInfo: 1, users: 1, memos: 1, recoveries: 1, emailInfos: 1, emailRules: 1 })
   })
   it('지울 Redis 키가 없으면 del 을 부르지 않는다', async () => {
     const { ctx, calls } = fakeCtx()

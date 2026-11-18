@@ -89,6 +89,8 @@ export const scenarioEditorApi = {
   testRunRequest: (body) => api.post('/scenario-editor/test-run/requests', body, { timeout: TEST_RUN_REQUEST_TIMEOUT_MS }),
   // 내 실행의 요청 결과와 실행 상태 — body { runId, pinned?: { 설비: txnSeq } } → { now, items: [{ eqpId, outcome, detail, sentAt, found, status, retry, txnSeq, createDate }] }
   testRunStatus: (body) => api.post('/scenario-editor/test-run/status', body, { timeout: TEST_RUN_TIMEOUT_MS }),
+  // 고른 설비들의 결과 메일 수신 묶음 — body { process, model, name, eqpIds } → { groups: [{ category, source: 'rule'|'equipment', eqpIds, accounts, problem }] }
+  testRunRecipients: (body) => api.post('/scenario-editor/test-run/recipients', body, { timeout: TEST_RUN_TIMEOUT_MS }),
   // 그림 한 장(Blob). 실패 본문도 Blob 으로 온다 — blobError 로 code 를 읽는다
   snapshotImage: (eqpId, fileName, signal) => api.get(`/scenario-editor/snapshots/${enc(eqpId)}/${enc(fileName)}/image`, { responseType: 'blob', signal, timeout: SNAPSHOT_TIMEOUT_MS })
 }

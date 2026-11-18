@@ -94,6 +94,10 @@ test('① 시나리오를 열지 않은 채 창에서 공정·모델·시나리�
   await expect(tid(page, 'se-run-go')).toBeDisabled()
   await tid(page, 'se-run-reason-text').fill('밸브 "A" 점검')
   await expect(tid(page, 'se-run-summary')).toHaveText('RUN_PROPS · 설비 2대 · 시작 스텝 2 · 밸브 "A" 점검')
+  // 결과 메일 수신인: 이 시나리오의 수신 규칙이 가리키는 묶음과 주소(빈 주소는 빠진다), 메일을 생략하는 결과
+  await expect(tid(page, 'se-run-mail-group')).toHaveText([/설비 2대 → SEW-RUN-NIGHT/])
+  await expect(tid(page, 'se-run-mail')).toContainText('sew.night@example.com · sew.lead@example.com')
+  await expect(tid(page, 'se-run-mail')).toContainText('성공·중지일 때는 메일을 보내지 않는 시나리오입니다.')
 
   // 실행 → 확인 → 결과. 흉내는 22초 뒤에 실행 기록을 넣는다(늦게 등록되는 기록)
   await control('PUT', '/control', { record: true, recordDelayMs: 22_000 })

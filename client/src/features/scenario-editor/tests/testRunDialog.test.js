@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 
-const api = vi.hoisted(() => ({ list: vi.fn(), testRunEquipment: vi.fn(), testRunScenario: vi.fn(), testRunRequest: vi.fn(), testRunStatus: vi.fn() }))
+const api = vi.hoisted(() => ({ list: vi.fn(), testRunEquipment: vi.fn(), testRunScenario: vi.fn(), testRunRequest: vi.fn(), testRunStatus: vi.fn(), testRunRecipients: vi.fn() }))
 vi.mock('../api', async (importOriginal) => ({ ...(await importOriginal()), scenarioEditorApi: api }))
 import TestRunDialog from '../components/testrun/TestRunDialog.vue'
 import SearchSelect from '../components/snapshot/SearchSelect.vue'
@@ -52,6 +52,7 @@ beforeEach(() => {
   api.testRunScenario.mockImplementation((p, m, name) => ok({ ...INFO, process: p, model: m, name }))
   api.testRunRequest.mockImplementation(() => ok({ outcome: 'accepted' }))
   api.testRunStatus.mockImplementation(() => ok({ now: Date.now(), items: [] }))
+  api.testRunRecipients.mockImplementation(() => ok({ groups: [] }))
 })
 
 describe('SearchSelect — "전체" 줄을 끄는 속성', () => {
@@ -214,6 +215,29 @@ describe('실행 조건과 확인', () => {
     q('se-run-confirm-ok').click()
     await flushPromises()
     expect(api.testRunRequest.mock.calls[0][0].again).toBe(true)
+  })
+})
+
+describe('결과 메일 수신인', () => {
+  it('묶음마다 설비 수·묶음 이름·주소를 보이고, 메일이 가지 않는 묶음은 까닭을 붉게 — "실행이 끝날 때 다시 정해집니다"', async () => {
+    api.testRunRecipients.mockImplementation(() => ok({ groups: [
+      { category: 'SEW-NIGHT', source: 'rule', eqpIds: ['A01'], accounts: ['night@x.com', 'lead@x.com'], problem: null },
+      { category: 'SEW-GONE', source: 'equipment', eqpIds: ['A02'], accounts: [], problem: 'INFO_MISSING' }
+    ] }))
+    await chosen()
+    expect(q('se-run-mail').textContent).toContain(t('SEW_RUN_MAIL_EMPTY'))
+    await fire(qa('se-run-row')[0], 'click')
+    await fire(qa('se-run-row')[1], 'click', { ctrlKey: true })
+    await new Promise((r) => setTimeout(r, 350))
+    await flushPromises()
+    const groups = qa('se-run-mail-group')
+    expect(groups).toHaveLength(2)
+    expect(groups[0].textContent).toContain(t('SEW_RUN_MAIL_GROUP', { n: 1, category: 'SEW-NIGHT' }))
+    expect(groups[0].textContent).toContain('night@x.com · lead@x.com')
+    expect(groups[1].textContent).toContain(t('SEW_RUN_MAIL_PROBLEM_INFO_MISSING'))
+    expect(q('se-run-mail').textContent).toContain(t('SEW_RUN_MAIL_NOTE'))
+    // 이 시나리오는 성공일 때 메일을 생략한다(INFO 의 emailSkip.success)
+    expect(q('se-run-mail').textContent).toContain(t('SEW_RUN_MAIL_SKIP', { list: t('SEW_RUN_PROP_SKIP_success') }))
   })
 })
 

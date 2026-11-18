@@ -513,6 +513,22 @@ describe('시험 실행 API — 실제 앱으로', () => {
     expect((await send({ eqpId: 'SEWT_CVD_A02' })).data).toEqual({ outcome: 'accepted' })
   })
 
+  it('결과 메일 수신인: 수신 규칙이 있는 시나리오는 규칙의 묶음, 없는 시나리오는 설비의 묶음 — 주소가 등록돼 있지 않은 묶음은 까닭과 함께', async () => {
+    const of = async (name, eqpIds, user) => answer(await api('POST', '/test-run/recipients', { user, body: { process: 'SEWCVD', model: 'SEWMODELA', name, eqpIds } }))
+    const run = await of('RUN_PROPS', ['SEWT_CVD_A02', 'SEWT_CVD_A01', 'SEWT_DUP01'])
+    expect(run.data.groups).toEqual([
+      { category: 'SEW-RUN-NIGHT', source: 'rule', eqpIds: ['SEWT_CVD_A01', 'SEWT_CVD_A02', 'SEWT_DUP01'], accounts: ['sew.night@example.com', 'sew.lead@example.com'], problem: null }
+    ])
+    // 다른 공정의 설비(SEWT_PHOTO_A01)는 말없이 빠진다
+    const plain = await of('ALL_CONDITIONS', ['SEWT_CVD_A01', 'SEWT_DUP01', 'SEWT_PHOTO_A01'])
+    expect(plain.data.groups).toEqual([
+      { category: 'SEW-SEWCVD-SEWMODELA-MAIL', source: 'equipment', eqpIds: ['SEWT_CVD_A01'], accounts: ['sew.day@example.com', 'sew.eng@example.com'], problem: null },
+      { category: 'SEW-SEWCVD-SEWMODELA-NONE', source: 'equipment', eqpIds: ['SEWT_DUP01'], accounts: [], problem: 'INFO_MISSING' }
+    ])
+    expect((await of('RUN_PROPS', ['SEWT_CVD_A01'], 'sew_cvd')).code).toBe('WRITE_FORBIDDEN')
+    expect((await of('RUN_PROPS', 'x')).details).toEqual({ path: 'eqpIds' })
+  })
+
   it('실행 상태: 늦게 생기는 기록, 남의 것(데스크톱 실행·다른 사용자)·params 없는 문서는 고르지 않는다, 남의 runId 는 404', async () => {
     fake.set({ record: true, recordDelayMs: 1500 })
     const body = reqBody({ startStep: 2 })

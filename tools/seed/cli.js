@@ -10,6 +10,7 @@ const anomaly = require('./lib/anomaly')
 const { generate } = require('../scenario-gen/lib/generate')
 const { equipment, agents } = require('./data/equipment')
 const users = require('./data/users')
+const { emailInfos, emailRules } = require('./data/emails')
 const { connectCassandra } = require('./lib/cassandra')
 const { planSnapshots, seedSnapshots, cleanSnapshots } = require('./lib/snapshots')
 const { planBig, seedBig, BIG_EQP, IDLE_EQP } = require('./lib/snapshotsBig')
@@ -26,7 +27,9 @@ async function seedBase(ctx) {
   await ctx.db.collection('ARS_USER_INFO').insertMany(users.map((u) => ({
     ...u, authorityManager: u.authorityManager && u.authorityManager.long !== undefined ? Long.fromNumber(u.authorityManager.long) : u.authorityManager
   })))
-  console.log(`설비 ${equipment.length}(AGENT_INFO ${agents.length}), 사용자 ${users.length}`)
+  await ctx.db.collection('EMAILINFO').insertMany(emailInfos.map((d) => ({ ...d })))
+  await ctx.db.collection('EMAIL_RECIPIENTS').insertMany(emailRules.map((d) => ({ ...d })))
+  console.log(`설비 ${equipment.length}(AGENT_INFO ${agents.length}), 사용자 ${users.length}, 수신 묶음 ${emailInfos.length}·수신 규칙 ${emailRules.length}`)
 }
 
 async function loadScenario(ctx, { dir, meta }) {

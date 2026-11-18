@@ -12,7 +12,8 @@ const equipment = [
   // 데이터 점검용 (모두 SEWCVD/SEWMODELA)
   eq('SEWT_BADREQ', 'SEWCVD', 'SEWMODELA', 8, { category: '' }),
   eq('SEWT_BADMAIL', 'SEWCVD', 'SEWMODELA', 9, { emailcategory: 'A-B-C' }),
-  eq('SEWT_DUP01', 'SEWCVD', 'SEWMODELA', 10),
+  // 수신 묶음이 다른 설비(P5): 이 묶음의 EMAILINFO 는 없다 — "수신 주소가 등록돼 있지 않다"
+  eq('SEWT_DUP01', 'SEWCVD', 'SEWMODELA', 10, { emailcategory: 'SEW-SEWCVD-SEWMODELA-NONE' }),
   eq('SEWT_PRX01', 'SEWCVD', 'SEWMODELA', 11, { localpc: 1, ipAddr: '10.99.11.1', ipAddrL: '192.168.0.11' }),
   eq('SEWT_PRX02', 'SEWCVD', 'SEWMODELA', 12, { localpc: 1, ipAddr: '10.99.11.1', ipAddrL: '192.168.0.11' }),
   // 시험 실행(P5): 자동조치 OFF 설비 — 유효 설비지만 실행 요청을 보내지 않는다

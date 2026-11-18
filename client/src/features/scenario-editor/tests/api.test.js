@@ -24,6 +24,8 @@ describe('scenarioEditorApi', () => {
     expect(post).toHaveBeenCalledWith('/scenario-editor/test-run/requests', body, { timeout: TEST_RUN_REQUEST_TIMEOUT_MS })
     await api.testRunStatus({ runId: 'run-12345678', pinned: { E: 5 } })
     expect(post).toHaveBeenCalledWith('/scenario-editor/test-run/status', { runId: 'run-12345678', pinned: { E: 5 } }, { timeout: TEST_RUN_TIMEOUT_MS })
+    await api.testRunRecipients({ process: 'P', model: 'M', name: 'N', eqpIds: ['E'] })
+    expect(post).toHaveBeenCalledWith('/scenario-editor/test-run/recipients', { process: 'P', model: 'M', name: 'N', eqpIds: ['E'] }, { timeout: TEST_RUN_TIMEOUT_MS })
     expect([TEST_RUN_REQUEST_TIMEOUT_MS, TEST_RUN_TIMEOUT_MS]).toEqual([30000, 10000])
   })
   it('목록은 쿼리', async () => {

@@ -103,6 +103,7 @@ describe('messages', () => {
     for (const e of ['EMPTY', 'TOO_LONG', 'BAD_CHAR']) expect(MESSAGES[`SEW_RUN_REASON_${e}`], e).toBeTruthy()
     for (const e of ['NOT_NUMBER', 'RANGE']) expect(MESSAGES[`SEW_RUN_STEP_${e}`], e).toBeTruthy()
     for (const m of ['off', 'noVersion', 'check']) expect(MESSAGES[`SEW_RUN_MARK_${m}`], m).toBeTruthy()
+    for (const p of ['EMPTY_RULE', 'NO_CATEGORY', 'INFO_MISSING', 'INFO_MANY']) expect(MESSAGES[`SEW_RUN_MAIL_PROBLEM_${p}`], p).toBeTruthy()
     // 사유 종류
     const kinds = /const REASON_KINDS = \[([^\]]+)\]/.exec(src)[1].split(',').map((x) => x.trim().replace(/'/g, ''))
     for (const k of kinds) expect(MESSAGES[`SEW_RUN_REASON_KIND_${k}`], k).toBeTruthy()

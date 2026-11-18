@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, shallowRef, computed } from 'vue'
+import { ref, shallowRef, computed, watch } from 'vue'
 import { scenarioEditorApi as api } from '../api'
 import { errorCode, errorMessage } from '../messages'
 import { safeStorage } from '../composables/useSafeStorage'
@@ -19,6 +19,7 @@ const STORE_KEY = 'se-test-run'
 const BUSY_RETRIES = 20
 const BUSY_WAIT_MS = 1000
 const STATUS_GAP_MS = 3000 // 보내는 동안 실행 상태를 읽는 간격
+const RECIPIENTS_WAIT_MS = 300 // 설비를 고르는 동안 수신인을 묶어서 받는다
 const IDLE = Object.freeze({ status: 'idle', message: '' })
 const LIMITS = Object.freeze({ maxEquipment: 200, recentMin: 10 })
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -33,6 +34,8 @@ export const useTestRunStore = defineStore('scenarioEditorTestRun', () => {
   const scenarios = shallowRef({ ...IDLE, rows: [] })
   const targets = shallowRef({ ...IDLE, items: [], limits: LIMITS })
   const info = shallowRef({ ...IDLE, data: null })
+  // 결과 메일 수신인 — 고른 설비들의 수신 묶음과 주소(미리 보기)
+  const recipients = shallowRef({ ...IDLE, groups: [] })
   const picked = shallowRef(new Set())
   const anchor = ref(null)
   const query = ref('')
@@ -50,6 +53,8 @@ export const useTestRunStore = defineStore('scenarioEditorTestRun', () => {
   let stopped = false
   let reading = false
   let timer = null
+  let mailSeq = 0
+  let mailTimer = null
 
   const processes = computed(() => (editor.scopes?.processes ?? []).map((p) => p.process))
   const models = computed(() => ((editor.scopes?.processes ?? []).find((p) => p.process === sel.value.process)?.models ?? []).map((m) => m.model))
@@ -124,6 +129,26 @@ export const useTestRunStore = defineStore('scenarioEditorTestRun', () => {
     }
   }
   const resetInfo = () => { infoSeq++; info.value = { ...IDLE, data: null } }
+
+  // 결과 메일 수신인: 시나리오·고른 설비가 바뀌면 0.3초 묶어서 다시 받는다. 고른 것이 없으면 받지 않고 비운다. 늦게 온 답은 버린다.
+  async function loadRecipients() {
+    const { process, model, name } = sel.value
+    const eqpIds = [...picked.value].sort(byId)
+    const id = ++mailSeq
+    recipients.value = { status: 'loading', message: '', groups: recipients.value.groups }
+    try {
+      const d = (await api.testRunRecipients({ process, model, name, eqpIds })).data.data
+      if (id === mailSeq) recipients.value = { status: 'ready', message: '', groups: d.groups ?? [] }
+    } catch (e) {
+      if (id === mailSeq) recipients.value = { ...failed(e), groups: [] }
+    }
+  }
+  watch([picked, () => sel.value.name, () => sel.value.model], () => {
+    clearTimeout(mailTimer)
+    mailSeq++
+    if (!sel.value.name || !picked.value.size) { recipients.value = { ...IDLE, groups: [] }; return }
+    mailTimer = setTimeout(loadRecipients, RECIPIENTS_WAIT_MS)
+  })
 
   function applyProcess(process) {
     sel.value = { process, model: '', name: '' }
@@ -308,7 +333,7 @@ export const useTestRunStore = defineStore('scenarioEditorTestRun', () => {
   }
 
   return {
-    open, sel, scenarios, targets, info, picked, query, reasonKind, reasonText, startStep, stage, again, run,
+    open, sel, scenarios, targets, info, recipients, picked, query, reasonKind, reasonText, startStep, stage, again, run,
     processes, models, relation, stepDesc, shown, hidden, loading, reasonErr, stepErr, block, recentPicked, pending,
     openedScenario, show, hide, setProcess, setModel, setName, reload, click, toggleAllShown, ask, cancel, start, stop, refreshStatus, pickAgain
   }

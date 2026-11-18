@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { flushPromises } from '@vue/test-utils'
 
-const api = vi.hoisted(() => ({ list: vi.fn(), testRunEquipment: vi.fn(), testRunScenario: vi.fn(), testRunRequest: vi.fn(), testRunStatus: vi.fn() }))
+const api = vi.hoisted(() => ({ list: vi.fn(), testRunEquipment: vi.fn(), testRunScenario: vi.fn(), testRunRequest: vi.fn(), testRunStatus: vi.fn(), testRunRecipients: vi.fn() }))
 vi.mock('../api', async (importOriginal) => ({ ...(await importOriginal()), scenarioEditorApi: api }))
 import { useTestRunStore } from '../stores/testRunStore'
 import { useEditorStore } from '../stores/editorStore'
@@ -44,6 +44,7 @@ beforeEach(() => {
   api.testRunScenario.mockImplementation((p, m, name) => ok({ ...INFO, process: p, model: m, name }))
   api.testRunRequest.mockImplementation(() => ok({ outcome: 'accepted' }))
   api.testRunStatus.mockImplementation(() => statusOf([]))
+  api.testRunRecipients.mockImplementation(() => ok({ groups: [] }))
   setup()
 })
 afterEach(() => { vi.useRealTimers() })
@@ -323,6 +324,46 @@ describe('실행', () => {
     expect([...store.picked].sort()).toEqual(['A02', 'A03'])
     expect(store.run).toBeNull()
     expect(api.testRunScenario).toHaveBeenCalledTimes(2) // 방금 요청을 다시 읽는다
+  })
+})
+
+describe('결과 메일 수신인(P5 설계 §4.5)', () => {
+  const GROUPS = [{ category: 'CAT-A', source: 'equipment', eqpIds: ['A01', 'A02'], accounts: ['a@x.com'], problem: null }]
+  it('시나리오와 설비를 고르면 0.3초 묶어서 한 번 받는다 — 설비 ID 순으로 보낸다', async () => {
+    vi.useFakeTimers()
+    api.testRunRecipients.mockImplementation(() => ok({ groups: GROUPS }))
+    await ready()
+    store.click('A02', {}); store.click('A01', { toggle: true })
+    await vi.advanceTimersByTimeAsync(299)
+    expect(api.testRunRecipients).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(api.testRunRecipients).toHaveBeenCalledTimes(1)
+    expect(api.testRunRecipients).toHaveBeenCalledWith({ process: 'P1', model: 'M1', name: 'RUN_A', eqpIds: ['A01', 'A02'] })
+    expect(store.recipients).toMatchObject({ status: 'ready', groups: GROUPS })
+  })
+  it('고른 설비가 없거나 시나리오를 고르지 않았으면 받지 않고 비운다', async () => {
+    vi.useFakeTimers()
+    await ready()
+    store.click('A01', {})
+    await vi.advanceTimersByTimeAsync(300)
+    store.click('A01', { toggle: true })
+    await vi.advanceTimersByTimeAsync(300)
+    expect(api.testRunRecipients).toHaveBeenCalledTimes(1)
+    expect(store.recipients).toMatchObject({ status: 'idle', groups: [] })
+  })
+  it('늦게 온 답은 버리고, 받지 못하면 오류를 남긴다', async () => {
+    vi.useFakeTimers()
+    const slow = defer()
+    api.testRunRecipients.mockImplementationOnce(() => slow.promise).mockImplementationOnce(() => fail(503, 'UPSTREAM_DOWN'))
+    await ready()
+    store.click('A01', {})
+    await vi.advanceTimersByTimeAsync(300)
+    store.click('A02', { toggle: true })
+    await vi.advanceTimersByTimeAsync(300)
+    slow.resolve({ data: { data: { groups: GROUPS } } })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(store.recipients.status).toBe('error')
+    expect(store.recipients.groups).toEqual([])
   })
 })
 

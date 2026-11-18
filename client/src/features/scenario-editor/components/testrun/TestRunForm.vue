@@ -21,6 +21,14 @@ const nexts = computed(() => {
   return [n?.success ? t('SEW_RUN_PROP_NEXT_SUCCESS', { name: n.success }) : null, n?.fail ? t('SEW_RUN_PROP_NEXT_FAIL', { name: n.fail }) : null].filter(Boolean)
 })
 const known = computed(() => info.value && info.value.isEnabled !== null)
+// 결과 메일 수신인(P5 설계 §4.5) — 실제 발송 규칙으로 계산한 미리 보기. 묶음마다 설비 수·묶음 이름·주소, 메일이 가지 않는 묶음은 까닭
+const mail = computed(() => run.recipients)
+const mailEmpty = computed(() => {
+  const m = mail.value
+  if (m.status === 'error') return t('SEW_RUN_MAIL_FAILED', { message: m.message })
+  if (m.status === 'loading' && !m.groups.length) return t('SEW_RUN_MAIL_LOADING')
+  return m.groups.length ? '' : t('SEW_RUN_MAIL_EMPTY')
+})
 </script>
 
 <template>
@@ -64,6 +72,20 @@ const known = computed(() => info.value && info.value.isEnabled !== null)
         <dt>{{ t('SEW_RUN_PROP_SKIP') }}</dt>
         <dd>{{ skips.length ? t('SEW_RUN_PROP_SKIP_VALUE', { list: skips.join('·') }) : t('SEW_RUN_PROP_NONE') }}</dd>
       </dl>
+    </div>
+    <div class="se-run-field">
+      <span>{{ t('SEW_RUN_MAIL') }}</span>
+      <div class="flex flex-col gap-1.5 px-3 py-2 text-xs border border-dashed border-gray-300 dark:border-dark-border rounded-md" data-testid="se-run-mail">
+        <span v-if="mailEmpty" class="se-run-hint">{{ mailEmpty }}</span>
+        <template v-else>
+          <div v-for="g in mail.groups" :key="`${g.category}|${g.source}|${g.problem}`" data-testid="se-run-mail-group">
+            <b class="font-semibold">{{ g.category ? t('SEW_RUN_MAIL_GROUP', { n: g.eqpIds.length, category: g.category }) : t('SEW_RUN_MAIL_GROUP_NONE', { n: g.eqpIds.length }) }}</b>
+            <div v-if="g.problem" class="se-run-err">{{ t(`SEW_RUN_MAIL_PROBLEM_${g.problem}`) }}</div>
+            <div v-else class="se-run-mono text-[11px] text-gray-500 dark:text-gray-400 break-all">{{ g.accounts.length ? g.accounts.join(' · ') : t('SEW_RUN_MAIL_NO_ACCOUNT') }}</div>
+          </div>
+          <span class="se-run-hint">{{ t('SEW_RUN_MAIL_NOTE') }}<template v-if="skips.length"> {{ t('SEW_RUN_MAIL_SKIP', { list: skips.join('·') }) }}</template></span>
+        </template>
+      </div>
     </div>
   </div>
 </template>
