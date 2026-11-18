@@ -14,7 +14,12 @@ function fakeCtx() {
   }
   const bucket = { delete: async (id) => { calls.bucketDelete.push(id) } }
   const redis = {
-    scan: async (cursor, ...args) => { calls.scan.push(args); return cursor === '0' ? ['7', ['SEWCVD-SEWMODELA']] : ['0', ['SEWETCH-SEWMODELB']] },
+    scan: async (cursor, ...args) => {
+      calls.scan.push(args)
+      // 시나리오 해시는 두 번에 나눠, 에이전트 상태는 무늬마다 한 번에 준다
+      if (args[1] === 'SEW*-*') return cursor === '0' ? ['7', ['SEWCVD-SEWMODELA']] : ['0', ['SEWETCH-SEWMODELB']]
+      return ['0', args[1] === 'AgentRunning:SEW*' ? ['AgentRunning:SEWCVD-SEWMODELA-SEWT_CVD_A01'] : ['AgentMetaInfo:SEWCVD-SEWMODELA']]
+    },
     del: async (...keys) => { calls.del.push(keys) }
   }
   return { ctx: { db, bucket, redis }, calls }
@@ -41,9 +46,11 @@ describe('clean', () => {
     expect(calls.find[0].name).toBe('fs.files')
     expect(String(calls.find[0].filter['metadata.process'])).toBe('/^SEW/')
     expect(calls.bucketDelete).toEqual(['f1', 'f2'])
-    expect(calls.scan.every((a) => a[0] === 'MATCH' && a[1] === 'SEW*-*')).toBe(true)
-    expect(calls.del).toEqual([['SEWCVD-SEWMODELA', 'SEWETCH-SEWMODELB']])
-    expect(r).toEqual({ scProperty: 1, gridfsFiles: 2, redisKeys: 2, eqpInfo: 1, agentInfo: 1, users: 1, memos: 1, recoveries: 1, emailInfos: 1, emailRules: 1 })
+    // Redis 는 SEW 로 시작하는 시나리오 해시와, SEW 공정의 에이전트 상태 두 가지 키만 훑는다
+    expect(calls.scan.every((a) => a[0] === 'MATCH')).toBe(true)
+    expect([...new Set(calls.scan.map((a) => a[1]))]).toEqual(['SEW*-*', 'AgentRunning:SEW*', 'AgentMetaInfo:SEW*'])
+    expect(calls.del).toEqual([['SEWCVD-SEWMODELA', 'SEWETCH-SEWMODELB'], ['AgentRunning:SEWCVD-SEWMODELA-SEWT_CVD_A01', 'AgentMetaInfo:SEWCVD-SEWMODELA']])
+    expect(r).toEqual({ scProperty: 1, gridfsFiles: 2, redisKeys: 2, agentKeys: 2, eqpInfo: 1, agentInfo: 1, users: 1, memos: 1, recoveries: 1, emailInfos: 1, emailRules: 1 })
   })
   it('지울 Redis 키가 없으면 del 을 부르지 않는다', async () => {
     const { ctx, calls } = fakeCtx()

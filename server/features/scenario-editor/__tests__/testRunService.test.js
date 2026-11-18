@@ -41,6 +41,8 @@ function setup(over = {}) {
     inserted: true,
     received: { kind: 'response', status: 200, text: '{"result":"Success","message":""}' },
     recoveries: [],
+    agents: {}, // 설비 ID → { meta, running }. 적지 않은 설비는 실행 중(기본)
+    agentError: null,
     env: { SE_TEST_RUN: '1' },
     ...over
   }
@@ -61,6 +63,10 @@ function setup(over = {}) {
     findTestRuns: async (...a) => { note('findTestRuns', a); return state.runs },
     findRivalTestRuns: async (q) => { note('findRivalTestRuns', [q]); return state.rivals ?? [] }
   }
+  const ON = { meta: '7.0.0.1:8080:10.0.0.1:_', running: '60' }
+  const agentState = {
+    read: async (p, m, ids) => { note('agentRead', [p, m, ids]); if (state.agentError) throw state.agentError; return new Map(ids.map((id) => [id, state.agents[id] ?? ON])) }
+  }
   const hash = { hkeys: async (key) => { note('hkeys', [key]); return state.fields } }
   const gridfs = { findVersionStats: async (p, m, versions) => { note('findVersionStats', [p, m, versions]); return new Map(versions.map((v) => [v.name, { stepCount: state.stepCount, sizeBytes: 1 }])) } }
   const scopes = {
@@ -70,7 +76,7 @@ function setup(over = {}) {
   const client = { send: async (req) => { note('send', [req]); if (state.sendGate) await state.sendGate; if (state.sendError) throw state.sendError; return state.received } }
   const lines = []
   const log = { info: (m) => lines.push(m), warn: (m) => lines.push(m) }
-  const service = createTestRunService({ repo, web, hash, gridfs, scopes, client, env: state.env, log, now: () => state.now })
+  const service = createTestRunService({ repo, web, hash, agentState, gridfs, scopes, client, env: state.env, log, now: () => state.now })
   const of = (name) => calls.filter((c) => c.name === name)
   return { service, state, calls, of, lines }
 }
@@ -81,9 +87,9 @@ describe('equipment — 고른 공정·모델의 설비', () => {
     t.state.onoff = [{ eqpId: 'SEWT_CVD_A01', onoff: 0 }, { eqpId: 'SEWT_CVD_A02', onoff: 1 }, { eqpId: 'SEWT_CVD_OFF', onoff: '0' }]
     const out = await t.service.equipment(USER, 'SEWCVD', 'SEWMODELA')
     expect(out.equipment).toEqual([
-      { eqpId: 'SEWT_CVD_A01', line: 'SEWLINE1', ipAddr: '10.99.1.1', ipAddrL: '', onoff: 'off' }, // 캐시에는 켜짐 — 그 사이 꺼졌다
-      { eqpId: 'SEWT_CVD_A02', line: 'SEWLINE1', ipAddr: '10.99.2.1', ipAddrL: '', onoff: 'on' },
-      { eqpId: 'SEWT_CVD_OFF', line: 'SEWLINE1', ipAddr: '10.99.1.1', ipAddrL: '', onoff: 'unreadable' }
+      { eqpId: 'SEWT_CVD_A01', line: 'SEWLINE1', ipAddr: '10.99.1.1', ipAddrL: '', onoff: 'off', agent: 'on' }, // 캐시에는 켜짐 — 그 사이 꺼졌다
+      { eqpId: 'SEWT_CVD_A02', line: 'SEWLINE1', ipAddr: '10.99.2.1', ipAddrL: '', onoff: 'on', agent: 'on' },
+      { eqpId: 'SEWT_CVD_OFF', line: 'SEWLINE1', ipAddr: '10.99.1.1', ipAddrL: '', onoff: 'unreadable', agent: 'on' }
     ])
     expect(out.limits).toEqual({ maxEquipment: 200, recentMin: 10 })
     expect(t.of('assertAllowed')[0].args.slice(0, 3)).toEqual(['sew_multi', 'SEWCVD', 'SEWMODELA'])
@@ -94,6 +100,20 @@ describe('equipment — 고른 공정·모델의 설비', () => {
     const t = setup({ onoff: [{ eqpId: 'SEWT_CVD_A01', onoff: 1 }] })
     const out = await t.service.equipment(USER, 'SEWCVD', 'SEWMODELA')
     expect(out.equipment.map((e) => e.onoff)).toEqual(['on', 'unreadable', 'unreadable'])
+  })
+  it('에이전트 상태(agent): 실행 중 on · 실행 신호 없음 off · 정보 없음 noInfo — 설비들을 한 번에 읽는다', async () => {
+    const t = setup({ agents: { SEWT_CVD_A02: { meta: 'a:b:c:d', running: null }, SEWT_CVD_OFF: { meta: null, running: null } } })
+    const out = await t.service.equipment(USER, 'SEWCVD', 'SEWMODELA')
+    expect(out.equipment.map((e) => [e.eqpId, e.agent])).toEqual([['SEWT_CVD_A01', 'on'], ['SEWT_CVD_A02', 'off'], ['SEWT_CVD_OFF', 'noInfo']])
+    expect(t.of('agentRead')).toHaveLength(1)
+    expect(t.of('agentRead')[0].args).toEqual(['SEWCVD', 'SEWMODELA', ['SEWT_CVD_A01', 'SEWT_CVD_A02', 'SEWT_CVD_OFF']])
+  })
+  it('에이전트 상태를 읽지 못하면(Redis) 목록은 주되 모든 설비가 unreadable — 로그에 남긴다', async () => {
+    const t = setup({ agentError: seError(503, 'UPSTREAM_DOWN', 'Redis 를 읽지 못했습니다') })
+    const out = await t.service.equipment(USER, 'SEWCVD', 'SEWMODELA')
+    expect(out.equipment.map((e) => e.agent)).toEqual(['unreadable', 'unreadable', 'unreadable'])
+    expect(out.equipment.map((e) => e.onoff)).toEqual(['on', 'on', 'off'])
+    expect(t.lines.some((l) => l.includes('에이전트 상태') && l.includes('UPSTREAM_DOWN'))).toBe(true)
   })
   it('공정 권한 밖이면 403, 한도는 설정에서', async () => {
     const t = setup({ allowed: false })
@@ -291,6 +311,28 @@ describe('request — 설비 한 대의 실행 요청', () => {
     t.state.fresh.SEWT_CVD_A01 = [eqp('SEWT_CVD_A01', { onoff: '1' })]
     expect(await run(t)).toEqual({ outcome: 'off', detail: 'unreadable' })
     expect(t.of('send')).toHaveLength(0)
+  })
+  it('에이전트가 실행 중이 아니면 보내지 않는다(agentOff) — 실행 신호 없음·정보 없음(noInfo)·읽지 못함(unreadable)을 까닭으로. 기록도 넣지 않는다', async () => {
+    const t = setup({ agents: { SEWT_CVD_A01: { meta: 'a:b:c:d', running: null } } })
+    expect(await run(t)).toEqual({ outcome: 'agentOff' })
+    // 다시 읽은 설비 문서의 공정·모델로, 그 설비 하나만 읽는다
+    expect(t.of('agentRead')[0].args).toEqual(['SEWCVD', 'SEWMODELA', ['SEWT_CVD_A01']])
+    t.state.agents = { SEWT_CVD_A01: { meta: null, running: '10' } }
+    expect(await run(t)).toEqual({ outcome: 'agentOff', detail: 'noInfo' })
+    t.state.agents = {}
+    t.state.agentError = seError(503, 'UPSTREAM_DOWN', 'Redis 를 읽지 못했습니다')
+    expect(await run(t)).toEqual({ outcome: 'agentOff', detail: 'unreadable' })
+    expect(t.of('send')).toHaveLength(0)
+    expect(t.of('insertTestRun')).toHaveLength(0)
+    expect(t.lines.filter((l) => l.includes('agentOff'))).toHaveLength(3)
+    // 살아 있으면 보낸다
+    t.state.agentError = null
+    expect(await run(t)).toMatchObject({ outcome: 'accepted' })
+  })
+  it('자동조치 OFF·보낼 수 없는 값이 먼저다 — 그런 설비는 에이전트 상태를 읽지 않는다', async () => {
+    const t = setup({ agents: { SEWT_CVD_OFF: { meta: null, running: null } } })
+    expect(await run(t, { eqpId: 'SEWT_CVD_OFF' })).toEqual({ outcome: 'off' })
+    expect(t.of('agentRead')).toHaveLength(0)
   })
   it('헤더에 실을 수 없는 값(빈칸으로 끝남·한글)은 badValue — 바꿔 보내지 않는다', async () => {
     const t = setup()

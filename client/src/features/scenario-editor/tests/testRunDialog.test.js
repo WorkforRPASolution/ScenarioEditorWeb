@@ -13,7 +13,7 @@ import { t } from '../messages'
 
 enableAutoUnmount(afterEach)
 const ok = (data) => Promise.resolve({ data: { data } })
-const eqp = (eqpId, onoff = 'on', ipAddr = '10.99.1.1') => ({ eqpId, line: 'L1', ipAddr, ipAddrL: '', onoff })
+const eqp = (eqpId, onoff = 'on', ipAddr = '10.99.1.1', agent = 'on') => ({ eqpId, line: 'L1', ipAddr, ipAddrL: '', onoff, agent })
 const EQP = [eqp('A01'), eqp('A02', 'on', '10.99.2.7'), eqp('OFF', 'off'), eqp('BAD', 'unreadable')]
 const ROWS = [{ name: 'RUN_A', isEnabled: true, status: [] }, { name: 'RUN_OFF', isEnabled: false, status: [] }, { name: 'RUN_DUP', isEnabled: true, status: ['DUPLICATE_PROPERTY'] }, { name: 'CHECK_X', isEnabled: true, status: ['NO_CURRENT_VERSION'] }]
 const INFO = { current: { crtime: 1763427600000, stepCount: 6 }, isEnabled: true, startDelay: 30, retryCnt: 2, retryInterval: 10, priority: 5, next: { success: 'NEXT_OK', fail: null }, emailSkip: { success: true, stop: false, fail: false }, blocks: [], recent: [] }
@@ -133,6 +133,39 @@ describe('고르기', () => {
 })
 
 describe('설비 표', () => {
+  it('에이전트 열: 실행 중·꺼짐·정보 없음을 색 알약으로 가르고, 실행 중이 아닌 설비는 흐리고 고를 수 없다 — 까닭은 줄의 title', async () => {
+    api.testRunEquipment.mockImplementation(() => ok({
+      equipment: [eqp('A01'), eqp('A02', 'on', '10.99.1.2', 'off'), eqp('A03', 'on', '10.99.1.3', 'noInfo'), eqp('A04', 'off', '10.99.1.4', 'off')], limits: { maxEquipment: 200, recentMin: 10 }
+    }))
+    await chosen()
+    const rows = qa('se-run-row')
+    expect(rows.map((r) => [r.dataset.id, r.dataset.off])).toEqual([['A01', 'false'], ['A02', 'true'], ['A03', 'true'], ['A04', 'true']])
+    const pills = rows.map((r) => r.querySelector('[data-testid="se-run-agent"]'))
+    expect(pills.map((x) => [x.textContent.trim(), x.dataset.tone])).toEqual([
+      [t('SEW_RUN_AGENT_on'), 'ok'], [t('SEW_RUN_AGENT_off'), 'bad'], [t('SEW_RUN_AGENT_noInfo'), 'bad'], [t('SEW_RUN_AGENT_off'), 'bad']])
+    expect(rows.map((r) => r.querySelector('input').disabled)).toEqual([false, true, true, true])
+    expect(rows.map((r) => r.getAttribute('title'))).toEqual([null, t('SEW_RUN_WHY_ROW_agentOff'), t('SEW_RUN_WHY_ROW_agentNoInfo'), t('SEW_RUN_WHY_ROW_off')])
+    // 눌러도 골라지지 않고, 머리 칸은 고를 수 있는 것만 고른다
+    await fire(rows[1], 'click')
+    expect([...store.picked]).toEqual([])
+    q('se-run-all').click()
+    await flushPromises()
+    expect([...store.picked]).toEqual(['A01'])
+    expect(q('se-run-agent-failed')).toBeNull()
+  })
+  it('에이전트 상태를 읽지 못했으면(모든 설비 unreadable) 위에 까닭을 알리고 아무 설비도 고를 수 없다 — [새로 고침] 으로 다시 읽는다', async () => {
+    api.testRunEquipment.mockImplementation(() => ok({ equipment: [eqp('A01', 'on', '10.99.1.1', 'unreadable'), eqp('A02', 'on', '10.99.1.2', 'unreadable')], limits: { maxEquipment: 200, recentMin: 10 } }))
+    await chosen()
+    expect(q('se-run-agent-failed').textContent).toBe(t('SEW_RUN_AGENT_FAILED'))
+    expect(qa('se-run-row').map((r) => r.dataset.off)).toEqual(['true', 'true'])
+    expect(qa('se-run-agent').map((x) => [x.textContent.trim(), x.dataset.tone])).toEqual([[t('SEW_RUN_AGENT_unreadable'), 'warn'], [t('SEW_RUN_AGENT_unreadable'), 'warn']])
+    expect(q('se-run-all').disabled).toBe(true)
+    api.testRunEquipment.mockImplementation(() => ok({ equipment: [eqp('A01'), eqp('A02')], limits: { maxEquipment: 200, recentMin: 10 } }))
+    q('se-run-reload').click()
+    await flushPromises()
+    expect(q('se-run-agent-failed')).toBeNull()
+    expect(qa('se-run-row').map((r) => r.dataset.off)).toEqual(['false', 'false'])
+  })
   it('설비 줄: OFF·읽을 수 없는 설비는 흐리고 고를 수 없다. 검색 칸으로 설비 ID·IP 를 찾는다', async () => {
     await chosen()
     expect(qa('se-run-row').map((r) => [r.dataset.id, r.dataset.off])).toEqual([['A01', 'false'], ['A02', 'false'], ['OFF', 'true'], ['BAD', 'true']])
@@ -264,6 +297,15 @@ describe('결과', () => {
     await flushPromises()
     expect(store.stage).toBe('pick')
     expect([...store.picked]).toEqual(['A02'])
+  })
+  it('그 사이 에이전트가 꺼진 설비는 "에이전트 꺼짐" 과 까닭 — 보내지 않았다고 알린다(꺼짐·정보 없음·읽지 못함)', async () => {
+    await ran([{ outcome: 'agentOff' }, { outcome: 'agentOff', detail: 'unreadable' }])
+    const rows = qa('se-run-result-row')
+    expect(rows.map((r) => r.querySelector('[data-testid="se-run-outcome"]').textContent)).toEqual([t('SEW_RUN_OUTCOME_agentOff'), t('SEW_RUN_OUTCOME_agentOff')])
+    expect(rows[0].textContent).toContain(t('SEW_RUN_DETAIL_agentOff'))
+    expect(rows[1].textContent).toContain(t('SEW_RUN_DETAIL_agentOff_unreadable'))
+    expect(t('SEW_RUN_DETAIL_agentOff_noInfo')).toContain('보내지 않았습니다')
+    expect(rows.map((r) => r.querySelector('[data-testid="se-run-state"]'))).toEqual([null, null])
   })
   it('결과 위에 "15분까지만 자동" 안내와 [상태 조회] 가 늘 있고, 자동으로 읽기가 끝나면 그 줄이 끝났다는 안내로 바뀐다', async () => {
     api.testRunStatus.mockImplementation(() => ok({ now: 5000, items: [

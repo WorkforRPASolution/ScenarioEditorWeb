@@ -4,7 +4,7 @@ import { COMMAND_CONTROL_URL } from '../env.js'
 
 // P5 시험 실행(설계 §4, §11 E2E). 길: 화면 → 웹 백엔드 → InterfaceServer(/EARS/Action) → CommandServer 흉내(tools/infra/fake-command-control-server.js —
 // 설정이 띄운다. 3195 에서 /EARS/Trigger 를 받고, 켜면 실제 규칙대로 로컬 EQP_AUTO_RECOVERY 에 SEWT_ 설비의 실행 기록을 넣는다).
-// 시험 데이터: SEWCVD/SEWMODELA 설비 여섯(SEWT_CVD_OFF 는 자동조치 OFF), 시나리오 RUN_PROPS(시작 지연 30초·재시도 2회·후속·메일 생략)·ALL_CONDITIONS,
+// 시험 데이터: SEWCVD/SEWMODELA 설비 여덟(SEWT_CVD_OFF 는 자동조치 OFF, SEWT_CVD_AGOFF 는 에이전트 꺼짐, SEWT_CVD_NOAG 는 에이전트 정보 없음 — Redis 의 에이전트 상태는 seed 가 넣는다), 시나리오 RUN_PROPS(시작 지연 30초·재시도 2회·후속·메일 생략)·ALL_CONDITIONS,
 // SEWCVD/SEWMODELB 의 DUP_PROPERTY·NO_REDIS_FIELD, SEWETCH/SEWMODELB 의 DISABLED. 시나리오·스텝은 아무것도 저장하지 않는다.
 // 시험마다 흉내의 제어 값·받은 요청, SEWT_ 실행 기록·요청 기록을 비운다(요청 기록이 남으면 "방금 요청함" 이 다음 시험을 막는다).
 const control = async (method, path, body) => {
@@ -57,10 +57,23 @@ test('① 시나리오를 열지 않은 채 창에서 공정·모델·시나리�
   await page.keyboard.press('Enter')
   await expect(tid(page, 'se-run-model')).toHaveValue('SEWMODELA')
   // 설비는 모델을 고르면 바로 보인다 — 자동조치 OFF 설비는 흐리고 고를 수 없다
-  await expect(tid(page, 'se-run-row')).toHaveCount(6)
+  await expect(tid(page, 'se-run-row')).toHaveCount(8)
   await expect(eqpRow(page, 'SEWT_CVD_OFF')).toHaveAttribute('data-off', 'true')
   await expect(eqpRow(page, 'SEWT_CVD_OFF')).toContainText('실행하지 않습니다')
   await expect(eqpRow(page, 'SEWT_CVD_OFF').locator('input')).toBeDisabled()
+  // 에이전트 열: 실행 중인 설비만 고를 수 있다 — 꺼진 설비·에이전트 정보가 없는 설비는 흐리고, 까닭은 줄에 마우스를 올리면 보인다
+  await expect(eqpRow(page, 'SEWT_CVD_A01').getByTestId('se-run-agent')).toHaveText('실행 중')
+  await expect(eqpRow(page, 'SEWT_CVD_A01').getByTestId('se-run-agent')).toHaveAttribute('data-tone', 'ok')
+  await expect(eqpRow(page, 'SEWT_CVD_AGOFF').getByTestId('se-run-agent')).toHaveText('꺼짐')
+  await expect(eqpRow(page, 'SEWT_CVD_AGOFF').getByTestId('se-run-agent')).toHaveAttribute('data-tone', 'bad')
+  await expect(eqpRow(page, 'SEWT_CVD_AGOFF')).toHaveAttribute('data-off', 'true')
+  await expect(eqpRow(page, 'SEWT_CVD_AGOFF')).toHaveAttribute('title', '에이전트가 실행 중이 아니라 고를 수 없습니다(실행 신호가 없습니다).')
+  await expect(eqpRow(page, 'SEWT_CVD_AGOFF').locator('input')).toBeDisabled()
+  await expect(eqpRow(page, 'SEWT_CVD_NOAG').getByTestId('se-run-agent')).toHaveText('정보 없음')
+  await expect(eqpRow(page, 'SEWT_CVD_NOAG').locator('input')).toBeDisabled()
+  await eqpRow(page, 'SEWT_CVD_AGOFF').click({ force: true })
+  await expect(eqpRow(page, 'SEWT_CVD_AGOFF')).toHaveAttribute('aria-selected', 'false')
+  await expect(tid(page, 'se-run-agent-failed')).toHaveCount(0)
   // 설비 표가 옆으로 넘치지 않는다(IP 가 둘인 설비·OFF 안내가 있어도 "방금 요청" 칸까지 보인다)
   expect(await page.locator('.se-run-tbl').evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true)
   // 시나리오: 글자로 좁힌다
@@ -84,7 +97,7 @@ test('① 시나리오를 열지 않은 채 창에서 공정·모델·시나리�
   await eqpRow(page, 'SEWT_CVD_A01').click()
   await eqpRow(page, 'SEWT_CVD_A02').click({ modifiers: ['ControlOrMeta'] })
   await eqpRow(page, 'SEWT_CVD_OFF').click({ force: true })
-  await expect(tid(page, 'se-run-count')).toHaveText('2대 고름 · 전체 6대')
+  await expect(tid(page, 'se-run-count')).toHaveText('2대 고름 · 전체 8대')
   // 시작 스텝·사유 검사
   await tid(page, 'se-run-step').fill('4')
   await expect(tid(page, 'se-run-step-error')).toHaveText('시작 스텝은 1 ~ 3 사이여야 합니다.')
@@ -134,7 +147,7 @@ test('① 시나리오를 열지 않은 채 창에서 공정·모델·시나리�
 
   // [다시 고르기]: 접수된 설비의 선택이 풀려 있고, 설비 표에 방금 요청이 보인다
   await tid(page, 'se-run-again').click()
-  await expect(tid(page, 'se-run-count')).toHaveText('0대 고름 · 전체 6대')
+  await expect(tid(page, 'se-run-count')).toHaveText('0대 고름 · 전체 8대')
   await expect(eqpRow(page, 'SEWT_CVD_A01')).toContainText('sew_multi')
   // 다시 골라 보내도 방금 요청한 설비는 나가지 않는다(확인 창이 알린다 — 체크 칸은 꺼져 있다)
   await eqpRow(page, 'SEWT_CVD_A01').click()
@@ -165,7 +178,7 @@ test('② 연 시나리오가 미리 골라진다 · 모델을 바꾸면 시나�
   await expect(tid(page, 'se-run-scenario')).toHaveValue('ALL_CONDITIONS')
   await expect(tid(page, 'se-run-target')).toContainText('4 스텝')
   await expect(tid(page, 'se-run-step-desc')).toHaveText('1번 스텝: Reset 누르기')
-  await expect(tid(page, 'se-run-row')).toHaveCount(6)
+  await expect(tid(page, 'se-run-row')).toHaveCount(8)
   await eqpRow(page, 'SEWT_CVD_A01').click()
   await expect(tid(page, 'se-run-go')).toBeEnabled()
 
@@ -202,7 +215,7 @@ test('② 연 시나리오가 미리 골라진다 · 모델을 바꾸면 시나�
   await pick(page, 'se-run-model', 'modela')
   await pick(page, 'se-run-scenario', 'all_cond')
   await tid(page, 'se-run-all').check()
-  await expect(tid(page, 'se-run-count')).toHaveText('5대 고름 · 전체 6대')
+  await expect(tid(page, 'se-run-count')).toHaveText('5대 고름 · 전체 8대')
   await control('PUT', '/server/off')
   await tid(page, 'se-run-go').click()
   await tid(page, 'se-run-confirm-ok').click()
@@ -213,7 +226,7 @@ test('② 연 시나리오가 미리 골라진다 · 모델을 바꾸면 시나�
   await control('PUT', '/server/on')
   // [다시 고르기]: 모름이었던 세 대의 선택이 풀리고 보내지 않은 두 대만 남는다
   await tid(page, 'se-run-again').click()
-  await expect(tid(page, 'se-run-count')).toHaveText('2대 고름 · 전체 6대')
+  await expect(tid(page, 'se-run-count')).toHaveText('2대 고름 · 전체 8대')
   await tid(page, 'se-run-close').click()
 
   // 편집기에서 고치고 저장하지 않았으면: 고침 안내, 시작 스텝이 1 이 아니면 번호 경고

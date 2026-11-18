@@ -6,7 +6,8 @@
 .se-run-note { margin: 0; padding: 6px 10px; border-radius: 6px; font-size: 12px; background: #f3f4f6; color: #4b5563; }
 .se-run-note[data-kind='dirty'], .se-run-note[data-kind='old'] { background: #fef3c7; color: #92400e; }
 .se-run-note[data-kind='block'] { background: #fee2e2; color: #b91c1c; font-weight: 600; }
-.se-run-body { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 14px; min-height: 0; }
+/* 설비 표는 일곱 칸이다(에이전트 열을 더한 뒤 — 2026-11-18) — 왼쪽을 넓게 */
+.se-run-body { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 14px; min-height: 0; }
 .se-run-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; }
 .se-run-tbl { flex: 1; min-height: 120px; overflow: auto; border: 1px solid #e5e7eb; border-radius: 6px; }
 .se-run-tbl table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }

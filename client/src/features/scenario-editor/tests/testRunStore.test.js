@@ -12,7 +12,7 @@ import { useEditStore } from '../stores/editStore'
 const ok = (data) => Promise.resolve({ data: { data } })
 const fail = (status, code, details) => Promise.reject({ response: { status, data: { code, details } } })
 const defer = () => { let resolve; let reject; const promise = new Promise((res, rej) => { resolve = res; reject = rej }); return { promise, resolve, reject } }
-const eqp = (eqpId, onoff = 'on') => ({ eqpId, line: 'L1', ipAddr: '10.99.1.1', ipAddrL: '', onoff })
+const eqp = (eqpId, onoff = 'on', agent = 'on') => ({ eqpId, line: 'L1', ipAddr: '10.99.1.1', ipAddrL: '', onoff, agent })
 const EQP = [eqp('A01'), eqp('A02'), eqp('A03'), eqp('A04'), eqp('OFF', 'off')]
 const ROWS = [{ name: 'RUN_A', isEnabled: true, status: [] }, { name: 'RUN_OFF', isEnabled: false, status: [] }]
 const INFO = { process: 'P1', model: 'M1', name: 'RUN_A', current: { crtime: 2000, stepCount: 6 }, isEnabled: true, startDelay: 0, retryCnt: 0, retryInterval: 10, priority: 10, next: { success: null, fail: null }, emailSkip: { success: false, stop: false, fail: false }, blocks: [], recent: [] }

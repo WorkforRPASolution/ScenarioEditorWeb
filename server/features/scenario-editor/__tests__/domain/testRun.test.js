@@ -5,7 +5,7 @@ const require = createRequire(import.meta.url)
 const { Long, Int32, Double } = require('bson')
 const {
   OUTCOMES, REASON_KINDS, validateRequest, userTextOf, userInfoOf, buildParams, headerValueOk, delayKeyOk, readOnoff,
-  readRunProperty, isInt64, classifyAction, pickRecovery
+  readRunProperty, isInt64, classifyAction, pickRecovery, agentMetaKey, agentRunningKey, readAgent
 } = require('../../domain/testRun')
 
 const REQ = { runId: 'run-12345678', process: 'SEWCVD', model: 'SEWMODELA', name: 'RUN_PROPS', eqpId: 'SEWT_CVD_A01', startStep: 1, reason: { kind: 'INSPECTION' } }
@@ -13,7 +13,7 @@ const pathOf = (over) => { const r = validateRequest({ ...REQ, ...over }); retur
 
 describe('값 목록', () => {
   it('설비 하나의 결과와 사유 종류', () => {
-    expect(OUTCOMES).toEqual(['accepted', 'off', 'recent', 'forbidden', 'mismatch', 'badValue', 'failed', 'unknown', 'down'])
+    expect(OUTCOMES).toEqual(['accepted', 'off', 'agentOff', 'recent', 'forbidden', 'mismatch', 'badValue', 'failed', 'unknown', 'down'])
     expect(REASON_KINDS).toEqual(['INSPECTION', 'MAN_EXE', 'other'])
   })
 })
@@ -266,5 +266,35 @@ describe('설정 읽기 — testRunFlags·testRunLimits', () => {
     expect(testRunLimits({ SE_TEST_RUN_MAX_EQP: '50', SE_TEST_RUN_CONCURRENCY: '3', SE_TEST_RUN_RECENT_MIN: '5', SE_TEST_RUN_CLOCK_SKEW_SEC: '0' })).toEqual({ maxEquipment: 50, concurrency: 3, recentMin: 5, skewMs: 0 })
     expect(testRunLimits({ SE_TEST_RUN_MAX_EQP: '201', SE_TEST_RUN_CONCURRENCY: '6', SE_TEST_RUN_RECENT_MIN: '0', SE_TEST_RUN_CLOCK_SKEW_SEC: '3601' })).toEqual({ maxEquipment: 200, concurrency: 1, recentMin: 10, skewMs: 120000 })
     expect(testRunLimits({ SE_TEST_RUN_MAX_EQP: 'abc', SE_TEST_RUN_CONCURRENCY: '1.5', SE_TEST_RUN_RECENT_MIN: '', SE_TEST_RUN_CLOCK_SKEW_SEC: '-1' })).toEqual({ maxEquipment: 200, concurrency: 1, recentMin: 10, skewMs: 120000 })
+  })
+})
+
+// CommandServer 가 에이전트로 보내기 직전에 보는 것(remote/HttpConnector.scala·GRPCConnector.scala): AgentMetaInfo 해시의 설비 값이 ':' 로 넷 이상이고
+// AgentRunning 키가 있다. 에이전트는 AgentRunning 을 주기마다 만료 시간과 함께 쓴다(ARSAgent actor/RedisActor.scala).
+describe('에이전트 상태 — CommandServer 와 같은 규칙', () => {
+  it('Redis 키: AgentMetaInfo:{공정}-{모델} 해시의 설비 ID 칸, AgentRunning:{공정}-{모델}-{설비 ID}', () => {
+    expect(agentMetaKey('SEWCVD', 'SEWMODELA')).toBe('AgentMetaInfo:SEWCVD-SEWMODELA')
+    expect(agentRunningKey('SEWCVD', 'SEWMODELA', 'SEWT_CVD_A01')).toBe('AgentRunning:SEWCVD-SEWMODELA-SEWT_CVD_A01')
+  })
+  it('정보가 넷 이상의 칸이고 실행 신호가 있으면 on', () => {
+    expect(readAgent({ meta: '7.0.0.1:8080:10.0.0.1:_', running: '3600' })).toBe('on')
+    expect(readAgent({ meta: '7.0.0.1:8080:10.0.0.1:_:http', running: '0' })).toBe('on')
+    // 값이 빈 글자여도 키가 있으면 살아 있다(CommandServer 는 null 만 본다)
+    expect(readAgent({ meta: 'a:b:c:d', running: '' })).toBe('on')
+  })
+  it('정보는 있는데 실행 신호가 없으면 off', () => {
+    expect(readAgent({ meta: 'a:b:c:d', running: null })).toBe('off')
+    expect(readAgent({ meta: 'a:b:c:d' })).toBe('off')
+  })
+  it('정보가 없거나 칸이 넷이 안 되면 noInfo — 실행 신호가 있어도', () => {
+    expect(readAgent({ meta: null, running: '10' })).toBe('noInfo')
+    expect(readAgent({ running: '10' })).toBe('noInfo')
+    expect(readAgent({ meta: '', running: '10' })).toBe('noInfo')
+    expect(readAgent({ meta: 'a:b:c', running: '10' })).toBe('noInfo')
+    // 자바의 split 은 끝의 빈 칸을 버린다 — "a:b:c:" 는 셋이다
+    expect(readAgent({ meta: 'a:b:c:', running: '10' })).toBe('noInfo')
+    expect(readAgent({ meta: ':::', running: '10' })).toBe('noInfo')
+    expect(readAgent({ meta: 5, running: '10' })).toBe('noInfo')
+    expect(readAgent({})).toBe('noInfo')
   })
 })

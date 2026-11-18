@@ -101,7 +101,7 @@ describe('messages', () => {
     // 200 응답 안의 outcome 은 위 시험이 보지 못한다 — 서버의 값 목록을 소스에서 읽어 견준다
     const src = readFileSync(join(__dirname, '../../../../../server/features/scenario-editor/domain/testRun.js'), 'utf8')
     const outcomes = /const OUTCOMES = \[([^\]]+)\]/.exec(src)[1].split(',').map((x) => x.trim().replace(/'/g, ''))
-    expect(outcomes).toHaveLength(9)
+    expect(outcomes).toHaveLength(10)
     for (const o of [...outcomes, 'waiting', 'sending', 'skipped']) expect(MESSAGES[`SEW_RUN_OUTCOME_${o}`], o).toBeTruthy()
     // 버튼이 꺼진 까닭(/me 의 testRun.reason)
     for (const r of ['TEST_RUN_DISABLED', 'TEST_RUN_DEV_USER', 'TEST_RUN_USER_AMBIGUOUS', 'WRITE_DISABLED', 'WRITE_FORBIDDEN']) expect(MESSAGES[`SEW_RUN_OFF_${r}`], r).toBeTruthy()

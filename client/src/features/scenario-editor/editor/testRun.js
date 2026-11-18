@@ -30,8 +30,14 @@ export function searchTargets(items, q) {
   const list = items ?? []
   return needle ? list.filter((e) => has(e.eqpId, needle) || has(e.ipAddr, needle) || has(e.ipAddrL, needle)) : list
 }
-// 자동조치가 켜진 설비만 고를 수 있다(OFF·읽을 수 없음은 서버도 보내지 않는다)
-export const selectableIds = (items) => (items ?? []).filter((e) => e.onoff === 'on').map((e) => e.eqpId)
+// 고를 수 없는 까닭 → null(고를 수 있다) | 'off' | 'onoffUnreadable' | 'agentOff' | 'agentNoInfo' | 'agentUnreadable'.
+// 자동조치가 켜져 있고 에이전트가 실행 중인 설비만 고를 수 있다(서버도 그런 설비에만 보낸다). 서버가 에이전트 상태를 주지 않았으면 읽지 못한 것으로 본다.
+export function whyNotSelectable(e) {
+  if (e.onoff !== 'on') return e.onoff === 'off' ? 'off' : 'onoffUnreadable'
+  if (e.agent === 'on') return null
+  return e.agent === 'off' ? 'agentOff' : e.agent === 'noInfo' ? 'agentNoInfo' : 'agentUnreadable'
+}
+export const selectableIds = (items) => (items ?? []).filter((e) => whyNotSelectable(e) === null).map((e) => e.eqpId)
 
 // 줄 누르기: 그 줄 하나 · toggle(Ctrl·⌘·체크 칸) 더하고 빼기 · range(Shift) 기준 줄부터 그 줄까지 더하기. ids = 보이는 줄 가운데 고를 수 있는 것(순서대로)
 export function clickSelect(state, ids, id, { toggle = false, range = false } = {}) {
@@ -92,10 +98,10 @@ export function blockReason({ name, loading, info, infoFailed = false, picked, m
 }
 
 // ── 결과 ──
-// 줄의 outcome: 서버가 주는 아홉(accepted·off·recent·forbidden·mismatch·badValue·failed·unknown·down) + 화면의 셋(waiting·sending·skipped)
+// 줄의 outcome: 서버가 주는 열(accepted·off·agentOff·recent·forbidden·mismatch·badValue·failed·unknown·down) + 화면의 셋(waiting·sending·skipped)
 export const SENT_OUTCOMES = ['accepted', 'unknown'] // 보냈거나 보냈을 수 있다
 const PENDING = ['waiting', 'sending']
-const NOT_SENT = ['off', 'recent', 'forbidden', 'mismatch', 'badValue', 'down', 'skipped']
+const NOT_SENT = ['off', 'agentOff', 'recent', 'forbidden', 'mismatch', 'badValue', 'down', 'skipped']
 
 export function summarize(items) {
   const n = (list) => items.filter((x) => list.includes(x.outcome)).length

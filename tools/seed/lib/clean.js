@@ -1,4 +1,5 @@
 'use strict'
+const { cleanAgents } = require('./agents')
 // SEW 접두사로만 지운다(공유 로컬 EARS — WebManager 개발 데이터는 건드리지 않는다).
 async function clean(ctx) {
   const r = {}
@@ -18,6 +19,8 @@ async function clean(ctx) {
   } while (cursor !== '0')
   if (keys.length) await ctx.redis.del(...keys)
   r.redisKeys = keys.length
+  // 시험 설비의 에이전트 상태(AgentRunning:SEW…·AgentMetaInfo:SEW…)
+  r.agentKeys = await cleanAgents(ctx)
   r.eqpInfo = (await ctx.db.collection('EQP_INFO').deleteMany({ eqpId: /^SEWT_/ })).deletedCount
   r.agentInfo = (await ctx.db.collection('AGENT_INFO').deleteMany({ eqpId: /^SEWT_/ })).deletedCount
   r.users = (await ctx.db.collection('ARS_USER_INFO').deleteMany({ singleid: /^sew_/ })).deletedCount

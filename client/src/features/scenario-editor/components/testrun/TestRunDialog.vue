@@ -58,7 +58,7 @@ const btnP = 'h-8 px-3 rounded-lg text-sm bg-primary-500 hover:enabled:bg-primar
 </script>
 
 <template>
-  <ModalShell :model-value="run.open" :title="t('SEW_RUN_TITLE')" :width="1080" :height="680" testid="se-run" @update:model-value="onShell">
+  <ModalShell :model-value="run.open" :title="t('SEW_RUN_TITLE')" :width="1160" :height="680" testid="se-run" @update:model-value="onShell">
     <div class="relative h-full flex flex-col min-h-0 text-gray-800 dark:text-gray-100">
       <div class="px-5 pt-3 pb-2.5 flex flex-col gap-2 border-b border-gray-200 dark:border-dark-border shrink-0">
         <TestRunPick />

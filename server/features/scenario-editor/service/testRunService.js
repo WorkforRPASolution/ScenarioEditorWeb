@@ -1,6 +1,8 @@
 'use strict'
 // 시험 실행 (P5 설계 §5) — 설비에 시나리오 실행을 요청한다. 길: 웹 백엔드 → InterfaceServer /EARS/Action → CommandServer → 에이전트.
 // InterfaceServer·CommandServer·에이전트는 호출자 권한도 자동조치 OnOff 도 보지 않는다 — 여기의 검사가 유일한 방어선이다.
+// - 에이전트가 실행 중인 설비에만 보낸다(2026-11-18 사내 요청) — Redis 의 에이전트 정보·실행 신호를 CommandServer 와 같은 규칙으로 읽는다(domain/testRun.js readAgent).
+//   읽지 못하면 보내지 않는다(까닭을 결과에 싣는다).
 // - 요청은 설비 한 대에 하나다(브라우저가 차례로 부른다). 검사는 캐시를 믿지 않는다: 사용자·설비·운영 속성을 요청마다 다시 읽는다(Q-090).
 // - 운영 DB 에는 아무것도 쓰지 않는다. 쓰는 것은 InterfaceServer 를 거친 실행 요청과 웹 전용 DB 의 요청 기록뿐이다.
 // - 요청 기록은 보내기 직전에 sending 으로 넣고 결과로 고친다 — 방금 요청한 설비·시나리오에 거듭 나가는 것을 막고(누가 보냈든),
@@ -13,7 +15,7 @@ const { parseUser } = require('../domain/processPermission')
 const { joinEquipment, applyEquipmentRules } = require('../domain/equipmentRules')
 const { pickCurrent } = require('../domain/versionPick')
 const {
-  validateRequest, userTextOf, userInfoOf, buildParams, headerValueOk, delayKeyOk, readOnoff, readRunProperty, isInt64, classifyAction, pickRecovery, testRunLimits
+  validateRequest, userTextOf, userInfoOf, buildParams, headerValueOk, delayKeyOk, readOnoff, readRunProperty, isInt64, classifyAction, pickRecovery, testRunLimits, readAgent
 } = require('../domain/testRun')
 
 const STEP_COUNT_TTL_MS = 60_000
@@ -31,7 +33,7 @@ const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 const block = (status, code, message, details) => ({ status, code, message, ...(details ? { details } : {}) })
 const NO_STATUS = { found: 0, status: null, retry: null, txnSeq: null, createDate: null }
 
-function createTestRunService({ repo, web, hash, gridfs, scopes, client, env = process.env, log = null, now = () => Date.now() }) {
+function createTestRunService({ repo, web, hash, agentState, gridfs, scopes, client, env = process.env, log = null, now = () => Date.now() }) {
   const users = new Set()
   let active = 0
   const stepCounts = new Map()
@@ -77,9 +79,19 @@ function createTestRunService({ repo, web, hash, gridfs, scopes, client, env = p
     const mine = valid.filter((e) => e.process === process && e.eqpModel === model).sort((a, b) => (a.eqpId < b.eqpId ? -1 : a.eqpId > b.eqpId ? 1 : 0))
     // 자동조치 값은 지금 값으로(캐시는 1분 묵을 수 있다). 마지막 판정은 요청 때 다시 한다.
     const fresh = new Map((await repo.findOnoff(mine.map((e) => e.eqpId))).map((r) => [r.eqpId, r.onoff]))
+    // 에이전트 상태 — 설비들을 한 번에. 읽지 못해도 목록은 준다(모두 unreadable — 화면이 고르지 못하게 하고 까닭을 알린다)
+    let states = null
+    try {
+      states = await agentState.read(process, model, mine.map((e) => e.eqpId))
+    } catch (e) {
+      if (log) log.warn(`시나리오 실행 에이전트 상태를 읽지 못했다 ${process}/${model}: ${(e && e.code) || (e && e.message) || e}`)
+    }
     const limits = testRunLimits(env)
     return {
-      equipment: mine.map((e) => ({ eqpId: e.eqpId, line: e.line, ipAddr: e.ipAddr, ipAddrL: e.ipAddrL ?? '', onoff: fresh.has(e.eqpId) ? readOnoff(fresh.get(e.eqpId)) : 'unreadable' })),
+      equipment: mine.map((e) => ({
+        eqpId: e.eqpId, line: e.line, ipAddr: e.ipAddr, ipAddrL: e.ipAddrL ?? '', onoff: fresh.has(e.eqpId) ? readOnoff(fresh.get(e.eqpId)) : 'unreadable',
+        agent: states ? readAgent(states.get(e.eqpId) ?? {}) : 'unreadable'
+      })),
       limits: { maxEquipment: limits.maxEquipment, recentMin: limits.recentMin }
     }
   }
@@ -111,6 +123,14 @@ function createTestRunService({ repo, web, hash, gridfs, scopes, client, env = p
     const values = [e.process, e.eqpModel, e.eqpId, e.line]
     if (!values.every(headerValueOk)) return { outcome: 'badValue', detail: 'header' }
     if (delayed && !values.every(delayKeyOk)) return { outcome: 'badValue', detail: 'delayKey' }
+    // 에이전트가 실행 중인가 — 지금 값으로(목록을 본 뒤 꺼졌을 수 있다). 읽지 못하면 보내지 않는다.
+    let agent = 'unreadable'
+    try {
+      agent = readAgent((await agentState.read(e.process, e.eqpModel, [e.eqpId])).get(e.eqpId) ?? {})
+    } catch (err) {
+      if (log) log.warn(`시나리오 실행 에이전트 상태를 읽지 못했다 ${e.process}/${e.eqpModel}/${e.eqpId}: ${(err && err.code) || (err && err.message) || err}`)
+    }
+    if (agent !== 'on') return agent === 'off' ? { outcome: 'agentOff' } : { outcome: 'agentOff', detail: agent }
     return { target: { process: e.process, model: e.eqpModel, eqpId: e.eqpId, line: e.line } }
   }
 

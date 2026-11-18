@@ -6,7 +6,7 @@
 // - InterfaceServer 가 준 것을 설비 하나의 결과로 가르기, 내 요청의 실행 기록 고르기
 
 // 설비 하나의 결과(200 응답의 outcome). 화면 문구 SEW_RUN_OUTCOME_<값> 과 맞춘다(시험이 본다).
-const OUTCOMES = ['accepted', 'off', 'recent', 'forbidden', 'mismatch', 'badValue', 'failed', 'unknown', 'down']
+const OUTCOMES = ['accepted', 'off', 'agentOff', 'recent', 'forbidden', 'mismatch', 'badValue', 'failed', 'unknown', 'down']
 // 사내 값 그대로 — 앞 둘은 UserText 로 그대로 나간다
 const REASON_KINDS = ['INSPECTION', 'MAN_EXE', 'other']
 const REASON_MAX = 120
@@ -53,6 +53,24 @@ const delayKeyOk = (v) => typeof v === 'string' && /^[a-zA-Z_\-0-9.]+$/.test(v)
 function readOnoff(v) {
   if (typeof v !== 'number' || !Number.isFinite(v)) return 'unreadable'
   return v === 0 ? 'off' : 'on'
+}
+
+// ── 에이전트 상태 (2026-11-18 사내 요청) ──
+// CommandServer 가 에이전트로 보내기 직전에 보는 것과 같은 규칙이다(remote/HttpConnector.scala·GRPCConnector.scala):
+//   ① Redis 해시 AgentMetaInfo:{공정}-{모델} 의 설비 ID 칸이 ':' 로 넷 이상의 칸  ② 키 AgentRunning:{공정}-{모델}-{설비 ID} 가 있다.
+// ② 가 없으면 CommandServer 는 실행 기록을 NotStarted 로 끝내고, ① 이 아예 없으면 예외로 Wait 에 남긴다(CS-005) — 그래서 웹이 보내기 전에 막는다.
+// 에이전트는 AgentRunning 을 주기(AliveSignalInterval, 기본 5분)마다 주기의 2배 만료로 쓴다(ARSAgent actor/RedisActor.scala) —
+// 방금 죽은 에이전트는 만료 전까지 'on' 으로 보인다. 그때는 지금처럼 실행 상태가 "시작 못 함" 으로 나온다.
+const agentMetaKey = (process, model) => `AgentMetaInfo:${process}-${model}`
+const agentRunningKey = (process, model, eqpId) => `AgentRunning:${process}-${model}-${eqpId}`
+// { meta, running } = Redis 가 준 값(없으면 null) → 'on' | 'off'(실행 신호 없음) | 'noInfo'(에이전트 정보 없음)
+function readAgent({ meta, running } = {}) {
+  if (typeof meta !== 'string') return 'noInfo'
+  // 자바의 split(":") 은 끝의 빈 칸을 버린다
+  const parts = meta.split(':')
+  while (parts.length && parts[parts.length - 1] === '') parts.pop()
+  if (parts.length < 4) return 'noInfo'
+  return running === null || running === undefined ? 'off' : 'on'
 }
 
 // ── 운영 속성: CommandServer 의 JobActor.getSCProperty → BsonDocument.toJson()(STRICT) → getScenarioProperty_SimpleJSON ──
@@ -195,5 +213,5 @@ function pickRecovery(docs, rec, skewMs, rivals = []) {
 
 module.exports = {
   OUTCOMES, REASON_KINDS, REASON_MAX, validateRequest, userTextOf, userInfoOf, buildParams, headerValueOk, delayKeyOk, readOnoff,
-  readRunProperty, isInt64, classifyAction, pickRecovery, testRunFlags, testRunLimits
+  readRunProperty, isInt64, classifyAction, pickRecovery, testRunFlags, testRunLimits, agentMetaKey, agentRunningKey, readAgent
 }

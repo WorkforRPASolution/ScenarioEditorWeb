@@ -76,7 +76,9 @@ function build(env = process.env) {
   // 시험 실행(P5) — InterfaceServer /EARS/Action 으로 설비에 실행을 요청한다. 주소(EARS_INTERFACE_URL)·스위치(SE_TEST_RUN)·한도는 부를 때 읽는다.
   const { createActionClient } = require('./clients/actionClient')
   const { createTestRunService } = require('./service/testRunService')
-  out.testRun = createTestRunService({ repo, web, hash, gridfs, scopes, client: createActionClient({ env, log }), env, log, now })
+  const { createAgentStateRepository } = require('./repo/agentStateRepo')
+  out.agentState = createAgentStateRepository(getRedisClient)
+  out.testRun = createTestRunService({ repo, web, hash, agentState: out.agentState, gridfs, scopes, client: createActionClient({ env, log }), env, log, now })
   const { createRecipientService } = require('./service/recipientService')
   out.recipients = createRecipientService({ repo, scopes, env })
   return out

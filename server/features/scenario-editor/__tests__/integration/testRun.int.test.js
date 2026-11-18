@@ -295,13 +295,15 @@ describe('시험 실행 API — 실제 앱으로', () => {
     expect(await records()).toEqual([])
   })
 
-  it('설비 조회: 고른 공정·모델의 유효 설비를 설비 ID 순으로 — 자동조치 OFF 설비가 구분된다. 권한 밖 공정은 403', async () => {
+  it('설비 조회: 고른 공정·모델의 유효 설비를 설비 ID 순으로 — 자동조치 OFF 설비와 에이전트가 실행 중이 아닌 설비가 구분된다. 권한 밖 공정은 403', async () => {
     const out = await get('/test-run/equipment?process=SEWCVD&model=SEWMODELA')
     expect(out.status).toBe(200)
-    expect(out.data.equipment.map((e) => [e.eqpId, e.onoff])).toEqual([
-      ['SEWT_CVD_A01', 'on'], ['SEWT_CVD_A02', 'on'], ['SEWT_CVD_OFF', 'off'], ['SEWT_DUP01', 'on'], ['SEWT_PRX01', 'on'], ['SEWT_PRX02', 'on']
+    // 에이전트 상태는 로컬 Redis 의 AgentMetaInfo·AgentRunning 에서 읽는다(seed — AGOFF 는 정보만, NOAG 는 아무것도 없다)
+    expect(out.data.equipment.map((e) => [e.eqpId, e.onoff, e.agent])).toEqual([
+      ['SEWT_CVD_A01', 'on', 'on'], ['SEWT_CVD_A02', 'on', 'on'], ['SEWT_CVD_AGOFF', 'on', 'off'], ['SEWT_CVD_NOAG', 'on', 'noInfo'], ['SEWT_CVD_OFF', 'off', 'on'],
+      ['SEWT_DUP01', 'on', 'on'], ['SEWT_PRX01', 'on', 'on'], ['SEWT_PRX02', 'on', 'on']
     ])
-    expect(out.data.equipment[0]).toEqual({ eqpId: 'SEWT_CVD_A01', line: 'SEWLINE1', ipAddr: '10.99.1.1', ipAddrL: '', onoff: 'on' })
+    expect(out.data.equipment[0]).toEqual({ eqpId: 'SEWT_CVD_A01', line: 'SEWLINE1', ipAddr: '10.99.1.1', ipAddrL: '', onoff: 'on', agent: 'on' })
     expect(out.data.limits).toEqual({ maxEquipment: 200, recentMin: 10 })
     expect((await get('/test-run/equipment?process=SEWPHOTO&model=SEWMODELA')).code).toBe('PROCESS_FORBIDDEN')
   })
@@ -346,6 +348,29 @@ describe('시험 실행 API — 실제 앱으로', () => {
     expect((await statusOf({ runId: body.runId, pinned: { SEWT_CVD_A01: txnSeq } })).data.items[0].status).toBe('StartScenario')
     // 시나리오 조회에 방금 요청이 보인다
     expect((await get('/test-run/scenario?process=SEWCVD&model=SEWMODELA&name=RUN_PROPS')).data.recent).toEqual([{ eqpId: 'SEWT_CVD_A01', by: 'sew_multi', at: rec.sentAt }])
+  })
+
+  it('에이전트가 실행 중이 아닌 설비에는 보내지 않는다(agentOff) — 실행 신호 없음·정보 없음, 목록을 본 뒤 꺼진 설비도. 요청도 기록도 없다', async () => {
+    expect((await send({ eqpId: 'SEWT_CVD_AGOFF' })).data).toEqual({ outcome: 'agentOff' })
+    expect((await send({ eqpId: 'SEWT_CVD_NOAG' })).data).toEqual({ outcome: 'agentOff', detail: 'noInfo' })
+    // 그 사이 꺼짐: 실행 신호 키가 만료된 것처럼 지웠다가 되돌린다(SEWT_ 설비의 키만)
+    const redis = require('../../../../shared/db/redisConnection').getRedisClient()
+    const key = 'AgentRunning:SEWCVD-SEWMODELA-SEWT_CVD_A02'
+    const before = await redis.get(key)
+    expect(before).not.toBeNull()
+    await redis.del(key)
+    try {
+      const list = (await get('/test-run/equipment?process=SEWCVD&model=SEWMODELA')).data.equipment
+      expect(list.find((e) => e.eqpId === 'SEWT_CVD_A02').agent).toBe('off')
+      expect((await send({ eqpId: 'SEWT_CVD_A02' })).data).toEqual({ outcome: 'agentOff' })
+    } finally {
+      await redis.set(key, before)
+    }
+    expect(fake.calls).toEqual([])
+    expect(await records()).toEqual([])
+    // 되돌린 뒤에는 나간다
+    expect((await send({ eqpId: 'SEWT_CVD_A02' })).data).toEqual({ outcome: 'accepted' })
+    expect(fake.calls.map((c) => c.headers.eqpid)).toEqual(['SEWT_CVD_A02'])
   })
 
   it('보내지 않는 설비: 자동조치 OFF·권한 밖·없는 설비·무효 설비·공정 모델이 다른 설비 — 요청도 기록도 없다', async () => {

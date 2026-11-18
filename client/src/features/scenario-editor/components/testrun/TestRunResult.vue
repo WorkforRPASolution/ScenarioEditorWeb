@@ -26,6 +26,7 @@ function detailOf(x) {
   if (x.outcome === 'failed') return typeof x.detail === 'string' ? x.detail : ''
   if (x.outcome === 'recent') return x.detail ? t('SEW_RUN_DETAIL_recent', { ago: ago(x.detail.at), by: x.detail.by }) : ''
   if (x.outcome === 'off') return t(x.detail === 'unreadable' ? 'SEW_RUN_DETAIL_off_unreadable' : 'SEW_RUN_DETAIL_off')
+  if (x.outcome === 'agentOff') return t(x.detail === 'noInfo' ? 'SEW_RUN_DETAIL_agentOff_noInfo' : x.detail === 'unreadable' ? 'SEW_RUN_DETAIL_agentOff_unreadable' : 'SEW_RUN_DETAIL_agentOff')
   if (x.outcome === 'badValue') return t(x.detail === 'delayKey' ? 'SEW_RUN_DETAIL_badValue_delayKey' : 'SEW_RUN_DETAIL_badValue_header')
   if (x.outcome === 'unknown') return t(x.lost ? 'SEW_RUN_DETAIL_lost' : 'SEW_RUN_DETAIL_unknown')
   if (x.outcome === 'forbidden') return t('SEW_RUN_DETAIL_forbidden')

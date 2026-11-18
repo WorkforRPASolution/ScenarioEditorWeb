@@ -2,10 +2,10 @@
 import { describe, it, expect } from 'vitest'
 import {
   REASON_KINDS, REASON_MAX, reasonError, stepError, searchTargets, selectableIds, clickSelect, toggleAll, hiddenCount, scenarioMark, openRelation,
-  blockReason, SENT_OUTCOMES, summarize, shouldStop, keepAfterRun, isFinal, needsStatus, stateView, pollDelay, applyStatus, newRunId
+  blockReason, whyNotSelectable, SENT_OUTCOMES, summarize, shouldStop, keepAfterRun, isFinal, needsStatus, stateView, pollDelay, applyStatus, newRunId
 } from '../editor/testRun'
 
-const eqp = (eqpId, over = {}) => ({ eqpId, line: 'L1', ipAddr: '10.99.1.1', ipAddrL: '', onoff: 'on', ...over })
+const eqp = (eqpId, over = {}) => ({ eqpId, line: 'L1', ipAddr: '10.99.1.1', ipAddrL: '', onoff: 'on', agent: 'on', ...over })
 const LIST = [eqp('A01'), eqp('A02', { ipAddr: '10.99.2.7' }), eqp('A03', { onoff: 'off' }), eqp('B01', { ipAddrL: '192.168.0.9' }), eqp('B02', { onoff: 'unreadable' }), eqp('C01')]
 
 describe('사유·시작 스텝', () => {
@@ -44,6 +44,19 @@ describe('설비 찾기·고르기', () => {
   })
   it('고를 수 있는 것은 자동조치가 켜진 설비뿐이다(OFF·읽을 수 없음은 못 고른다)', () => {
     expect(selectableIds(LIST)).toEqual(['A01', 'A02', 'B01', 'C01'])
+  })
+  it('에이전트가 실행 중인 설비만 고를 수 있다 — 꺼짐·정보 없음·읽지 못함, 그리고 서버가 상태를 주지 않은 설비는 못 고른다', () => {
+    const list = [eqp('A01'), eqp('A02', { agent: 'off' }), eqp('A03', { agent: 'noInfo' }), eqp('A04', { agent: 'unreadable' }), eqp('A05', { agent: undefined }), eqp('A06', { onoff: 'off', agent: 'on' })]
+    expect(selectableIds(list)).toEqual(['A01'])
+  })
+  it('고를 수 없는 까닭 — 자동조치가 먼저, 그다음 에이전트. 고를 수 있으면 null', () => {
+    expect(whyNotSelectable(eqp('A'))).toBeNull()
+    expect(whyNotSelectable(eqp('A', { onoff: 'off', agent: 'off' }))).toBe('off')
+    expect(whyNotSelectable(eqp('A', { onoff: 'unreadable' }))).toBe('onoffUnreadable')
+    expect(whyNotSelectable(eqp('A', { agent: 'off' }))).toBe('agentOff')
+    expect(whyNotSelectable(eqp('A', { agent: 'noInfo' }))).toBe('agentNoInfo')
+    expect(whyNotSelectable(eqp('A', { agent: 'unreadable' }))).toBe('agentUnreadable')
+    expect(whyNotSelectable(eqp('A', { agent: undefined }))).toBe('agentUnreadable')
   })
   const ids = selectableIds(LIST)
   it('줄을 누르면 그 줄 하나, Ctrl(⌘)·체크 칸은 더하고 빼기', () => {
@@ -119,8 +132,8 @@ describe('결과', () => {
   const it0 = (eqpId, outcome, over = {}) => ({ eqpId, outcome, ...over })
   it('요약: 요청 접수 · 보내지 않음(OFF·방금·보낼 수 없음·연결 못 함·건너뜀) · 실패 · 모름', () => {
     const items = [it0('a', 'accepted'), it0('b', 'off'), it0('c', 'recent'), it0('d', 'forbidden'), it0('e', 'mismatch'), it0('f', 'badValue'),
-      it0('g', 'failed'), it0('h', 'unknown'), it0('i', 'down'), it0('j', 'skipped'), it0('k', 'waiting'), it0('l', 'sending')]
-    expect(summarize(items)).toEqual({ total: 12, done: 10, accepted: 1, notSent: 7, failed: 1, unknown: 1, skipped: 1 })
+      it0('g', 'failed'), it0('h', 'unknown'), it0('i', 'down'), it0('j', 'skipped'), it0('k', 'waiting'), it0('l', 'sending'), it0('m', 'agentOff')]
+    expect(summarize(items)).toEqual({ total: 13, done: 11, accepted: 1, notSent: 8, failed: 1, unknown: 1, skipped: 1 })
   })
   it('보냈거나 보냈을 수 있는 결과', () => {
     expect(SENT_OUTCOMES).toEqual(['accepted', 'unknown'])

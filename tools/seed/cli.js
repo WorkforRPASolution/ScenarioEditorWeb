@@ -8,7 +8,8 @@ const { clean } = require('./lib/clean')
 const { setScenario, afterSave } = require('./lib/loader')
 const anomaly = require('./lib/anomaly')
 const { generate } = require('../scenario-gen/lib/generate')
-const { equipment, agents } = require('./data/equipment')
+const { equipment, agents, agentStates } = require('./data/equipment')
+const { seedAgents } = require('./lib/agents')
 const users = require('./data/users')
 const { emailInfos, emailRules } = require('./data/emails')
 const { connectCassandra } = require('./lib/cassandra')
@@ -29,6 +30,8 @@ async function seedBase(ctx) {
   })))
   await ctx.db.collection('EMAILINFO').insertMany(emailInfos.map((d) => ({ ...d })))
   await ctx.db.collection('EMAIL_RECIPIENTS').insertMany(emailRules.map((d) => ({ ...d })))
+  const ag = await seedAgents(ctx, equipment, agentStates)
+  console.log(`에이전트 상태(Redis): 정보 ${ag.metas}·실행 신호 ${ag.runnings}`)
   console.log(`설비 ${equipment.length}(AGENT_INFO ${agents.length}), 사용자 ${users.length}, 수신 묶음 ${emailInfos.length}·수신 규칙 ${emailRules.length}`)
 }
 
