@@ -3,7 +3,9 @@
 # 선례: ARSAgent tools/integration 의 is 프로필.
 name: sew-infra
 services:
-  # ── InterfaceServer: 저장·삭제(HTTP 8080)와 Vision·OCR 판정 중계(gRPC 9300 → 호스트 9310, P4) ──
+  # ── InterfaceServer: 저장·삭제(HTTP 8080)와 Vision·OCR 판정 중계(gRPC 9300 → 호스트 9310, P4), 시험 실행 요청(HTTP /EARS/Action, P5) ──
+  # 시험 실행 요청은 설정의 ARSCommandServerAddress(host.docker.internal:3195)로 넘긴다 — 호스트에서 도는 CommandServer 흉내
+  # (tools/infra/fake-command-server.js, 통합 시험·E2E 가 띄운다). 흉내가 떠 있지 않으면 recovery 는 Fail + "null" 이다.
   # 판정 요청은 ZooKeeper `/EARS/ARSImageProcessingSrv/daemons`·`/EARS/ARSOCRProcessingSrv/daemons` 의 자식 노드(호스트:포트)로 중계된다.
   # 공유 로컬 ZooKeeper(ars-zookeeper)를 쓰지 않도록 전용으로 하나 둔다 — InterfaceServer 는 뜰 때 자기 주소를 올리고 같은 이름을 지운다.
   # 호스트 2191 은 흉내 판정 서버·VisionServer 맞춤 확인이 노드를 보는 데 쓴다(tools/infra/is-zk.js 는 컨테이너 안의 zkCli 를 쓴다).

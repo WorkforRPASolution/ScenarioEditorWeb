@@ -1,7 +1,7 @@
 {
-  "_comment": "ScenarioEditorWeb 로컬 시험용. Mongo·Redis(호스트의 mongodb-44·ars-redis)와 전용 ZooKeeper(is-zookeeper — 판정 중계)만 실제, 나머지 주소는 쓰지 않는 자리표시. 사내 설정과 무관.",
+  "_comment": "ScenarioEditorWeb 로컬 시험용. Mongo·Redis(호스트의 mongodb-44·ars-redis)와 전용 ZooKeeper(is-zookeeper — 판정 중계)만 실제. ARSCommandServerAddress 는 호스트의 CommandServer 흉내(tools/infra/fake-command-server.js, 3195 — 시험 실행 P5)이고 떠 있지 않으면 recovery 가 Fail 이다. 나머지 주소는 쓰지 않는 자리표시. 사내 설정과 무관.",
   "ZookeeperQuorum": "is-zookeeper:2181",
-  "ARSCommandServerAddress": "127.0.0.1:1",
+  "ARSCommandServerAddress": "host.docker.internal:3195",
   "HttpWebServerAddress": "127.0.0.1:1",
   "RedisSentinelConnection": "host.docker.internal:6379",
   "RVResponseTimeOut": "10 seconds",
