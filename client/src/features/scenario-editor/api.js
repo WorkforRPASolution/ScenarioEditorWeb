@@ -14,6 +14,9 @@ export const HISTORY_TIMEOUT_MS = 30000
 // Vision·OCR 시험(P4): 서버가 판정 서버를 12초까지 기다린다 — 그보다 먼저 끊지 않게
 export const VISION_TEST_TIMEOUT_MS = 20000
 // 공용 axios 의 기본 머리글은 JSON 이고, axios 는 그때 FormData 를 JSON 으로 바꾼다 — 멀티파트를 적으면 브라우저가 경계값과 함께 다시 쓴다.
+// 시험 실행(P5): 실행 요청 한 건은 서버 안의 읽기(5초씩)와 보내기(12초)보다 길게 기다린다. 먼저 끊으면 그 설비는 "접수 여부 모름" 이 된다.
+export const TEST_RUN_REQUEST_TIMEOUT_MS = 30000
+export const TEST_RUN_TIMEOUT_MS = 10000
 const MULTIPART = { 'Content-Type': 'multipart/form-data' }
 
 export const scenarioEditorApi = {
@@ -77,6 +80,15 @@ export const scenarioEditorApi = {
   // → { results: [{ score, x, y }], ms, bytes }(x·y 는 조각 기준·소수 — 화면이 보정한다) / { accepted, found, confidence, ms, bytes }
   visionTest: (formData, signal) => api.post('/scenario-editor/vision-test', formData, { headers: MULTIPART, timeout: VISION_TEST_TIMEOUT_MS, signal }),
   ocrTest: (formData, signal) => api.post('/scenario-editor/ocr-test', formData, { headers: MULTIPART, timeout: VISION_TEST_TIMEOUT_MS, signal }),
+  // ── 시험 실행(P5) — 설비에 시나리오 실행을 요청한다. 시나리오 목록·공정 모델 항목은 list·scopes 를 그대로 쓴다 ──
+  // 고른 공정·모델의 설비 → { equipment: [{ eqpId, line, ipAddr, ipAddrL, onoff: 'on'|'off'|'unreadable' }], limits: { maxEquipment, recentMin } }
+  testRunEquipment: (process, model) => api.get('/scenario-editor/test-run/equipment', { params: { process, model }, timeout: TEST_RUN_TIMEOUT_MS }),
+  // 시나리오 하나의 실행 정보 → { current: { crtime, stepCount } | null, isEnabled, startDelay, retryCnt, retryInterval, priority, next, emailSkip, blocks: [code], recent: [{ eqpId, by, at }] }
+  testRunScenario: (process, model, name) => api.get('/scenario-editor/test-run/scenario', { params: { process, model, name }, timeout: TEST_RUN_TIMEOUT_MS }),
+  // 설비 한 대에 실행 요청 — body { runId, process, model, name, eqpId, startStep, reason: { kind, text? }, again? } → { outcome, detail? }. 저절로 다시 보내지 않는다
+  testRunRequest: (body) => api.post('/scenario-editor/test-run/requests', body, { timeout: TEST_RUN_REQUEST_TIMEOUT_MS }),
+  // 내 실행의 요청 결과와 실행 상태 — body { runId, pinned?: { 설비: txnSeq } } → { now, items: [{ eqpId, outcome, detail, sentAt, found, status, retry, txnSeq, createDate }] }
+  testRunStatus: (body) => api.post('/scenario-editor/test-run/status', body, { timeout: TEST_RUN_TIMEOUT_MS }),
   // 그림 한 장(Blob). 실패 본문도 Blob 으로 온다 — blobError 로 code 를 읽는다
   snapshotImage: (eqpId, fileName, signal) => api.get(`/scenario-editor/snapshots/${enc(eqpId)}/${enc(fileName)}/image`, { responseType: 'blob', signal, timeout: SNAPSHOT_TIMEOUT_MS })
 }

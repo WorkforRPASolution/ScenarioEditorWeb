@@ -33,7 +33,8 @@ function serverErrorCodes() {
   const found = new Set()
   for (const f of files) {
     const src = readFileSync(f, 'utf8')
-    for (const re of [/seError\(\s*\d+,\s*'([A-Z_]+)'/g, /denial\('([A-Z_]+)'/g, /reject\(req, res, '([A-Z_]+)'/g, /failure\(fn, \d+, '([A-Z_]+)'/g]) {
+    // block(…) = 시험 실행 서비스가 시나리오를 막는 까닭(뒤에 seError 로 던진다)
+    for (const re of [/seError\(\s*\d+,\s*'([A-Z_]+)'/g, /denial\('([A-Z_]+)'/g, /reject\(req, res, '([A-Z_]+)'/g, /failure\(fn, \d+, '([A-Z_]+)'/g, /\bblock\(\d+, '([A-Z_]+)'/g]) {
       for (const m of src.matchAll(re)) found.add(m[1])
     }
   }
@@ -46,6 +47,7 @@ const NOTE_CODES = ['CONDITION_UNKNOWN', 'ACTION_INVALID', 'OCR_OP_NONE', 'PARSE
 const ERROR_CODES = ['USER_NOT_REGISTERED', 'PROCESS_FORBIDDEN', 'MASTER_REQUIRED', 'HOST_FORBIDDEN', 'ORIGIN_FORBIDDEN', 'FILE_DAMAGED', 'NOT_FOUND', 'DATA_INVALID', 'UPSTREAM_DOWN', 'UPSTREAM_TIMEOUT', 'UPSTREAM_FAILED', 'BAD_REQUEST', 'NETWORK', 'TIMEOUT', 'UNKNOWN']
 
 import { FILTERS } from '../editor/snapshotList'
+import { stateView } from '../editor/testRun'
 describe('messages', () => {
   it('경고·알림 코드 22개 모두 문구가 있다', () => {
     for (const c of NOTE_CODES) expect(noteMessage({ code: c, params: {} })).not.toMatch(/^\[/)
@@ -79,6 +81,31 @@ describe('messages', () => {
       expect(m, c).not.toMatch(/^\[/)
       expect(m, c).not.toBe(MESSAGES.SEW_ERR_UNKNOWN)
     }
+  })
+  it('시험 실행(P5): 서버 code 와 설비 하나의 결과(OUTCOMES)·화면의 결과 셋에 모두 문구가 있다', () => {
+    const codes = serverErrorCodes()
+    expect(codes).toEqual(expect.arrayContaining(['TEST_RUN_DISABLED', 'TEST_RUN_DEV_USER', 'TEST_RUN_USER_AMBIGUOUS', 'TEST_RUN_PROPERTY', 'TEST_RUN_NAME', 'TEST_RUN_SCENARIO_OFF',
+      'TEST_RUN_NOT_DEPLOYED', 'TEST_RUN_VERSION_UNREADABLE', 'TEST_RUN_START_STEP', 'TEST_RUN_LIMIT', 'TEST_RUN_DUPLICATE', 'TEST_RUN_BUSY', 'TEST_RUN_STATUS_FAILED']))
+    // 200 응답 안의 outcome 은 위 시험이 보지 못한다 — 서버의 값 목록을 소스에서 읽어 견준다
+    const src = readFileSync(join(__dirname, '../../../../../server/features/scenario-editor/domain/testRun.js'), 'utf8')
+    const outcomes = /const OUTCOMES = \[([^\]]+)\]/.exec(src)[1].split(',').map((x) => x.trim().replace(/'/g, ''))
+    expect(outcomes).toHaveLength(9)
+    for (const o of [...outcomes, 'waiting', 'sending', 'skipped']) expect(MESSAGES[`SEW_RUN_OUTCOME_${o}`], o).toBeTruthy()
+    // 버튼이 꺼진 까닭(/me 의 testRun.reason)
+    for (const r of ['TEST_RUN_DISABLED', 'TEST_RUN_DEV_USER', 'TEST_RUN_USER_AMBIGUOUS', 'WRITE_DISABLED', 'WRITE_FORBIDDEN']) expect(MESSAGES[`SEW_RUN_OFF_${r}`], r).toBeTruthy()
+    // 실행 상태 글·[실행] 이 꺼지는 까닭 — 키를 조립해 쓰므로 여기서 모두 확인한다
+    const now = 1_000_000
+    const states = [null, 'Wait', 'StartPending', 'StartScenario', 'Duplicated', 'Retry', 'Success', 'Stopped', 'Failed', 'ScriptFailed', 'VisionDelayed', 'TimeOut', 'NotStarted', 'DenyScenario', 'Skip', 'Whatever']
+    const views = states.flatMap((status) => [5_000, 30_000, 700_000].flatMap((age) => ['accepted', 'unknown'].map((outcome) =>
+      stateView({ outcome, sentAt: now - age, txnSeq: now - age, found: status ? 1 : 0, status, retry: '1/2/10' }, { now, startDelay: status === 'Wait' && age === 5_000 ? 30 : 0 }))))
+    for (const v of views) expect(MESSAGES[v.key], v.key).toBeTruthy()
+    expect(new Set(views.map((v) => v.key)).size).toBeGreaterThanOrEqual(19)
+    for (const e of ['EMPTY', 'TOO_LONG', 'BAD_CHAR']) expect(MESSAGES[`SEW_RUN_REASON_${e}`], e).toBeTruthy()
+    for (const e of ['NOT_NUMBER', 'RANGE']) expect(MESSAGES[`SEW_RUN_STEP_${e}`], e).toBeTruthy()
+    for (const m of ['off', 'noVersion', 'check']) expect(MESSAGES[`SEW_RUN_MARK_${m}`], m).toBeTruthy()
+    // 사유 종류
+    const kinds = /const REASON_KINDS = \[([^\]]+)\]/.exec(src)[1].split(',').map((x) => x.trim().replace(/'/g, ''))
+    for (const k of kinds) expect(MESSAGES[`SEW_RUN_REASON_KIND_${k}`], k).toBeTruthy()
   })
   it('문구가 없는 code 도 키를 드러내지 않고 공통 문구, 코드 없는 413(JSON 본문 한도)은 PAYLOAD_TOO_LARGE', () => {
     expect(errorMessage({ response: { status: 409, data: { code: 'SOMETHING_NEW' } } })).toBe(MESSAGES.SEW_ERR_UNKNOWN)
@@ -135,7 +162,7 @@ describe('messages', () => {
     expect(fieldMessage({ code: 'NEXT_UNRESOLVED' })).toBe('갈 곳을 고르세요.')
   })
   it('P2 편집 코드(편집기·편집 저장소·편집 부품)에는 화면 문구(한글 글자)를 직접 쓰지 않는다 — 문구는 messages.js 한 곳', () => {
-    const files = import.meta.glob(['../editor/*.js', '../stores/editStore.js', '../stores/saveFlow.js', '../stepRows.js', '../components/{StepToolbar,TargetPicker,EditDialogs,MultiSelection,StepPanel,CaptureLayer,SaveDialog,NewScenarioDialog,TestLayer}.vue', '../components/panel/**/*.vue', '../components/save/*.vue', '../components/newScenario/*.vue', '../components/load/*.vue', '../stores/snapshotStore.js', '../components/snapshot/*.vue', '../stores/visionTestStore.js'],
+    const files = import.meta.glob(['../editor/*.js', '../stores/editStore.js', '../stores/saveFlow.js', '../stepRows.js', '../components/{StepToolbar,TargetPicker,EditDialogs,MultiSelection,StepPanel,CaptureLayer,SaveDialog,NewScenarioDialog,TestLayer}.vue', '../components/panel/**/*.vue', '../components/save/*.vue', '../components/newScenario/*.vue', '../components/load/*.vue', '../stores/snapshotStore.js', '../components/snapshot/*.vue', '../stores/visionTestStore.js', '../stores/testRunStore.js', '../components/testrun/*.vue'],
       { query: '?raw', import: 'default', eager: true })
     expect(Object.keys(files).length).toBeGreaterThan(30)
     const bad = []

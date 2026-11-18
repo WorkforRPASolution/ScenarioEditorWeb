@@ -5,7 +5,7 @@ const post = vi.fn().mockResolvedValue({ data: {} })
 const put = vi.fn().mockResolvedValue({ data: {} })
 const del = vi.fn().mockResolvedValue({ data: {} })
 vi.mock('@/shared/api', () => ({ default: { get: (...a) => get(...a), post: (...a) => post(...a), put: (...a) => put(...a), delete: (...a) => del(...a), defaults: { baseURL: 'http://x:3100/api' } } }))
-import { scenarioEditorApi as api, OPEN_TIMEOUT_MS, DEPLOY_TIMEOUT_MS, ADMIN_TIMEOUT_MS, SNAPSHOT_TIMEOUT_MS, imageUrl, blobError, HISTORY_TIMEOUT_MS } from '../api'
+import { scenarioEditorApi as api, OPEN_TIMEOUT_MS, DEPLOY_TIMEOUT_MS, ADMIN_TIMEOUT_MS, SNAPSHOT_TIMEOUT_MS, imageUrl, blobError, HISTORY_TIMEOUT_MS, TEST_RUN_REQUEST_TIMEOUT_MS, TEST_RUN_TIMEOUT_MS } from '../api'
 
 describe('scenarioEditorApi', () => {
   beforeEach(() => { get.mockClear(); post.mockClear(); put.mockClear(); del.mockClear(); localStorage.clear() })
@@ -13,6 +13,18 @@ describe('scenarioEditorApi', () => {
     await api.open('P 1', 'M/2', 'N', 'current')
     expect(get).toHaveBeenCalledWith('/scenario-editor/scenarios/P%201/M%2F2/N/versions/current', { timeout: OPEN_TIMEOUT_MS })
     expect(OPEN_TIMEOUT_MS).toBe(120000)
+  })
+  it('시험 실행(P5): 설비·시나리오 조회는 쿼리, 실행 요청은 30초(서버 안의 읽기 + 보내기 12초보다 길게), 상태는 10초', async () => {
+    await api.testRunEquipment('P', 'M')
+    expect(get).toHaveBeenCalledWith('/scenario-editor/test-run/equipment', { params: { process: 'P', model: 'M' }, timeout: TEST_RUN_TIMEOUT_MS })
+    await api.testRunScenario('P', 'M', 'N 1')
+    expect(get).toHaveBeenCalledWith('/scenario-editor/test-run/scenario', { params: { process: 'P', model: 'M', name: 'N 1' }, timeout: TEST_RUN_TIMEOUT_MS })
+    const body = { runId: 'run-12345678', eqpId: 'E' }
+    await api.testRunRequest(body)
+    expect(post).toHaveBeenCalledWith('/scenario-editor/test-run/requests', body, { timeout: TEST_RUN_REQUEST_TIMEOUT_MS })
+    await api.testRunStatus({ runId: 'run-12345678', pinned: { E: 5 } })
+    expect(post).toHaveBeenCalledWith('/scenario-editor/test-run/status', { runId: 'run-12345678', pinned: { E: 5 } }, { timeout: TEST_RUN_TIMEOUT_MS })
+    expect([TEST_RUN_REQUEST_TIMEOUT_MS, TEST_RUN_TIMEOUT_MS]).toEqual([30000, 10000])
   })
   it('목록은 쿼리', async () => {
     await api.list('P', 'M')

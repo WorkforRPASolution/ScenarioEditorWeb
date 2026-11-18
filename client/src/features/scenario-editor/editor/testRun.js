@@ -86,7 +86,7 @@ export function blockReason({ name, loading, info, picked, max, reasonErr, stepE
   if (!picked) return { key: 'SEW_RUN_WHY_NO_EQP' }
   if (picked > max) return { key: 'SEW_RUN_WHY_LIMIT', params: { max } }
   if (reasonErr) return { key: `SEW_RUN_REASON_${reasonErr}` }
-  if (stepErr) return { key: `SEW_RUN_STEP_${stepErr}`, params: { max: info.current?.stepCount ?? null } }
+  if (stepErr) return { key: `SEW_RUN_STEP_${stepErr}`, params: { max: info.current?.stepCount ?? '?' } }
   return null
 }
 
