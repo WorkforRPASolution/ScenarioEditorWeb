@@ -113,7 +113,7 @@
       "mode": "shell-modified",
       "sourceSha256": "90b9c4082d3411584dc86968a7e8b0d31caf088a254a6045e1403c648abe5620",
       "localSha256": null,
-      "reason": "사본이 쓰는 의존만, 버전은 WebManager lock 설치본에 고정, rollup 4.67.3 고정(overrides, 사내 npm 미러)"
+      "reason": "사본이 쓰는 의존만, 버전은 WebManager lock 설치본에 고정했다가 보안 업그레이드(SEW-015, 2026-11-19 — axios·vue·vite·postcss·happy-dom·vitest, overrides dompurify·esbuild), rollup 4.67.3 고정(overrides, 사내 npm 미러)"
     },
     {
       "path": "client/.env.example",
@@ -449,7 +449,7 @@
       "mode": "shell-modified",
       "sourceSha256": "99e72948bbef27819dec50372663f412c711f9a5497081040f2a4025fd99e2ba",
       "localSha256": null,
-      "reason": "사본이 쓰는 의존만, bson 명시, rollup 4.67.3 고정(overrides, 사내 npm 미러)"
+      "reason": "사본이 쓰는 의존만, bson 명시(드라이버의 bson 과 같은 판), 보안 업그레이드(SEW-015, 2026-11-19 — mongoose 9.9.5(9.10 이상은 Mongo 4.2 에 붙지 못함)·multer·compression·vitest, overrides vite 7.3.7), rollup 4.67.3 고정(overrides, 사내 npm 미러)"
     },
     {
       "path": "server/.env.example",
