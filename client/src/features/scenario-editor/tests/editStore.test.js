@@ -273,7 +273,7 @@ describe('editStore 선택 — 여러 줄 선택과 초점(editorStore.selectedU
 })
 
 // ── 오른쪽 편집 패널(Task 6): openPanel·applyPanel·discardPanel·guard ──
-import { panelFixture, imageStep, noneStep } from './panelFixture'
+import { panelFixture, imageStep, noneStep, ocrStep } from './panelFixture'
 describe('editStore — 패널', () => {
   beforeEach(() => setActivePinia(createPinia()))
   const mk = () => panelFixture([imageStep(0), imageStep(1), noneStep(2)])
@@ -1641,6 +1641,46 @@ describe('editStore — 되돌려 열기(beginRestore)·초안 이어서 열기(
     expect(meta.propertyRev).toBe('r30')
     expect(meta.target).toEqual({ process: 'P', model: 'M', name: 'N' })
   })
+  describe('beginRestore: 표시·칸 검사의 기준은 연 판(옛 판)이다 — 저장 기준점(현재 판)은 "배포하면 바뀌는 곳" 에만(SEW-022 (1))', () => {
+    // 옛 판의 2번 = OCR 인데 마우스 클릭(옛 값 — 손대지 않았으면 막지 않고 안내만). 현재 판의 같은 uid 스텝은 다른 스텝이다.
+    const legacy = () => ocrStep(1, { action: { type: 1, typeName: 'MouseLeftClick', raw: '5:5', click: { x: 5, y: 5, basis: 'trainImage' } } })
+    const restored = () => {
+      const { s, e } = start()
+      const old = versionOf(10, [imageStep(0), legacy()], { description: '옛 메일' })
+      old.steps[1].notes = [{ level: 'info', code: 'OCR_MOUSE_CLICK', params: {} }] // 서버가 단 스텝 알림
+      old.notes = [{ level: 'warning', code: 'NO_SUCCESS', params: {} }] // 서버가 단 시나리오 알림
+      const cur = CUR()
+      e.beginRestore(old, cur)
+      return { s, e, old, cur }
+    }
+    it('세션: sourceBase = 옛 판 작업본, saveBase = 현재 판 작업본', () => {
+      const { e, old, cur } = restored()
+      expect(e.session.sourceBase).toBe(old.edited)
+      expect(e.session.saveBase).toBe(cur.edited)
+    })
+    it('손대지 않은 스텝은 옛 판 뼈대의 표시를 그대로 쓴다 — 서버가 단 알림이 남는다', () => {
+      const { s, old } = restored()
+      expect(s.steps[1].notes).toEqual(old.steps[1].notes)
+      expect(toRaw(s.steps[0])).toBe(toRaw(s.skeleton).steps[0]) // 열린 뼈대는 깊은 반응형 — 원본으로 견준다
+    })
+    it('스텝을 바꾸지 않았으면 시나리오 알림 NO_SUCCESS 가 남는다', () => {
+      const { s } = restored()
+      expect(s.scenarioNotes.map((n) => n.code)).toEqual(['NO_SUCCESS'])
+    })
+    it('패널 칸 검사: 옛 판에서 손대지 않은 OCR + 클릭은 안내(notice)이지 막힘이 아니다', () => {
+      const { e } = restored()
+      e.openPanel('s1')
+      expect(e.panelErrors().action).toMatchObject({ code: 'OCR_MOUSE_CLICK', level: 'notice' })
+    })
+    it('표 칸을 바꿨다가 옛 값으로 되돌리면 옛 판 스텝 객체를 다시 쓴다 — 표시가 서버 값으로 돌아온다', () => {
+      const { s, e, old } = restored()
+      expect(e.editCell('s0', 'accept', 0.5)).toBe(true)
+      expect(e.session.working.steps[0]).not.toBe(old.edited.steps[0])
+      expect(e.editCell('s0', 'accept', 0.9)).toBe(true)
+      expect(e.session.working.steps[0]).toBe(old.edited.steps[0])
+      expect(toRaw(s.steps[0])).toBe(toRaw(s.skeleton).steps[0]) // 열린 뼈대는 깊은 반응형 — 원본으로 견준다
+    })
+  })
   it('beginRestore: 쓰기 권한이 없으면 열지 않는다', () => {
     const { e } = start(false)
     expect(e.beginRestore(OLD(), CUR())).toBe(false)
@@ -1651,6 +1691,17 @@ describe('editStore — 되돌려 열기(beginRestore)·초안 이어서 열기(
   const draftOf = (scenario, over = {}) => ({ draftId: 'd1', savedAt: '2026-11-07T05:23:51.000Z', revision: 2, base: scenario.source ? { crtime: scenario.source.crtime, fileId: scenario.source.fileId } : null,
     headCrtime: scenario.headCrtime, propertyRev: 'rD', target: { model: 'M', name: 'N' }, scenario, imageUrls: {}, process: 'P', model: 'M', name: 'N', ...over })
 
+  it('beginFromDraft: 되돌린 판에서 시작한 초안(restoredFrom)이면 세션에 되살린다 — 바의 되돌림 표시·배포 기록(SEW-022 (2)), 아니면 없다', () => {
+    const { e } = start()
+    const base = versionOf(10, [imageStep(0), noneStep(1)])
+    const scenario = { ...base.edited, steps: [...base.edited.steps] }
+    expect(e.beginFromDraft(draftOf(scenario, { restoredFrom: 10 }), base)).toBe(true)
+    expect(e.session.restoredFrom).toBe(10)
+    const { meta } = buildMeta(e.session, { extra: { restoredFrom: e.session.restoredFrom ?? null } })
+    expect(meta.restoredFrom).toBe(10)
+    e.beginFromDraft(draftOf(scenario, { restoredFrom: null }), base)
+    expect(e.session.restoredFrom).toBeUndefined()
+  })
   it('beginFromDraft: 작업본 = 초안, 기준 판 = 초안 기준 판, 연 때 값(headCrtime·propertyRev)은 초안의 것 — 손대지 않은 스텝은 기준 판 스텝 객체를 쓴다', () => {
     const { s, e } = start()
     const base = versionOf(30, [imageStep(0), noneStep(1), noneStep(2)])

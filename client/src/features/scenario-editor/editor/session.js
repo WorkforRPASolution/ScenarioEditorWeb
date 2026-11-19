@@ -3,6 +3,11 @@ import { newScenarioOf } from './newScenario'
 import { blankWindows } from './windows'
 
 // 편집 세션 — 서버가 준 작업본(skeleton.edited)을 그대로 쥔다. 브라우저에서 만들거나 기본값을 채우지 않는다.
+
+// 연 판의 내용 — "이 스텝을 연 판에서 고쳤나" 의 기준(SEW-022). 서버가 단 알림을 다시 쓸지(display)·NO_SUCCESS 를 둘지·옛 값을 막지 않고 안내만 할지(칸 검사)·
+// 옛 값으로 돌아오면 그 스텝 객체를 다시 쓸지(적용)·OCR 접미사를 붙일지(Vision 시험)를 가른다 — 서버도 배포 때 출처 판과 견줘 고친 스텝만 다시 조립한다.
+// 보통은 저장 기준점(saveBase)과 같다. 되돌린 세션만 다르다: 내용은 옛 판(sourceBase), 저장 기준점은 현재 판("배포하면 바뀌는 곳" — 저장 전 N곳·저장 창·바뀐 칸 색).
+export const sourceBaseOf = (session) => session?.sourceBase ?? session?.saveBase ?? null
 export function beginSession(skeleton, me) {
   const edited = skeleton.edited ?? null
   const v = skeleton.version ?? {}
@@ -52,7 +57,7 @@ export function restoreSessionOf(oldSk, curSk, me) {
   const head = curSk.headCrtime ?? curSk.version?.crtime ?? null
   const working = { ...oldSk.edited, headCrtime: head, property: cur.property }
   return {
-    session: { source: oldSk.edited.source, headCrtime: head, propertyRev: curSk.propertyRev ?? null, readOnly: writeMode(me), working, saveBase: cur, seq: 0, restoredFrom: oldSk.version.crtime },
+    session: { source: oldSk.edited.source, headCrtime: head, propertyRev: curSk.propertyRev ?? null, readOnly: writeMode(me), working, saveBase: cur, sourceBase: oldSk.edited, seq: 0, restoredFrom: oldSk.version.crtime },
     skeleton: { ...curSk, header: oldSk.header, steps: oldSk.steps, notes: oldSk.notes }
   }
 }
@@ -77,6 +82,8 @@ export function draftSessionOf(draft, sourceSkeleton, me) {
   const info = { id: draft.draftId, savedAt: draft.savedAt }
   const head = draft.headCrtime ?? null
   const base = { source: scenario.source, headCrtime: head, propertyRev: draft.propertyRev ?? null, readOnly: writeMode(me), seq: 0, draft: info }
+  // 되돌린 판에서 시작한 초안이면 되돌림 표시를 되살린다(바·배포 기록, SEW-022). 기준 판(saveBase)은 초안의 기준 판 = 옛 판이라 sourceBase 는 따로 두지 않는다.
+  if (Number.isSafeInteger(draft.restoredFrom)) base.restoredFrom = draft.restoredFrom
   const target = draft.target ? { process: draft.target.process ?? draft.process, model: draft.target.model, name: draft.target.name } : null // 초안 키의 공정
   const fromDraft = (over) => ({ savedAt: draft.savedAt, baseCrtime: draft.base?.crtime ?? null, target, stale: false, gone: false, ...over })
   if (!scenario.source) {

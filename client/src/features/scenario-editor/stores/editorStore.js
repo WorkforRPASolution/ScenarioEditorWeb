@@ -6,6 +6,7 @@ import { buildMeta } from '../editor/request'
 import { formatCrtime } from '../format'
 import { useEditStore } from './editStore'
 import { displaySteps } from '../editor/display'
+import { sourceBaseOf } from '../editor/session'
 
 const fail = (e) => ({ code: errorCode(e), message: errorMessage(e) })
 
@@ -34,7 +35,7 @@ export const useEditorStore = defineStore('scenarioEditor', () => {
   const scenarioNotes = computed(() => {
     const notes = skeleton.value?.notes ?? []
     const s = edit.session
-    return s?.working && s.working.steps !== s.saveBase?.steps ? notes.filter((n) => n.code !== 'NO_SUCCESS') : notes
+    return s?.working && s.working.steps !== sourceBaseOf(s)?.steps ? notes.filter((n) => n.code !== 'NO_SUCCESS') : notes
   })
   const selectedStep = computed(() => steps.value.find((s) => s.uid === selectedUid.value) ?? null)
   const count = (level) => steps.value.reduce((a, s) => a + s.notes.filter((n) => n.level === level).length, 0)

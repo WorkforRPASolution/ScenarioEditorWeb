@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, shallowRef, computed } from 'vue'
-import { beginSession, restoreSessionOf, draftSessionOf, nextUid, stepNo } from '../editor/session'
+import { beginSession, restoreSessionOf, draftSessionOf, nextUid, stepNo, sourceBaseOf } from '../editor/session'
 import { copySteps, pasteSteps, detachClip, deleteSteps, moveSteps, setCell, movedRefKeys, applyStep, insertStep, sameOrder, STEP_MAX } from '../editor/commands'
 import { sameStep, canonicalJson, unsavedChanges } from '../editor/diff'
 import { checkStepFields } from '../editor/fieldRules'
@@ -117,7 +117,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   function carryClip() {
     const c = clip.value
     if (!c || c.detached) return
-    const keep = new Set((session.value?.saveBase?.steps ?? []).map((s) => s.uid))
+    const keep = new Set((sourceBaseOf(session.value)?.steps ?? []).map((s) => s.uid))
     clip.value = { ...detachClip(c, keep), cut: false, detached: true }
   }
 
@@ -231,7 +231,8 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
   const panelDirty = () => { const p = panel.value; return !!p.draft && !sameStep(p.draft, p.base) }
   const focusUid = () => useEditorStore().selectedUid
   const workingStep = (uid) => (uid == null ? null : session.value?.working?.steps.find((s) => s.uid === uid) ?? null)
-  const saveBaseStep = (uid) => session.value?.saveBase?.steps.find((s) => s.uid === uid) ?? null
+  // 연 판의 같은 uid 스텝(되돌린 세션은 옛 판 — editor/session sourceBaseOf, SEW-022)
+  const sourceStepOf = (uid) => sourceBaseOf(session.value)?.steps.find((s) => s.uid === uid) ?? null
 
   // 그 스텝으로 패널을 연다(초안 = 기준 = 작업본 스텝 그대로).
   function openPanel(uid) {
@@ -259,11 +260,11 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     if (!p.draft || !editable.value) return
     panel.value = { ...p, draft: fn(p.draft) }
   }
-  // 칸 검사(서버 code 이름). base = 저장 기준점의 같은 uid 스텝(옛 값 안내를 가른다), 새 스텝이면 null.
+  // 칸 검사(서버 code 이름). base = 연 판의 같은 uid 스텝(옛 값 안내를 가른다), 새 스텝이면 null.
   function panelErrors() {
     const p = panel.value
     if (!p.draft || !session.value?.working) return {}
-    return checkStepFields(p.draft, { working: session.value.working, isNew: p.isNew, base: p.isNew ? null : saveBaseStep(p.uid), user: useEditorStore().me,
+    return checkStepFields(p.draft, { working: session.value.working, isNew: p.isNew, base: p.isNew ? null : sourceStepOf(p.uid), user: useEditorStore().me,
       applied: p.isNew ? null : p.base, screen: panelScreen.value })
   }
   function setScreenSize(size) { screenSize.value = size && size.w > 0 && size.h > 0 ? { w: size.w, h: size.h, uid: size.uid ?? null } : null }
@@ -272,7 +273,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     return s && panel.value.draft && s.uid === panel.value.uid ? { w: s.w, h: s.h } : null
   })
   function requestFocus(field) { focusReq.value = { field, n: (focusReq.value?.n ?? 0) + 1 } }
-  // [적용]: 오류가 있으면 막고 첫 오류 칸으로 초점. 기준과 같으면 아무것도 쌓지 않는다. 저장 기준점과 같은 값이면 그 객체를 다시 쓴다.
+  // [적용]: 오류가 있으면 막고 첫 오류 칸으로 초점. 기준과 같으면 아무것도 쌓지 않는다. 연 판과 같은 값이면 그 객체를 다시 쓴다.
   function applyPanel() {
     const p = panel.value
     if (!p.draft || p.isNew || !editable.value) return false
@@ -280,7 +281,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     if (bad) { requestFocus(bad); return false }
     capture.value = null
     if (sameStep(p.draft, p.base)) { if (p.draft !== p.base) panel.value = { ...p, draft: p.base }; return true }
-    const sb = saveBaseStep(p.uid)
+    const sb = sourceStepOf(p.uid)
     const step = sb && sameStep(p.draft, sb) ? sb : p.draft
     panel.value = { uid: p.uid, isNew: false, draft: step, base: step }
     run(t('SEW_CMD_APPLIED', { no: noOf(p.uid) }), (w) => applyStep(w, step))
@@ -580,10 +581,10 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     const label = field === 'accept' ? t('SEW_CMD_CELL_ACCEPT', { no, v: value.toFixed(2) })
       : field === 'skip' ? t(value ? 'SEW_CMD_CELL_SKIP_ON' : 'SEW_CMD_CELL_SKIP_OFF', { no })
         : t('SEW_CMD_CELL_TARGET', { no, which: t(field === 'onTrue' ? 'SEW_CMD_WHICH_ON_TRUE' : 'SEW_CMD_WHICH_ON_FALSE'), to: targetText(value) })
-    // 저장 기준점과 같은 값으로 돌아오면 그 스텝 객체를 다시 쓴다(applyPanel 과 같다 — 표시·알림이 P1 으로, 서버가 고친 스텝으로 보지 않게)
+    // 연 판과 같은 값으로 돌아오면 그 스텝 객체를 다시 쓴다(applyPanel 과 같다 — 표시·알림이 P1 으로, 서버가 고친 스텝으로 보지 않게)
     run(label, (w) => {
       const r = setCell(w, uid, field, value)
-      const sb = saveBaseStep(uid)
+      const sb = sourceStepOf(uid)
       return sb && sameStep(r.working.steps.find((s) => s.uid === uid), sb) ? applyStep(w, sb) : r
     })
     return true

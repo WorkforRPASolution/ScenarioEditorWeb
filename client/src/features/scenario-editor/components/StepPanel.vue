@@ -9,6 +9,7 @@ import { useEditStore } from '../stores/editStore'
 import { refUrl } from '../editor/images'
 import { CAN_FAIL, CLICK_TYPES, PRESERVE_ONLY, PANEL_OWN_CODES, changedFields, diffLines, errorFields, firstError, sentence, trainMapDropped, keyboardTokensDropped } from '../editor/panel'
 import { typeNameOf } from '../editor/display'
+import { sourceBaseOf } from '../editor/session'
 import { testInputOfDraft, aboutOf } from '../editor/visionTest'
 import { t, noteMessage, fieldMessage } from '../messages'
 import { conditionLabel } from '../format'
@@ -67,7 +68,7 @@ const trainPics = computed(() => {
     .map((key) => ({ key, src: isRef(train[key]) ? refUrl(train[key], ctx.value) : null, other: train[key]?.from === 'other' })).filter((x) => x.src)
 })
 // Vision·OCR 시험(P4): 패널의 지금 값으로 시험한다. 저장 기준 판의 같은 스텝은 OCR 접미사를 붙일지 가리는 데 쓴다(editor/visionTest).
-const sourceStep = computed(() => (p.value.isNew ? null : (edit.session?.saveBase?.steps ?? []).find((s) => s.uid === d.value?.uid) ?? null))
+const sourceStep = computed(() => (p.value.isNew ? null : (sourceBaseOf(edit.session)?.steps ?? []).find((s) => s.uid === d.value?.uid) ?? null))
 const testInput = computed(() => (d.value ? testInputOfDraft(d.value, ctx.value, sourceStep.value) : null))
 const testAbout = computed(() => aboutOf(store.skeleton, p.value.isNew ? null : idx.value + 1))
 const testScope = computed(() => `${JSON.stringify(edit.session?.source ?? null)}${edit.session?.newId ?? ''}`)

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 
-const api = vi.hoisted(() => ({ check: vi.fn(), saveDraft: vi.fn(), deploy: vi.fn(), verifyDeploy: vi.fn(), finishDeploy: vi.fn(), open: vi.fn(), nameRule: vi.fn() }))
+const api = vi.hoisted(() => ({ check: vi.fn(), saveDraft: vi.fn(), deploy: vi.fn(), verifyDeploy: vi.fn(), finishDeploy: vi.fn(), open: vi.fn(), nameRule: vi.fn(), getDraft: vi.fn() }))
 vi.mock('../api', () => ({ scenarioEditorApi: api, imageUrl: (p) => p }))
 import { useSaveFlow, overwriteDiff, PENDING_KEY, CHECK_DELAY_MS } from '../stores/saveFlow'
 import { unsavedChanges } from '../editor/diff'
@@ -464,6 +464,21 @@ describe('saveFlow', () => {
     expect(unsavedChanges(e.session.working, e.session.saveBase)).toEqual(before)
   })
 
+  it('초안 저장: 되돌린 세션이면 meta 에 restoredFrom(옛 판 crtime)을 싣고, 아니면 null — draftCurrent 도 같다(SEW-022 (2))', async () => {
+    const { flow, e } = setup(clean())
+    api.saveDraft.mockReturnValue(ok({ draftId: 'd1', savedAt: '2026-11-09T05:23:00.000Z', revision: 1 }))
+    flow.open(); await flushPromises()
+    await flow.saveDraft()
+    expect(metaOf(api.saveDraft.mock.calls[0]).restoredFrom).toBe(null)
+    flow.close()
+    e.session = { ...e.session, restoredFrom: 1720000000000 }
+    flow.open(); await flushPromises()
+    await flow.saveDraft()
+    expect(metaOf(api.saveDraft.mock.calls[1]).restoredFrom).toBe(1720000000000)
+    flow.close()
+    await flow.draftCurrent()
+    expect(metaOf(api.saveDraft.mock.calls[2]).restoredFrom).toBe(1720000000000)
+  })
   it('초안 저장 실패는 창에 남아 알린다(같은 자리에 덮어쓰므로 다시 눌러도 된다)', async () => {
     const { flow } = setup()
     flow.open(); await flushPromises()
@@ -821,6 +836,49 @@ describe('saveFlow', () => {
     expect(again.flow.restoredOther).toBe(false)
     expect(api.open).not.toHaveBeenCalled()
     expect(again.flow.notice.key).toBe('SEW_SAVE_NOT_REBASED')
+  })
+  describe('다른 대상의 결과 모름을 확인해 mine 인데 기준을 바꾸지 않을 때 — 서버는 그 배포의 원본·대상의 내 초안을 지운다(SEW-022 (3))', () => {
+    const restoredWithDraft = async () => {
+      await unknownTo('NEW_ONE')
+      setActivePinia(createPinia())
+      const again = setup()
+      again.e.markDraft({ draftId: 'd1', savedAt: '2026-11-09T05:23:00.000Z' }) // 지금 세션은 초안 d1 로 열려 있다
+      again.flow.open()
+      api.verifyDeploy.mockReturnValue(ok({ found: 'mine', crtime: 99, result: 'ok', partialFailed: [] }))
+      return again
+    }
+    it('세션의 초안이 서버에서 지워졌으면 세션에서 떼고 까닭을 알린다 — 지운 초안 id·그림을 계속 가리켜 썸네일 404·다음 배포 400 이 나지 않게', async () => {
+      const again = await restoredWithDraft()
+      api.getDraft.mockReturnValue(fail(404, 'NOT_FOUND'))
+      await again.flow.verify()
+      expect(api.getDraft).toHaveBeenCalledWith('d1')
+      expect(again.e.session.draft).toBe(null)
+      expect(again.flow.stage).toBe('ok')
+      expect(again.flow.notice).toMatchObject({ key: 'SEW_SAVE_NOT_REBASED_DRAFT_GONE', tone: 'error' })
+    })
+    it('세션의 초안이 남아 있으면 그대로 두고 지금처럼 "열린 화면은 그대로"', async () => {
+      const again = await restoredWithDraft()
+      api.getDraft.mockReturnValue(ok({ draftId: 'd1' }))
+      await again.flow.verify()
+      expect(again.e.session.draft).toMatchObject({ id: 'd1' })
+      expect(again.flow.notice.key).toBe('SEW_SAVE_NOT_REBASED')
+    })
+    it('초안이 있는지 묻다가 실패하면(404 가 아님) 떼지 않는다 — 모르는 것을 지운 것으로 보지 않는다', async () => {
+      const again = await restoredWithDraft()
+      api.getDraft.mockReturnValue(fail(503, 'UPSTREAM_DOWN'))
+      await again.flow.verify()
+      expect(again.e.session.draft).toMatchObject({ id: 'd1' })
+      expect(again.flow.notice.key).toBe('SEW_SAVE_NOT_REBASED')
+    })
+    it('초안 없이 연 세션이면 묻지 않는다', async () => {
+      await unknownTo('NEW_ONE')
+      setActivePinia(createPinia())
+      const again = setup()
+      again.flow.open()
+      api.verifyDeploy.mockReturnValue(ok({ found: 'mine', crtime: 99, result: 'ok', partialFailed: [] }))
+      await again.flow.verify()
+      expect(api.getDraft).not.toHaveBeenCalled()
+    })
   })
   it('되살린 결과 모름이라도 대상이 지금 시나리오의 대상이면 [다시 배포]는 그 대상 그대로(알림 없음)', async () => {
     const { flow } = setup()

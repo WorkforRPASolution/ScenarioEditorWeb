@@ -17,6 +17,9 @@ function uploadRefs(edited) {
 
 function createDraftService({ web, check, scopes }) {
   async function save(user, meta, images) {
+    // 되돌린 판에서 시작한 초안은 옛 판 crtime 을 함께 둔다 — 다시 열어 배포해도 배포 기록에 되돌림이 남게(SEW-022). 배포 meta 와 같은 검사.
+    const restoredFrom = meta.restoredFrom ?? null
+    if (restoredFrom !== null && !Number.isSafeInteger(restoredFrom)) throw bad('restoredFrom 모양이 틀립니다', { path: 'restoredFrom', reason: '정수(crtime) 또는 null 이어야 합니다' })
     const p = await check.prepare(user, meta)
     const { edited } = p
     const t = meta.target
@@ -53,6 +56,7 @@ function createDraftService({ web, check, scopes }) {
         propertyRev: meta.propertyRev === undefined ? null : meta.propertyRev,
         target: { model: t.model, name: t.name },
         scenario: edited,
+        restoredFrom,
         images: stored
       })
       // 새 초안이 쓰지 않는 이전 그림(없어진 것·새 파일로 바뀐 것)을 지운다. 실패해도 저장은 성공이다(고아 파일만 남는다).
@@ -82,7 +86,7 @@ function createDraftService({ web, check, scopes }) {
     const id = String(d._id)
     const imageUrls = {}
     for (const i of d.images || []) imageUrls[i.tempId] = `/scenario-editor/drafts/${id}/images/${encodeURIComponent(i.tempId)}`
-    return { draftId: id, savedAt: d.savedAt, revision: d.revision, base: d.base, headCrtime: d.headCrtime, propertyRev: d.propertyRev, target: d.target, scenario: d.scenario, imageUrls }
+    return { draftId: id, savedAt: d.savedAt, revision: d.revision, base: d.base, headCrtime: d.headCrtime, propertyRev: d.propertyRev, target: d.target, scenario: d.scenario, restoredFrom: d.restoredFrom ?? null, imageUrls }
   }
 
   async function image(user, draftId, tempId) {

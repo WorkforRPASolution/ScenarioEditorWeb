@@ -40,6 +40,21 @@ describe('draftService.save', () => {
     expect(calls.upsert[0]).toMatchObject({ owner: 'u', process: 'P', model: 'M', name: 'N', base: { crtime: SRC.crtime, fileId: 'f1' }, headCrtime: 5, propertyRev: 'rev', target: { model: 'M', name: 'N' } })
     expect(calls.upsert[0].images).toEqual([{ tempId: 'a', gridId: 'g-a-0' }])
   })
+  it('되돌린 판에서 시작한 초안: meta.restoredFrom(옛 판 crtime)을 초안에 남긴다 — 없으면 null(SEW-022 (2): 다시 열어 배포해도 배포 기록에 되돌림이 남게)', async () => {
+    const a = setup()
+    await a.svc.save(user, a.meta({ restoredFrom: 1720000000000 }), new Map([['a', png]]))
+    expect(a.calls.upsert[0].restoredFrom).toBe(1720000000000)
+    const b = setup()
+    await b.svc.save(user, b.meta(), new Map([['a', png]]))
+    expect(b.calls.upsert[0].restoredFrom).toBe(null) // 다시 저장하면 지운다(되돌린 세션이 아니다)
+  })
+  it('restoredFrom 이 정수가 아니면 400 이고 아무것도 넣지 않는다', async () => {
+    const { svc, calls, meta } = setup()
+    const e = await fail(svc.save(user, meta({ restoredFrom: '1720000000000' }), new Map([['a', png]])))
+    expect(e).toMatchObject({ statusCode: 400, details: { path: 'restoredFrom' } })
+    expect(calls.put).toEqual([])
+    expect(calls.upsert).toEqual([])
+  })
   it('새 시나리오(source null)면 키는 target 의 모델·이름이고 base 는 null', async () => {
     const edited = { source: null, headCrtime: null, steps: [] }
     const { svc, calls, meta } = setup({ edited })
@@ -96,7 +111,8 @@ describe('draftService get·list·image·remove', () => {
   const prev = { _id: 'p1', owner: 'u', process: 'P', model: 'M', name: 'N', base: null, headCrtime: 1, propertyRev: 'r', target: { model: 'M', name: 'N' }, scenario: { s: 1 }, images: [{ tempId: 'a', gridId: 'g1' }], savedAt: new Date(0), revision: 3 }
   it('get 은 imageUrls 를 붙인다', async () => {
     const { svc } = setup({ prev })
-    expect(await svc.get(user, 'p1')).toEqual({ draftId: 'p1', savedAt: new Date(0), revision: 3, base: null, headCrtime: 1, propertyRev: 'r', target: { model: 'M', name: 'N' }, scenario: { s: 1 }, imageUrls: { a: '/scenario-editor/drafts/p1/images/a' } })
+    expect(await svc.get(user, 'p1')).toEqual({ draftId: 'p1', savedAt: new Date(0), revision: 3, base: null, headCrtime: 1, propertyRev: 'r', target: { model: 'M', name: 'N' }, scenario: { s: 1 }, restoredFrom: null, imageUrls: { a: '/scenario-editor/drafts/p1/images/a' } })
+    expect((await setup({ prev: { ...prev, restoredFrom: 1720000000000 } }).svc.get(user, 'p1')).restoredFrom).toBe(1720000000000)
   })
   it('다른 사람 초안 get·image·remove 는 404', async () => {
     const { svc } = setup({ prev })

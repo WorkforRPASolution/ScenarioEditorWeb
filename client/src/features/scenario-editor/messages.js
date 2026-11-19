@@ -1317,6 +1317,7 @@ export const MESSAGES = {
   SEW_SAVE_OK_TITLE: '설비에 배포했습니다',
   SEW_SAVE_OK_BODY: '서버에 새 버전을 저장하고 {model} 설비 {n}대에 알렸습니다. 설비별 수신 결과는 이 창에서 알 수 없습니다.',
   SEW_SAVE_NOT_REBASED: '열린 화면은 그대로 두었습니다. 배포한 새 버전은 불러오기에서 열 수 있습니다.',
+  SEW_SAVE_NOT_REBASED_DRAFT_GONE: '열린 화면은 그대로 두었지만, 이 배포로 지금 열린 내 초안도 서버에서 지워졌습니다. 초안에만 있던 그림은 더 쓸 수 없으니 불러오기에서 다시 열어 주세요.',
   SEW_SAVE_REOPEN_FAILED: '배포는 됐지만 새 버전을 다시 열지 못해 열린 화면은 그대로입니다. 불러오기에서 새 버전을 여세요. ({cause})',
   SEW_SAVE_DRAFT_TITLE: '초안을 저장했습니다',
   SEW_SAVE_DRAFT_BODY: '웹 서버에만 저장했고 설비는 그대로입니다. 불러오기 창의 초안 목록에서 이어서 열 수 있습니다.',

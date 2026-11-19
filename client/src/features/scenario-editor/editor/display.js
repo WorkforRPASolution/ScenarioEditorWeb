@@ -8,6 +8,7 @@
 import { imageUrl } from '../api'
 import { refUrl } from './images'
 import { checkStepFields } from './fieldRules'
+import { sourceBaseOf } from './session'
 
 const GRAPH_NOTE_CODES = new Set(['LAST_STEP_NEXT', 'NEXT_SELF', 'NEXT_OUT_OF_RANGE', 'NEXT_UNRESOLVED', 'UNREACHABLE'])
 const REF_CODES = new Set(['LAST_STEP_NEXT', 'NEXT_SELF', 'NEXT_UNRESOLVED'])
@@ -84,7 +85,7 @@ export function displaySteps(session, skeleton, { uploads, draftId, user } = {})
   const working = session?.working
   const skSteps = skeleton?.steps ?? []
   if (!working) return skSteps
-  const base = session.saveBase
+  const base = sourceBaseOf(session) // 연 판의 내용 — 되돌린 세션은 옛 판(SEW-022)
   if (base && working.steps === base.steps) return skSteps
   const pos = new Map(working.steps.map((s, i) => [s.uid, i + 1]))
   const baseByUid = new Map((base?.steps ?? []).map((s) => [s.uid, s]))

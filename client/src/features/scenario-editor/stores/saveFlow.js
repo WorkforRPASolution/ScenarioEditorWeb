@@ -333,6 +333,21 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
     toFail('notSent', e)
   }
 
+  // 기준을 바꾸지 않은 배포 확인 뒤: 서버는 그 배포의 원본·대상의 내 초안을 지운다 — 지금 세션이 그 초안이었으면 지운 초안 id·그림을 계속 가리켜
+  // 썸네일이 404, 다음 배포가 400 이 된다. 어느 초안이 지워졌는지 확인 응답에 없어 세션의 초안이 남았는지 한 번 묻고, 없으면(404) 떼고 알린다.
+  // 묻다가 실패하면 그대로 둔다(모르는 것을 지운 것으로 보지 않는다, SEW-022).
+  async function dropGoneDraft() {
+    const id = session()?.draft?.id
+    if (!id) return
+    try {
+      await api.getDraft(id)
+    } catch (e) {
+      if (errorCode(e) !== 'NOT_FOUND' || session()?.draft?.id !== id) return
+      edit.forgetDraft(id)
+      notice.value = { key: 'SEW_SAVE_NOT_REBASED_DRAFT_GONE', tone: 'error' }
+    }
+  }
+
   // 배포됨(바로·확인·다시 쓰기). 새 판 crtime 이 있고 지금 작업본이 보낸 것이면 그 판을 다시 열어 기준을 바꾼다(DC-025).
   async function adopt(r) {
     setPending(null)
@@ -344,7 +359,10 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
       } catch (e) {
         notice.value = { key: 'SEW_SAVE_REOPEN_FAILED', params: { cause: causeText(e) }, tone: 'error' }
       }
-    } else notice.value = { key: 'SEW_SAVE_NOT_REBASED', tone: 'info' }
+    } else {
+      notice.value = { key: 'SEW_SAVE_NOT_REBASED', tone: 'info' }
+      await dropGoneDraft()
+    }
     sent = null
     restored.value = false; restoredOther.value = false
     stage.value = r.result === 'partial' ? 'partial' : 'ok'
@@ -357,7 +375,8 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
     notice.value = null
     try {
       const tg = fullTarget()
-      const { meta, uploadsUsed } = buildMeta(s, { target: tg })
+      // 되돌린 세션이면 옛 판 crtime 을 초안에 남긴다 — 다시 열어 배포해도 배포 기록에 되돌림이 남게(SEW-022)
+      const { meta, uploadsUsed } = buildMeta(s, { target: tg, extra: { restoredFrom: s.restoredFrom ?? null } })
       const data = (await api.saveDraft(await formFor(meta, uploadsUsed, tg))).data.data
       edit.markDraft({ ...data, target: tg })
       result.value = { savedAt: data.savedAt }
@@ -375,7 +394,7 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
     const s = session()
     if (stage.value || !s?.working || s.readOnly) throw new Error('draft unavailable')
     const tg = { process: process(), ...ownTarget() }
-    const { meta, uploadsUsed } = buildMeta(s, { target: tg })
+    const { meta, uploadsUsed } = buildMeta(s, { target: tg, extra: { restoredFrom: s.restoredFrom ?? null } })
     const data = (await api.saveDraft(await formFor(meta, uploadsUsed, tg))).data.data
     edit.markDraft({ ...data, target: tg })
     return data

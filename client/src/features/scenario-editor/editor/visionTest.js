@@ -45,7 +45,7 @@ function shape(kind, uid, c, a, urls, ocr, withRule) {
 }
 
 // 패널 초안(EditedStep). ctx = { session, uploads, draftId }(그림 참조 → URL).
-// sourceStep = 저장 기준 판의 같은 스텝(session.saveBase 의 것, 새 스텝이면 null) — OCR 접미사를 붙일지 가린다:
+// sourceStep = 연 판의 같은 스텝(editor/session sourceBaseOf — 보통 session.saveBase, 되돌린 세션은 옛 판. 새 스텝이면 null) — OCR 접미사를 붙일지 가린다:
 // 서버는 고친 스텝을 통째로 다시 조립하며 `@@@@{개수}-{연산}` 을 쓴다(설명만 고쳐도). 손대지 않은 스텝은 저장값 그대로 나간다.
 // 그래서 저장값에 접미사가 없던 옛 스텝을 고치지 않고 시험할 때만 접미사 없이 보낸다(실행과 같게 — 한 줄 이상 맞으면 성공).
 // 이미지의 다중 검사도 같다: 저장값(TextValue)이 비어 있으면 판정 서버는 개수를 견주지 않고(하나 이상이면 성공), 고친 스텝에는 서버가 `{개수}-{연산}` 을 써 넣는다.
