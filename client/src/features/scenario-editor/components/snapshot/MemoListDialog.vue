@@ -6,6 +6,7 @@
 // - 고르기(사내 요청 2026-11-16): 줄을 누르면 그 줄 하나, 체크 칸·Ctrl(⌘)은 더하고 빼기, Shift 는 범위, 머리 칸은 보이는 줄 모두.
 //   고른 것은 늘 보이는 줄 안에 있다(거르기로 사라지면 뺀다 — 보이지 않는 메모를 지우지 않는다).
 //   [고치기]·[가기] 는 하나일 때, [지우기 (n)] 은 하나 이상일 때. 지우기는 건수(남의 메모 수)를 보이고 한 번 묻는다(설계 §14.1 ② — 남의 메모는 묻고 허용).
+import { SECONDARY } from '../buttonStyle'
 import { ref, computed, watch, nextTick } from 'vue'
 import { useSnapshotStore } from '../../stores/snapshotStore'
 import { memoOptions, filterMemos, isMine } from '../../editor/snapshotMemo'
@@ -164,7 +165,7 @@ async function remove() {
   await nextTick()
   removeBtn.value?.focus?.()
 }
-const btnS = 'h-8 px-3 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:enabled:bg-gray-300 dark:hover:enabled:bg-gray-600 disabled:opacity-50'
+const btnS = `h-8 px-3 rounded-lg text-sm ${SECONDARY}`
 const btnP = 'h-8 px-3 rounded-lg text-sm bg-primary-500 hover:enabled:bg-primary-600 text-white font-medium disabled:opacity-50'
 const btnD = 'h-8 px-3 rounded-lg text-sm bg-red-600 hover:enabled:bg-red-700 text-white font-medium disabled:opacity-50'
 </script>

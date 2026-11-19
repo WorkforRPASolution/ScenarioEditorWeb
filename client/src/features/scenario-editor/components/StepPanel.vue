@@ -3,6 +3,7 @@
 // 실행 순서 레일(보는 곳 → 찾는 것 → 찾으면 하는 일 → 갈 곳)·선택, 아래 적용 줄([되돌리기]·[적용]). 쓸 수 있는 세션에서만 보인다.
 // 값은 [적용]을 눌러야 작업본(표)에 들어간다. 다른 줄로 가는 길은 editStore.guard 가 먼저 묻는다.
 // 새 스텝(목업 조작판 7, footHtml isNew): 머리 "+"·아래 넣을 자리 고르기·[취소]·[넣기](목업의 [N번 앞에 넣기]·[맨 끝에 추가]를 2026-11-10 에 바꿨다). 칸 오류는 [넣기]를 한 번 누른 뒤에 보인다(목업 S.bad).
+import { SECONDARY } from './buttonStyle'
 import { ref, computed, watch, nextTick } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
 import { useEditStore } from '../stores/editStore'
@@ -122,7 +123,7 @@ const newErrors = computed(() => [...new Set(Object.values(errs.value).filter((e
 
 const head = 'shrink-0 px-3 pt-2.5 pb-2 border-b border-gray-200 dark:border-dark-border'
 const navBtn = 'w-6 h-6 rounded-md inline-flex items-center justify-center text-gray-500 hover:enabled:bg-gray-100 dark:hover:enabled:bg-gray-700 disabled:opacity-35'
-const btnS = 'h-8 px-3 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600'
+const btnS = `h-8 px-3 rounded-lg text-sm ${SECONDARY}`
 </script>
 
 <template>

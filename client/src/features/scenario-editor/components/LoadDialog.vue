@@ -1,4 +1,5 @@
 <script setup>
+import { SECONDARY } from './buttonStyle'
 import { ref, computed, watch } from 'vue'
 import { AgGridVue } from 'ag-grid-vue3'
 import { useEditorStore } from '../stores/editorStore'
@@ -448,7 +449,7 @@ const columnDefs = computed(() => [
 const dialogWidth = Math.max(720, Math.min(1800, Math.round(window.innerWidth * 0.94)))
 const select = 'h-[38px] rounded-lg border border-gray-300 dark:border-dark-border bg-white dark:bg-dark-bg px-2 text-sm text-gray-900 dark:text-gray-100'
 const btnP = 'px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-lg transition text-sm disabled:opacity-50 whitespace-nowrap'
-const btnS = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg transition text-sm disabled:opacity-50 whitespace-nowrap'
+const btnS = `px-4 py-2 ${SECONDARY} rounded-lg transition text-sm disabled:opacity-50 whitespace-nowrap`
 </script>
 
 <template>
@@ -465,7 +466,7 @@ const btnS = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hove
         <button v-if="writer && draftOnlyRows.length" type="button" class="h-[30px] px-2.5 rounded-md border border-gray-300 dark:border-dark-border text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 whitespace-nowrap"
           data-testid="se-load-cleanup" @click="sub = 'cleanup'">{{ t('SEW_LOAD_CLEAN_OPEN_BTN', { n: draftOnlyRows.length }) }}</button>
         <span class="text-xs text-gray-500 ml-1"><span :class="narrowing ? 'font-medium text-primary-700 dark:text-primary-300' : ''" data-testid="se-load-scope-hint">{{ t(narrowing ? 'SEW_LOAD_SCOPE_HINT_DRAFTS' : 'SEW_UI_LOAD_SCOPE_HINT') }}</span><template v-if="countHint"> · <span :title="countHint.tip" data-testid="se-load-count-hint">{{ countHint.text }}</span></template></span>
-        <button class="ml-auto h-[38px] px-3 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm" data-testid="se-load-refresh" @click="refresh">{{ t('SEW_UI_REFRESH_SCOPES') }}</button>
+        <button class="ml-auto h-[38px] px-3 rounded-lg text-sm" :class="SECONDARY" data-testid="se-load-refresh" @click="refresh">{{ t('SEW_UI_REFRESH_SCOPES') }}</button>
       </div>
       <p v-if="scopesNotice" class="px-5 py-2 text-sm border-b border-gray-200 dark:border-dark-border" :class="scopesNotice.error ? 'text-red-600' : 'text-gray-600 dark:text-gray-300'" data-testid="se-load-scopes-notice">{{ scopesNotice.text }}</p>
       <p v-if="draftsError" class="px-5 py-1.5 text-xs text-red-600 border-b border-gray-200 dark:border-dark-border" data-testid="se-load-drafts-error">{{ draftsError }}</p>

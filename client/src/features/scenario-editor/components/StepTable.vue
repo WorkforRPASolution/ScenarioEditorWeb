@@ -1,4 +1,5 @@
 <script setup>
+import { SECONDARY } from './buttonStyle'
 import { computed, ref, watch, nextTick } from 'vue'
 import { AgGridVue } from 'ag-grid-vue3'
 import { useEditorStore } from '../stores/editorStore'
@@ -210,7 +211,7 @@ function onKey(e) {
       <div class="flex gap-2">
         <button type="button" data-testid="se-empty-new" class="h-7 px-3 rounded-md text-xs font-medium text-white bg-primary-500 hover:bg-primary-600" @click="edit.startNew('none')">{{ t('SEW_EDIT_EMPTY_NEW') }}</button>
         <button type="button" data-testid="se-empty-paste" :disabled="!clipCount" :title="clipCount ? undefined : t('SEW_EDIT_EMPTY_PASTE_NONE')"
-          class="h-7 px-3 rounded-md text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:enabled:bg-gray-300 dark:hover:enabled:bg-gray-600 disabled:opacity-50" @click="edit.pasteClip('end')">
+          class="h-7 px-3 rounded-md text-xs" :class="SECONDARY" @click="edit.pasteClip('end')">
           {{ t('SEW_EDIT_EMPTY_PASTE') }}<span v-if="clipCount" class="ml-1 text-gray-500 dark:text-gray-400">{{ t('SEW_EDIT_PASTE_COUNT', { n: clipCount }) }}</span>
         </button>
       </div>

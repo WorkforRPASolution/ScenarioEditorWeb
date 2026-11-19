@@ -1,6 +1,7 @@
 <script setup>
 // 스냅샷 받기 진행 창(P3 설계 §4.6) — 받는 동안 "n / 전체" 와 [취소], 끝났는데 못 받은 것이 있으면 그 목록(시각·이유)과 [닫기].
 // 모두 받았으면 창 없이 끝난다(저장소가 알림 줄에 알린다). 상태는 받기 저장소가 갖는다.
+import { SECONDARY } from '../buttonStyle'
 import { computed, onMounted, onBeforeUnmount } from 'vue'
 import { useSnapshotDownloadStore } from '../../stores/snapshotDownloadStore'
 import { t } from '../../messages'
@@ -24,7 +25,7 @@ function onKey(e) {
 }
 onMounted(() => document.addEventListener('keydown', onKey))
 onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
-const btn = 'h-8 px-3 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600'
+const btn = `h-8 px-3 rounded-lg text-sm ${SECONDARY}`
 </script>
 
 <template>

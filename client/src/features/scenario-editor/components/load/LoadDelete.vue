@@ -1,6 +1,7 @@
 <script setup>
 // 시나리오 지우기 확인(P2-D Task 7, 설계 §6.7, 목업 delModal). 불러오기 창 위 작은 창 — 이름을 대소문자까지 그대로 쳐야 [지우기]가 켜진다(서버도 confirmName 을 본다).
 // 결과: 지움 → deleted, 결과 모름(504·끊김) → 다시 보내지 않고 [목록 다시 읽기]만(relist), 안 감·거절 → 이유를 보이고 다시 누를 수 있다.
+import { SECONDARY } from '../buttonStyle'
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { scenarioEditorApi as api } from '../../api'
 import { t, errorCode, errorMessage } from '../../messages'
@@ -107,11 +108,11 @@ const btn = 'h-9 px-4 rounded-lg text-sm font-medium disabled:opacity-50'
       </div>
       <div class="flex items-center justify-end gap-2 px-5 py-3 border-t border-gray-200 dark:border-dark-border">
         <template v-if="stage === 'unknown'">
-          <button type="button" :class="btn" class="bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-normal" @click="close">{{ t('SEW_LOAD_CLOSE') }}</button>
+          <button type="button" :class="[btn, SECONDARY]" class="font-normal" @click="close">{{ t('SEW_LOAD_CLOSE') }}</button>
           <button type="button" :class="btn" class="bg-primary-500 hover:bg-primary-600 text-white" data-testid="se-load-del-relist" @click="emit('relist')">{{ t('SEW_LOAD_RELIST') }}</button>
         </template>
         <template v-else>
-          <button type="button" :class="btn" class="bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-normal" :disabled="stage === 'busy'" data-testid="se-load-del-cancel" @click="close">{{ t('SEW_LOAD_CANCEL') }}</button>
+          <button type="button" :class="[btn, SECONDARY]" class="font-normal" :disabled="stage === 'busy'" data-testid="se-load-del-cancel" @click="close">{{ t('SEW_LOAD_CANCEL') }}</button>
           <button type="button" :class="btn" class="bg-red-500 hover:bg-red-600 text-white" :disabled="!same || stage === 'busy'" data-testid="se-load-del-go" @click="go">
             {{ stage === 'busy' ? t('SEW_LOAD_DEL_BUSY') : t('SEW_LOAD_DELETE_GO') }}</button>
         </template>

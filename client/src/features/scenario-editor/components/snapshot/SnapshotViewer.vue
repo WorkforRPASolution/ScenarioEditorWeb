@@ -9,6 +9,7 @@
 //   버튼은 고칠 수 있는 시나리오가 열려 있으면 켜지고, 스냅샷 줄은 그림이 떠 있을 때만 켜진다(DC-038 — 메뉴가 본다).
 //   넘기는 것은 화면이 그리고 있는 그 그림의 바이트다(snap.shownImage — 다시 받지 않는다, DC-071·DC-075). 큰 화면은 화면(ScenarioEditorView)의 감시자가 스텝 그림으로 돌린다.
 //   메뉴는 body 로 옮겨 버튼 위쪽의 고정 자리에 그린다 — 가운데 영역이 넘침을 잘라 그 안에 두면 좁은 화면에서 잘린다.
+import { SECONDARY } from '../buttonStyle'
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useSnapshotStore } from '../../stores/snapshotStore'
 import { useEditorStore } from '../../stores/editorStore'
@@ -124,7 +125,7 @@ const count = computed(() => snap.shown.length)
 const atFirst = computed(() => !count.value || snap.position === 0)
 const atLast = computed(() => !count.value || snap.position === count.value - 1)
 const noList = computed(() => !snap.list.items.length)
-const btn = 'h-7 px-2 rounded-lg text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:enabled:bg-gray-300 dark:hover:enabled:bg-gray-600 disabled:opacity-50 whitespace-nowrap'
+const btn = `h-7 px-2 rounded-lg text-xs ${SECONDARY} whitespace-nowrap`
 defineExpose({ onLoad, fit })
 </script>
 
@@ -133,10 +134,10 @@ defineExpose({ onLoad, fit })
     <div class="h-10 px-3 flex items-center gap-2 border-b border-gray-200 dark:border-dark-border text-xs shrink-0">
       <ViewerModeTabs />
       <div class="ml-auto flex gap-1 shrink-0">
-        <button type="button" class="w-7 h-7 rounded-lg bg-gray-200 dark:bg-gray-700" :title="t('SEW_SNAP_ZOOM_IN')" data-testid="se-snap-zoom-in" @click="zoomButton(1.25)">＋</button>
-        <button type="button" class="w-7 h-7 rounded-lg bg-gray-200 dark:bg-gray-700" :title="t('SEW_SNAP_ZOOM_OUT')" data-testid="se-snap-zoom-out" @click="zoomButton(0.8)">－</button>
-        <button type="button" class="h-7 px-2 rounded-lg bg-gray-200 dark:bg-gray-700" data-testid="se-snap-zoom-fit" @click="fit">{{ t('SEW_SNAP_ZOOM_FIT') }}</button>
-        <button type="button" class="h-7 px-2 rounded-lg bg-gray-200 dark:bg-gray-700" :title="t('SEW_SNAP_ZOOM_ACTUAL_HINT')" data-testid="se-snap-zoom-actual" @click="actual">{{ t('SEW_SNAP_ZOOM_ACTUAL') }}</button>
+        <button type="button" class="w-7 h-7 rounded-lg" :class="SECONDARY" :title="t('SEW_SNAP_ZOOM_IN')" data-testid="se-snap-zoom-in" @click="zoomButton(1.25)">＋</button>
+        <button type="button" class="w-7 h-7 rounded-lg" :class="SECONDARY" :title="t('SEW_SNAP_ZOOM_OUT')" data-testid="se-snap-zoom-out" @click="zoomButton(0.8)">－</button>
+        <button type="button" class="h-7 px-2 rounded-lg" :class="SECONDARY" data-testid="se-snap-zoom-fit" @click="fit">{{ t('SEW_SNAP_ZOOM_FIT') }}</button>
+        <button type="button" class="h-7 px-2 rounded-lg" :class="SECONDARY" :title="t('SEW_SNAP_ZOOM_ACTUAL_HINT')" data-testid="se-snap-zoom-actual" @click="actual">{{ t('SEW_SNAP_ZOOM_ACTUAL') }}</button>
       </div>
     </div>
     <!-- 정보 줄: 머리 줄에 함께 넣으면 패널을 펼친 화면에서 좌표·크기·순번이 잘려 제 줄에 둔다 -->

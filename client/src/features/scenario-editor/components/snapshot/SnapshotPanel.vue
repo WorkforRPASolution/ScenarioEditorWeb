@@ -1,6 +1,7 @@
 <script setup>
 // 스냅샷 왼쪽 패널(P3 설계 §4.2) — 설비 고르기(+ 초기화), 날짜(◀ ▶·달력 — 하루·여러 날·전체), 거르기(전체·태그·메모), 목록, [메모 목록]·[새로 고침].
 // 상태(설비·날짜·목록·고른 것)는 저장소가 갖는다.
+import { SECONDARY } from '../buttonStyle'
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useSnapshotStore } from '../../stores/snapshotStore'
 import { useEditorStore } from '../../stores/editorStore'
@@ -57,7 +58,7 @@ const state = computed(() => {
   if (l.status === 'ready') return { text: !snap.date || (snap.range && !snap.range.latest) ? t('SEW_SNAP_NO_RECENT') : t(snap.multiDay ? 'SEW_SNAP_EMPTY_RANGE' : 'SEW_SNAP_EMPTY_DAY') }
   return { text: t('SEW_SNAP_LOADING') }
 })
-const btn = 'h-7 px-2 rounded-md text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:enabled:bg-gray-300 dark:hover:enabled:bg-gray-600 disabled:opacity-50'
+const btn = `h-7 px-2 rounded-md text-xs ${SECONDARY}`
 </script>
 
 <template>

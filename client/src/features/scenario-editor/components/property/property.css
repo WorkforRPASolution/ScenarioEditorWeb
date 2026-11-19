@@ -3,14 +3,14 @@
   --pp-card: #fff; --pp-line: #e5e7eb; --pp-line2: #d1d5db; --pp-ink: #111827; --pp-ink2: #374151; --pp-mut: #6b7280; --pp-faint: #9ca3af;
   --pp-pri: #3b82f6; --pp-pri-ink: #1d4ed8; --pp-pri-s: #eff6ff; --pp-pri-s2: #dbeafe; --pp-band: #f8fafc; --pp-dot: #cbd5e1; --pp-wire: #94a3b8; --pp-track: #d1d5db;
   --pp-ok: #166534; --pp-ok-s: #dcfce7; --pp-ok-dot: #22c55e; --pp-fa: #991b1b; --pp-fa-s: #fee2e2; --pp-fa-b: #ef4444; --pp-am: #92400e; --pp-am-s: #fef3c7;
-  --pp-ne: #374151; --pp-ne-s: #e5e7eb; --pp-inp: #fff;
+  --pp-ne: #374151; --pp-ne-s: #e5e7eb; --pp-inp: #fff; --pp-hover: #f9fafb;
   color: var(--pp-ink); font-size: 13px; line-height: 1.45;
 }
 .dark .se-pp {
   --pp-card: #1e293b; --pp-line: #334155; --pp-line2: #475569; --pp-ink: #f1f5f9; --pp-ink2: #e2e8f0; --pp-mut: #94a3b8; --pp-faint: #64748b;
   --pp-pri-ink: #93c5fd; --pp-pri-s: rgba(59, 130, 246, .14); --pp-pri-s2: rgba(59, 130, 246, .25); --pp-band: #0f172a; --pp-dot: #293548; --pp-wire: #64748b; --pp-track: #475569;
   --pp-ok: #86efac; --pp-ok-s: rgba(22, 101, 52, .35); --pp-fa: #fca5a5; --pp-fa-s: rgba(153, 27, 27, .35); --pp-am: #fcd34d; --pp-am-s: rgba(146, 64, 14, .35);
-  --pp-ne: #d1d5db; --pp-ne-s: #374151; --pp-inp: #0f172a;
+  --pp-ne: #d1d5db; --pp-ne-s: #374151; --pp-inp: #0f172a; --pp-hover: #334155;
 }
 .se-pp button { font: inherit; color: inherit; cursor: pointer; }
 .se-pp :focus-visible { outline: 2px solid var(--pp-pri); outline-offset: 2px; }
@@ -25,13 +25,14 @@
 .se-pp-chip.pri { background: var(--pp-pri-s2); color: var(--pp-pri-ink); }
 .se-pp-chip.ok { background: var(--pp-ok-s); color: var(--pp-ok); }
 .se-pp-chip > i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; display: inline-block; }
-.se-pp-btn { height: 32px; padding: 0 14px; border-radius: 8px; border: 0; font-weight: 500; white-space: nowrap; background: var(--pp-ne-s); color: var(--pp-ne); }
-.se-pp-btn:hover:not([disabled]) { filter: brightness(.96); }
-.se-pp-btn.p { background: var(--pp-pri); color: #fff; }
-.se-pp-btn.p:hover:not([disabled]) { background: #2563eb; filter: none; }
-.se-pp-btn.danger { background: #ef4444; color: #fff; }
-.se-pp-btn.danger:hover:not([disabled]) { background: #dc2626; filter: none; }
-.se-pp-btn[disabled] { background: var(--pp-ne-s); color: var(--pp-faint); cursor: not-allowed; opacity: .7; }
+/* 보조 단추 = 흰 바탕·회색 테두리(WebManager 보조 단추, components/buttonStyle.js 와 같다 — 2026-11-19 사용자 결정). 채운 단추는 테두리도 같은 색, 꺼지면 회색으로 채운다 */
+.se-pp-btn { height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--pp-line2); font-weight: 500; white-space: nowrap; background: var(--pp-card); color: var(--pp-ink2); box-shadow: 0 1px 2px rgba(0, 0, 0, .05); }
+.se-pp-btn:hover:not([disabled]) { background: var(--pp-hover); }
+.se-pp-btn.p { background: var(--pp-pri); border-color: var(--pp-pri); color: #fff; }
+.se-pp-btn.p:hover:not([disabled]) { background: #2563eb; border-color: #2563eb; filter: none; }
+.se-pp-btn.danger { background: #ef4444; border-color: #ef4444; color: #fff; }
+.se-pp-btn.danger:hover:not([disabled]) { background: #dc2626; border-color: #dc2626; filter: none; }
+.se-pp-btn[disabled] { background: var(--pp-ne-s); border-color: var(--pp-ne-s); color: var(--pp-faint); cursor: not-allowed; opacity: .7; box-shadow: none; }
 .se-pp-body { padding: 16px 20px 18px; overflow: auto; flex: 1; min-height: 0; }
 .se-pp-foot { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-top: 1px solid var(--pp-line); flex: none; }
 .se-pp-foot-text { flex: 1; min-width: 0; }

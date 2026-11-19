@@ -2,6 +2,7 @@
 // 초안만 남은 것 정리(2026-11-10 사용자 결정). 배포된 시나리오 없이 내 초안만 남은 행(아직 배포한 적 없는 새 시나리오·원본이 지워진 것)을
 // 골라 한꺼번에 지운다. 내 초안만 지운다(서버가 소유자를 본다) — 다른 사용자의 초안은 보이지도 지워지지도 않는다.
 // 되돌릴 수 없어 처음에는 아무것도 고르지 않는다. 하나씩 지우고, 못 지운 것은 그대로 남긴다.
+import { SECONDARY } from '../buttonStyle'
 import { ref, computed } from 'vue'
 import { scenarioEditorApi as api } from '../../api'
 import { t } from '../../messages'
@@ -72,7 +73,7 @@ const btn = 'h-9 px-4 rounded-lg text-sm font-medium disabled:opacity-50'
         <p class="text-xs text-gray-500">{{ t('SEW_LOAD_CLEAN_NOTE') }}</p>
       </div>
       <div class="flex items-center justify-end gap-2 px-5 py-3 border-t border-gray-200 dark:border-dark-border">
-        <button type="button" :class="btn" class="bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-normal" :disabled="busy" data-testid="se-load-clean-cancel" @click="close">{{ t('SEW_LOAD_CANCEL') }}</button>
+        <button type="button" :class="[btn, SECONDARY]" class="font-normal" :disabled="busy" data-testid="se-load-clean-cancel" @click="close">{{ t('SEW_LOAD_CANCEL') }}</button>
         <button type="button" :class="btn" class="bg-red-500 hover:bg-red-600 text-white" :disabled="!picked.size || busy" data-testid="se-load-clean-go" @click="go">
           {{ busy ? t('SEW_LOAD_DEL_BUSY') : t('SEW_LOAD_CLEAN_GO', { n: picked.size }) }}</button>
       </div>

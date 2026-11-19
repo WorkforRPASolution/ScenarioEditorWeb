@@ -1,4 +1,5 @@
 <script setup>
+import { SECONDARY } from './buttonStyle'
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { t } from '../messages'
 
@@ -17,7 +18,7 @@ const elapsed = computed(() => Math.max(0, Math.floor((now.value - props.started
     <div v-if="kind === 'empty' && canCreate" data-testid="se-empty" class="text-gray-500 dark:text-gray-400">
       <p class="text-lg mb-3">{{ t('SEW_UI_EMPTY_NEW') }}</p>
       <div class="flex justify-center gap-2">
-        <button class="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 font-medium rounded-lg transition text-sm" @click="$emit('load')">{{ t('SEW_UI_LOAD') }}</button>
+        <button class="px-4 py-2 font-medium rounded-lg transition text-sm" :class="SECONDARY" @click="$emit('load')">{{ t('SEW_UI_LOAD') }}</button>
         <button class="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-lg transition text-sm" data-testid="se-empty-new" @click="$emit('new')">{{ t('SEW_NEW_OPEN') }}</button>
       </div>
     </div>
@@ -32,7 +33,7 @@ const elapsed = computed(() => Math.max(0, Math.floor((now.value - props.started
     </div>
     <div v-else-if="kind === 'error'" data-testid="se-open-error" class="text-gray-700 dark:text-gray-200 max-w-lg">
       <p class="mb-3">{{ message }}</p>
-      <button class="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm" @click="$emit('retry')">{{ t('SEW_UI_RETRY') }}</button>
+      <button class="px-4 py-2 rounded-lg text-sm" :class="SECONDARY" @click="$emit('retry')">{{ t('SEW_UI_RETRY') }}</button>
     </div>
     <div v-else-if="kind === 'unregistered'" data-testid="se-unregistered" class="max-w-lg text-gray-700 dark:text-gray-200">
       <p class="text-lg font-semibold mb-2">{{ t('SEW_UI_TITLE') }}</p>

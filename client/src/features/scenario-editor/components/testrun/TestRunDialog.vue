@@ -2,6 +2,7 @@
 // 시험 실행 창(P5 설계 §4) — 시나리오 바의 [시험 실행] 이 연다. 편집기에 시나리오를 열지 않아도 창 안에서 공정·모델·시나리오를 고른다.
 // 고르기(선택 줄 + 설비 표 | 실행 조건) → 실행 전 확인 → 결과(차례로 보내는 진행·설비별 요청 결과와 실행 상태). 스텝·초안을 바꾸지 않는다.
 // 설비에서 도는 것은 늘 설비에 배포된 현재 판이다 — 편집기에서 고친 내용은 시험되지 않는다.
+import { SECONDARY } from '../buttonStyle'
 import { ref, computed, watch, nextTick } from 'vue'
 import { useTestRunStore } from '../../stores/testRunStore'
 import { summarize } from '../../editor/testRun'
@@ -53,7 +54,7 @@ function closeAnyway() { closing.value = false; run.hide() }
 watch(() => run.stage, (s) => { if (s !== 'running') closing.value = false })
 const onShell = (v) => { if (!v) close() }
 
-const btnS = 'h-8 px-3 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:enabled:bg-gray-300 dark:hover:enabled:bg-gray-600 disabled:opacity-50'
+const btnS = `h-8 px-3 rounded-lg text-sm ${SECONDARY}`
 const btnP = 'h-8 px-3 rounded-lg text-sm bg-primary-500 hover:enabled:bg-primary-600 text-white font-medium disabled:opacity-50'
 </script>
 

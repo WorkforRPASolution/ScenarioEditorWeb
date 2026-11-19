@@ -2,6 +2,7 @@
 // 시험 실행 창의 설비 표(P5 설계 §4.3) — 고른 공정·모델의 설비. 자동조치 OFF·값을 읽을 수 없는 설비, 에이전트가 실행 중이 아닌 설비는 보이되 고를 수 없다
 // (까닭은 줄의 title). 에이전트 상태를 통째로 읽지 못했으면 표 위에 알린다.
 // 줄 누르기 = 그 줄 하나, Ctrl(⌘)·체크 칸 = 더하고 빼기, Shift = 범위, 머리 칸 = 보이는 줄 모두(메모 목록 창과 같은 손놀림).
+import { SECONDARY } from '../buttonStyle'
 import { computed } from 'vue'
 import { useTestRunStore } from '../../stores/testRunStore'
 import { selectableIds, whyNotSelectable } from '../../editor/testRun'
@@ -50,7 +51,7 @@ const onRow = (e, ev) => run.click(e.eqpId, { toggle: ev.ctrlKey || ev.metaKey, 
     </div>
     <div class="flex items-center gap-1.5">
       <input v-model="run.query" class="se-inp" type="search" autocomplete="off" spellcheck="false" :placeholder="t('SEW_RUN_EQP_SEARCH')" :aria-label="t('SEW_RUN_EQP_SEARCH')" data-testid="se-run-search" />
-      <button type="button" class="shrink-0 h-7 px-2.5 rounded-md text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:enabled:bg-gray-300 dark:hover:enabled:bg-gray-600 disabled:opacity-50"
+      <button type="button" class="shrink-0 h-7 px-2.5 rounded-md text-xs" :class="SECONDARY"
         :disabled="!run.sel.model" data-testid="se-run-reload" @click="run.reload()">{{ t('SEW_RUN_REFRESH') }}</button>
     </div>
     <p v-if="agentFailed" class="se-run-note" data-kind="block" role="alert" data-testid="se-run-agent-failed">{{ t('SEW_RUN_AGENT_FAILED') }}</p>

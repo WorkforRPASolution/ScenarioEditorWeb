@@ -1,6 +1,7 @@
 <script setup>
 // 시험 실행 창의 결과 보기(P5 설계 §4.8·§4.9) — 고른 설비만, 설비 ID 순. 설비마다 요청 결과와, 실행 기록에서 읽은 실행 상태.
 // "요청 접수" 는 명령 서버가 받았다는 뜻까지다 — 실제로 돌았는지는 실행 상태 열이 말한다.
+import { SECONDARY } from '../buttonStyle'
 import { computed } from 'vue'
 import { useTestRunStore } from '../../stores/testRunStore'
 import { summarize, stateView } from '../../editor/testRun'
@@ -45,8 +46,8 @@ const rows = computed(() => (r.value?.items ?? []).map((x) => {
     <div class="se-run-bar"><i :style="{ width: `${sum.total ? (sum.done / sum.total) * 100 : 0}%` }" /></div>
     <div class="flex flex-wrap items-center gap-2 text-xs">
       <b class="tabular-nums" role="status" data-testid="se-run-progress">{{ progress }}</b>
-      <button v-if="running" type="button" class="h-7 px-2.5 rounded-md text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600" data-testid="se-run-stop" @click="run.stop()">{{ t('SEW_RUN_STOP') }}</button>
-      <button type="button" class="h-7 px-2.5 rounded-md text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600" data-testid="se-run-status-refresh" @click="run.refreshStatus()">{{ t('SEW_RUN_STATUS_REFRESH') }}</button>
+      <button v-if="running" type="button" class="h-7 px-2.5 rounded-md text-xs" :class="SECONDARY" data-testid="se-run-stop" @click="run.stop()">{{ t('SEW_RUN_STOP') }}</button>
+      <button type="button" class="h-7 px-2.5 rounded-md text-xs" :class="SECONDARY" data-testid="se-run-status-refresh" @click="run.refreshStatus()">{{ t('SEW_RUN_STATUS_REFRESH') }}</button>
       <span v-if="r.statusFailed" class="se-run-err" role="status" data-testid="se-run-status-failed">{{ t('SEW_RUN_STATUS_FAILED') }}</span>
       <span class="se-run-auto" role="status" :data-ended="r.autoEnded ? 'true' : undefined" data-testid="se-run-auto-note">{{ t(r.autoEnded ? 'SEW_RUN_STATUS_AUTO_ENDED' : 'SEW_RUN_STATUS_AUTO') }}</span>
     </div>

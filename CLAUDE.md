@@ -25,6 +25,7 @@ ScenarioEditorWeb — 사내 ScenarioEditor(C# WPF)를 웹으로 다시 만드�
 - 사본을 다시 가져올 때는 WebManager 작업 트리를 읽지 않고 `git -C ../WebManager show <커밋>:<경로>` 로만 꺼낸다(`npm run upstream:import`).
 - 편입 대상은 `client/src/features/scenario-editor/`·`server/features/scenario-editor/` 둘뿐이다. 다른 기능 폴더를 import 하지 않는다.
 - 백엔드는 127.0.0.1 에서만 받는다. 시험 데이터는 공유 로컬 EARS 에 `SEW` 접두사로만 넣는다.
+- 단추 색(2026-11-19 사용자 결정 — 공통 설계 §2.3): 보조 단추는 흰 바탕·회색 테두리(WebManager 에서 가장 많이 쓰는 보조 단추) — Tailwind 는 `components/buttonStyle.js` 의 `SECONDARY`(크기는 쓰는 곳이 정한다), CSS 로 그린 창 단추 `.se-sv-btn`(저장·새 시나리오 창)·`.se-pp-btn`(운영 속성·성과·전처리 창)도 같은 모양. 채운 색은 뜻이 있을 때만(주 동작 파랑·지우기 빨강·주의 호박색). 회색으로 채운 단추는 꺼진 단추로 읽혀 쓰지 않는다(꺼진 단추는 흐려진다). 위쪽 바는 역할 색 아이콘을 붙인다(불러오기 파랑·새 시나리오 초록·시나리오 실행 보라·운영 속성 회색·저장 파랑). 새 단추도 이 규칙을 따른다 — `tests/buttonStyle.test.js` 가 기능 폴더 전체에서 회색으로 채운 단추(`bg-gray-200 dark:bg-gray-700`)를 막는다. 아이콘은 `components/ToolIcon.vue`.
 - `server/localGuard.js`(Host 허용 목록·쓰기 출처 검사)는 단독판 전용이고 편입 때 사라진다. 단독판 셸(`localGuard`·`listen`·`mongoUri`·`webManagerDb`·`app` 의 웹 DB 분기)의 시험은 기능 폴더가 아니라 `server/__tests__/` 에 둔다 — 편입 때 기능 폴더와 함께 따라가 깨지지 않게(2026-11-19, SEW-006). 단독판으로 사내 운영 DB 저장 시험까지 하기로 해 두었다(2026-11-04, 분석 40 §2.0).
 
 ## 실행·시험

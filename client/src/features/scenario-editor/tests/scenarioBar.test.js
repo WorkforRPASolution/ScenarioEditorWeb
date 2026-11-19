@@ -17,6 +17,7 @@ import { buildMeta } from '../editor/request'
 import { unsavedChanges } from '../editor/diff'
 import { panelFixture, noneStep } from './panelFixture'
 import { formatCrtime } from '../format'
+import { SECONDARY } from '../components/buttonStyle'
 
 const ModalStub = { name: 'ModalShell', props: ['modelValue', 'title'], template: '<div v-if="modelValue" :data-title="title"><slot /></div>' }
 const skeleton = (over = {}) => ({
@@ -97,6 +98,47 @@ describe('ScenarioBar', () => {
     e.session = { ...e.session, working: { ...edited, steps: [...edited.steps] } } // 스텝 배열이 기준점과 달라짐
     await w.vm.$nextTick()
     expect(w.find('[data-testid="se-scenario-notes"]').text()).not.toContain(MESSAGES.SEW_NOTE_NO_SUCCESS)
+  })
+  describe('버튼 모양(2026-11-19 사용자 결정 A — 테두리 버튼 + 색 아이콘)', () => {
+    const cls = (w, id) => w.find(`[data-testid="${id}"]`).classes()
+    const secondary = SECONDARY.split(' ')
+    const open = (canWrite = true) => {
+      const f = panelFixture([noneStep(0)], { canWrite })
+      f.s.me = { ...f.s.me, testRun: { enabled: canWrite, reason: canWrite ? null : 'WRITE_FORBIDDEN' } }
+      f.s.skeleton = { ...f.s.skeleton, id: 'P-M-N', header: { description: '메일 제목', timeoutLimit: '1', targetWindow: null }, property: null, performance: null }
+      return { ...f, w: mount(ScenarioBar, { global: { stubs: { ModalShell: ModalStub } } }) }
+    }
+    it('불러오기·새 시나리오·시나리오 실행·운영 속성 전체는 흰 바탕·회색 테두리 보조 단추이고, 역할 색 아이콘이 붙는다', () => {
+      const { w } = open()
+      const icons = { 'se-load': 'text-primary-500', 'se-new': 'text-green-600', 'se-run-open': 'text-purple-500', 'se-property': 'text-gray-500' }
+      for (const [id, color] of Object.entries(icons)) {
+        for (const c of secondary) expect(cls(w, id), `${id} ${c}`).toContain(c)
+        expect(cls(w, id), id).not.toContain('bg-gray-200')
+        const icon = w.find(`[data-testid="${id}"] svg`)
+        expect(icon.exists(), id).toBe(true)
+        expect(icon.attributes('aria-hidden'), id).toBe('true')
+        expect(icon.classes(), id).toContain(color)
+      }
+      w.unmount()
+    })
+    it('[저장] 은 바뀐 것이 있으면 채운 파랑(주 동작), 없으면 파랑 글자의 보조 단추', async () => {
+      const { w, e } = open()
+      expect(cls(w, 'se-save')).toContain('bg-white')
+      expect(cls(w, 'se-save')).not.toContain('bg-primary-500')
+      expect(w.find('[data-testid="se-save"] svg').exists()).toBe(true)
+      e.setHeader('description', '고친 제목')
+      await w.vm.$nextTick()
+      expect(cls(w, 'se-save')).toContain('bg-primary-500')
+      expect(cls(w, 'se-save')).toContain('text-white')
+      expect(cls(w, 'se-save')).not.toContain('bg-white')
+      w.unmount()
+    })
+    it('[시나리오 실행] 이 꺼지면 같은 보조 단추가 흐려진다(disabled)', () => {
+      const { w } = open(false)
+      expect(w.find('[data-testid="se-run-open"]').attributes('disabled')).toBeDefined()
+      expect(cls(w, 'se-run-open')).toContain('disabled:opacity-50')
+      w.unmount()
+    })
   })
   it('열린 시나리오가 없으면 불러오기만', () => {
     const w = mountBar()

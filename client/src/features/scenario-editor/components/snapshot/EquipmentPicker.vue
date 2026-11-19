@@ -5,6 +5,7 @@
 // - 스냅샷 유무: 공정·모델 항목 옆에 "스냅샷 있는 설비 수 / 전체"(지금 검색어·공정 안에서 센다), 설비 줄에 가장 늦은 날짜(없으면 "없음").
 //   값은 store 가 뒤에서 받는다(snap.presence) — 다 받기 전에는 "… / 전체" 이고 모르는 설비에는 아무것도 붙이지 않는다.
 // - 열린 시나리오의 공정·모델(prefer) 설비가 먼저 온다. 맞는 설비는 50대까지만 그리고 나머지는 수로 알린다.
+import { SECONDARY } from '../buttonStyle'
 import { ref, computed, watch, nextTick } from 'vue'
 import { useSnapshotStore } from '../../stores/snapshotStore'
 import { processesOf, modelsOf, filterEquipment, searchEquipment, stepActive, scrollTopFor, countPresence, presenceText, shortDate } from '../../editor/snapshotEquipment'
@@ -127,7 +128,7 @@ function onKey(e) {
         <input v-model="q" class="se-inp min-w-0" type="text" autocomplete="off" spellcheck="false" :aria-label="t('SEW_SNAP_EQP_LABEL')" :disabled="!ready"
           :placeholder="snap.equipment.status === 'loading' ? t('SEW_SNAP_EQP_LOADING') : t('SEW_SNAP_EQP_PLACEHOLDER')" data-testid="se-snap-eqp-input"
           @focus="openList" @click="onClick" @input="reopen" @blur="closeList" @keydown="onKey" />
-        <button type="button" class="shrink-0 h-[30px] px-2 rounded-md text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:enabled:bg-gray-300 dark:hover:enabled:bg-gray-600 disabled:opacity-50"
+        <button type="button" class="shrink-0 h-[30px] px-2 rounded-md text-xs" :class="SECONDARY"
           :disabled="!ready || !canClear" :title="t('SEW_SNAP_EQP_CLEAR_HINT')" data-testid="se-snap-eqp-clear" @click="clearAll">{{ t('SEW_SNAP_EQP_CLEAR') }}</button>
       </div>
       <!-- 목록을 누를 때 입력 칸이 초점을 잃지 않게(잃으면 누르기 전에 목록이 닫힌다) mousedown 을 막는다 -->

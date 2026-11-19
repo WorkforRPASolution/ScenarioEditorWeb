@@ -14,6 +14,8 @@ import ScenarioDeleteDialog from './ScenarioDeleteDialog.vue'
 import PreprocessDialog from './PreprocessDialog.vue'
 import TestRunDialog from './testrun/TestRunDialog.vue'
 import DeployAttentionDialog from './DeployAttentionDialog.vue'
+import ToolIcon from './ToolIcon.vue'
+import { SECONDARY } from './buttonStyle'
 import { useTestRunStore } from '../stores/testRunStore'
 import { useDeployAttention } from '../stores/deployAttentionStore'
 import { windowsSummary, windowsFromHeader } from '../editor/windows'
@@ -137,17 +139,20 @@ const inp = 'h-7 px-2 rounded border border-gray-300 dark:border-dark-border bg-
 const bad = 'border-red-500 dark:border-red-500 bg-red-50 dark:bg-red-900/20'
 const changed = 'border-amber-400 dark:border-amber-500'
 const badge = 'px-2 py-0.5 rounded text-xs font-medium'
-const btn = 'h-8 px-3 rounded-lg text-sm'
+const btn = 'h-8 px-3 rounded-lg text-sm inline-flex items-center gap-1.5'
+// 바뀐 것이 있으면 [저장] 은 주 동작(채운 파랑), 없으면 파랑 글자의 보조 단추. 테두리를 같이 둬 바뀔 때 크기가 그대로다(2026-11-19 사용자 결정 A).
+const saveCls = computed(() => (unsaved.value ? 'bg-primary-500 hover:bg-primary-600 text-white border border-primary-500 shadow-sm' : [SECONDARY, '!text-primary-700 dark:!text-primary-300']))
 </script>
 
 <template>
   <div class="bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:border-dark-border px-3 py-2 flex items-center gap-3 flex-wrap" data-testid="se-bar">
-    <button :class="btn" class="bg-primary-500 hover:bg-primary-600 text-white font-medium" data-testid="se-load" @click="$emit('load')">{{ t('SEW_UI_LOAD') }}</button>
-    <button v-if="canCreate" :class="btn" class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-100 font-medium" data-testid="se-new" @click="$emit('new')">{{ t('SEW_NEW_OPEN') }}</button>
-    <button v-if="runGate" :class="btn" class="bg-gray-200 dark:bg-gray-700 hover:enabled:bg-gray-300 dark:hover:enabled:bg-gray-600 text-gray-800 dark:text-gray-100 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-      :disabled="!runGate.enabled" :title="runGate.title" data-testid="se-run-open" @click="testRun.show()">{{ t('SEW_RUN_OPEN') }}</button>
+    <!-- 보조 단추(흰 바탕·회색 테두리) + 역할 색 아이콘, 채운 색은 [저장] 하나 — 2026-11-19 사용자 결정 A(위쪽 바 시안 비교). 회색으로 채운 단추는 꺼진 것처럼 보였다 -->
+    <button :class="[btn, SECONDARY]" class="font-medium" data-testid="se-load" @click="$emit('load')"><ToolIcon name="load" class="text-primary-500 dark:text-primary-400" />{{ t('SEW_UI_LOAD') }}</button>
+    <button v-if="canCreate" :class="[btn, SECONDARY]" class="font-medium" data-testid="se-new" @click="$emit('new')"><ToolIcon name="plus" class="text-green-600 dark:text-green-400" />{{ t('SEW_NEW_OPEN') }}</button>
+    <button v-if="runGate" :class="[btn, SECONDARY]" class="font-medium"
+      :disabled="!runGate.enabled" :title="runGate.title" data-testid="se-run-open" @click="testRun.show()"><ToolIcon name="run" class="text-purple-500 dark:text-purple-400" />{{ t('SEW_RUN_OPEN') }}</button>
     <button v-if="attention.count" :class="btn" class="bg-amber-100 hover:bg-amber-200 text-amber-800 dark:bg-amber-900/30 dark:hover:bg-amber-900/50 dark:text-amber-300 font-medium" data-testid="se-deploy-attention" @click="attentionOpen = true">{{ t('SEW_ATTN_OPEN', { n: attention.count }) }}</button>
-    <button v-if="edit.editable" :class="[btn, unsaved ? 'bg-primary-500 hover:bg-primary-600 text-white' : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-100']" class="font-medium" data-testid="se-save" @click="onSave">{{ t('SEW_SAVE_OPEN') }}{{ unsaved ? ` (${unsaved})` : '' }}</button>
+    <button v-if="edit.editable" :class="[btn, saveCls]" class="font-medium" data-testid="se-save" @click="onSave"><ToolIcon name="save" :class="unsaved ? '' : 'text-primary-500 dark:text-primary-400'" />{{ t('SEW_SAVE_OPEN') }}{{ unsaved ? ` (${unsaved})` : '' }}</button>
     <template v-if="sk">
       <div class="min-w-0">
         <div class="font-mono text-sm text-gray-900 dark:text-white truncate" data-testid="se-bar-id">{{ sk.id }}</div>
@@ -204,7 +209,7 @@ const btn = 'h-8 px-3 rounded-lg text-sm'
       <!-- 데이터 점검은 열린 시나리오와 상관없는 내 권한 범위의 점검이라 늘 보인다(0 이면 숨김) -->
       <button v-if="store.dataCheckCount" :class="btn" class="bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200" data-testid="se-data-check" @click="showDataCheck = true">
         {{ t('SEW_UI_DATA_CHECK') }} ⚠{{ store.dataCheckCount }}</button>
-      <button v-if="sk" :class="btn" class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300" data-testid="se-property" @click="openProperty()">{{ t('SEW_UI_PROPERTY_ALL') }}</button>
+      <button v-if="sk" :class="[btn, SECONDARY]" data-testid="se-property" @click="openProperty()"><ToolIcon name="prop" class="text-gray-500 dark:text-gray-400" />{{ t('SEW_UI_PROPERTY_ALL') }}</button>
       <!-- 지우기는 다른 단추와 떨어진 맨 끝에, 채우지 않은 붉은 테두리로 둔다(잘못 누르지 않게) -->
       <button v-if="canDelete" :class="btn" class="ml-2 border border-red-300 dark:border-red-800 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30" data-testid="se-delete" @click="showDelete = true">{{ t('SEW_LOAD_DELETE_OPEN') }}</button>
     </div>

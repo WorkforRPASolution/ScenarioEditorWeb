@@ -4,6 +4,7 @@
 // 여러 날(사내 요청 2026-11-16): 날짜를 누르면 그 하루, 날짜 위를 끌거나 Shift+누르기로 여러 날(목록에서 여러 줄을 고르는 방식과 같다).
 // - 끄는 동안에는 칠하기만 하고 손을 뗄 때 한 번 받는다. Shift 의 기준 날은 마지막으로 그냥 누른 날이다.
 // - [전체 n일]·[최근 7일]·[최근 3일] 로 한 번에, [초기화] 는 가장 늦은 날 하루로. 고른 뒤에도 열려 있다 — [닫기]·바깥 누름·Esc 로 닫는다.
+import { SECONDARY } from '../buttonStyle'
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useSnapshotStore } from '../../stores/snapshotStore'
 import { calendarWeeks, orderDates, spanDays, addDays } from '../../editor/snapshotDates'
@@ -83,7 +84,7 @@ function reset() {
   anchor = snap.range?.latest ?? snap.date
   snap.resetDates()
 }
-const btn = 'h-6 px-2 rounded-md text-[11px] bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:enabled:bg-gray-300 dark:hover:enabled:bg-gray-600 disabled:opacity-50'
+const btn = `h-6 px-2 rounded-md text-[11px] ${SECONDARY}`
 </script>
 
 <template>

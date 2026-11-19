@@ -1,6 +1,7 @@
 <script setup>
 // "내 초안이 있습니다" — 초안이 있는 행을 열 때 초안 이어서 / 현재 버전을 고른다(P2-D Task 7, 설계 §6.1, 목업 choiceModal).
 // 기본 버튼은 [초안 이어서 열기](저장해 둔 것을 잇는 것이 흔한 경우).
+import { SECONDARY } from '../buttonStyle'
 import { computed, ref, onMounted, nextTick } from 'vue'
 import { t } from '../../messages'
 import { formatCrtime } from '../../format'
@@ -54,8 +55,8 @@ const btn = 'h-9 px-4 rounded-lg text-sm font-medium'
         <p class="text-xs text-gray-500">{{ t('SEW_LOAD_CHOICE_NOTE') }}</p>
       </div>
       <div class="flex items-center justify-end gap-2 px-5 py-3 border-t border-gray-200 dark:border-dark-border">
-        <button type="button" :class="btn" class="bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-normal" data-testid="se-load-choice-cancel" @click="emit('close')">{{ t('SEW_LOAD_CANCEL') }}</button>
-        <button type="button" :class="btn" class="bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-normal" :disabled="!row.currentCrtime" data-testid="se-load-choice-current" @click="emit('current')">{{ t('SEW_LOAD_OPEN_CURRENT') }}</button>
+        <button type="button" :class="[btn, SECONDARY]" class="font-normal" data-testid="se-load-choice-cancel" @click="emit('close')">{{ t('SEW_LOAD_CANCEL') }}</button>
+        <button type="button" :class="[btn, SECONDARY]" class="font-normal" :disabled="!row.currentCrtime" data-testid="se-load-choice-current" @click="emit('current')">{{ t('SEW_LOAD_OPEN_CURRENT') }}</button>
         <button ref="draftEl" type="button" :class="btn" class="bg-primary-500 hover:bg-primary-600 text-white" data-testid="se-load-choice-draft" @click="emit('draft')">{{ t('SEW_LOAD_OPEN_DRAFT') }}</button>
       </div>
     </section>

@@ -2,6 +2,7 @@
 // 시험 줄(P4 설계 §4.1~§4.5) — "찾는 것" 아래: 시험할 화면·시험 정확도·[시험], 그 아래 결과. 편집 패널(StepPanel)과 읽기 전용 상세(StepDetail)가 함께 쓴다.
 // 시험은 스텝·초안을 바꾸지 않는다 — [스텝에 넣기] 만 부모에게 값을 알린다(accept). 상태·서버 호출은 visionTestStore, 큰 화면의 겹침(TestLayer)도 그 결과를 읽는다.
 // 이 부품이 지금의 시험 입력 키·값 키를 저장소에 알린다(sync): 키가 바뀌면 결과를 지우고, 값만 바뀌면 흐리게. 사라질 때도 지운다.
+import { SECONDARY } from '../buttonStyle'
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { useVisionTestStore } from '../../stores/visionTestStore'
 import { useSnapshotStore } from '../../stores/snapshotStore'
@@ -98,7 +99,7 @@ const cell = 'px-1.5 py-0.5 text-right tabular-nums'
       <p v-if="isImage && acceptWarn(accept)" class="mt-1 text-[11px] leading-snug text-amber-700 dark:text-amber-300" data-testid="se-test-accept-low">{{ t('SEW_TEST_ACCEPT_LOW') }}</p>
       <div class="mt-2 flex items-center gap-1.5">
         <button type="button" :class="btn" class="text-white bg-primary-500 hover:enabled:bg-primary-600" data-testid="se-test-run" :disabled="!!reason" :title="reason ? t(reason) : undefined" @click="start">{{ t('SEW_TEST_RUN') }}</button>
-        <button v-if="run.status === 'done' || run.status === 'error'" type="button" :class="btn" class="bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600" data-testid="se-test-close" @click="store.close()">{{ t('SEW_TEST_CLOSE') }}</button>
+        <button v-if="run.status === 'done' || run.status === 'error'" type="button" :class="[btn, SECONDARY]" data-testid="se-test-close" @click="store.close()">{{ t('SEW_TEST_CLOSE') }}</button>
         <span v-if="running" class="text-xs text-gray-500 dark:text-gray-400" role="status" data-testid="se-test-progress">{{ t('SEW_TEST_RUNNING', { n: seconds }) }}</span>
       </div>
 

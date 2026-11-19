@@ -4,6 +4,7 @@
 // - 열 때마다 다시 받고 닫으면 버린다. 닫은 뒤에 온 답·앞 요청의 늦은 답은 쓰지 않는다.
 // - 그림을 누르면 창 안에서 크게 본다. Esc 는 크게 본 것을 먼저 닫는다.
 // - 이력이 없거나 이력 서버에 닿지 못해도 이 창만 그 이유를 보인다 — 스냅샷 보기는 그대로다(DC-018).
+import { SECONDARY } from '../buttonStyle'
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { scenarioEditorApi as api } from '../../api'
 import { t, errorCode, errorMessage } from '../../messages'
@@ -69,7 +70,7 @@ function onKey(e) {
 }
 onMounted(() => document.addEventListener('keydown', onKey))
 onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
-const btn = 'h-8 px-3 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600'
+const btn = `h-8 px-3 rounded-lg text-sm ${SECONDARY}`
 </script>
 
 <template>

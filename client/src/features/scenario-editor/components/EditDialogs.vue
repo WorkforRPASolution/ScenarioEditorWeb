@@ -1,6 +1,7 @@
 <script setup>
 // 편집 확인 창과 알림 줄(목업 dlgHtml·toast): 삭제 막힘 목록(조작판 14 delblock), 설비 상태 붙여넣기 알림,
 // 적용 안 한 변경 확인(조작판 16 guard·22 saveguard — [계속 고치기]·[버리고 이동]·[적용하고 이동]).
+import { SECONDARY } from './buttonStyle'
 import { computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useEditStore } from '../stores/editStore'
 import { changedFields } from '../editor/panel'
@@ -66,7 +67,7 @@ onBeforeUnmount(() => { document.removeEventListener('keydown', onKey); clearTim
 
 const dim = 'fixed inset-0 z-50 bg-black/40 flex items-center justify-center'
 const box = 'w-[470px] max-w-[calc(100vw-40px)] bg-white dark:bg-dark-card border border-gray-200 dark:border-dark-border rounded-xl shadow-2xl'
-const btnS = 'h-8 px-3 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600'
+const btnS = `h-8 px-3 rounded-lg text-sm ${SECONDARY}`
 const btnP = 'h-8 px-3 rounded-lg text-sm bg-primary-500 hover:bg-primary-600 text-white font-medium'
 </script>
 

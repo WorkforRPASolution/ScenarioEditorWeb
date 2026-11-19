@@ -5,6 +5,7 @@
 // 잡기 밖에서는 기준 화면에서 찾은 찾을 그림 자리와 누를 곳을 늘 그린다(SpotLayer — 한 곳 찾았을 때만, 읽기 전용에서도).
 // 찾을 그림 자리는 이미지 스텝이면 동작과 상관없이, 누를 곳 + 는 마우스 클릭일 때만 그린다.
 // [누를 곳 보기](패널·상세의 작은 버튼 → editStore.clickShow)를 누르면 그 누를 곳에 스냅샷 클릭 점과 같은 점(ClickDot)을 CLICK_SHOW_MS 동안 깜빡인다.
+import { SECONDARY } from './buttonStyle'
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
 import { useEditStore } from '../stores/editStore'
@@ -167,8 +168,8 @@ defineExpose({ onLoad, fit })
           </li>
         </ol>
         <span class="flex-1" />
-        <button v-if="canKeep" type="button" class="h-7 px-2 rounded-lg bg-gray-200 dark:bg-gray-700 whitespace-nowrap" data-testid="se-cap-keep" @click="edit.finishCapture()">{{ t('SEW_CAP_KEEP_TRAIN') }}</button>
-        <button type="button" class="h-7 px-2 rounded-lg bg-gray-200 dark:bg-gray-700 whitespace-nowrap" data-testid="se-cap-cancel" @click="edit.cancelCapture()">
+        <button v-if="canKeep" type="button" class="h-7 px-2 rounded-lg whitespace-nowrap" :class="SECONDARY" data-testid="se-cap-keep" @click="edit.finishCapture()">{{ t('SEW_CAP_KEEP_TRAIN') }}</button>
+        <button type="button" class="h-7 px-2 rounded-lg whitespace-nowrap" :class="SECONDARY" data-testid="se-cap-cancel" @click="edit.cancelCapture()">
           {{ t('SEW_CAP_CANCEL') }} <span class="text-gray-400">Esc</span>
         </button>
       </template>
@@ -183,10 +184,10 @@ defineExpose({ onLoad, fit })
         <span v-else-if="!draft && step && step.condition.kind === 'ocr'" class="text-gray-500">{{ t('SEW_UI_OCR_AREA_HINT') }}</span>
       </template>
       <div class="ml-auto flex gap-1 shrink-0">
-        <button class="w-7 h-7 rounded-lg bg-gray-200 dark:bg-gray-700" title="확대" @click="zoomButton(1.25)">＋</button>
-        <button class="w-7 h-7 rounded-lg bg-gray-200 dark:bg-gray-700" title="축소" @click="zoomButton(0.8)">－</button>
-        <button class="h-7 px-2 rounded-lg bg-gray-200 dark:bg-gray-700" @click="fit">맞춤</button>
-        <button class="h-7 px-2 rounded-lg bg-gray-200 dark:bg-gray-700" :title="t('SEW_SNAP_ZOOM_ACTUAL_HINT')" data-testid="se-zoom-actual" @click="actual">1:1</button>
+        <button class="w-7 h-7 rounded-lg" :class="SECONDARY" title="확대" @click="zoomButton(1.25)">＋</button>
+        <button class="w-7 h-7 rounded-lg" :class="SECONDARY" title="축소" @click="zoomButton(0.8)">－</button>
+        <button class="h-7 px-2 rounded-lg" :class="SECONDARY" @click="fit">맞춤</button>
+        <button class="h-7 px-2 rounded-lg" :class="SECONDARY" :title="t('SEW_SNAP_ZOOM_ACTUAL_HINT')" data-testid="se-zoom-actual" @click="actual">1:1</button>
       </div>
     </div>
     <div v-if="cap" class="px-3 py-1.5 text-xs bg-primary-50 dark:bg-primary-900/20 text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-dark-border" data-testid="se-cap-hint">{{ capHint }}</div>

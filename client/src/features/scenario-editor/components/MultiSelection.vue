@@ -1,5 +1,6 @@
 <script setup>
 // 여러 줄을 골랐을 때 오른쪽 칸(목업 multiHtml, 조작판 13 multi). 떨어진 줄이면 복사·잘라내기를 끄고 이유를 보인다.
+import { SECONDARY } from './buttonStyle'
 import { computed } from 'vue'
 import { useEditStore } from '../stores/editStore'
 import { isContiguous } from '../editor/commands'
@@ -13,7 +14,7 @@ const list = computed(() => {
   return steps.map((s, i) => ({ s, no: i + 1 })).filter(({ s }) => set.has(s.uid))
 })
 const cont = computed(() => list.value.length > 0 && isContiguous(edit.session.working, list.value.map(({ s }) => s.uid)))
-const btn = 'h-7 px-2.5 rounded-lg text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:enabled:bg-gray-300 dark:hover:enabled:bg-gray-600 disabled:opacity-45'
+const btn = `h-7 px-2.5 rounded-lg text-xs ${SECONDARY}`
 </script>
 
 <template>

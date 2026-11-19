@@ -8,6 +8,7 @@
 // - Tab 은 창 안에서만 돈다(뒤의 날짜·목록 단추로 나가 목록을 바꾸지 않게).
 // - entry 를 주면 메모 목록 창의 줄({ eqpId, fileName, date, time, memo })이 대상이다 — 지금 보는 설비·날짜가 아니어도 고친다(사내 요청 2026-11-16).
 //   그 줄이 메모 목록에서 사라지면(그 사이 지워짐) 닫고 gone 을 알린다.
+import { SECONDARY } from '../buttonStyle'
 import { ref, computed, watch, nextTick } from 'vue'
 import { useSnapshotStore } from '../../stores/snapshotStore'
 import { MEMO_MAX, checkMemo, isMine } from '../../editor/snapshotMemo'
@@ -134,7 +135,7 @@ function onEnter(e) {
 // 메모 목록 창(z-50) 위에 뜬다
 const dim = 'fixed inset-0 z-[60] bg-black/40 flex items-center justify-center'
 const boxCls = 'w-[470px] max-w-[calc(100vw-40px)] bg-white dark:bg-dark-card border border-gray-200 dark:border-dark-border rounded-xl shadow-2xl outline-none'
-const btnS = 'h-8 px-3 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:enabled:bg-gray-300 dark:hover:enabled:bg-gray-600 disabled:opacity-50'
+const btnS = `h-8 px-3 rounded-lg text-sm ${SECONDARY}`
 const btnP = 'h-8 px-3 rounded-lg text-sm bg-primary-500 hover:enabled:bg-primary-600 text-white font-medium disabled:opacity-50'
 const btnD = 'h-8 px-3 rounded-lg text-sm bg-red-600 hover:enabled:bg-red-700 text-white font-medium disabled:opacity-50'
 const note = 'mt-1.5 text-xs'
