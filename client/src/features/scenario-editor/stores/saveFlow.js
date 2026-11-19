@@ -9,7 +9,7 @@ import { scenarioEditorApi as api } from '../api'
 import { t, errorCode, errorMessage, MESSAGES } from '../messages'
 import { buildMeta, buildFormData, uploadsToSend } from '../editor/request'
 import { loadBlob, draftImageUrl } from '../editor/images'
-import { unsavedChanges } from '../editor/diff'
+import { sessionChanges } from '../editor/diff'
 import { checkName, nameRuleOf } from '../editor/nameRule'
 import { propertyFieldOf } from '../editor/propertyRules'
 import { useEditStore } from './editStore'
@@ -164,7 +164,7 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
     if (sameScenario.value) return 'same'
     return checkFresh.value ? 'new' : null
   })
-  const changes = computed(() => { const s = session(); return s?.working ? unsavedChanges(s.working, s.saveBase) : [] })
+  const changes = computed(() => sessionChanges(session()))
   const scopeCount = (model) => (editor.scopes?.processes ?? []).find((p) => p.process === process())?.models.find((m) => m.model === model)?.eqpCount ?? null
   const eqpCount = computed(() => (checkFresh.value ? check.value.target?.eqpCount : null) ?? scopeCount(target.value.model) ?? 0)
   const enabled = computed(() => session()?.working?.property?.IsEnabled !== false)

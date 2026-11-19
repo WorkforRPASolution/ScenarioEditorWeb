@@ -13,6 +13,7 @@ import { useEditorStore } from '../stores/editorStore'
 import { useEditStore } from '../stores/editStore'
 import { defaultProperty } from '../editor/newScenario'
 import { propertyDiffs } from '../editor/propertyView'
+import { versionKeyOf } from '../editor/diff'
 
 const ok = (data) => Promise.resolve({ data: { success: true, data } })
 const fail = (status, code, details) => Promise.reject({ response: { status, data: { code, details } }, request: {} })
@@ -97,6 +98,34 @@ describe('저장 창(SaveDialog)', () => {
     await rows[0].trigger('click')
     expect(find(bar, 'se-save-dialog').exists()).toBe(false)
     expect(s.selectedUid).toBe('s1')
+    bar.unmount()
+  })
+
+  it('되돌려 연 세션: 판마다 그림 주소가 달라도 그림 내용이 같으면 "바뀐 것"·"저장 전 N곳" 에 없고, 다르면 그 칸(찾을 그림) 줄로(SEW-019)', async () => {
+    const { bar, e } = setup()
+    const w = e.session.working
+    const V1 = { ...w.source, crtime: 10, fileId: 'F10' }
+    const V2 = { ...w.source, crtime: 30, fileId: 'F30' }
+    const withUrl = (st, v) => ({ ...st, condition: { ...st.condition, image: { ...st.condition.image, trainImages: [{ key: 0, type: true, url: `/versions/${v.crtime}/files/${v.fileId}/images/s0-train-0` }] } } })
+    const old = { ...w, source: V1, steps: [withUrl(w.steps[0], V1), { ...w.steps[1], descriptionToEmail: '옛 설명' }, w.steps[2]] }
+    const cur = { ...w, source: V2, steps: [withUrl(w.steps[0], V2), w.steps[1], w.steps[2]] }
+    const fp = { 's0-bi': 'B', 's0-train-0': 'T' }
+    e.session = { ...e.session, source: V1, working: old, saveBase: cur, sourceBase: old, restoredFrom: 10, imageFp: { [versionKeyOf(V1)]: fp, [versionKeyOf(V2)]: { ...fp } } }
+    await flushPromises()
+    expect(find(bar, 'se-bar-unsaved').text()).toBe(t('SEW_BAR_UNSAVED', { n: 1 }))
+    await openSave(bar)
+    let rows = bar.findAll('[data-testid="se-save-change"]')
+    expect(rows).toHaveLength(1)
+    expect(rows[0].text()).toContain('2번')
+    // 1번의 찾을 그림 내용이 현재 판과 다르면 1번 줄이 생기고 "그 밖의 값" 이 아니라 찾을 그림이 바뀐다고 적힌다
+    e.session = { ...e.session, imageFp: { ...e.session.imageFp, [versionKeyOf(V2)]: { ...fp, 's0-train-0': 'X' } } }
+    await flushPromises()
+    rows = bar.findAll('[data-testid="se-save-change"]')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].text()).toContain('1번')
+    expect(rows[0].text()).toContain(t('SEW_PANEL_TRAIN'))
+    expect(rows[0].text()).not.toContain(t('SEW_PANEL_DIFF_OTHER'))
+    expect(find(bar, 'se-bar-unsaved').text()).toBe(t('SEW_BAR_UNSAVED', { n: 2 }))
     bar.unmount()
   })
 

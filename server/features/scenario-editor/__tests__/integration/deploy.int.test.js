@@ -283,6 +283,12 @@ describe('배포 — 새 대상·덮어쓰기·왕복 (완료 조건 1·2·5)', 
     expect(nowSteps).toHaveLength(prevSteps.length)
     nowSteps.forEach((s, i) => expect(s, `step ${i}`).toEqual(i === k ? { ...prevSteps[i], DescriptionToEmail: text } : prevSteps[i]))
     expect(await biOf(COPY, data.crtime)).toBe(await biOf(COPY, copyCrtime))
+    // 그림 내용 지문(SEW-019): 두 판의 그림 URL 은 달라도 지문은 같다 — 되돌려 연 세션의 "저장 전 N곳" 이 고치지 않은 그림 스텝을 세지 않는 근거
+    const [before, after] = await Promise.all([open(COPY, 'sew_master', copyCrtime), open(COPY)])
+    expect(Object.keys(after.imageFp).length).toBeGreaterThanOrEqual(3) // 기준 화면 2 + 찾을 그림 1
+    expect(after.imageFp).toEqual(before.imageFp)
+    const shown = after.steps.findIndex((s) => s.baseImage.state === 'present')
+    expect(after.steps[shown].baseImage.url).not.toBe(before.steps[shown].baseImage.url)
     copyCrtime = data.crtime
   })
 

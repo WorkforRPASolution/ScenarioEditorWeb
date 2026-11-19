@@ -1,6 +1,6 @@
 'use strict'
 // 본문(GridFS metadata.body)·운영 속성·성과 → 브라우저용 뼈대 + 떼어 낼 이미지 목록(설계 §5.3).
-// BI(파일 내용)는 부른 쪽이 흘려 읽어 기준 화면을 먼저 디스크에 쓴다(biStream). 여기는 그 결과 baseImages { parseFailed, present(그림 항목의 스텝 번호), literals, count } 만 받는다.
+// BI(파일 내용)는 부른 쪽이 흘려 읽어 기준 화면을 먼저 디스크에 쓴다(biStream). 여기는 그 결과 baseImages { parseFailed, present(그림 항목의 스텝 번호), literals, count, fingerprints } 만 받는다.
 const { parseCondition, parseAction, note } = require('./conditionCodec')
 const { toTarget } = require('./nextStep')
 const { graphNotes, scenarioNotes, SCENARIO_NOTE_CODES } = require('./notes')
@@ -8,6 +8,7 @@ const { judgeTargetWindow } = require('./targetWindow')
 const { propertyFromBson } = require('./propertyModel')
 const { performanceFromBson } = require('./performanceModel')
 const { isTrainKey, trainImageId } = require('./trainKey')
+const { fingerprintOf } = require('./imageFingerprint')
 
 // "AA==" = 1바이트 자리표시(조건 없음·설비 상태). 정규 base64 만 그림이다 — 줄바꿈·패딩 빠짐·base64 가 아닌 글은
 // PNG 로 풀었다 다시 인코딩하면 글자가 달라져 손대지 않은 스텝이 배포에서 바뀌므로 저장값 그대로(literal) 둔다.
@@ -25,8 +26,9 @@ function trainMapOf(step) {
 const needsBaseImage = (kind) => kind === 'image' || kind === 'ocr'
 const baseImageId = (i) => `s${i}-bi`
 
-// present = 그림인 BI 항목 전부(스텝 종류와 상관없이), literals = 그림이 아닌 항목 값, count = BI 항목 수(해석 실패·빈 파일이면 null).
-const NO_BASE_IMAGES = Object.freeze({ parseFailed: false, present: new Set(), literals: new Map(), count: null })
+// present = 그림인 BI 항목 전부(스텝 종류와 상관없이), literals = 그림이 아닌 항목 값, count = BI 항목 수(해석 실패·빈 파일이면 null),
+// fingerprints = 그림 항목의 내용 지문(스텝 번호 → imageFingerprint — 흘려 읽으며 잰다).
+const NO_BASE_IMAGES = Object.freeze({ parseFailed: false, present: new Set(), literals: new Map(), count: null, fingerprints: new Map() })
 
 // 찾을 그림은 떼어 낸 그림만 URL 로 바꾼다. 자리표시(AA==)·빈 값과 정규 키가 아닌 항목은 저장값을 둔다(그대로 다시 조립하려면 원본이 필요).
 function rawWithUrls(step, trainUrls) {
@@ -132,6 +134,11 @@ function buildSkeleton({ process, model, name, crtime, isCurrent, body: storedBo
     }
   }
 
+  // 그림 내용 지문(SEW-019) — 뗀 그림 id → 지문. 기준 화면은 부른 쪽이 잰 값, 나머지는 여기서 잰다(같은 id 는 처음 것 — 디스크 캐시도 처음 것을 쓴다).
+  const imageFp = {}
+  if (!baseImages.parseFailed) for (const [i, fp] of baseImages.fingerprints) if (baseImages.present.has(i)) imageFp[baseImageId(i)] = fp
+  for (const im of images) if (!(im.id in imageFp)) imageFp[im.id] = fingerprintOf(im.base64)
+
   // 운영 속성·성과·시나리오 알림은 refreshPropertyParts 가 붙인다(열 때마다 현재 값으로 다시 붙이는 것과 같은 경로).
   const skeleton = refreshPropertyParts({
     process, model, name, id: body.ID, version: { crtime, isCurrent },
@@ -144,6 +151,7 @@ function buildSkeleton({ process, model, name, crtime, isCurrent, body: storedBo
     steps,
     biCount: baseImages.parseFailed ? null : baseImages.count,
     baseImageSummary: { needed, present },
+    imageFp,
     property: null,
     performance: null,
     notes: notesOut

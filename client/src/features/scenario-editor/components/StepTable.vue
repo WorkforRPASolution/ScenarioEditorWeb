@@ -5,7 +5,7 @@ import { useEditorStore } from '../stores/editorStore'
 import { useEditStore } from '../stores/editStore'
 import { registerGrid, useGridTheme } from '../gridTheme'
 import { toRows, renderTarget, renderNo, renderAccept, renderSkip } from '../stepRows'
-import { unsavedChanges } from '../editor/diff'
+import { sessionChanges } from '../editor/diff'
 import { acceptCode } from '../editor/fieldRules'
 import { t } from '../messages'
 import TargetPicker from './TargetPicker.vue'
@@ -27,7 +27,7 @@ const marks = computed(() => {
   const m = new Map()
   const s = edit.session
   if (s.working.steps !== s.saveBase?.steps) {
-    for (const c of unsavedChanges(s.working, s.saveBase)) {
+    for (const c of sessionChanges(s)) {
       if (c.kind === 'added') m.set(c.uid, 'nw')
       else if (c.kind === 'changed') m.set(c.uid, 'ch')
     }

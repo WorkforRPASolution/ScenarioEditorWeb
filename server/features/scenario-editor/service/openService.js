@@ -6,6 +6,7 @@ const { buildSkeleton, isImage, baseImageId, refreshPropertyParts } = require('.
 const { scanBi } = require('../domain/biStream')
 const { editedFromSkeleton } = require('../domain/editedScenario')
 const { propertyRev } = require('../domain/deployIdentity')
+const { fingerprintOf } = require('../domain/imageFingerprint')
 const { createSingleFlight } = require('../util/singleFlight')
 const { createSemaphore } = require('../util/semaphore')
 const { seError } = require('../errors')
@@ -17,7 +18,8 @@ const enc = encodeURIComponent
 // 3: 이미지가 아닌 조건의 찾을 그림도 떼고, 정규 키가 아닌 찾을 그림은 raw 에 저장값 그대로(2026-11-06)
 // 4: header.raw 에 숨길 창 저장값(null 포함), 키보드 동작에 저장 순서 codes(2026-11-07)
 // 5: 정규 base64 만 그림(아닌 값은 literal·저장값 그대로, 2026-11-07)
-const SKELETON_CACHE_FORMAT = 5
+// 6: 그림 내용 지문 imageFp(SEW-019, 2026-11-19)
+const SKELETON_CACHE_FORMAT = 6
 // 이미지 URL 은 1년 캐시라 내용이 바뀌면 안 된다 — 파일 id 를 넣어 같은 crtime 으로 다시 올라온 파일과 구분한다.
 const baseUrl = (p, m, n, crtime, fileId) => `/scenario-editor/scenarios/${enc(p)}/${enc(m)}/${enc(n)}/versions/${crtime}/files/${enc(fileId)}/images`
 const rss = () => process.memoryUsage().rss
@@ -56,21 +58,24 @@ function createOpenService({ repo, hash, gridfs, scopes, imageCache, log }) {
           const body = file.metadata.body
           const present = new Set()
           const literals = new Map()
+          const fingerprints = new Map()
           let count = 0
           const state = await scanBi(gridfs.streamContent(file), async (i, value) => {
             count++
             if (!isImage(value)) { literals.set(i, value); return }
             await writer.writeImage(baseImageId(i), value)
             present.add(i)
+            fingerprints.set(i, fingerprintOf(value))
           })
           // 끝에서 깨진 것을 알면 앞서 쓴 기준 화면도 믿을 수 없다 — 파일 전체를 읽을 수 없는 것으로 본다.
           if (state === 'invalid') {
             await writer.removeImages([...present].map(baseImageId))
             present.clear()
             literals.clear()
+            fingerprints.clear()
             count = null
           }
-          const { skeleton, images } = buildSkeleton({ process, model, name, crtime, isCurrent: false, body, baseImages: { parseFailed: state === 'invalid', present, literals, count: count || null },
+          const { skeleton, images } = buildSkeleton({ process, model, name, crtime, isCurrent: false, body, baseImages: { parseFailed: state === 'invalid', present, literals, count: count || null, fingerprints },
             propertyDoc: {}, performanceDoc: null, imageBaseUrl: baseUrl(process, model, name, crtime, fileId) })
           await writer.commit({ ...skeleton, cacheFormat: SKELETON_CACHE_FORMAT }, images)
           return { core: skeleton, fromCache: false }

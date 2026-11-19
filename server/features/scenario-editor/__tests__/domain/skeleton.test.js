@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { buildSkeleton, isImage, versionNotes, refreshPropertyParts } from '../../domain/skeleton'
+import { fingerprintOf } from '../../domain/imageFingerprint'
 
 const md = (op, train = {}) => ({
   SearchArea: op === 0 ? { X: -18, Y: -18, Width: -18, Height: -18 } : { X: 10, Y: 20, Width: 300, Height: 200 },
@@ -270,5 +271,26 @@ describe('원본 보존', () => {
     const { skeleton } = buildSkeleton({ ...base, body: { ...base.body, Compensation: { RefImage: LONG_B64, X: 1, Y: 2 } } })
     expect(skeleton.header.raw.Compensation).toEqual({ RefImage: null, X: 1, Y: 2 })
     expect(skeleton.header.compensation.refImage).toBe('/img/ref')
+  })
+})
+
+// 그림 내용 지문(SEW-019): 판마다 그림 URL 이 달라 되돌려 연 세션에서 고치지 않은 그림 스텝까지 바뀐 것으로 셌다 — 화면이 지문으로 견준다
+describe('imageFp — 뗀 그림마다 내용 지문', () => {
+  const OTHER = Buffer.from('other-png').toString('base64')
+  it('찾을 그림·보정 그림은 그 base64 의 지문, 기준 화면은 부른 쪽이 흘려 읽으며 잰 지문(baseImages.fingerprints)', () => {
+    const b = { ...body, Compensation: { X: 1, Y: 2, RefImage: OTHER } }
+    const baseImages = { parseFailed: false, present: new Set([0, 1]), literals: new Map(), count: 2, fingerprints: new Map([[0, 'fp-bi-0'], [1, 'fp-bi-1']]) }
+    const { skeleton } = buildSkeleton({ ...base, body: b, baseImages })
+    expect(skeleton.imageFp).toEqual({ 's0-bi': 'fp-bi-0', 's1-bi': 'fp-bi-1', 's0-train-0': fingerprintOf(LONG_B64), ref: fingerprintOf(OTHER) })
+  })
+  it('떼지 않은 그림(자리표시·정규가 아닌 값)과 그림이 아닌 BI 항목은 지문이 없다', () => {
+    const train = { 0: { BinaryImage: 'AA==', Type: true }, 1: { BinaryImage: 'iVBORw0KGgoAAAANSUhEUg', Type: true } }
+    const b = { ...body, Step: [{ ...body.Step[0], Metadata: md(1, train) }] }
+    const { skeleton } = buildSkeleton({ ...base, body: b, baseImages: { parseFailed: false, present: new Set(), literals: new Map([[0, 'AA==']]), count: 1 } })
+    expect(skeleton.imageFp).toEqual({})
+  })
+  it('BI 해석 실패면 기준 화면 지문을 싣지 않는다', () => {
+    const { skeleton } = buildSkeleton({ ...base, baseImages: { ...BROKEN_BI, fingerprints: new Map([[0, 'x']]) } })
+    expect(Object.keys(skeleton.imageFp)).toEqual(['s0-train-0'])
   })
 })

@@ -6,6 +6,7 @@ import { createOpenService, versionKey, SKELETON_CACHE_FORMAT } from '../service
 import { createImageCache } from '../repo/imageCache'
 import { changedStepUids } from '../domain/changeDetect'
 import { propertyRev } from '../domain/deployIdentity'
+import { fingerprintOf } from '../domain/imageFingerprint'
 
 const LONG_B64 = Buffer.from('fake-png-bytes-xxxxxxxx').toString('base64')
 const HEX1 = '0123456789abcdef01234567'
@@ -320,7 +321,7 @@ describe('openService', () => {
       const file = join(t.deps.imageCache.__dir, encodeURIComponent(key), 'skeleton.json')
       const sk = JSON.parse(readFileSync(file, 'utf8'))
       expect(sk.cacheFormat).toBe(SKELETON_CACHE_FORMAT)
-      expect(SKELETON_CACHE_FORMAT).toBe(5) // 5: 정규 base64 만 그림 — 4 의 캐시는 다시 푼다
+      expect(SKELETON_CACHE_FORMAT).toBe(6) // 6: 그림 내용 지문 imageFp(SEW-019) — 5 의 캐시는 다시 푼다
       expect((await t.svc.open({}, 'P', 'M', 'N', 'current')).stats.fromCache).toBe(true)
       for (const old of [undefined, SKELETON_CACHE_FORMAT - 1]) {
         const { cacheFormat, ...rest } = sk
@@ -331,6 +332,23 @@ describe('openService', () => {
         expect(t.reads()).toBe(before + 1)
         expect(r.skeleton.steps[0].bi.kind).toBe('image')
       }
+    })
+    it('그림마다 내용 지문(imageFp)을 싣고 캐시에서 열어도 같다 — 기준 화면은 흘려 읽은 값의 지문(SEW-019)', async () => {
+      const t = setup()
+      const first = (await t.svc.open({}, 'P', 'M', 'N', 'current')).skeleton
+      expect(first.imageFp).toEqual({ 's0-bi': fingerprintOf(LONG_B64), 's0-train-0': fingerprintOf(LONG_B64) })
+      const again = await t.svc.open({}, 'P', 'M', 'N', 'current')
+      expect(again.stats.fromCache).toBe(true)
+      expect(again.skeleton.imageFp).toEqual(first.imageFp)
+      // 같은 판이 다른 파일로 다시 올라오면(기준 화면 내용이 다르다) 그 지문만 다르다
+      t.setFile('f2')
+      const other = (await t.svc.open({}, 'P', 'M', 'N', 'current')).skeleton
+      expect(other.imageFp['s0-bi']).toBe(fingerprintOf(t.biOf.f2))
+      expect(other.imageFp['s0-train-0']).toBe(first.imageFp['s0-train-0'])
+    })
+    it('끝이 깨진 BI 는 기준 화면 지문을 싣지 않는다', async () => {
+      const { skeleton } = await setup({ biText: `{"TargetSnapshotList":["${LONG_B64}"` }).svc.open({}, 'P', 'M', 'N', 'current')
+      expect(Object.keys(skeleton.imageFp)).toEqual(['s0-train-0'])
     })
     it('빈 BI 는 알림 없이 기준 화면 없음이다', async () => {
       const { skeleton } = await setup({ biText: '' }).svc.open({}, 'P', 'M', 'N', 'current')

@@ -336,12 +336,13 @@ test('⑦ [이 버전으로 되돌려 열기] → 배포 → 새 판 내용 = �
   await expect(page.getByTestId('se-load-dialog')).toHaveCount(0)
   await expect(page.getByTestId('se-bar-restored')).toContainText('옛 버전')
   await expect(page.getByTestId('se-bar-version')).toContainText('현재 버전')
-  await expect(page.getByTestId('se-bar-unsaved')).toBeVisible()
+  // 저장 전 1곳 = 2번 설명뿐 — 고치지 않은 이미지 스텝 1번은 판마다 그림 URL 이 달라도 그림 내용(서버 지문)이 같아 세지 않는다(SEW-019)
+  await expect(page.getByTestId('se-bar-unsaved')).toHaveText('저장 전 1곳 바뀜')
   await expect(cellOf(page, 's1', 'desc')).toHaveText('상태 IDLE 확인')
 
-  // 저장 창 "바뀐 것" = 배포하면 현재 판에서 바뀌는 곳 — 2번 설명이 옛 판 값으로 돌아간다.
-  // (이미지 스텝 1번도 "그 밖의 값" 으로 함께 잡힌다: 판마다 다른 그림 URL 을 비교하기 때문 — 보고서 걱정할 점. 여기서는 개수를 고정하지 않는다)
+  // 저장 창 "바뀐 것" = 배포하면 현재 판에서 바뀌는 곳 — 2번 설명이 옛 판 값으로 돌아간다(그 한 줄뿐)
   await openSave(page)
+  await expect(page.getByTestId('se-save-change')).toHaveCount(1)
   await expect(page.getByTestId('se-save-change').filter({ hasText: '2번' })).toContainText('설명 E2E 둘째 판 설명 → 상태 IDLE 확인')
   const version = await deployOk(page, `${idOf(RST)} 의 새 버전을 저장하고`)
   await expectCurrent(page, RST, version)

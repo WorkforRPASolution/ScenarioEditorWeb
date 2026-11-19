@@ -144,6 +144,7 @@ describe('StepTable', () => {
 // ── 편집(작업본이 있고 쓸 수 있는 세션) ──
 import { useEditStore } from '../stores/editStore'
 import TargetPicker from '../components/TargetPicker.vue'
+import { versionKeyOf } from '../editor/diff'
 
 const edStep = (i, over = {}) => ({
   uid: `s${i}`, origin: i,
@@ -320,6 +321,23 @@ describe('StepTable — 편집', () => {
     expect(rows().s2.onTrue).toBe('→2')
     expect(rows().s2.onTrueMoved).toBe(true)
     expect(rows().s1.onTrueMoved).toBe(false)
+    w.unmount()
+  })
+
+  it('되돌려 연 세션(작업본·저장 기준점의 판이 다름): 기준 화면 내용이 같은 줄은 고친 줄이 아니고, 다른 줄만 ch(SEW-019)', async () => {
+    const { e } = editFixture()
+    const w = mountTable()
+    const cur = e.session.working
+    const V1 = { ...cur.source, crtime: 0, fileId: 'F0' }
+    const old = { ...cur, source: V1, steps: cur.steps.map((st) => ({ ...st })) }
+    const fp = (s1) => ({ 's0-bi': 'A', 's1-bi': s1, 's2-bi': 'C', 's3-bi': 'D' })
+    e.session = { ...e.session, source: V1, working: old, saveBase: cur, sourceBase: old, imageFp: { [versionKeyOf(V1)]: fp('B'), [versionKeyOf(cur.source)]: fp('B') } }
+    await flushPromises()
+    const rows = () => Object.fromEntries(grid(w).props('rowData').map((r) => [r.uid, r]))
+    expect(Object.values(rows()).map((r) => r.mark)).toEqual(['', '', '', ''])
+    e.session = { ...e.session, imageFp: { ...e.session.imageFp, [versionKeyOf(cur.source)]: fp('X') } }
+    await flushPromises()
+    expect(Object.values(rows()).map((r) => r.mark)).toEqual(['', 'ch', '', ''])
     w.unmount()
   })
 

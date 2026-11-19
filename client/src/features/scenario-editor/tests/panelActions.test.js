@@ -4,6 +4,7 @@ import { setActivePinia, createPinia } from 'pinia'
 vi.mock('../api', () => ({ scenarioEditorApi: {}, imageUrl: (p) => `http://x/api${p}` }))
 import { newAction, withCodes, actionBlocked, changedFields, numIn, firstError, trainMapDropped, keyboardTokensDropped } from '../editor/panel'
 import { checkStepFields } from '../editor/fieldRules'
+import { versionKeyOf } from '../editor/diff'
 import ActionStation from '../components/panel/ActionStation.vue'
 import KeyboardAction from '../components/panel/actions/KeyboardAction.vue'
 import CustomScriptAction from '../components/panel/actions/CustomScriptAction.vue'
@@ -56,6 +57,18 @@ describe('editor/panel — 순수 함수', () => {
     const b = { ...a, descriptionToEmail: 'x', condition: { ...a.condition, image: { ...a.condition.image, accept: 0.8 } }, next: { ...a.next, onFalse: { kind: 'next' } } }
     expect(changedFields(a, b)).toEqual(['desc', 'accept', 'onFalse'])
     expect(changedFields(a, { ...a, isShowDialog: false })).toEqual(['other'])
+  })
+  it('changedFields: 출처 판이 다른 두 스텝(저장 창 — 되돌려 연 세션)은 그림을 내용 지문으로 견준다(SEW-019)', () => {
+    const V1 = { process: 'P', model: 'M', name: 'N', crtime: 10, fileId: 'F10' }
+    const V2 = { ...V1, crtime: 30, fileId: 'F30' }
+    const withUrl = (v) => imageStep(0, { condition: { ...imageStep(0).condition, image: { ...imageStep(0).condition.image, trainImages: [{ key: 0, type: true, url: `/v/${v.crtime}/s0-train-0` }] } } })
+    const fps = (two) => ({ [versionKeyOf(V1)]: { 's0-bi': 'B', 's0-train-0': 'T' }, [versionKeyOf(V2)]: two })
+    const across = (two) => ({ baseSource: V2, draftSource: V1, fps: fps(two) })
+    expect(changedFields(withUrl(V2), withUrl(V1), across({ 's0-bi': 'B', 's0-train-0': 'T' }))).toEqual([])
+    expect(changedFields(withUrl(V2), withUrl(V1), across({ 's0-bi': 'B', 's0-train-0': 'X' }))).toEqual(['train'])
+    expect(changedFields(withUrl(V2), withUrl(V1), across({ 's0-bi': 'X', 's0-train-0': 'T' }))).toEqual(['base'])
+    // 문맥 없이 견주면 전처럼 참조·주소 그대로 — 주소만 다른 것은 "그 밖의 값"
+    expect(changedFields(withUrl(V2), withUrl(V1))).toEqual(['other'])
   })
   it('numIn: 빈 칸은 null, 숫자면 숫자, 아니면 친 글자 그대로(칸 검사가 잡는다)', () => {
     expect([numIn(''), numIn(' 3 '), numIn('0.5'), numIn('1a')]).toEqual([null, 3, 0.5, '1a'])

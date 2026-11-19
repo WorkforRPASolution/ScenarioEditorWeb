@@ -29,6 +29,8 @@ const rows = computed(() => {
   const w = s.working
   const now = new Map(w.steps.map((x) => [x.uid, x]))
   const before = new Map((s.saveBase?.steps ?? []).map((x) => [x.uid, x]))
+  // 저장 기준점과 작업본의 출처 판이 다를 수 있다(되돌려 연 세션) — 그림은 내용 지문으로 견준다(SEW-019)
+  const across = { baseSource: s.saveBase?.source ?? null, draftSource: w.source ?? null, fps: s.imageFp }
   const out = []
   const byUid = new Map()
   for (const c of flow.changes) {
@@ -62,7 +64,7 @@ const rows = computed(() => {
         byUid.set(c.uid, r)
         out.push(r)
       }
-      if (c.kind === 'changed') r.subs.push(...diffLines(before.get(c.uid), now.get(c.uid), w).map(lineOf))
+      if (c.kind === 'changed') r.subs.push(...diffLines(before.get(c.uid), now.get(c.uid), w, across).map(lineOf))
       else r.subs.push({ text: t('SEW_SAVE_CHANGE_MOVED') })
     }
   }

@@ -1602,12 +1602,13 @@ describe('editStore — 되돌려 열기(beginRestore)·초안 이어서 열기(
   beforeEach(() => { setActivePinia(createPinia()); Object.values(api).forEach((f) => f.mockReset()); Object.values(fx).forEach((f) => f.mockReset()) })
   const start = (canWrite = true) => { const s = useEditorStore(); s.me = { singleid: 'u', canWrite, authorityManager: 3 }; return { s, e: useEditStore() } }
   // 판 하나를 연 뼈대(P1 열기 응답). head = 그 이름의 현재 버전, property = 문서의 지금 값(판마다 남지 않는다)
-  const versionOf = (crtime, steps, { head = 30, fileId = `F${crtime}`, property = { IsEnabled: true, Type: 1 }, rev = `r${head}`, description = '메일' } = {}) => {
+  // imageFp = 판마다 서버가 보내는 그림 내용 지문(SEW-019) — 기본은 두 판의 imageStep(0) 그림이 같은 내용
+  const versionOf = (crtime, steps, { head = 30, fileId = `F${crtime}`, property = { IsEnabled: true, Type: 1 }, rev = `r${head}`, description = '메일', imageFp = { 's0-bi': 'B0', 's0-train-0': 'T0' } } = {}) => {
     const ed = { source: { process: 'P', model: 'M', name: 'N', crtime, fileId }, headCrtime: head, header: { description, timeoutLimit: '10' }, steps, property }
     return {
       process: 'P', model: 'M', name: 'N', id: 'P-M-N', headCrtime: head, propertyRev: rev, version: { crtime, isCurrent: crtime === head, fileId },
       header: { description, timeoutLimit: 10, targetWindow: null }, property, performance: null, notes: [],
-      steps: steps.map((st, i) => ({ ...st, no: i + 1, notes: [] })), edited: ed
+      steps: steps.map((st, i) => ({ ...st, no: i + 1, notes: [] })), edited: ed, imageFp
     }
   }
   const OLD = () => versionOf(10, [imageStep(0), noneStep(1, { descriptionToEmail: '옛 설명' })], { property: { IsEnabled: true, Type: 1 }, description: '옛 메일' })
@@ -1629,7 +1630,7 @@ describe('editStore — 되돌려 열기(beginRestore)·초안 이어서 열기(
     expect(e.session.working.source).toEqual(old.edited.source)
     // 저장 기준점 = 현재 판 — "저장 전 N곳" 은 배포하면 바뀌는 곳(메일 제목·고친 스텝 1·지워질 스텝 1)
     expect(e.session.saveBase).toBe(cur.edited)
-    expect(unsavedChanges(e.session.working, e.session.saveBase).map((c) => c.key ?? c.kind)).toEqual(['description', 'changed', 'deleted'])
+    expect(unsavedChanges(e.session.working, e.session.saveBase, e.session.imageFp).map((c) => c.key ?? c.kind)).toEqual(['description', 'changed', 'deleted'])
     // 열린 뼈대는 현재 판(바 "현재 버전", 주소)이고 내용(스텝·대상 창)은 옛 판
     expect(s.skeleton.version).toEqual(cur.version)
     expect(toRaw(s.skeleton).steps).toBe(old.steps) // 열린 뼈대는 ref(깊은 반응형)라 원본으로 비교
@@ -1680,6 +1681,16 @@ describe('editStore — 되돌려 열기(beginRestore)·초안 이어서 열기(
       expect(e.session.working.steps[0]).toBe(old.edited.steps[0])
       expect(toRaw(s.steps[0])).toBe(toRaw(s.skeleton).steps[0]) // 열린 뼈대는 깊은 반응형 — 원본으로 견준다
     })
+  })
+  it('beginRestore: 고치지 않은 그림 스텝은 두 판의 그림 내용이 같으면 바뀐 것이 아니고, 다르면 바뀐 것이다(SEW-019)', () => {
+    const { e } = start()
+    e.beginRestore(OLD(), CUR())
+    expect(e.changeCount).toBe(3) // 메일 제목·고친 2번·지워질 3번 — 1번 그림 스텝은 판마다 그림 URL 이 달라도 세지 않는다
+    expect(e.unsavedCount).toBe(3)
+    const { e: e2 } = start()
+    e2.beginRestore(versionOf(10, [imageStep(0), noneStep(1, { descriptionToEmail: '옛 설명' })], { imageFp: { 's0-bi': 'OLD', 's0-train-0': 'T0' }, description: '옛 메일' }), CUR())
+    expect(unsavedChanges(e2.session.working, e2.session.saveBase, e2.session.imageFp).filter((c) => c.kind === 'changed').map((c) => c.uid)).toEqual(['s0', 's1'])
+    expect(e2.changeCount).toBe(4)
   })
   it('beginRestore: 쓰기 권한이 없으면 열지 않는다', () => {
     const { e } = start(false)

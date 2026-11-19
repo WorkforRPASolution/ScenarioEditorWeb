@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, shallowRef, computed } from 'vue'
 import { beginSession, restoreSessionOf, draftSessionOf, nextUid, stepNo, sourceBaseOf } from '../editor/session'
 import { copySteps, pasteSteps, detachClip, deleteSteps, moveSteps, setCell, movedRefKeys, applyStep, insertStep, sameOrder, STEP_MAX } from '../editor/commands'
-import { sameStep, canonicalJson, unsavedChanges } from '../editor/diff'
+import { sameStep, canonicalJson, sessionChanges } from '../editor/diff'
 import { checkStepFields } from '../editor/fieldRules'
 import { withArea } from '../editor/areaInput'
 import { checkPropertyFields } from '../editor/propertyRules'
@@ -342,10 +342,7 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     return windowClip.value.length
   }
   // 고친 곳 수(changeCount)와 저장 전 변경 수(unsavedCount). 읽기 전용이 된 세션(지워짐)의 고친 곳은 볼 수만 있어 떠날 때 묻지 않는다.
-  const changeCount = computed(() => {
-    const s = session.value
-    return s?.working && s.saveBase ? unsavedChanges(s.working, s.saveBase).length : 0
-  })
+  const changeCount = computed(() => sessionChanges(session.value).length)
   const unsavedCount = computed(() => (session.value?.readOnly ? 0 : changeCount.value))
   // 저장 전 변경(적용한 값)이 있으면 한 번 더 묻는다 — 패널 확인(guard) 뒤에 부른다. 없으면 바로 next.
   function askLeave(next, { onKeep = null } = {}) {

@@ -1,6 +1,6 @@
 // 오른쪽 편집 패널의 순수 함수(목업 newAction·actionStation·fieldDiffs·sentence). 패널 초안은 EditedStep 그대로이고
 // 동작·조건 값은 서버 conditionCodec parseAction·parseCondition 의 구조화 모양을 따른다. 저장 형식 문자열은 만들거나 풀지 않는다.
-import { canonicalJson, sameStep } from './diff'
+import { canonicalJson, sameStep, comparableStep } from './diff'
 import { typeNameOf } from './display'
 import { multiLabel } from '../format'
 import { t, LABELS } from '../messages'
@@ -130,10 +130,14 @@ const FIELDS = [
   ['retry', (s) => s.retry],
   ['skip', (s) => s.condition?.skipPreprocessing]
 ]
-export function changedFields(base, draft) {
+// across = { baseSource, draftSource, fps }: 두 스텝의 출처 판이 다를 수 있을 때(저장 창 — 저장 기준점과 작업본) 그림을 내용 지문으로 견준다(SEW-019, editor/diff comparableStep).
+// 없으면 같은 출처로 보고 참조 그대로(스텝 패널 — 연 때의 스텝과 고치는 중인 스텝).
+export function changedFields(base, draft, across = null) {
   if (!base || !draft || base === draft) return []
-  const out = FIELDS.filter(([, get]) => canonicalJson(get(base)) !== canonicalJson(get(draft))).map(([f]) => f)
-  if (!out.length && !sameStep(base, draft)) out.push('other')
+  const a = across ? comparableStep(base, across.baseSource, across.fps) : base
+  const b = across ? comparableStep(draft, across.draftSource, across.fps) : draft
+  const out = FIELDS.filter(([, get]) => canonicalJson(get(a)) !== canonicalJson(get(b))).map(([f]) => f)
+  if (!out.length && !sameStep(a, b)) out.push('other')
   return out
 }
 
@@ -198,8 +202,8 @@ const retryText = (r) => t('SEW_PANEL_DIFF_RETRY', { n: r?.limit ?? '?', sec: ty
 const hasPicture = (train) => Object.values(train || {}).some((r) => isObject(r) && ('from' in r || (typeof r.literal === 'string' && r.literal !== '')))
 
 // 저장 줄에 보일 바뀐 값 [{ field, label, before, after }]
-export function diffLines(base, draft, working) {
-  return changedFields(base, draft).map((field) => {
+export function diffLines(base, draft, working, across = null) {
+  return changedFields(base, draft, across).map((field) => {
     const kind = draft.condition?.kind
     const line = (label, before, after) => ({ field, label, before, after })
     switch (field) {
