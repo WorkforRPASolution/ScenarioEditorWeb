@@ -439,6 +439,15 @@ describe('고장 주입 (설계 §6.3·§13.2)', () => {
     const v = await verify(meta.requestId)
     expect(v.status, show(v)).toBe(200)
     expect(v.body.data).toEqual({ found: 'none', crtime: null })
+    // 확인이 필요한 내 배포 목록에 남는다(탭을 닫아도 이어서 확인) — [목록에서 빼기]로 빠진다(SEW-021). 같은 사용자의 다른 시험 기록도 있어 이 기록만 본다.
+    const attention = async () => { const a = await call('GET', '/deploys/attention', { user: 'sew_master' }); expect(a.status, show(a)).toBe(200); return a.body.data.items }
+    expect((await attention()).find((i) => i.requestId === meta.requestId)).toMatchObject({ result: 'unknown', target: t, targetWasNew: true })
+    const d = await call('POST', `/deploy/${meta.requestId}/dismiss`, { user: 'sew_master' })
+    expect(d.status, show(d)).toBe(200)
+    expect(d.body.data).toEqual({ dismissed: true })
+    expect((await attention()).some((i) => i.requestId === meta.requestId)).toBe(false)
+    expect(await deployRecord(meta.requestId)).toMatchObject({ result: 'unknown' }) // 결과는 그대로
+    expect((await call('POST', `/deploy/${meta.requestId}/dismiss`, { user: 'sew_multi' })).status).toBe(404) // 남의 기록(쓰기 권한·같은 공정이 있어도)
     expectOk(await deploy(metaOf(src, t)))
     expect(await redisFields(t)).toHaveLength(1)
   })
@@ -478,6 +487,9 @@ describe('고장 주입 (설계 §6.3·§13.2)', () => {
     expect(before.property.Owners).toEqual(owners)
     expect(before.scCategory).toBeUndefined()
     expect(await deployRecord(meta.requestId)).toMatchObject({ result: 'partial', steps: ['setscenario'] })
+    // 새로고침·탭 닫기 뒤에도 확인이 필요한 내 배포 목록에서 [다시 쓰기]를 찾는다 — 새 이름이라 유형이 없어 실행되지 않는다(SEW-021)
+    const listed = async () => (await call('GET', '/deploys/attention', { user: 'sew_master' })).body.data.items.find((i) => i.requestId === meta.requestId)
+    expect(await listed()).toMatchObject({ result: 'partial', crtime, target: t, targetWasNew: true })
 
     // 다시 쓰기가 DB 에 닿지 못하면 200 partial 로 숨기지 않고 503, 기록은 partial 그대로(다시 부를 수 있다)
     repo.finishDeploy = async () => { repo.finishDeploy = original; throw seError(503, 'UPSTREAM_DOWN', 'EARS DB 에 닿지 못했습니다') }
@@ -498,6 +510,7 @@ describe('고장 주입 (설계 §6.3·§13.2)', () => {
     expect(await typeCount(t, 'scCategory', 'long')).toBe(1)
     expect(EJSON.stringify(await rawPerformance(t), { relaxed: false })).toBe(EJSON.stringify(await rawPerformance(SOURCE), { relaxed: false }))
 
+    expect(await listed()).toBeUndefined() // 다시 쓰기가 끝나면 목록에서 빠진다
     const f2 = await finish(meta.requestId)
     expect(f2.body.data).toEqual({ result: 'ok', crtime, partialFailed: [] })
     expect((await propertyDoc(t)).property.Owners).toEqual(doc.property.Owners)

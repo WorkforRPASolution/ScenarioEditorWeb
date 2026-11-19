@@ -10,7 +10,7 @@ function fake() {
     createIndex: vi.fn(async () => 'ok'),
     findOneAndUpdate: vi.fn(async () => ({ _id: new ObjectId(), revision: 2, savedAt: new Date(1) })),
     findOne: vi.fn(async () => null),
-    find: vi.fn(() => ({ project: vi.fn().mockReturnThis(), sort: vi.fn().mockReturnThis(), maxTimeMS: vi.fn().mockReturnThis(), toArray: vi.fn(async () => []) })),
+    find: vi.fn(() => ({ project: vi.fn().mockReturnThis(), sort: vi.fn().mockReturnThis(), limit: vi.fn().mockReturnThis(), maxTimeMS: vi.fn().mockReturnThis(), toArray: vi.fn(async () => []) })),
     findOneAndDelete: vi.fn(async () => null),
     insertOne: vi.fn(async () => ({})),
     updateOne: vi.fn(async () => ({})),
@@ -53,7 +53,8 @@ describe('webRepository', () => {
     await Promise.all([repo.ensureIndexes(), repo.ensureIndexes()])
     await repo.ensureIndexes()
     expect(col('SCENARIO_EDITOR_DRAFTS').createIndex).toHaveBeenCalledTimes(1)
-    expect(col('SCENARIO_EDITOR_DEPLOYS').createIndex).toHaveBeenCalledTimes(2)
+    expect(col('SCENARIO_EDITOR_DEPLOYS').createIndex).toHaveBeenCalledTimes(3)
+    expect(col('SCENARIO_EDITOR_DEPLOYS').createIndex.mock.calls[2]).toEqual([{ user: 1, startedAt: -1 }]) // 확인이 필요한 내 배포 목록(SEW-021)
     expect(col('SCENARIO_EDITOR_DRAFTS').createIndex.mock.calls[0]).toEqual([{ owner: 1, process: 1, model: 1, name: 1 }, { unique: true }])
   })
 
@@ -103,6 +104,28 @@ describe('webRepository', () => {
     expect(options.maxTimeMS).toBeGreaterThan(0)
   })
 
+  it('listAttentionDeploys: 내 기록 가운데 since 뒤에 시작했고 빼지 않은 결과 모름·진행 중·마무리 실패·거절(UPSTREAM_FAILED)만, 늦은 것부터 limit 건(SEW-021)', async () => {
+    const { col, repo } = fake()
+    const rows = [{ requestId: 'r1' }]
+    const cur = { project: vi.fn().mockReturnThis(), sort: vi.fn().mockReturnThis(), limit: vi.fn().mockReturnThis(), maxTimeMS: vi.fn().mockReturnThis(), toArray: vi.fn(async () => rows) }
+    col('SCENARIO_EDITOR_DEPLOYS').find.mockReturnValue(cur)
+    const since = new Date(1000)
+    expect(await repo.listAttentionDeploys('me', since, 20)).toBe(rows)
+    expect(col('SCENARIO_EDITOR_DEPLOYS').find.mock.calls[0][0]).toEqual({
+      user: 'me', startedAt: { $gte: since }, dismissedAt: { $exists: false },
+      $or: [{ result: { $in: ['pending', 'unknown', 'partial'] } }, { result: 'failed', 'error.code': 'UPSTREAM_FAILED' }]
+    })
+    expect(cur.sort).toHaveBeenCalledWith({ startedAt: -1 })
+    expect(cur.limit).toHaveBeenCalledWith(20)
+    // 본문 지문·마무리 값은 싣지 않는다(목록에 쓰는 칸만)
+    expect(cur.project.mock.calls[0][0]).toEqual({ _id: 0, requestId: 1, target: 1, startedAt: 1, result: 1, crtime: 1, fieldsBefore: 1, 'error.code': 1 })
+  })
+  it('dismissDeploy: 그 기록에 뺀 때만 남긴다(결과는 그대로)', async () => {
+    const { col, repo } = fake()
+    const at = new Date(5)
+    await repo.dismissDeploy('r1', at)
+    expect(col('SCENARIO_EDITOR_DEPLOYS').updateOne.mock.calls[0].slice(0, 2)).toEqual([{ requestId: 'r1' }, { $set: { dismissedAt: at } }])
+  })
   it('getDeploy 는 requestId 로 찾고 없으면 null', async () => {
     const { col, repo } = fake()
     expect(await repo.getDeploy('r1')).toBeNull()

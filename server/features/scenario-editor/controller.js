@@ -183,6 +183,13 @@ async function deployVerify(req, res) {
 async function deployFinish(req, res) {
   ok(res, await getDeps().deploy.finish(req.seUser, req.params.requestId))
 }
+// 확인이 필요한 내 배포(SEW-021) — 결과 모름·마무리 실패·거절. 브라우저가 requestId 를 잃어도 이어서 확인·다시 쓰기를 한다.
+async function deployAttention(req, res) {
+  ok(res, await getDeps().deploy.attention(req.seUser))
+}
+async function deployDismiss(req, res) {
+  ok(res, await getDeps().deploy.dismiss(req.seUser, req.params.requestId))
+}
 
 function badBody(path, reason) {
   return seError(400, 'BAD_REQUEST', '요청 본문이 틀립니다', { path, reason })
@@ -325,4 +332,4 @@ async function testRunRecipients(req, res) {
   ok(res, await getDeps().recipients.forEquipment(req.seUser, req.body))
 }
 
-module.exports = { testRunEquipment, testRunScenario, testRunRequest, testRunStatus, testRunRecipients, requireTestRun, visionTest, ocrTest, history, saveMemo, removeMemo, memoList, requireMemoWrite, equipment, snapshotPresence, snapshotDays, snapshotList, snapshotImage, links, reviewScenario, savePerformance, sameName, searchUsers, nameRule, setEnabled, removeScenario, deploy, deployVerify, deployFinish, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, counts, versions, open, dataCheck, image }
+module.exports = { testRunEquipment, testRunScenario, testRunRequest, testRunStatus, testRunRecipients, requireTestRun, visionTest, ocrTest, history, saveMemo, removeMemo, memoList, requireMemoWrite, equipment, snapshotPresence, snapshotDays, snapshotList, snapshotImage, links, reviewScenario, savePerformance, sameName, searchUsers, nameRule, setEnabled, removeScenario, deploy, deployVerify, deployFinish, deployAttention, deployDismiss, saveDraft, listDrafts, getDraft, draftImage, removeDraft, check, requireWrite, requireReviewer, ok, loadUser, me, scopes, refreshCache, list, counts, versions, open, dataCheck, image }

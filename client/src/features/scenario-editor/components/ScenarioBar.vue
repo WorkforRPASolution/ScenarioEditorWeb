@@ -13,7 +13,9 @@ import SaveDialog from './SaveDialog.vue'
 import ScenarioDeleteDialog from './ScenarioDeleteDialog.vue'
 import PreprocessDialog from './PreprocessDialog.vue'
 import TestRunDialog from './testrun/TestRunDialog.vue'
+import DeployAttentionDialog from './DeployAttentionDialog.vue'
 import { useTestRunStore } from '../stores/testRunStore'
+import { useDeployAttention } from '../stores/deployAttentionStore'
 import { windowsSummary, windowsFromHeader } from '../editor/windows'
 
 defineOptions({ name: 'ScenarioBar' })
@@ -25,6 +27,9 @@ const flow = useSaveFlow()
 // [시험 실행](P5 설계 §4.1): 시나리오를 열지 않아도 보이고 눌린다 — 창 안에서 공정·모델·시나리오를 고른다.
 // 쓸 수 있는가와 꺼진 까닭은 서버가 /me 의 testRun 으로 알려 준다(쓰기 권한 없음·읽기 전용 서버·서버에서 꺼 둠·사용자 바꾸기). 서버가 요청마다 다시 본다.
 const testRun = useTestRunStore()
+// 확인이 필요한 내 배포(SEW-021) — 있을 때만 바에 건수, 누르면 목록 창
+const attention = useDeployAttention()
+const attentionOpen = ref(false)
 const runGate = computed(() => {
   const g = store.me?.testRun
   if (!g) return null
@@ -141,6 +146,7 @@ const btn = 'h-8 px-3 rounded-lg text-sm'
     <button v-if="canCreate" :class="btn" class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-100 font-medium" data-testid="se-new" @click="$emit('new')">{{ t('SEW_NEW_OPEN') }}</button>
     <button v-if="runGate" :class="btn" class="bg-gray-200 dark:bg-gray-700 hover:enabled:bg-gray-300 dark:hover:enabled:bg-gray-600 text-gray-800 dark:text-gray-100 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
       :disabled="!runGate.enabled" :title="runGate.title" data-testid="se-run-open" @click="testRun.show()">{{ t('SEW_RUN_OPEN') }}</button>
+    <button v-if="attention.count" :class="btn" class="bg-amber-100 hover:bg-amber-200 text-amber-800 dark:bg-amber-900/30 dark:hover:bg-amber-900/50 dark:text-amber-300 font-medium" data-testid="se-deploy-attention" @click="attentionOpen = true">{{ t('SEW_ATTN_OPEN', { n: attention.count }) }}</button>
     <button v-if="edit.editable" :class="[btn, unsaved ? 'bg-primary-500 hover:bg-primary-600 text-white' : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-100']" class="font-medium" data-testid="se-save" @click="onSave">{{ t('SEW_SAVE_OPEN') }}{{ unsaved ? ` (${unsaved})` : '' }}</button>
     <template v-if="sk">
       <div class="min-w-0">
@@ -215,5 +221,6 @@ const btn = 'h-8 px-3 rounded-lg text-sm'
     <PreprocessDialog v-model="showPreprocess" :focus="preprocessFocus" />
     <ScenarioDeleteDialog v-model="showDelete" />
     <TestRunDialog />
+    <DeployAttentionDialog v-model="attentionOpen" />
   </div>
 </template>

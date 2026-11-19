@@ -40,6 +40,9 @@ export const scenarioEditorApi = {
   // 본문은 빈 JSON 객체: null 이면 공용 axios(JSON 머리글)가 "null" 을 보내고 서버 express.json(strict)이 400 으로 막는다.
   verifyDeploy: (requestId) => api.post(`/scenario-editor/deploy/${enc(requestId)}/verify`, {}, { timeout: OPEN_TIMEOUT_MS }),
   finishDeploy: (requestId) => api.post(`/scenario-editor/deploy/${enc(requestId)}/finish`, {}, { timeout: OPEN_TIMEOUT_MS }),
+  // 확인이 필요한 내 배포(SEW-021) — 결과 모름·마무리 실패·거절, 목록에서 빼기
+  deployAttention: () => api.get('/scenario-editor/deploys/attention'),
+  dismissDeploy: (requestId) => api.post(`/scenario-editor/deploy/${enc(requestId)}/dismiss`, {}),
   nameRule: () => api.get('/scenario-editor/name-rule'),
   // 내 초안 목록(공정·모델) → [{ draftId, name, target, base, headCrtime, savedAt, revision }] — 불러오기 창의 내 초안, 새 시나리오 창이 같은 새 ID 의 초안을 찾는다
   listDrafts: (process, model) => api.get('/scenario-editor/drafts', { params: { process, model } }),

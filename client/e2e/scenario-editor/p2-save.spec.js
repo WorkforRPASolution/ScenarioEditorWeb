@@ -613,3 +613,52 @@ test('⑪ 새 시나리오에서 새로 자른 그림 → 초안 저장 → 새�
   expect(await api.versions(AS)).toHaveLength(1)
 })
 
+
+test('⑫ 결과 모름 → [나중에 확인] → 새로고침 뒤 위쪽 바 "확인할 배포 1건" → 목록에서 [버전 목록 확인] → 끝남, 한 번만 배포됨(SEW-021)', async ({ page }) => {
+  const UNK = { ...CVD, name: sewName('LATER') }
+  await asUser(page, 'sew_master')
+  await page.goto(urlOf(SOURCE))
+  await expect(rows(page)).toHaveCount(4)
+  await expect(page.getByTestId('se-deploy-attention')).toHaveCount(0) // 확인할 배포가 없으면 보이지 않는다
+
+  await openSave(page)
+  await page.getByTestId('se-save-name').fill(UNK.name)
+  const go = page.getByTestId('se-save-deploy')
+  await expect(go).toBeEnabled()
+  await go.click()
+  await proxyMode('slow500')
+  try {
+    await page.getByTestId('se-save-go').click()
+    await expect(result(page).locator('h4')).toHaveText(/배포됐는지 알 수 없습니다/, { timeout: 60_000 })
+  } finally {
+    await proxyMode('pass')
+  }
+  // [나중에 확인]: 저장 창은 평소 모습으로, 이 탭의 결과 모름 기억은 지운다
+  await page.getByTestId('se-save-later').click()
+  await expect(result(page)).toHaveCount(0)
+  await expect(page.getByTestId('se-save-notice')).toContainText('"확인할 배포" 에서 이어서 확인할 수 있습니다')
+  expect(await page.evaluate(() => sessionStorage.getItem('se-save-pending'))).toBeNull()
+  await save(page).getByRole('button', { name: '닫기' }).click()
+  await expect(save(page)).toHaveCount(0)
+
+  // 새로고침해도(탭을 닫아도) 서버 기록에서 찾는다
+  await page.reload()
+  await expect(rows(page)).toHaveCount(4)
+  const bell = page.getByTestId('se-deploy-attention')
+  await expect(bell).toHaveText('확인할 배포 1건')
+  await bell.click()
+  const dlg = page.getByTestId('se-attn-dialog')
+  await expect(dlg).toBeVisible()
+  const row = dlg.getByTestId('se-attn-row')
+  await expect(row).toHaveCount(1)
+  await expect(row).toContainText(idOf(UNK))
+  await expect(row.getByTestId('se-attn-state')).toHaveText('결과 모름')
+  expect(await api.versions(UNK)).toHaveLength(1) // 응답만 잃었고 판은 저장됐다
+  await row.getByTestId('se-attn-verify').click()
+  await expect(row.getByTestId('se-attn-outcome')).toContainText('배포됐고 마무리까지 끝났습니다')
+  await expect(row.getByTestId('se-attn-state')).toHaveText('끝남')
+  await expect(bell).toHaveCount(0) // 끝난 줄은 세지 않는다
+  await dlg.getByRole('button', { name: '닫기' }).click()
+  await expect(dlg).toHaveCount(0)
+  expect(await api.versions(UNK)).toHaveLength(1)
+})

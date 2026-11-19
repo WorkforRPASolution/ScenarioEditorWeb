@@ -68,6 +68,12 @@ const pendingStore = {
   write(v) { try { if (v) sessionStorage.setItem(PENDING_KEY, JSON.stringify(v)); else sessionStorage.removeItem(PENDING_KEY) } catch { /* 기억만 못 할 뿐 */ } }
 }
 
+// 이 탭이 기억한 결과 모름이 그 요청이면 잊는다 — 확인이 필요한 배포 목록에서 끝내거나 뺐을 때(SEW-021). 다음에 저장 창을 열어도 그 결과 모름 화면이 뜨지 않는다.
+export function forgetPending(requestId) {
+  const p = pendingStore.read()
+  if (p && p.requestId === requestId) pendingStore.write(null)
+}
+
 export const useSaveFlow = defineStore('scenarioEditorSave', () => {
   const edit = useEditStore()
   const editor = useEditorStore()
@@ -336,15 +342,17 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
   // 기준을 바꾸지 않은 배포 확인 뒤: 서버는 그 배포의 원본·대상의 내 초안을 지운다 — 지금 세션이 그 초안이었으면 지운 초안 id·그림을 계속 가리켜
   // 썸네일이 404, 다음 배포가 400 이 된다. 어느 초안이 지워졌는지 확인 응답에 없어 세션의 초안이 남았는지 한 번 묻고, 없으면(404) 떼고 알린다.
   // 묻다가 실패하면 그대로 둔다(모르는 것을 지운 것으로 보지 않는다, SEW-022).
-  async function dropGoneDraft() {
+  // 떼었으면 true(확인이 필요한 배포 목록도 쓴다 — SEW-021).
+  async function draftGone() {
     const id = session()?.draft?.id
-    if (!id) return
+    if (!id) return false
     try {
       await api.getDraft(id)
+      return false
     } catch (e) {
-      if (errorCode(e) !== 'NOT_FOUND' || session()?.draft?.id !== id) return
+      if (errorCode(e) !== 'NOT_FOUND' || session()?.draft?.id !== id) return false
       edit.forgetDraft(id)
-      notice.value = { key: 'SEW_SAVE_NOT_REBASED_DRAFT_GONE', tone: 'error' }
+      return true
     }
   }
 
@@ -361,7 +369,7 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
       }
     } else {
       notice.value = { key: 'SEW_SAVE_NOT_REBASED', tone: 'info' }
-      await dropGoneDraft()
+      if (await draftGone()) notice.value = { key: 'SEW_SAVE_NOT_REBASED_DRAFT_GONE', tone: 'error' }
     }
     sent = null
     restored.value = false; restoredOther.value = false
@@ -419,6 +427,18 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
     }
   }
 
+  // [나중에 확인](결과 모름 화면, SEW-021): 이 탭의 결과 모름 기억만 지우고 저장 창을 평소대로 쓴다 — 확인이 계속 실패해도 빠져나오고, 다음에 창을 열 때 그 화면이 먼저 뜨지 않는다.
+  // 서버 기록은 남아 위쪽 바의 "확인할 배포" 목록에서 이어서 확인한다.
+  function later() {
+    if (stage.value !== 'unknown' || busy.value) return
+    setPending(null)
+    resetForm()
+    target.value = ownTarget()
+    stage.value = 'form'
+    notice.value = { key: 'SEW_SAVE_LATER', tone: 'info' }
+    runCheck()
+  }
+
   // [다시 배포]: 옛 requestId 를 잊고 확인 단계로(검사가 이 대상의 것이 아니면 저장 창에서 다시 검사). 보낼 때 새 requestId.
   // 되살린 결과 모름의 대상이 지금 세션의 대상이 아니면 그곳으로 보내지 않는다 — 지금 세션의 대상으로 저장 창을 열고 그 사실을 알린다.
   function redeploy() {
@@ -464,6 +484,6 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
   return {
     stage, target, check, checkedFor, checking, checkError, confirm, requestId, sentTarget, restored, restoredOther, result, error, notice, busy, focusReq, nameRule,
     fieldErrors, checkFresh, visibleBlocks, recreateNoCache, sameScenario, targetKind, changes, eqpCount, enabled, deployBlock, closable, canDraft,
-    open, close, setTarget, setOverwrite, setForce, requestFocus, runCheck, toConfirm, back, deploy, saveDraft, draftCurrent, verify, redeploy, finish, jump
+    open, close, setTarget, setOverwrite, setForce, requestFocus, runCheck, toConfirm, back, deploy, saveDraft, draftCurrent, verify, redeploy, later, finish, draftGone, jump
   }
 })

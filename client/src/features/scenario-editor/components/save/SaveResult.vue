@@ -62,6 +62,8 @@ const showDraft = computed(() => (st.value === 'fail' || st.value === 'unknown')
 
     <div class="se-sv-ft">
       <button type="button" class="se-sv-btn" :disabled="busy" data-testid="se-save-close" @click="flow.close()">{{ t('SEW_SAVE_CLOSE') }}</button>
+      <!-- 확인이 계속 실패해도 빠져나온다 — 서버 기록은 위쪽 바 "확인할 배포" 에 남는다(SEW-021) -->
+      <button v-if="st === 'unknown'" type="button" class="se-sv-btn" :disabled="busy" data-testid="se-save-later" @click="flow.later()">{{ t('SEW_SAVE_LATER_BTN') }}</button>
       <button v-if="showDraft" type="button" class="se-sv-btn" :disabled="!flow.canDraft" data-testid="se-save-result-draft" @click="flow.saveDraft()">{{ t('SEW_SAVE_DRAFT') }}</button>
       <button v-if="showVerify" type="button" class="se-sv-btn" :class="{ p: !showRedeploy }" :disabled="busy" data-testid="se-save-verify" @click="flow.verify()">
         {{ t(none ? 'SEW_SAVE_VERIFY_AGAIN' : 'SEW_SAVE_VERIFY') }}</button>

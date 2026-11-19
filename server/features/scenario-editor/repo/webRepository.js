@@ -31,6 +31,7 @@ function createWebRepository(getWebDb, mongo) {
         await drafts().createIndex({ owner: 1, process: 1, model: 1, name: 1 }, { unique: true })
         await deploys().createIndex({ requestId: 1 }, { unique: true })
         await deploys().createIndex({ 'target.process': 1, 'target.model': 1, 'target.name': 1, startedAt: -1 })
+        await deploys().createIndex({ user: 1, startedAt: -1 }) // 확인이 필요한 내 배포 목록(SEW-021)
         // 시험 실행 요청 기록(P5 설계 §5.1): 같은 실행에서 같은 설비는 한 번만 · 방금 요청 찾기 · 90일 보관
         await runs().createIndex({ runId: 1, eqpId: 1 }, { unique: true })
         await runs().createIndex({ eqpId: 1, name: 1, sentAt: -1 })
@@ -109,6 +110,19 @@ function createWebRepository(getWebDb, mongo) {
     },
     async updateDeploy(requestId, fields) {
       await deploys().updateOne({ requestId }, { $set: fields })
+    },
+    // 확인이 필요한 내 배포(SEW-021): since 뒤에 시작했고 빼지 않은 결과 모름·진행 중·마무리 실패, 그리고 거절(운영 속성 단계가 이미 바뀌었을 수 있어 확인한다).
+    // 늦은 것부터 limit 건, 목록에 쓰는 칸만(본문 지문·마무리 값은 싣지 않는다).
+    async listAttentionDeploys(user, since, limit) {
+      return deploys().find({
+        user, startedAt: { $gte: since }, dismissedAt: { $exists: false },
+        $or: [{ result: { $in: ['pending', 'unknown', 'partial'] } }, { result: 'failed', 'error.code': 'UPSTREAM_FAILED' }]
+      }).project({ _id: 0, requestId: 1, target: 1, startedAt: 1, result: 1, crtime: 1, fieldsBefore: 1, 'error.code': 1 })
+        .sort({ startedAt: -1 }).limit(limit).maxTimeMS(MAX).toArray()
+    },
+    // 목록에서 빼기 — 뺀 때만 남긴다(결과는 그대로라 나중에 확인·다시 쓰기도 된다)
+    async dismissDeploy(requestId, at) {
+      await deploys().updateOne({ requestId }, { $set: { dismissedAt: at } }, { maxTimeMS: MAX })
     },
     // Long 을 올리지 않고 읽는다 — 확인·다시 쓰기가 기록의 finish(새 대상 성과의 Int64 Contribution 등)를 그대로 운영 문서에 쓴다.
     // 숫자로 올리면 Int64 가 Int32·Double 로 바뀌어 써진다. 기록의 다른 숫자(crtime 등)는 Double·Int32 라 그대로 숫자다.

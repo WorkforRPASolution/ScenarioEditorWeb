@@ -264,6 +264,22 @@ describe('저장 창(SaveDialog)', () => {
     bar.unmount()
   })
 
+  it('결과 모름 화면의 [나중에 확인] — 저장 창이 평소 모습으로 돌아오고 "확인할 배포" 에서 이어서 확인한다는 알림(SEW-021)', async () => {
+    const { bar } = setup()
+    await openSave(bar)
+    await find(bar, 'se-save-deploy').trigger('click')
+    api.deploy.mockImplementationOnce((fd) => fail(504, 'UPSTREAM_TIMEOUT', { requestId: JSON.parse(fd.get('meta')).requestId }))
+    await find(bar, 'se-save-go').trigger('click')
+    await flushPromises()
+    expect(find(bar, 'se-save-later').text()).toBe('나중에 확인')
+    await find(bar, 'se-save-later').trigger('click')
+    await flushPromises()
+    expect(find(bar, 'se-save-result').exists()).toBe(false)
+    expect(find(bar, 'se-save-deploy').exists()).toBe(true)
+    expect(bar.text()).toContain(t('SEW_SAVE_LATER'))
+    bar.unmount()
+  })
+
   it('새로고침 뒤 다른 시나리오에서 되살린 결과 모름 — 그곳으로 다시 보내지 않는다고 알리고, [다시 배포]는 지금 시나리오의 저장 창(알림 줄)', async () => {
     sessionStorage.setItem('se-save-pending', JSON.stringify({ requestId: '11111111-2222-4333-8444-555555555555', target: { process: 'P', model: 'M', name: 'NEW_ONE' }, at: 1 }))
     const { bar } = setup()

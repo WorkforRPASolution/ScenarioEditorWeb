@@ -64,6 +64,13 @@ const upstreamErrorOf = (e, status) => {
   return text === null ? errorOf(e, status) : { ...errorOf(e, status), upstreamText: text }
 }
 
+// 확인이 필요한 내 배포 목록(SEW-021): 최근 며칠·몇 건까지, 진행 중으로 남은 기록은 이만큼 지나야 넣는다(다른 탭에서 보내는 중일 수 있다 — 보내기 최대 120초 + 마무리).
+const ATTENTION_DAYS = 7
+const ATTENTION_LIMIT = 20
+const PENDING_GRACE_MS = 5 * 60000
+// 이보다 늦은 확인은 대상에 이미 있는 성과를 덮지 않는다 — 한참 뒤에는 같은 본문의 남의 배포를 내 판으로 잡을 수 있다(P2-D 계획 "P2-B에서 넘어온 것").
+const LATE_VERIFY_MS = 10 * 60000
+
 function createDeployService({ check, opener, web, repo, hash, scopes, interfaceClient, log, now = () => new Date() }) {
   // 프로세스 안 잠금: 대상 시나리오 ID 와 requestId. 서버가 여러 개 뜨는 구성은 단독판에 없다.
   const running = new Set()
@@ -280,21 +287,26 @@ function createDeployService({ check, opener, web, repo, hash, scopes, interface
 
   // 마무리 값을 대상 문서의 지금 Owners 에 내 배포 줄을 더해 다시 만들어 쓴다(배포 직후·확인·다시 쓰기 모두). 줄은 deploy 때와 같은 값(사용자·시작 시각)이다.
   // ownersWithLine 이 같은 줄을 두 번 넣지 않으므로 그 사이 남의 줄이 생겨도 지우지 않는다. 쓴 finish 를 돌려주고, 문서가 없거나 0건이면 null. 읽기·쓰기 오류는 던진다.
-  async function rewriteFinish(record) {
+  // keepPerformance(늦은 확인): 내 성과가 있는데 대상 문서에 성과가 이미 있으면 성과는 쓰지 않는다 — 돌려준 finish 의 performance 가 null, performanceKept 가 true.
+  async function rewriteFinish(record, { keepPerformance = false } = {}) {
     const t = record.target
     const doc = await propertyDocOf(t)
     if (!doc) { log.warn(`${whereOf(record)}: 마무리 0건(운영 속성 문서 없음)`); return null }
-    const finish = { ...record.finish, owners: ownersWithLine(ownersOf(doc), deployLine(record.user, new Date(record.startedAt))) }
+    const kept = keepPerformance && isObject(record.finish.performance) && isObject(doc.performance)
+    const finish = { ...record.finish, ...(kept ? { performance: null } : {}), owners: ownersWithLine(ownersOf(doc), deployLine(record.user, new Date(record.startedAt))) }
     const r = await repo.finishDeploy({ process: t.process, model: t.model, name: t.name }, finish)
-    if (r && r.matched > 0) return finish
+    if (r && r.matched > 0) {
+      if (kept) log.info(`${whereOf(record)}: 늦은 확인 — 대상에 성과가 있어 덮지 않았다`)
+      return kept ? Object.defineProperty(finish, 'performanceKept', { value: true }) : finish
+    }
     log.warn(`${whereOf(record)}: 마무리 0건(운영 속성 문서 없음)`)
     return null
   }
 
   // 배포 직후·확인: 설비에는 이미 갔다 — 마무리 실패는 오류가 아니라 partial 로 알린다(쓰기 실패도 null)
-  async function tryFinish(record) {
+  async function tryFinish(record, opts) {
     try {
-      return await rewriteFinish(record)
+      return await rewriteFinish(record, opts)
     } catch (e) {
       log.warn(`${whereOf(record)}: 마무리 실패 — ${e.message}`)
       return null
@@ -313,12 +325,13 @@ function createDeployService({ check, opener, web, repo, hash, scopes, interface
       const hashKey = `${t.process}-${t.model}`
       const crtime = await pickMine({ name: t.name, fieldsBefore: record.fieldsBefore, fieldsNow: await hash.hkeys(hashKey), valueOf: (f) => hash.hget(hashKey, f), sha: record.bodySha256 })
       if (crtime === null) return { found: 'none', crtime: null }
-      const finish = await tryFinish(record)
+      const late = now().getTime() - new Date(record.startedAt).getTime() > LATE_VERIFY_MS
+      const finish = await tryFinish(record, { keepPerformance: late })
       const result = finish ? 'ok' : 'partial'
       await dropDrafts(record.user, record.source, t) // 설비에는 갔다 — 바로 성공한 배포처럼(마무리 실패여도)
       await note(requestId, { result, crtime, ...(finish ? { finish } : {}), steps: finish ? ['setscenario', 'finish'] : ['setscenario'], finishedAt: now() })
       log.info(`deploy ${requestId} verify result=${result} crtime=${crtime}`)
-      return { found: 'mine', crtime, result, partialFailed: partialOf(result) }
+      return { found: 'mine', crtime, result, partialFailed: partialOf(result), ...(finish && finish.performanceKept ? { performanceKept: true } : {}) }
     })
   }
 
@@ -337,7 +350,36 @@ function createDeployService({ check, opener, web, repo, hash, scopes, interface
     })
   }
 
-  return { deploy, verify, finish }
+  // 확인이 필요한 내 배포(SEW-021) — 결과 모름·진행 중으로 남음·마무리 실패·거절. 브라우저가 requestId 를 잃어도(탭 닫기·새로고침) 이어서 확인·다시 쓰기를 하게.
+  // 뺀 기록(dismissedAt)·지금 권한 밖의 공정·모델은 넣지 않는다. 진행 중은 PENDING_GRACE_MS 가 지난 것만 결과 모름으로(서버가 보내다 꺼졌을 수 있다).
+  async function attention(user) {
+    const at = now().getTime()
+    const rows = await web.listAttentionDeploys(user.singleid, new Date(at - ATTENTION_DAYS * 86400000), ATTENTION_LIMIT)
+    const items = []
+    for (const r of rows) {
+      if (r.result === 'pending' && at - new Date(r.startedAt).getTime() < PENDING_GRACE_MS) continue
+      try { await scopes.assertAllowed(user, r.target.process, r.target.model) } catch (e) { if (e && e.statusCode === 403) continue; throw e }
+      items.push({
+        requestId: r.requestId, target: { process: r.target.process, model: r.target.model, name: r.target.name }, startedAt: new Date(r.startedAt).toISOString(),
+        result: r.result === 'failed' ? 'rejected' : r.result === 'pending' ? 'unknown' : r.result, crtime: r.crtime ?? null,
+        // 배포 전에 그 이름의 판이 없었다 — 마무리가 실패하면 유형(scCategory)이 없어 실행되지 않는다
+        targetWasNew: !(Array.isArray(r.fieldsBefore) && r.fieldsBefore.length)
+      })
+    }
+    return { items }
+  }
+
+  // 목록에서 빼기(SEW-021): 기록에 뺀 때만 남긴다(결과는 그대로 — 나중에 확인·다시 쓰기도 된다). 이미 끝난(ok) 기록은 뺄 것이 없다.
+  async function dismiss(user, requestId) {
+    return exclusive(requestId, async () => {
+      const record = await ownRecord(user, requestId)
+      if (record.result === 'ok') return { dismissed: false }
+      await web.dismissDeploy(requestId, now())
+      return { dismissed: true }
+    })
+  }
+
+  return { deploy, verify, finish, attention, dismiss }
 }
 
 module.exports = { createDeployService, requestChunks }

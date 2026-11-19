@@ -5,7 +5,7 @@ import { setActivePinia, createPinia } from 'pinia'
 // 바가 여는 창(저장 창 검사·운영 속성 창 후속 목록)이 실제 서버로 요청하지 않게
 const api = vi.hoisted(() => {
   const ok = (data) => Promise.resolve({ data: { success: true, data } })
-  return { check: vi.fn(() => ok({ blocks: [], warns: [], target: { exists: true, eqpCount: 1 }, conflict: null, targetExists: null })), nameRule: vi.fn(() => ok({ exists: false, rules: [] })), list: vi.fn(() => ok([])) }
+  return { check: vi.fn(() => ok({ blocks: [], warns: [], target: { exists: true, eqpCount: 1 }, conflict: null, targetExists: null })), nameRule: vi.fn(() => ok({ exists: false, rules: [] })), list: vi.fn(() => ok([])), deployAttention: vi.fn(() => ok({ items: [] })) }
 })
 vi.mock('../api', () => ({ scenarioEditorApi: api, imageUrl: (p) => p }))
 import ScenarioBar from '../components/ScenarioBar.vue'
@@ -32,6 +32,29 @@ const skeleton = (over = {}) => ({
 describe('ScenarioBar', () => {
   beforeEach(() => setActivePinia(createPinia()))
   const mountBar = () => mount(ScenarioBar, { global: { stubs: { ModalShell: ModalStub } } })
+
+  describe('"확인할 배포 n건"(SEW-021)', () => {
+    const R1 = '11111111-2222-4333-8444-555555555555'
+    const R2 = '11111111-2222-4333-8444-666666666666'
+    const ok = (data) => Promise.resolve({ data: { success: true, data } })
+    const it1 = (rid, result = 'unknown') => ({ requestId: rid, target: { process: 'P', model: 'M', name: 'N' }, startedAt: '2026-11-19T01:02:03.000Z', result, crtime: null, targetWasNew: false })
+    it('확인할 배포가 있으면 시나리오를 열지 않아도 바에 건수가 보이고, 누르면 목록 창이 열린다', async () => {
+      api.deployAttention.mockImplementationOnce(() => ok({ items: [it1(R1), it1(R2, 'partial')] }))
+      useEditorStore().me = { singleid: 'u', canWrite: true }
+      const w = mountBar()
+      await new Promise((r) => setTimeout(r, 0)); await w.vm.$nextTick()
+      const b = w.find('[data-testid="se-deploy-attention"]')
+      expect(b.text()).toBe('확인할 배포 2건')
+      await b.trigger('click')
+      expect(w.find('[data-title="확인할 배포"]').exists()).toBe(true)
+    })
+    it('없으면 보이지 않는다', async () => {
+      useEditorStore().me = { singleid: 'u', canWrite: true }
+      const w = mountBar()
+      await new Promise((r) => setTimeout(r, 0)); await w.vm.$nextTick()
+      expect(w.find('[data-testid="se-deploy-attention"]').exists()).toBe(false)
+    })
+  })
 
   describe('[시험 실행] 버튼(P5 설계 §4.1)', () => {
     it('시나리오를 열지 않아도 보이고 눌린다 — 누르면 시험 실행 창이 열린다', async () => {

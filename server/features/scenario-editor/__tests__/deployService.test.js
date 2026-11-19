@@ -46,7 +46,7 @@ const until = async (cond) => { for (let i = 0; i < 200 && !cond(); i++) await n
 
 // 기준 판 = helpers 의 P-M-N (crtime CUR, 스텝 2개, 기준 화면 s0-bi·s1-bi). 검사는 실제 checkService(prepare·checkScenario), 조립·흘려 쓰기는 실제 P2-A 함수.
 function setup(o = {}) {
-  const calls = { rawRead: [], stream: [], sent: [], insert: [], update: [], finish: [], delDraft: [], delImages: [], resolve: [], source: [], getDeploy: [], hkeys: [] }
+  const calls = { rawRead: [], stream: [], sent: [], insert: [], update: [], finish: [], delDraft: [], delImages: [], resolve: [], source: [], getDeploy: [], hkeys: [], attention: [], dismiss: [] }
   const src = okSource()
   const docs = new Map(Object.entries(o.docs || { 'P|M|N': { scname: 'N', property: propertyDoc, performance: PERF } }))
   const redis = new Map(o.fields || [[`N.${CUR}`, 'old body'], ['OTHER.1', 'x']])
@@ -93,7 +93,9 @@ function setup(o = {}) {
       if (o.deleteDraftFails) throw new Error('web db')
       return { deleted: true, gridIds: [`g-${m}-${n}`] }
     },
-    deleteDraftImages: async (ids) => { calls.delImages.push(ids) }
+    deleteDraftImages: async (ids) => { calls.delImages.push(ids) },
+    listAttentionDeploys: async (owner, since, limit) => { calls.attention.push([owner, since, limit]); return structuredClone(o.attentionRows || []) },
+    dismissDeploy: async (rid, at) => { calls.dismiss.push([rid, at]); Object.assign(records.get(rid), { dismissedAt: at }) }
   }
   // 실제 setScenarioStream 처럼 조각을 끝까지 읽는다(조각 생성기가 던지면 그 오류가 그대로 나간다). 성공이면 InterfaceServer 처럼 본문을 Redis 필드에 쓴다.
   const interfaceClient = o.realStream ? { countUtf8Bytes, setScenarioStream: realClient.setScenarioStream } : {
@@ -130,7 +132,7 @@ function setup(o = {}) {
   const check = createCheckService({ repo, hash, scopes, opener, env: o.env || {} })
   const logs = []
   const log = { info: (m) => logs.push(['info', m]), warn: (m) => logs.push(['warn', m]), error: (m) => logs.push(['error', m]) }
-  const svc = createDeployService({ check, opener, web, repo, hash, scopes, interfaceClient, log, now: () => NOW })
+  const svc = createDeployService({ check, opener, web, repo, hash, scopes, interfaceClient, log, now: () => (o.clock ? o.clock.now : NOW) })
   const edited = () => ({ ...fresh(src), headCrtime: CUR })
   const meta = (over = {}) => ({
     target: { process: 'P', model: 'M', name: 'N' }, propertyRev: propertyRev(propertyDoc), scenario: edited(),
@@ -691,6 +693,84 @@ describe('deployService.verify — 결과 모름 확인', () => {
     s.redis.set(`N.${NEW}`, s.calls.sent[0].Body)
     await s.svc.verify(user, RID)
     expect(s.calls.finish[0][1].owners).toEqual(owners)
+  })
+})
+
+describe('deployService.verify — 늦은 확인은 대상에 이미 있는 성과를 덮지 않는다(SEW-021)', () => {
+  // 새 이름으로 배포해 새 대상 성과(기준 판 문서의 성과 복사)를 쓰는 경우. 한참 뒤 확인하면 같은 본문의 남의 배포를 내 판으로 잡을 수 있다.
+  const lateCase = async ({ minutes, targetPerformance }) => {
+    const clock = { now: NOW }
+    const s = setup({ streamError: seError(504, 'UPSTREAM_TIMEOUT', 'x'), clock })
+    await fail(s.svc.deploy({ ...user, authorityManager: 1 }, s.meta({ target: { process: 'P', model: 'M', name: 'N2' } }), new Map()))
+    s.calls.finish.length = 0
+    s.applySent()
+    if (targetPerformance !== undefined) s.docs.set('P|M|N2', { ...s.docs.get('P|M|N2'), performance: targetPerformance })
+    clock.now = new Date(NOW.getTime() + minutes * 60000)
+    return s
+  }
+  it('10분이 넘어 확인했고 대상에 성과가 있으면 성과는 쓰지 않고(Owners·유형은 쓴다) performanceKept 를 알린다', async () => {
+    const s = await lateCase({ minutes: 11, targetPerformance: { Group: 'SOMEONE' } })
+    const r = await s.svc.verify({ ...user, authorityManager: 1 }, RID)
+    expect(r).toEqual({ found: 'mine', crtime: NEW, result: 'ok', partialFailed: [], performanceKept: true })
+    expect(s.calls.finish[0][1].performance).toBe(null)
+    expect(s.calls.finish[0][1].scCategory).toBe(1)
+  })
+  it('10분이 넘었어도 대상에 성과가 없으면 내 성과를 쓴다', async () => {
+    const s = await lateCase({ minutes: 11, targetPerformance: null })
+    const r = await s.svc.verify({ ...user, authorityManager: 1 }, RID)
+    expect(r.performanceKept).toBeUndefined()
+    expect(s.calls.finish[0][1].performance).toEqual(PERF)
+  })
+  it('10분 안의 확인은 지금처럼 내 성과를 쓴다(내가 고친 성과를 잃지 않게)', async () => {
+    const s = await lateCase({ minutes: 9, targetPerformance: { Group: 'SOMEONE' } })
+    await s.svc.verify({ ...user, authorityManager: 1 }, RID)
+    expect(s.calls.finish[0][1].performance).toEqual(PERF)
+  })
+})
+
+describe('deployService.attention — 확인이 필요한 내 배포 목록(SEW-021)', () => {
+  const row = (o) => ({ requestId: RID, user: 'sew_x', target: { process: 'P', model: 'M', name: 'N' }, source: { crtime: CUR }, startedAt: new Date(NOW.getTime() - 3600000), result: 'unknown', crtime: null, fieldsBefore: [`N.${CUR}`], error: null, ...o })
+  it('최근 7일·20건을 저장소에 묻고, 줄마다 { requestId, target, startedAt, result, crtime, targetWasNew } 로 준다 — 거절은 rejected', async () => {
+    const s = setup({ attentionRows: [
+      row({}),
+      row({ requestId: RID2, result: 'partial', crtime: NEW, fieldsBefore: [], target: { process: 'P', model: 'M', name: 'NEW_ONE' } }),
+      row({ requestId: RID3, result: 'failed', error: { code: 'UPSTREAM_FAILED' } })
+    ] })
+    const out = await s.svc.attention(user)
+    expect(s.calls.attention).toEqual([['sew_x', new Date(NOW.getTime() - 7 * 86400000), 20]])
+    expect(out).toEqual({ items: [
+      { requestId: RID, target: { process: 'P', model: 'M', name: 'N' }, startedAt: new Date(NOW.getTime() - 3600000).toISOString(), result: 'unknown', crtime: null, targetWasNew: false },
+      { requestId: RID2, target: { process: 'P', model: 'M', name: 'NEW_ONE' }, startedAt: new Date(NOW.getTime() - 3600000).toISOString(), result: 'partial', crtime: NEW, targetWasNew: true },
+      { requestId: RID3, target: { process: 'P', model: 'M', name: 'N' }, startedAt: new Date(NOW.getTime() - 3600000).toISOString(), result: 'rejected', crtime: null, targetWasNew: false }
+    ] })
+  })
+  it('진행 중(pending)은 5분이 지나야 넣고(다른 탭에서 보내는 중일 수 있다) 결과 모름으로 보인다', async () => {
+    const s = setup({ attentionRows: [row({ result: 'pending', startedAt: new Date(NOW.getTime() - 4 * 60000) }), row({ requestId: RID2, result: 'pending', startedAt: new Date(NOW.getTime() - 6 * 60000) })] })
+    expect((await s.svc.attention(user)).items.map((i) => [i.requestId, i.result])).toEqual([[RID2, 'unknown']])
+  })
+  it('지금 권한 밖의 공정·모델 기록은 빼고 준다', async () => {
+    const s = setup({ attentionRows: [row({ target: { process: 'P', model: 'FORBID', name: 'N' } }), row({ requestId: RID2 })] })
+    expect((await s.svc.attention(user)).items.map((i) => i.requestId)).toEqual([RID2])
+  })
+})
+
+describe('deployService.dismiss — 목록에서 빼기(SEW-021)', () => {
+  it('내 결과 모름 기록에 뺀 때를 남긴다 — 다시 빼도 그대로', async () => {
+    const s = await unknownCase()
+    expect(await s.svc.dismiss(user, RID)).toEqual({ dismissed: true })
+    expect(s.calls.dismiss).toEqual([[RID, NOW]])
+    expect(s.records.get(RID).dismissedAt).toEqual(NOW)
+  })
+  it('기록이 없거나 남의 것이면 404', async () => {
+    const s = await unknownCase()
+    expect(await fail(s.svc.dismiss(user, RID2))).toMatchObject({ statusCode: 404 })
+    expect(await fail(s.svc.dismiss({ ...user, singleid: 'other' }, RID))).toMatchObject({ statusCode: 404 })
+  })
+  it('이미 끝난(ok) 기록은 뺄 것이 없다', async () => {
+    const s = setup()
+    await s.svc.deploy(user, s.meta(), new Map())
+    expect(await s.svc.dismiss(user, RID)).toEqual({ dismissed: false })
+    expect(s.calls.dismiss).toEqual([])
   })
 })
 
