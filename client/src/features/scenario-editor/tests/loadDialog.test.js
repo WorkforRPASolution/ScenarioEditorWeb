@@ -574,6 +574,58 @@ describe('LoadDialog — 쓰기 동작과 내 초안', () => {
     expect(tid(w, 'se-load-property-note').exists()).toBe(true)
   })
 
+  describe('요청 중에 다른 줄을 골라도 결과를 버리지 않는다(SEW-020 — 칸은 줄마다 새로 만들어지고 사라진 칸의 emit 은 버려진다)', () => {
+    it('켜기·끄기: 응답이 오기 전에 다른 줄을 고르면 — 응답이 오면 보낸 그 줄이 받은 값으로 바뀌고, 편집 화면에 열린 시나리오면 세션에 알리고, 토스트', async () => {
+      const { w, store, edit } = setupW(); await flushPromises()
+      openInEditor(store, edit, 'ALL_ACTIONS')
+      await pick(w, 'ALL_ACTIONS')
+      const d = deferred()
+      api.setEnabled.mockReturnValue(d.promise)
+      await tid(w, 'se-load-switch').trigger('click')
+      await pick(w, 'PLAIN') // 칸이 PLAIN 으로 새로 만들어진다
+      d.resolve({ data: { data: { isEnabled: false, propertyRev: 'r2' } } }); await flushPromises()
+      const row = grid(w).props('rowData').find((r) => r.name === 'ALL_ACTIONS')
+      expect(row.isEnabled).toBe(false)
+      expect(row.lastOwner.singleid).toBe('me_eng')
+      expect(edit.session.propertyChanged).toBe(true) // 배포 때 저장 창이 운영 속성 변경을 알린다
+      expect(w.find('[data-test="toast"]').text()).toContain('껐습니다. 수정 이력에 남았습니다.')
+      expect(tid(w, 'se-load-pane-name').text()).toBe('PLAIN') // 고른 줄은 그대로
+      expect(tid(w, 'se-load-switch').attributes('aria-checked')).toBe('false') // PLAIN 은 원래 꺼짐 — 바뀌지 않는다
+    })
+    it('켜기·끄기: 다른 줄에서 다시 돌아오면 그 줄의 값이 받은 값이다(편집 화면에 없는 시나리오는 세션을 건드리지 않는다)', async () => {
+      const { w, store, edit } = setupW(); await flushPromises()
+      openInEditor(store, edit, 'PLAIN')
+      await pick(w, 'ALL_ACTIONS')
+      const d = deferred()
+      api.setEnabled.mockReturnValue(d.promise)
+      await tid(w, 'se-load-switch').trigger('click')
+      await pick(w, 'PLAIN')
+      d.resolve({ data: { data: { isEnabled: false, propertyRev: 'r2' } } }); await flushPromises()
+      expect(edit.session.propertyChanged).toBeFalsy() // 열린 것은 PLAIN 이다
+      await pick(w, 'ALL_ACTIONS')
+      expect(tid(w, 'se-load-switch').attributes('aria-checked')).toBe('false')
+    })
+    it('초안 지우기: 응답이 오기 전에 다른 줄을 고르면 — 지운 초안은 목록과 편집 세션에서 빠지고, 새로 고른 줄에서 고른 버전은 그대로', async () => {
+      const { w, store, edit } = setupW(); await flushPromises()
+      openInEditor(store, edit, 'ALL_ACTIONS')
+      edit.markDraft({ draftId: 'd1', savedAt: '2026-11-07T05:23:51.000Z' })
+      await pick(w, 'ALL_ACTIONS')
+      await tid(w, 'se-load-draft-line').trigger('click')
+      await tid(w, 'se-load-draft-delete').trigger('click')
+      const d = deferred()
+      api.deleteDraft.mockReturnValue(d.promise)
+      await tid(w, 'se-load-draft-delete-go').trigger('click')
+      await pick(w, 'PLAIN')
+      await tid(w, 'se-load-version').trigger('click') // PLAIN 의 현재 버전을 고른다
+      expect(tid(w, 'se-load-version').attributes('aria-selected')).toBe('true')
+      d.resolve({ data: { data: { deleted: true } } }); await flushPromises()
+      expect(edit.draftId).toBe(null) // 세션이 지운 초안을 들고 있다가 배포 때 400 이 나지 않게
+      expect(grid(w).props('rowData').find((r) => r.name === 'ALL_ACTIONS').draft).toBe(null)
+      expect(w.find('[data-test="toast"]').text()).toContain('초안을 지웠습니다')
+      expect(tid(w, 'se-load-version').attributes('aria-selected')).toBe('true') // PLAIN 에서 고른 것은 풀지 않는다
+    })
+  })
+
   it('켜기·끄기 실패(그 사이 지워짐 404)는 칸에 이유와 [목록 다시 읽기], 스위치는 그대로', async () => {
     const { w } = setupW(); await flushPromises()
     await pick(w, 'ALL_ACTIONS')

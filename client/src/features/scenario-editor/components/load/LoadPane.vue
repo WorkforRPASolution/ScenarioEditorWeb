@@ -1,9 +1,9 @@
 <script setup>
 // 불러오기 창 오른쪽 칸 — 쓰기 사용자(P2-D Task 7, 목업 2026-11-08-load-write-v1 paneWrite·switchBox·versionItems).
 // 위에서부터 이름(편집 화면에 열려 있으면 그 표시) → 켜짐 스위치 상자 → 버전 목록(내 초안 줄 맨 위) → [시나리오 지우기…].
-// 켜기·끄기와 초안 지우기는 이 칸이 서버에 보내고 결과를 알린다(enabled·draft-deleted). 행이 바뀌면 부모가 key 로 새로 만든다(칸 상태가 남지 않게).
+// 켜기·끄기와 초안 지우기는 부모가 준 함수(requestEnabled·requestDraftDelete)로 보내고 이 칸은 진행·결과만 보인다. 행이 바뀌면 부모가 key 로 새로 만든다(칸 상태가 남지 않게).
+// 서버 호출과 목록·편집 세션 고침은 부모가 한다 — 요청 중에 다른 행을 고르면 이 칸이 사라지고 사라진 칸의 emit 은 버려지기 때문이다(SEW-020).
 import { ref, computed, nextTick } from 'vue'
-import { scenarioEditorApi as api } from '../../api'
 import { t, errorCode, errorMessage } from '../../messages'
 import { formatCrtime, enabledLabel } from '../../format'
 import { draftStale, isDup, draftTarget } from '../../editor/loadRows'
@@ -17,9 +17,11 @@ const props = defineProps({
   pick: { type: [String, Number], default: null }, // 고른 버전 crtime 또는 'draft'
   // 편집 화면에 이 시나리오가 열려 있으면 { changes, propertyChanged, enabled, draftId }, 아니면 null
   open: { type: Object, default: null },
-  draftOpenDraftId: { type: String, default: null } // 편집 화면이 쓰는 초안 id(이 초안을 지우면 그 세션이 초안 그림을 잃는다)
+  draftOpenDraftId: { type: String, default: null }, // 편집 화면이 쓰는 초안 id(이 초안을 지우면 그 세션이 초안 그림을 잃는다)
+  requestEnabled: { type: Function, required: true }, // (이름, 켤지) → 서버가 준 { isEnabled, propertyRev } — 목록 고침·토스트는 부모가 한다
+  requestDraftDelete: { type: Function, required: true } // (초안 id) → 지우고 목록·편집 세션에서 빼는 것까지 부모가 한다
 })
-const emit = defineEmits(['pick', 'open-version', 'enabled', 'draft-deleted', 'delete', 'relist', 'toast'])
+const emit = defineEmits(['pick', 'open-version', 'delete', 'relist'])
 
 const short = (ms) => formatCrtime(ms).slice(5, 16)
 const savedMs = (d) => Date.parse(d.savedAt)
@@ -50,10 +52,8 @@ async function toggle() {
   note.value = null
   failure.value = null
   try {
-    const r = (await api.setEnabled(props.process, props.model, props.row.name, next)).data.data
+    const r = await props.requestEnabled(props.row.name, next)
     note.value = { on: r.isEnabled, at: formatCrtime(Date.now()).slice(11) }
-    emit('enabled', { name: props.row.name, isEnabled: r.isEnabled })
-    emit('toast', 'success', t(r.isEnabled ? 'SEW_LOAD_TOAST_ON' : 'SEW_LOAD_TOAST_OFF'))
   } catch (e) {
     const code = errorCode(e)
     const unknown = ['UPSTREAM_TIMEOUT', 'TIMEOUT', 'NETWORK'].includes(code) || (code === 'UNKNOWN' && e?.response?.status >= 500)
@@ -77,9 +77,8 @@ async function deleteDraft() {
   const id = draft.value.draftId
   deleting.value = true
   try {
-    await api.deleteDraft(id)
+    await props.requestDraftDelete(id)
     asking.value = false
-    emit('draft-deleted', id)
   } catch (e) {
     draftError.value = t('SEW_LOAD_DRAFT_DELETE_FAILED', { cause: errorMessage(e) })
   } finally {

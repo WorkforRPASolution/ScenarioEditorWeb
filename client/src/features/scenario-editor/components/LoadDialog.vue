@@ -120,12 +120,16 @@ const currentVersion = computed(() => versions.value.find((v) => v.isCurrent) ??
 const eqpCount = computed(() => models.value.find((m) => m.model === loadedFor.value?.model)?.eqpCount ?? 0)
 
 // 고른 행이 편집 화면에 열려 있으면 { changes, propertyChanged, enabled }(지워져 읽기 전용이 된 화면은 아니다)
-const openInfo = computed(() => {
+// 편집 화면에 (공정·모델, 이름) 의 시나리오가 열려 있는가 — 새 시나리오·지워진 세션은 아니다
+function openInEditor(pair, name) {
   const sk = store.skeleton
   const s = edit.session
-  const pair = loadedFor.value
+  return !!(sk && s && pair && name && !sk.isNew && s.readOnly !== 'deleted' && sk.process === pair.process && sk.model === pair.model && sk.name === name)
+}
+const openInfo = computed(() => {
+  const s = edit.session
   const r = selected.value
-  if (!sk || !s || !pair || !r || sk.isNew || s.readOnly === 'deleted' || sk.process !== pair.process || sk.model !== pair.model || sk.name !== r.name) return null
+  if (!openInEditor(loadedFor.value, r?.name)) return null
   return { changes: edit.unsavedCount, propertyChanged: !!s.propertyChanged, enabled: s.working?.property?.IsEnabled ?? r.isEnabled }
 })
 
@@ -292,15 +296,27 @@ const FOOT_BUTTONS = {
 }
 const footButtons = computed(() => foot.value.buttons.map((b) => ({ ...FOOT_BUTTONS[b.act], primary: b.primary ?? FOOT_BUTTONS[b.act].primary, disabled: !!b.disabled, act: b.act })))
 
-// ── 칸의 쓰기 동작 결과 ──
-function onEnabled({ name, isEnabled }) {
-  listRows.value = listRows.value.map((r) => (r.name === name ? { ...r, isEnabled, lastOwner: { singleid: store.me?.singleid ?? '', at: formatCrtime(Date.now()), note: null } } : r))
-  if (openInfo.value && selected.value?.name === name) edit.markPropertyChanged()
+// ── 칸의 쓰기 동작 — 서버 호출과 결과 처리는 이 창이 한다(SEW-020) ──
+// 칸은 행마다 key 로 새로 만들어져, 요청 중에 다른 행을 고르면 사라진 칸의 emit 이 버려진다(행은 옛 상태로 보이고 편집 세션이 지운 초안 id 를 들고 있다가 배포 때 400).
+// 그래서 칸은 이 함수들을 부르고, 결과는 지금 고른 행이 아니라 요청을 보낸 그 시나리오 기준으로 처리한다. 실패는 던져 칸이 이유를 보인다.
+const samePair = (a, b) => !!a && !!b && a.process === b.process && a.model === b.model
+async function setEnabledFor(name, next) {
+  const pair = loadedFor.value
+  const r = (await api.setEnabled(pair.process, pair.model, name, next)).data.data
+  // 그 사이 공정·모델을 바꿨으면 목록은 새로 읽은 것이라 고치지 않는다
+  if (samePair(loadedFor.value, pair)) {
+    listRows.value = listRows.value.map((x) => (x.name === name ? { ...x, isEnabled: r.isEnabled, lastOwner: { singleid: store.me?.singleid ?? '', at: formatCrtime(Date.now()), note: null } } : x))
+  }
+  if (openInEditor(pair, name)) edit.markPropertyChanged()
+  showToast('success', t(r.isEnabled ? 'SEW_LOAD_TOAST_ON' : 'SEW_LOAD_TOAST_OFF'))
+  return r
 }
-function onDraftDeleted(id) {
+async function deleteDraftFor(id) {
+  await api.deleteDraft(id)
   drafts.value = drafts.value.filter((d) => d.draftId !== id)
   edit.forgetDraft(id)
-  if (pick.value === 'draft') pick.value = null
+  // 고른 행에 초안이 없어졌을 때만 고른 '내 초안' 을 푼다 — 다른 행으로 옮겼으면 그 행의 선택은 그대로
+  if (pick.value === 'draft' && !selected.value?.draft) pick.value = null
   if (!selected.value) clearSelection()
   showToast('success', t('SEW_LOAD_DRAFT_DELETED'))
 }
@@ -463,7 +479,8 @@ const btnS = 'px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hove
         <template v-if="writer">
           <LoadPane v-if="selected && loadedFor" :key="`${loadedFor.process}/${loadedFor.model}/${selected.name}`" :process="loadedFor.process" :model="loadedFor.model" :row="selected"
             :versions="versions" :versions-error="versionsError" :pick="pick" :open="openInfo" :draft-open-draft-id="edit.draftId"
-            @pick="pick = $event" @open-version="openVersion" @enabled="onEnabled" @draft-deleted="onDraftDeleted" @delete="sub = 'delete'" @relist="relist" @toast="showToast" />
+            :request-enabled="setEnabledFor" :request-draft-delete="deleteDraftFor"
+            @pick="pick = $event" @open-version="openVersion" @delete="sub = 'delete'" @relist="relist" />
           <div v-else class="p-3 text-xs leading-relaxed text-gray-500" data-testid="se-load-pane-empty">{{ t('SEW_LOAD_PANE_EMPTY') }}</div>
         </template>
         <div v-else class="p-3 flex flex-col min-h-0">
