@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 import { asUser, selectRow } from './helpers'
 
 // [누를 곳 보기](2026-11-17 사내 요청 — 데스크톱 편집기의 클릭 위치 보기): 이미지 스텝의 마우스 클릭에서 "하는 일" 의 작은 버튼을 누르면
-// 큰 화면의 스텝 그림에서 누를 곳(기준 화면에서 찾은 자리 + 누를 곳)에 스냅샷 클릭 점과 같은 점이 5초 동안 깜빡인다.
+// 큰 화면의 스텝 그림에서 누를 곳(기준 화면에서 찾은 자리 + 누를 곳)에 스냅샷 클릭 점과 같은 점이 세 번(3초) 깜빡이고 사라진다(2026-11-19 사내 요청 — 처음에는 5초 동안 다섯 번).
 // 점은 빨강(흰 테·어두운 가는 테), 고리는 청록의 빈 고리 — 붉은 화면에서도 둘 중 하나는 보인다.
 // 시험 데이터: basic ALL_ACTIONS(1번 왼쪽 클릭 24,12 · 찾을 그림 = Reset 단추, 기준 화면에서 711,660 에 한 곳)는 읽기만 하고 아무것도 저장하지 않는다.
 const RESET = [711, 660]
@@ -13,7 +13,7 @@ const open = async (page, user) => {
   await selectRow(page, 's0')
 }
 
-test('누를 곳 보기 — 작은 버튼을 누르면 스텝 그림의 누를 곳에 점이 5초 동안 깜빡인다(편집·읽기 전용), 점은 빨강·고리는 청록', async ({ page }) => {
+test('누를 곳 보기 — 작은 버튼을 누르면 스텝 그림의 누를 곳에 점이 세 번 깜빡이고 사라진다(편집·읽기 전용), 점은 빨강·고리는 청록', async ({ page }) => {
   await open(page, 'sew_master')
   const panel = page.getByTestId('se-detail')
   const viewer = page.getByTestId('se-viewer')
@@ -24,7 +24,7 @@ test('누를 곳 보기 — 작은 버튼을 누르면 스텝 그림의 누를 �
 
   // ── 버튼은 누를 곳 X·Y 와 [다시 찍기] 사이에 있고, 누르기 전에는 점이 없다 ──
   await expect(btn).toBeEnabled()
-  await expect(btn).toHaveAttribute('title', '스텝 그림에서 누를 곳을 5초 동안 깜빡여 보입니다')
+  await expect(btn).toHaveAttribute('title', '스텝 그림에서 누를 곳을 3번 깜빡여 보입니다')
   await expect(btn).toHaveAttribute('aria-label', '누를 곳 보기')
   const [b, y, r] = await Promise.all([btn.boundingBox(), panel.getByTestId('se-click-y').boundingBox(), panel.getByTestId('se-repick').boundingBox()])
   expect(b.x).toBeGreaterThanOrEqual(y.x + y.width)
@@ -34,6 +34,7 @@ test('누를 곳 보기 — 작은 버튼을 누르면 스텝 그림의 누를 �
 
   // ── 누르면: 찾은 자리 + 누를 곳에, 화면에서 지름 12px 의 점이 깜빡이고 고리가 퍼진다 ──
   await btn.click()
+  const clickedAt = Date.now()
   await expect(flash).toBeVisible()
   await expect(flash).toHaveAttribute('data-x', String(RESET[0] + 24))
   await expect(flash).toHaveAttribute('data-y', String(RESET[1] + 12))
@@ -57,8 +58,9 @@ test('누를 곳 보기 — 작은 버튼을 누르면 스텝 그림의 누를 �
   expect(look.motion).toEqual(['se-snap-dot-blink', 'se-snap-dot-ping'])
   await expect(viewer.getByTestId('se-spot')).toBeVisible() // 평소의 + 표시는 그대로
 
-  // ── 5초 뒤에 저절로 사라진다 ──
-  await expect(flash).toHaveCount(0, { timeout: 8000 })
+  // ── 세 번(3초) 깜빡이고 저절로 사라진다 ──
+  await expect(flash).toHaveCount(0, { timeout: 5000 })
+  expect(Date.now() - clickedAt).toBeGreaterThan(2500) // 바로 사라지지 않는다 — 세 번은 깜빡인다
 
   // ── 크게 확대해 누를 곳이 화면 밖이면: 배율은 둔 채 그 점을 큰 화면 가운데로 옮긴다. 점은 8배에서도 화면에서 12px 이다 ──
   const vb = await viewer.getByTestId('se-base-image').boundingBox()
@@ -77,12 +79,16 @@ test('누를 곳 보기 — 작은 버튼을 누르면 스텝 그림의 누를 �
   await viewer.getByRole('button', { name: '맞춤' }).click()
   await expect.poll(async () => Math.round((await viewer.getByTestId('se-base-image').boundingBox()).width)).toBe(Math.round(vb.width))
 
-  // ── 누를 곳을 고치면 깜빡이는 점이 따라간다 ──
+  // ── 누를 곳을 고치면 깜빡이는 점이 따라간다(깜빡임은 3초라 다시 눌러 새로 시작한다) ──
+  await btn.click()
+  await expect(flash).toBeVisible()
   await panel.locator('[data-field="click"]').fill('100')
   await panel.locator('[data-field="click"]').press('Enter')
   await expect(flash).toHaveAttribute('data-x', String(RESET[0] + 100))
 
-  // ── 큰 화면에서 잡는 동안에는 꺼지고(까닭), 점도 사라진다 ──
+  // ── 큰 화면에서 잡는 동안에는 꺼지고(까닭), 깜빡이던 점도 사라진다 ──
+  await btn.click()
+  await expect(flash).toBeVisible()
   await panel.getByTestId('se-repick').click()
   await expect(page.getByTestId('se-cap-bar')).toBeVisible()
   await expect(btn).toBeDisabled()

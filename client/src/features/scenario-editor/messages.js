@@ -983,7 +983,7 @@ export const MESSAGES = {
   SEW_CAP_REPICK: '다시 찍기',
   SEW_CAP_REPICK_TITLE: '찾을 그림은 그대로 두고 누를 곳만 찍습니다',
   SEW_CLICK_SHOW: '누를 곳 보기',
-  SEW_CLICK_SHOW_TITLE: '스텝 그림에서 누를 곳을 {sec}초 동안 깜빡여 보입니다',
+  SEW_CLICK_SHOW_TITLE: '스텝 그림에서 누를 곳을 {n}번 깜빡여 보입니다',
   SEW_CLICK_SHOW_WHY_CAPTURE: '큰 화면에서 잡는 동안에는 볼 수 없습니다.',
   SEW_CLICK_SHOW_WHY_NO_INPUT: '기준 화면·검색 영역·찾을 그림·누를 곳이 모두 있어야 볼 수 있습니다.',
   SEW_CLICK_SHOW_WHY_FINDING: '기준 화면에서 찾을 그림을 찾는 중입니다.',

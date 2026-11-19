@@ -9,7 +9,7 @@
 import { computed } from 'vue'
 import { useEditStore } from '../../stores/editStore'
 import { useTrainSpot } from '../../composables/useTrainSpot'
-import { CLICK_SHOW_MS } from '../../editor/trainView'
+import { CLICK_SHOW_BLINKS } from '../../editor/trainView'
 import { t } from '../../messages'
 
 defineOptions({ name: 'ClickShowButton' })
@@ -32,7 +32,7 @@ const uid = computed(() => (props.draft ? edit.panel.uid : props.step?.uid))
 </script>
 
 <template>
-  <button type="button" data-testid="se-click-show" :disabled="!!why" :title="why ?? t('SEW_CLICK_SHOW_TITLE', { sec: CLICK_SHOW_MS / 1000 })" :aria-label="t('SEW_CLICK_SHOW')"
+  <button type="button" data-testid="se-click-show" :disabled="!!why" :title="why ?? t('SEW_CLICK_SHOW_TITLE', { n: CLICK_SHOW_BLINKS })" :aria-label="t('SEW_CLICK_SHOW')"
     class="shrink-0 w-7 h-7 inline-flex items-center justify-center rounded-md text-primary-700 dark:text-primary-300 hover:enabled:bg-primary-50 dark:hover:enabled:bg-primary-900/30 disabled:text-gray-400 disabled:opacity-60"
     @click="edit.showClick(uid)">
     <!-- 점과 둘레의 고리 — 큰 화면에 뜨는 점의 모양 -->

@@ -12,7 +12,9 @@ import CaptureLayer from '../components/CaptureLayer.vue'
 import StepViewer from '../components/StepViewer.vue'
 import StepPanel from '../components/StepPanel.vue'
 import StepDetail from '../components/StepDetail.vue'
-import { CLICK_SHOW_MS } from '../editor/trainView'
+import { CLICK_SHOW_MS, CLICK_SHOW_BLINKS } from '../editor/trainView'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import EditDialogs from '../components/EditDialogs.vue'
 import { useEditStore } from '../stores/editStore'
 import { useSnapshotStore } from '../stores/snapshotStore'
@@ -742,6 +744,13 @@ describe('StepViewer — 기준 화면에서 찾은 그림·누를 곳을 늘 �
   const FLASH = '[data-testid="se-click-flash"]'
   const SHOW = '[data-testid="se-click-show"]'
   const viewOf = (w) => w.find('[data-testid="se-base-image"]').element.parentElement.style.transform
+  it('[누를 곳 보기] 의 깜빡임은 세 번이다(2026-11-19 사내 요청 — 5초 동안 다섯 번에서) — 시간 = 세 번 × snapshot.css 의 깜빡임 한 번(1초)', () => {
+    expect(CLICK_SHOW_BLINKS).toBe(3)
+    expect(CLICK_SHOW_MS).toBe(3000)
+    const css = readFileSync(join(__dirname, '../components/snapshot/snapshot.css'), 'utf8')
+    expect(css).toMatch(/\.se-snap-dot::before \{[^}]*animation: se-snap-dot-blink 1s /)
+    expect(css).toMatch(/\.se-snap-dot::after \{[^}]*animation: se-snap-dot-ping 1s /)
+  })
   it('[누를 곳 보기]: 패널의 작은 버튼을 누르면 큰 화면의 누를 곳(찾은 자리 + 누를 곳)에 스냅샷 클릭 점과 같은 점이 CLICK_SHOW_MS 동안만 깜빡인다 — 다시 누르면 처음부터 센다', async () => {
     const { e } = panelFixture([imageStep(0), imageStep(1)]) // 찾은 자리 40,50 + 누를 곳 24,12
     const w = await mountViewer()
@@ -750,7 +759,7 @@ describe('StepViewer — 기준 화면에서 찾은 그림·누를 곳을 늘 �
     expect(w.find(FLASH).exists()).toBe(false)
     const btn = p.find(SHOW)
     expect(btn.attributes('disabled')).toBeUndefined()
-    expect(btn.attributes('title')).toBe(t('SEW_CLICK_SHOW_TITLE', { sec: CLICK_SHOW_MS / 1000 }))
+    expect(btn.attributes('title')).toBe('스텝 그림에서 누를 곳을 3번 깜빡여 보입니다')
     expect(btn.attributes('aria-label')).toBe(t('SEW_CLICK_SHOW'))
     vi.useFakeTimers()
     try {

@@ -8,8 +8,10 @@ import { imageSrc } from './display'
 import { isRect, isRef, firstTrainRef } from './capture'
 import { CLICK_TYPES } from './panel'
 
-// [누를 곳 보기] 로 큰 화면에 점을 깜빡여 보이는 시간 — 깜빡임 한 번이 1초(snapshot.css)라 다섯 번이다
-export const CLICK_SHOW_MS = 5000
+// [누를 곳 보기] 로 큰 화면에 점을 깜빡이는 횟수와 시간 — 깜빡임 한 번이 1초(snapshot.css 의 se-snap-dot-blink·ping)다.
+// 세 번 깜빡이고 사라진다(2026-11-19 사내 요청 — 처음에는 5초 동안 다섯 번).
+export const CLICK_SHOW_BLINKS = 3
+export const CLICK_SHOW_MS = CLICK_SHOW_BLINKS * 1000
 
 const finite = (v) => typeof v === 'number' && Number.isFinite(v)
 const areaOf = (a) => ({ x: a.x, y: a.y, w: a.w, h: a.h })
