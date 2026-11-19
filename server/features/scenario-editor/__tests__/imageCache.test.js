@@ -83,6 +83,49 @@ describe('imageCache', () => {
     expect(await c.readSkeleton('B.1')).not.toBe(null)
     expect(existsSync(join(partial, 'i.png'))).toBe(true)
   })
+  it('sweepUnfinished: 풀던 중 서버가 죽어 남은 디렉터리(.done 없음)를 지운다 — 완료된 판과 지금 쓰는 중인 판은 두고, 지운 수를 준다(SEW-006)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sew-img-'))
+    const partial = join(dir, encodeURIComponent('PART.1'))
+    mkdirSync(partial)
+    writeFileSync(join(partial, 'i.png'), Buffer.alloc(1000, 1))
+    writeFileSync(join(dir, 'stray.txt'), 'x') // 디렉터리가 아닌 것은 건드리지 않는다
+    const c = createImageCache({ dir, maxBytes: 1e9 })
+    await store(c, 'DONE.1', { d: 1 }, [{ id: 'i', base64: png(10) }])
+    const w = c.begin('WRITING.1')
+    await w.writeImage('i', png(10)) // 쓰는 중 — 아직 .done 없음
+    expect(await c.sweepUnfinished()).toBe(1)
+    expect(existsSync(partial)).toBe(false)
+    expect(existsSync(join(dir, 'stray.txt'))).toBe(true)
+    expect(await c.readSkeleton('DONE.1')).toEqual({ d: 1 })
+    await w.commit({ w: 1 }, [])
+    expect(await c.readSkeleton('WRITING.1')).toEqual({ w: 1 })
+    expect(await c.sweepUnfinished()).toBe(0)
+  })
+  it('sweepUnfinished: 캐시 디렉터리가 아직 없으면 0 을 주고 던지지 않는다', async () => {
+    const c = createImageCache({ dir: join(mkdtempSync(join(tmpdir(), 'sew-img-')), 'none'), maxBytes: 1e9 })
+    expect(await c.sweepUnfinished()).toBe(0)
+  })
+  it('디렉터리 지우기는 모두 Windows 다시 시도(maxRetries·retryDelay)를 준다 — 백신 등이 파일을 잠깐 잡으면 EBUSY·EPERM 으로 실패한다(SEW-006, 사내 PC 는 Windows)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sew-img-'))
+    const c = createImageCache({ dir, maxBytes: 1500 })
+    const spy = vi.spyOn(fsp, 'rm')
+    try {
+      await store(c, 'A.1', {}, [{ id: 'i', base64: png(1000) }])
+      await new Promise((r) => setTimeout(r, 15))
+      await store(c, 'B.1', {}, [{ id: 'i', base64: png(1000) }]) // 쓰기 전 비우기 + 상한 넘어 A 지우기
+      const w = c.begin('C.1')
+      await w.writeImage('i', png(10))
+      await w.abort()
+      mkdirSync(join(dir, 'PART.1'))
+      await c.sweepUnfinished()
+      await c.clear()
+      const dirCalls = spy.mock.calls.filter(([, o]) => o && o.recursive)
+      expect(dirCalls.length).toBeGreaterThanOrEqual(6)
+      for (const [, o] of dirCalls) expect(o).toMatchObject({ recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+    } finally {
+      spy.mockRestore()
+    }
+  })
   it('지우다 실패해도 store 는 성공한다', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'sew-img-'))
     const c = createImageCache({ dir, maxBytes: 1500 })

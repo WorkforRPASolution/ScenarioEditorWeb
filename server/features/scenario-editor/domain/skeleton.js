@@ -103,7 +103,8 @@ function buildSkeleton({ process, model, name, crtime, isCurrent, body: storedBo
         baseImage = { state: 'present', url: url(baseImageId(i)) }
       } else {
         baseImage = { state: 'missing' }
-        notes.push(note('info', 'BASE_IMAGE_MISSING'))
+        // BI 를 아예 못 읽었으면 시나리오의 PARSE_FAILED bi 하나로 알린다 — 스텝마다 달면 이미지 스텝 수만큼 같은 알림이 생긴다(SEW-006)
+        if (!baseImages.parseFailed) notes.push(note('info', 'BASE_IMAGE_MISSING'))
       }
     }
     const bi = baseImages.parseFailed ? { kind: 'absent' }

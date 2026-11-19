@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveListenAddress, isLoopbackHost, startupWarnings } from '../../../listen'
+import { resolveListenAddress, isLoopbackHost, startupWarnings } from '../listen'
 
 describe('서버 주소', () => {
   it('기본은 127.0.0.1:3100', () => {

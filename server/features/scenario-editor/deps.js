@@ -39,6 +39,8 @@ function build(env = process.env) {
   const { createVersionService } = require('./service/versionService')
   const { createLogger } = require('../../shared/logger')
   const log = createLogger('scenario-editor')
+  // 지난번 프로세스가 풀던 중 죽어 남은 판 디렉터리를 치운다(SEW-006). 기다리지 않는다 — 쓰는 중인 판은 캐시가 건드리지 않는다.
+  imageCache.sweepUnfinished().then((n) => { if (n) log.info(`이미지 캐시: 풀던 중 끊긴 판 디렉터리 ${n}개를 지웠다`) }).catch(() => {})
   out.list = createListService({ repo, hash, scopes, gridfs, log })
   out.versions = createVersionService({ gridfs, hash, scopes })
   const { createCountService } = require('./service/countService')

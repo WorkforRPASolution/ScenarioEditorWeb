@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vites
 import http from 'node:http'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
-const { createLocalGuard } = require('../../../localGuard')
+const { createLocalGuard } = require('../localGuard')
 
 const REFRESH = '/api/scenario-editor/cache/refresh'
 const ME = '/api/scenario-editor/me'
@@ -15,16 +15,16 @@ beforeAll(async () => {
   process.env.SE_USER_SINGLEID = 'sew_multi'
   delete process.env.ALLOWED_ORIGINS
   const user = { singleid: 'sew_multi', isMaster: false, multiProcess: null }
-  require('../deps')._setDeps({
+  require('../features/scenario-editor/deps')._setDeps({
     users: { getUser: async () => user, clear: () => { cleared++ } },
     scopes: { clear: () => { cleared++ } },
     imageCache: { clear: async () => {} }
   })
-  const app = require('../../../app')
+  const app = require('../app')
   await new Promise((r) => { server = app.listen(0, '127.0.0.1', r) })
   port = server.address().port
 })
-afterAll(() => { require('../deps')._setDeps(null); return new Promise((r) => server.close(r)) })
+afterAll(() => { require('../features/scenario-editor/deps')._setDeps(null); return new Promise((r) => server.close(r)) })
 beforeEach(() => { cleared = 0 })
 
 // fetch 는 Host·Origin·Sec-Fetch-Site 를 직접 정할 수 없어 http.request 로 보낸다.
@@ -88,7 +88,7 @@ describe('쓰기 요청의 출처 검사 (CSRF 방어)', () => {
 })
 
 describe('허용되지 않은 Origin 은 메서드와 상관없이 막고 오류 기록에 남기지 않는다', () => {
-  const { WebManagerLog } = require('../../../shared/models/webmanagerLogModel')
+  const { WebManagerLog } = require('../shared/models/webmanagerLogModel')
   it.each([
     ['GET', ME, {}],
     ['POST', REFRESH, {}],

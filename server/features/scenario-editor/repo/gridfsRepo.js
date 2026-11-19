@@ -11,6 +11,12 @@ function createGridfsRepository(getDb, mongo) {
   const files = () => getDb().collection('fs.files')
   const q = (process, model, name) => ({ 'metadata.process': process, 'metadata.model': model, 'metadata.name': name })
   // 파일 내용(BI)을 조각으로 흘려 준다. 큰 BI 를 한 번에 메모리에 올리지 않기 위해서다. 반복 도중의 오류도 여기서 바꾼다.
+  // 조각이 모자라거나 깨져 보일 때: 읽는 동안 누가 그 판을 지웠으면(delscenario) 깨진 것이 아니라 없어진 것이다 — 파일 문서가 아직 있는지 본다(SEW-006).
+  // 보다가 실패하면 원래 판단(깨짐)을 그대로 준다.
+  async function damagedOrGone(file, damaged) {
+    const still = await files().findOne({ _id: file._id }, { projection: { _id: 1 }, maxTimeMS: MAX }).catch(() => damaged)
+    return still ? damaged : seError(404, 'NOT_FOUND', '읽는 동안 그 버전이 지워졌습니다')
+  }
   async function* streamContent(file) {
     let bytes = 0
     try {
@@ -19,10 +25,11 @@ function createGridfsRepository(getDb, mongo) {
         yield chunk
       }
     } catch (e) {
-      throw mapGridfsError(e)
+      const mapped = mapGridfsError(e)
+      throw mapped.code === 'FILE_DAMAGED' ? await damagedOrGone(file, mapped) : mapped
     }
     // 드라이버는 뒤쪽 조각이 없으면 오류 없이 끝낸다 — 전부 없으면 정상인 빈 BI 와 구분되지 않으므로 파일 길이와 대조한다.
-    if (bytes !== file.length) throw seError(422, 'FILE_DAMAGED', 'GridFS 파일 조각이 빠졌거나 깨졌습니다')
+    if (bytes !== file.length) throw await damagedOrGone(file, seError(422, 'FILE_DAMAGED', 'GridFS 파일 조각이 빠졌거나 깨졌습니다'))
   }
   const queries = withMongoErrors({
     async findCrtimes(process, model, name) {

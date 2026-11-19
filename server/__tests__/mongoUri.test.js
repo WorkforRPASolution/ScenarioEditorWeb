@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mongoDbName, sameDbName } from '../../../mongoUri'
+import { mongoDbName, sameDbName } from '../mongoUri'
 
 describe('Mongo 주소의 DB 이름', () => {
   it.each([

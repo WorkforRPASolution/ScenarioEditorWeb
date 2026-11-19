@@ -25,7 +25,7 @@ ScenarioEditorWeb — 사내 ScenarioEditor(C# WPF)를 웹으로 다시 만드�
 - 사본을 다시 가져올 때는 WebManager 작업 트리를 읽지 않고 `git -C ../WebManager show <커밋>:<경로>` 로만 꺼낸다(`npm run upstream:import`).
 - 편입 대상은 `client/src/features/scenario-editor/`·`server/features/scenario-editor/` 둘뿐이다. 다른 기능 폴더를 import 하지 않는다.
 - 백엔드는 127.0.0.1 에서만 받는다. 시험 데이터는 공유 로컬 EARS 에 `SEW` 접두사로만 넣는다.
-- `server/localGuard.js`(Host 허용 목록·쓰기 출처 검사)는 단독판 전용이고 편입 때 사라진다. 단독판으로 사내 운영 DB 저장 시험까지 하기로 해 두었다(2026-11-04, 분석 40 §2.0).
+- `server/localGuard.js`(Host 허용 목록·쓰기 출처 검사)는 단독판 전용이고 편입 때 사라진다. 단독판 셸(`localGuard`·`listen`·`mongoUri`·`webManagerDb`·`app` 의 웹 DB 분기)의 시험은 기능 폴더가 아니라 `server/__tests__/` 에 둔다 — 편입 때 기능 폴더와 함께 따라가 깨지지 않게(2026-11-19, SEW-006). 단독판으로 사내 운영 DB 저장 시험까지 하기로 해 두었다(2026-11-04, 분석 40 §2.0).
 
 ## 실행·시험
 - 처음: `npm install && npm --prefix client install && npm --prefix server install && npm --prefix tools install`, `npx playwright install chromium`(E2E 브라우저), `cp server/.env.example server/.env`, `cp client/.env.example client/.env`

@@ -134,9 +134,14 @@ describe('buildSkeleton', () => {
       expect(skeleton.notes.filter((n) => n.params.field === 'bi')).toEqual([{ level: 'warning', code: 'PARSE_FAILED', params: { field: 'bi' } }])
       expect(images.map((i) => i.id)).toEqual(['s0-train-0'])
     })
+    it('BI 가 깨졌으면 스텝마다 BASE_IMAGE_MISSING 알림을 달지 않는다 — 시나리오의 PARSE_FAILED bi 하나로 알린다(SEW-006: 200 스텝이면 같은 알림 200개)', () => {
+      const { skeleton } = buildSkeleton({ ...base, baseImages: BROKEN_BI })
+      expect(skeleton.steps.flatMap((s) => s.notes).filter((n) => n.code === 'BASE_IMAGE_MISSING')).toEqual([])
+    })
     it('BI 가 비었거나 항목이 없으면 없는 것으로 보되 PARSE_FAILED 는 없다', () => {
       const { skeleton } = buildSkeleton({ ...base, baseImages: { parseFailed: false, present: new Set() } })
       expect(skeleton.steps[0].baseImage).toEqual({ state: 'missing' })
+      expect(skeleton.steps[0].notes.filter((n) => n.code === 'BASE_IMAGE_MISSING')).toEqual([{ level: 'info', code: 'BASE_IMAGE_MISSING', params: {} }]) // 읽었는데 그 스텝 것만 없으면 스텝에 단다
       expect(skeleton.notes.filter((n) => n.params.field === 'bi')).toEqual([])
       expect(buildSkeleton(base).skeleton.notes.filter((n) => n.params.field === 'bi')).toEqual([])
     })

@@ -56,11 +56,12 @@ describe('findFileMeta', () => {
 })
 
 describe('streamContent', () => {
-  // openDownloadStream 만 흉내 낸다
-  function repoReading(body) {
-    const seen = {}
+  // openDownloadStream 과, 읽기가 어긋났을 때 파일이 아직 있는지 보는 fs.files findOne 을 흉내 낸다(exists = 그 파일 문서가 있는가)
+  function repoReading(body, { exists = true } = {}) {
+    const seen = { findOne: [] }
     const mongo = { GridFSBucket: class { openDownloadStream(id, options) { seen.id = id; seen.options = options; return body() } } }
-    return { seen, repo: createGridfsRepository(() => ({}), mongo) }
+    const db = { collection: (name) => ({ findOne: async (filter, options) => { seen.findOne.push({ name, filter, options }); if (exists instanceof Error) throw exists; return exists ? { _id: filter._id } : null } }) }
+    return { seen, repo: createGridfsRepository(() => db, mongo) }
   }
   const read = async (it) => { const out = []; for await (const c of it) out.push(c.toString()); return out.join('') }
   const chunks = (...parts) => async function* () { yield* parts.map((p) => Buffer.from(p)) }
@@ -77,6 +78,25 @@ describe('streamContent', () => {
   it.each([[3, ['ab']], [3, []]])('드라이버가 오류 없이 일찍 끝나면(길이 %i, 받은 조각 %j) 422 FILE_DAMAGED', async (length, parts) => {
     const it = repoReading(chunks(...parts)).repo.streamContent({ _id: 'f', length })
     await expect(read(it)).rejects.toMatchObject({ statusCode: 422, code: 'FILE_DAMAGED' })
+  })
+  it.each([[3, ['ab']], [3, []]])('일찍 끝났는데 그 파일 문서가 이제 없으면 읽는 동안 지워진 것 — 404 NOT_FOUND(길이 %i, 받은 조각 %j, SEW-006)', async (length, parts) => {
+    const { repo, seen } = repoReading(chunks(...parts), { exists: false })
+    await expect(read(repo.streamContent({ _id: 'f', length }))).rejects.toMatchObject({ statusCode: 404, code: 'NOT_FOUND' })
+    expect(seen.findOne).toEqual([{ name: 'fs.files', filter: { _id: 'f' }, options: expect.objectContaining({ projection: { _id: 1 } }) }])
+  })
+  it('조각 오류(MongoGridFSChunkError)도 파일 문서가 없으면 404, 있으면 422 FILE_DAMAGED', async () => {
+    const body = async function* () { yield Buffer.from('a'); throw Object.assign(new Error('ChunkIsMissing'), { name: 'MongoGridFSChunkError' }) }
+    await expect(read(repoReading(body, { exists: false }).repo.streamContent({ _id: 'f', length: 9 }))).rejects.toMatchObject({ statusCode: 404, code: 'NOT_FOUND' })
+    await expect(read(repoReading(body).repo.streamContent({ _id: 'f', length: 9 }))).rejects.toMatchObject({ statusCode: 422, code: 'FILE_DAMAGED' })
+  })
+  it('파일이 있는지 보다가 실패하면 원래 판단(422 FILE_DAMAGED)을 그대로 준다', async () => {
+    const it = repoReading(chunks('ab'), { exists: new Error('connection closed') }).repo.streamContent({ _id: 'f', length: 3 })
+    await expect(read(it)).rejects.toMatchObject({ statusCode: 422, code: 'FILE_DAMAGED' })
+  })
+  it('정상으로 다 읽었거나 시간 제한이면 파일을 다시 보지 않는다', async () => {
+    const ok = repoReading(chunks('abc'))
+    await read(ok.repo.streamContent({ _id: 'f', length: 3 }))
+    expect(ok.seen.findOne).toEqual([])
   })
   it('읽기 시간 제한을 넘기면 504 UPSTREAM_TIMEOUT', async () => {
     const body = async function* () { yield Buffer.from('a'); throw Object.assign(new Error('Download timed out'), { name: 'MongoOperationTimeoutError' }) }

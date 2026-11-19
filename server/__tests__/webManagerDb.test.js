@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
-import { webManagerDbEnabled, connectEarsOnly, connectWebDbOnly, disableWebManagerLog, healthWithoutWebManager } from '../../../webManagerDb'
-import { webManagerConnection } from '../../../shared/db/connection'
-import { WebManagerLog, createErrorLog } from '../../../shared/models/webmanagerLogModel'
+import { webManagerDbEnabled, connectEarsOnly, connectWebDbOnly, disableWebManagerLog, healthWithoutWebManager } from '../webManagerDb'
+import { webManagerConnection } from '../shared/db/connection'
+import { WebManagerLog, createErrorLog } from '../shared/models/webmanagerLogModel'
 
 const health = (ears, redis = 'ok') => ({
   status: 'down',
