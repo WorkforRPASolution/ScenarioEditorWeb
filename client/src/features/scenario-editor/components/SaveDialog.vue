@@ -35,7 +35,8 @@ function go(goal) {
   if (goal.kind === 'step') flow.jump(goal.uid)
   else if (goal.kind === 'form') flow.requestFocus(goal.field)
   else if (goal.kind === 'windows') { if (flow.close({ keep: true })) emit('windows', goal.which) } // 전처리 설정 창(P2-F)
-  else if (flow.close({ keep: true })) emit(goal.kind === 'bar' ? 'bar' : 'property', goal.field)
+  else if (goal.kind === 'property') { if (flow.close({ keep: true })) emit('property', goal.field, goal.issue ?? null) }
+  else if (flow.close({ keep: true })) emit('bar', goal.field)
 }
 
 // 배포 중에는 떠나기 확인(새로고침·창 닫기). 결과 모름은 세션 저장소의 requestId 로 이어 확인한다.

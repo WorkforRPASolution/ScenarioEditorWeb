@@ -866,6 +866,7 @@ describe('LoadDialog — 쓰기 동작과 내 초안', () => {
     await flushPromises()
     await tid(w, 'se-load-choice-current').trigger('click')
     expect(w.emitted('open').at(-1)[0]).toEqual({ process: 'SEWCVD', model: 'SEWMODELA', name: 'ALL_ACTIONS', crtime: 'current' })
+    expect(w.emitted('open').at(-1)[1]).toEqual({ draftKept: true }) // 화면이 "내 초안은 남아 있습니다" 를 알린다(SEW-023)
   })
 
   it('초안을 시작한 뒤 새 버전이 배포됐으면(초안 headCrtime ≠ 현재 버전) 표 칩·초안 줄·고르기 창에서 알린다', async () => {

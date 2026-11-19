@@ -5,7 +5,7 @@ import { setActivePinia, createPinia } from 'pinia'
 const api = vi.hoisted(() => ({ list: vi.fn(), saveReview: vi.fn() }))
 vi.mock('../api', () => ({ scenarioEditorApi: api, imageUrl: (p) => p }))
 import PropertyDialog from '../components/PropertyDialog.vue'
-import { t } from '../messages'
+import { t, MESSAGES } from '../messages'
 import { unsavedChanges } from '../editor/diff'
 import { buildMeta } from '../editor/request'
 import { panelFixture, noneStep } from './panelFixture'
@@ -74,7 +74,9 @@ describe('운영 속성 창(PropertyDialog)', () => {
     setup()
     await flushPromises()
     const m = find(w, 'se-prop-metrics').text()
-    for (const v of ['공수절감', '150분', '정지LOSS 개선', '300분/일', '연 생산 LOSS 감소', '없음', '연 투자비 절감', '120KRW 1,000,000']) expect(m).toContain(v)
+    // 투자비 단위는 "백만 원 단위" 다 — 값과 붙여 "120KRW 1,000,000" 으로 읽히지 않게 곱하기로 잇는다(SEW-023)
+    for (const v of ['공수절감', '150분', '정지LOSS 개선', '300분/일', '연 생산 LOSS 감소', '없음', '연 투자비 절감', '120 × KRW 1,000,000']) expect(m).toContain(v)
+    expect(m).not.toContain('120KRW')
     expect(m).not.toContain('시간')
     for (const v of ['인력 손실', '웨이퍼 손실', '설비 성능 손실']) expect(dlgText()).not.toContain(v)
     const text = dlgText()
@@ -211,7 +213,9 @@ describe('운영 속성 창(PropertyDialog)', () => {
     await flushPromises()
     expect(dlgText()).toContain(t('SEW_PROP_FOLLOW_GONE_TAG'))
     await startEdit()
-    expect(dlgText()).toContain(t('SEW_PROP_FOLLOW_GONE'))
+    // 저장 창의 검사 줄(FOLLOW_MISSING)과 같은 문구 하나(SEW-023)
+    expect(dlgText()).toContain(t('RULE_FOLLOW_MISSING'))
+    expect(MESSAGES.SEW_PROP_FOLLOW_GONE).toBeUndefined()
     expect(field(w, 'NextScenarioIfSuccess.Name').element.value).toBe('DELETED_SC')
   })
 

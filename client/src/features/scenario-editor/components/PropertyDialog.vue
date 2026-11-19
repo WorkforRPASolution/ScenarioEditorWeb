@@ -38,6 +38,9 @@ const editing = ref(false)
 const draft = shallowRef(null)
 const orig = shallowRef(null)
 const linked = reactive({}) // [+ 다음 시나리오 잇기]를 눌러 고르는 칸을 연 후속(저장된 빈 후속과 구별)
+// 저장 창의 막힌 줄에서 왔을 때 그 칸과 까닭({ field, issue }) — 창의 칸 검사가 보지 않는 막힘(지운 시나리오를 다시 만들 때의 저장된 빈 후속)도
+// 그 칸 옆에 까닭을 보인다(SEW-023). 창을 닫거나 다른 칸으로 오면 바뀐다.
+const pointed = shallowRef(null)
 const prev = computed(() => { const s = edit.session; return s?.source ? s.saveBase?.property ?? null : null })
 const errors = computed(() => (editing.value ? checkPropertyFields(draft.value, prev.value) : {}))
 const diffs = computed(() => (editing.value ? propertyDiffs(orig.value, draft.value) : []))
@@ -91,7 +94,7 @@ function apply() {
 
 const ctx = reactive({
   p: computed(() => (editing.value ? draft.value : current.value)),
-  orig, editing, errors, linked, names, selfName: computed(() => sk.value?.name ?? null),
+  orig, editing, errors, linked, names, pointed, selfName: computed(() => sk.value?.name ?? null),
   changed: (k) => editing.value && canonicalJson(draft.value?.[k]) !== canonicalJson(orig.value?.[k]),
   set: (k, v) => { if (editing.value) draft.value = { ...draft.value, [k]: v } },
   link: (k) => { linked[k] = true; ctx.set(k, { Name: '', Text: '' }) },
@@ -145,11 +148,16 @@ watch(() => props.modelValue, (open) => {
   moreOpen.value = false
   leaving.value = false
   reviewDirty.value = false
+  pointed.value = null
   if (!open) return
   loadNames()
-  if (props.focus?.field) goFocus(props.focus.field)
+  if (props.focus?.field) focusFrom(props.focus)
 }, { immediate: true })
-watch(() => props.focus, (f) => { if (props.modelValue && f?.field) goFocus(f.field) })
+watch(() => props.focus, (f) => { if (props.modelValue && f?.field) focusFrom(f) })
+function focusFrom(f) {
+  pointed.value = f.issue ? { field: f.field, issue: f.issue } : null
+  goFocus(f.field)
+}
 </script>
 
 <template>

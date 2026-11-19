@@ -77,7 +77,8 @@ async function save() {
 const METRICS = [['ManWorkLoss', 'manWorkLoss'], ['EqpStopLoss', 'eqpStopLoss'], ['WaferLoss', 'waferLoss'], ['InvestCostLoss', 'investCostLoss']]
 const metrics = computed(() => {
   const f = perf.value ?? {}
-  return METRICS.map(([key, field]) => ({ label: LABELS.perf.effectNames[key], value: f[field], text: String(f[field]), unit: effectUnit(key, f.performType) }))
+  // 투자비 단위(KRW 1,000,000)는 "백만 원 단위" — 값과 붙으면 "120KRW 1,000,000" 처럼 한 수로 읽혀 곱하기로 잇는다(SEW-023)
+  return METRICS.map(([key, field]) => ({ label: LABELS.perf.effectNames[key], value: f[field], text: String(f[field]), unit: effectUnit(key, f.performType), times: key === 'InvestCostLoss' }))
 })
 </script>
 
@@ -125,7 +126,7 @@ const metrics = computed(() => {
         <template v-for="m in metrics" :key="m.label">
           <dt>{{ m.label }}</dt>
           <dd :class="{ zero: !m.value }">
-            <template v-if="m.value">{{ m.text }}<small v-if="m.unit">{{ m.unit }}</small></template>
+            <template v-if="m.value">{{ m.text }}<small v-if="m.unit">{{ m.times ? ` × ${m.unit}` : m.unit }}</small></template>
             <template v-else>{{ P.none }}</template>
           </dd>
         </template>

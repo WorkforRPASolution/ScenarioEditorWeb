@@ -23,13 +23,13 @@ export function buildMeta(session, { target, extra } = {}) {
 }
 
 // 멀티파트 본문: meta(JSON 문자열) + 쓰는 그림만 img:<tempId>(서버는 어떤 참조도 가리키지 않는 파일을 400 으로 막는다).
-// 쓰는 그림의 Blob 이 없으면 빠진 채 보내지 않고 던진다.
+// 쓰는 그림의 Blob 이 없으면 빠진 채 보내지 않고 던진다(code 'UPLOAD_MISSING' + tempId — 저장 창이 그 스텝 번호로 알린다).
 export function buildFormData(meta, uploads, uploadsUsed) {
   const fd = new FormData()
   fd.append('meta', JSON.stringify(meta))
   for (const id of uploadsUsed) {
     const blob = uploads?.get(id)
-    if (!(blob instanceof Blob)) throw new Error(`upload blob missing: ${id}`)
+    if (!(blob instanceof Blob)) throw Object.assign(new Error(`upload blob missing: ${id}`), { code: 'UPLOAD_MISSING', tempId: id })
     fd.append(`img:${id}`, blob, `${id}.png`)
   }
   return fd

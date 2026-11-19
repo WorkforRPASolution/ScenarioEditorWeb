@@ -501,9 +501,16 @@ export const useEditStore = defineStore('scenarioEditorEdit', () => {
     putUploads([...(c.uploads ?? [])].filter(([id]) => !uploads.value.has(id)))
     if (!c.draftId || c.draftId === draftId.value) return
     const gen = spotGen.value
-    for (const id of uploadIdsOf(steps).filter((x) => !uploads.value.has(x))) {
-      loadBlob(draftImageUrl(c.draftId, id)).then((blob) => { if (gen === spotGen.value && !uploads.value.has(id)) setUpload(id, blob) }, () => {})
-    }
+    const ids = uploadIdsOf(steps).filter((x) => !uploads.value.has(x))
+    if (!ids.length) return
+    Promise.allSettled(ids.map((id) => loadBlob(draftImageUrl(c.draftId, id)).then((blob) => { if (gen === spotGen.value && !uploads.value.has(id)) setUpload(id, blob) })))
+      .then((rs) => {
+        // 받지 못한 그림은 조용히 넘기지 않는다 — 그대로 두면 배포가 "그림이 빠졌습니다" 로 막힌다(SEW-023). 그 사이 세션이 바뀌었으면 알리지 않는다.
+        const failed = ids.filter((id, i) => rs[i].status === 'rejected' && !uploads.value.has(id))
+        if (!failed.length || gen !== spotGen.value || !session.value?.working) return
+        const nos = session.value.working.steps.map((st, i) => (uploadIdsOf([st]).some((id) => failed.includes(id)) ? i + 1 : null)).filter(Boolean)
+        if (nos.length) notify(t('SEW_CMD_PASTE_IMAGE_FAILED', { nos: nos.join('·') }))
+      })
   }
 
   // where: 'after' | 'before' | 'end'. 새 스텝이 되는 설비 상태 스텝이 든 묶음은 먼저 알린다(서버가 origin 없는 설비 상태 스텝을

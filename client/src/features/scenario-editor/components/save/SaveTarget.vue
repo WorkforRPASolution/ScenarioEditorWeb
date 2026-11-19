@@ -103,6 +103,7 @@ function useName(name) {
       </ul>
       <div v-else>{{ t('SEW_SAVE_DIFF_NONE') }}</div>
     </div>
+    <div v-else-if="flow.checkError && !flow.checking" class="se-sv-note fa" data-testid="se-save-target-failed">{{ t('SEW_SAVE_TARGET_CHECK_FAILED') }}</div>
     <div v-else-if="!Object.keys(flow.fieldErrors).length" class="se-sv-note">{{ t('SEW_SAVE_TARGET_CHECKING') }}</div>
 
     <div class="se-sv-t mt-3.5">{{ t('SEW_SAVE_VALUES') }}</div>

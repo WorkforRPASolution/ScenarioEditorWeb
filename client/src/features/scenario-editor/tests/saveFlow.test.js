@@ -6,7 +6,7 @@ const api = vi.hoisted(() => ({ check: vi.fn(), saveDraft: vi.fn(), deploy: vi.f
 vi.mock('../api', () => ({ scenarioEditorApi: api, imageUrl: (p) => p }))
 import { useSaveFlow, overwriteDiff, PENDING_KEY, CHECK_DELAY_MS } from '../stores/saveFlow'
 import { unsavedChanges } from '../editor/diff'
-import { MESSAGES } from '../messages'
+import { MESSAGES, t } from '../messages'
 import { panelFixture, imageStep, noneStep } from './panelFixture'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
@@ -274,12 +274,19 @@ describe('saveFlow', () => {
       await flow.saveDraft()
       expect(flow.notice.params.cause, limit).toBe(MESSAGES[`SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE_${limit}`])
     }
+    // 한도 종류를 모르는 초안 저장 실패는 초안용 공통 원인 — 배포용의 "고친 스텝을 나눠 여러 번 배포하세요" 는 초안 저장에 맞지 않는다(SEW-023)
     for (const err of [fail(413, 'PAYLOAD_TOO_LARGE', { limit: 'request', maxBytes: 63963136 }), Promise.reject({ response: { status: 413, data: {} }, request: {} })]) {
       api.saveDraft.mockImplementationOnce(() => err)
       await flow.saveDraft()
-      expect(flow.notice.params.cause).toBe(MESSAGES.SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE)
+      expect(flow.notice.params.cause).toBe(MESSAGES.SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE_DRAFT)
     }
-    for (const k of ['SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE', 'SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE_image', 'SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE_imageTotal', 'SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE_meta']) {
+    expect(MESSAGES.SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE_DRAFT).not.toMatch(/나눠 여러 번 배포/)
+    flow.close(); flow.open(); await flushPromises()
+    flow.toConfirm()
+    api.deploy.mockImplementationOnce(() => Promise.reject({ response: { status: 413, data: {} }, request: {} }))
+    await flow.deploy()
+    expect(flow.error.cause).toBe(MESSAGES.SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE) // 배포는 그대로
+    for (const k of ['SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE', 'SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE_DRAFT', 'SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE_image', 'SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE_imageTotal', 'SEW_SAVE_CAUSE_PAYLOAD_TOO_LARGE_meta']) {
       expect(MESSAGES[k], k).toMatch(/MB/) // 한도를 말한다
     }
   })
@@ -521,7 +528,30 @@ describe('saveFlow', () => {
     expect(api.deploy).not.toHaveBeenCalled()
     expect(flow.stage).toBe('fail')
     expect(flow.error.kind).toBe('local')
+    // 원인은 진짜 까닭대로 — 그림이 빠진 스텝의 번호까지(SEW-023)
+    expect(flow.error.cause).toBe(t('SEW_SAVE_CAUSE_UPLOAD_MISSING', { no: 1 }))
     expect(sessionStorage.getItem(PENDING_KEY)).toBe(null)
+    flow.close(); flow.open(); await flushPromises()
+    await flow.saveDraft()
+    expect(api.saveDraft).not.toHaveBeenCalled()
+    expect(flow.notice.params.cause).toBe(t('SEW_SAVE_CAUSE_UPLOAD_MISSING', { no: 1 }))
+  })
+
+  it('그 밖의 브라우저 안 오류는 "그림이 빠졌다" 가 아니라 보내지 않았다는 공통 원인과 오류 글(SEW-023)', async () => {
+    const { flow } = setup()
+    flow.open(); await flushPromises()
+    vi.stubGlobal('FormData', class { constructor() { throw new Error('boom') } })
+    try {
+      await flow.saveDraft()
+      expect(api.saveDraft).not.toHaveBeenCalled()
+      expect(flow.notice.params.cause).toBe(t('SEW_SAVE_CAUSE_LOCAL', { detail: 'boom' }))
+      flow.toConfirm()
+      await flow.deploy()
+      expect(flow.error).toMatchObject({ kind: 'local', cause: t('SEW_SAVE_CAUSE_LOCAL', { detail: 'boom' }) })
+    } finally {
+      vi.unstubAllGlobals()
+    }
+    expect(MESSAGES.SEW_SAVE_CAUSE_LOCAL).not.toMatch(/그림/)
   })
 
   it('확인 표시를 켰다 끄는 사이 앞 검사가 늦게 와도 — 마지막 force 값의 검사가 이긴다(배포가 "검사 중" 에 갇히지 않는다)', async () => {
@@ -755,10 +785,12 @@ describe('saveFlow', () => {
       await flow.saveDraft()
       expect(api.saveDraft).not.toHaveBeenCalled()
       expect(flow.notice).toMatchObject({ key: 'SEW_SAVE_DRAFT_FAILED', tone: 'error' })
+      expect(flow.notice.params.cause).toBe(t('SEW_SAVE_CAUSE_DRAFT_IMAGE')) // 그림이 빠진 것이 아니라 서버 초안 그림을 받지 못했다(SEW-023)
       flow.toConfirm()
       await flow.deploy()
       expect(api.deploy).not.toHaveBeenCalled()
       expect(flow.stage).toBe('fail')
+      expect(flow.error).toMatchObject({ kind: 'local', cause: t('SEW_SAVE_CAUSE_DRAFT_IMAGE') })
       expect(sessionStorage.getItem(PENDING_KEY)).toBe(null) // 보낸 적이 없으니 결과 모름으로 남기지 않는다
     })
     it('기준 판이 있는 초안은 다른 이름으로 보내도 받지 않는다(초안 키가 기준 판 이름이라 서버가 찾는다)', async () => {

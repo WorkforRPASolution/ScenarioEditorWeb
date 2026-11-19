@@ -89,6 +89,22 @@ describe('작업본(formOf·payloadOf·sentFields)', () => {
     const leftover = { ...VIEW, group: 'OLD' }
     expect(sentFields({ ...formOf(leftover), grade: 1 }, savedFields(leftover))).toEqual({ Grade: 1 })
   })
+  it('효과 유형 없음(그 밖)에 창이 Active 를 골라 둔 것도 바뀐 것이다(저장하면 Active 가 된다) — 손대지 않은 채면 implicit(SEW-023)', () => {
+    const none = { ...VIEW, performType: 0, group: 'OLD' }
+    const saved = savedFields(none)
+    const init = formOf(none)
+    expect(changesOf(init, formOf(none), saved)).toEqual([
+      { key: 'PerformType', from: 0, to: 1, implicit: true }, { key: 'Group', from: 'OLD', to: '', implicit: true }
+    ])
+    const f = formOf(none)
+    f.grade = 1
+    expect(changesOf(init, f, saved)).toEqual([
+      { key: 'PerformType', from: 0, to: 1, implicit: true }, { key: 'Group', from: 'OLD', to: '', implicit: true }, { key: 'Grade', from: 2, to: 1 }
+    ])
+    expect(sentFields(f, saved)).toEqual({ PerformType: 1, Group: '', Grade: 1 }) // 같은 이름 모델에 쓰는 값과 같은 기준
+    f.type = 2 // 사용자가 Passive 로 바꾸면 사용자가 바꾼 것
+    expect(changesOf(init, f, saved)[0]).toEqual({ key: 'PerformType', from: 0, to: 2 })
+  })
   it('사용자가 바꾼 것(changesOf)은 창을 연 뒤 기준, 원개발자는 아이디·기여도로 비교', () => {
     const init = formOf(VIEW)
     const f = formOf(VIEW)

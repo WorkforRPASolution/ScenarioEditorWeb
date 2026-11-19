@@ -43,6 +43,6 @@ const diffRows = computed(() => {
     <label><input type="checkbox" :checked="flow.confirm.force" :disabled="flow.stage !== 'form'" data-testid="se-save-force" @change="flow.setForce($event.target.checked)" />
       <span>{{ t(LABEL[conflict.kind] ?? 'SEW_SAVE_FORCE_OVERWRITE') }}</span></label>
     <div v-if="conflict.kind === 'deleted' && flow.confirm.force && flow.checking" class="mt-1.5">{{ t('SEW_SAVE_CHECKS_RUNNING') }}</div>
-    <div v-else-if="conflict.kind === 'deleted' && flow.recreateNoCache" class="mt-1.5 font-semibold">{{ t('SEW_SAVE_RECREATE_NO_CACHE') }}</div>
+    <!-- 캐시마저 없어 다시 만들 수 없으면 바로 아래 검사 줄(SOURCE_GONE)이 알린다 — 같은 뜻의 문장을 여기 또 두지 않는다(SEW-023) -->
   </div>
 </template>

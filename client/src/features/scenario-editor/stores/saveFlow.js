@@ -8,7 +8,7 @@ import { ref, computed } from 'vue'
 import { scenarioEditorApi as api } from '../api'
 import { t, errorCode, errorMessage, MESSAGES } from '../messages'
 import { buildMeta, buildFormData, uploadsToSend } from '../editor/request'
-import { loadBlob, draftImageUrl } from '../editor/images'
+import { loadBlob, draftImageUrl, uploadIdsOf } from '../editor/images'
 import { sessionChanges } from '../editor/diff'
 import { checkName, nameRuleOf } from '../editor/nameRule'
 import { propertyFieldOf } from '../editor/propertyRules'
@@ -29,7 +29,8 @@ export function issueGoal(issue) {
   if (BAR_CODES[issue?.code]) return { kind: 'bar', field: BAR_CODES[issue.code] }
   if (WINDOW_CODES.has(issue?.code)) return { kind: 'windows', which: typeof issue.params?.which === 'string' && issue.params.which !== '' ? issue.params.which : null }
   const field = propertyFieldOf(issue) // 운영 속성 창의 그 칸(범위 5종·후속 5종·유형 2종)
-  if (field) return { kind: 'property', field }
+  // issue: 운영 속성 창이 그 칸 옆에 왜 막혔는지 보인다 — 저장된 빈 후속처럼 창의 칸 검사가 보지 않는 막힘도 있다(SEW-023)
+  if (field) return { kind: 'property', field, issue: { code: issue.code, params: issue.params ?? {} } }
   if (FORM_CODES[issue?.code]) return { kind: 'form', field: FORM_CODES[issue.code] }
   return null
 }
@@ -42,15 +43,29 @@ export function overwriteDiff(diff) {
 }
 
 // 원인 한 줄 — 저장 창 문구가 있으면 그것(공통 문구의 "잠시 뒤 다시 시도하세요" 를 피한다), 없으면 공통 오류 문구.
-// 서버가 details.limit(413 — 무엇이 큰지)을 주면 그 한도의 문구가 먼저다.
-export function causeText(e) {
+// 서버가 details.limit(413 — 무엇이 큰지)을 주면 그 한도의 문구가 먼저다. 초안 저장(draft)은 초안용 문구가 있으면 그것(배포용 "나눠 여러 번 배포" 를 피한다, SEW-023).
+export function causeText(e, { draft = false } = {}) {
   const code = errorCode(e)
   const limit = e?.response?.data?.details?.limit
   const specific = typeof limit === 'string' ? `SEW_SAVE_CAUSE_${code}_${limit}` : null
   if (specific && MESSAGES[specific] !== undefined) return t(specific)
   const key = `SEW_SAVE_CAUSE_${code}`
+  if (draft && MESSAGES[`${key}_DRAFT`] !== undefined) return t(`${key}_DRAFT`)
   return MESSAGES[key] !== undefined ? t(key) : errorMessage(e)
 }
+
+// 보내기 전에 브라우저 안에서 난 오류의 원인(SEW-023 — 전에는 모두 "올릴 그림이 빠졌습니다" 였다):
+// 올릴 그림의 Blob 이 없음(그 스텝 번호) · 서버 초안 그림을 받지 못함 · 그 밖의 오류(오류 글을 붙인다 — 알려 줄 때 쓴다).
+export function localCause(e, steps = []) {
+  if (e?.code === 'UPLOAD_MISSING') {
+    const i = steps.findIndex((s) => uploadIdsOf([s]).includes(e.tempId))
+    return t('SEW_SAVE_CAUSE_UPLOAD_MISSING', { no: i < 0 ? '?' : i + 1 })
+  }
+  if (e?.code === 'DRAFT_IMAGE') return t('SEW_SAVE_CAUSE_DRAFT_IMAGE')
+  return t('SEW_SAVE_CAUSE_LOCAL', { detail: e?.message || String(e) })
+}
+// 응답이 있거나 보낸 뒤 끊긴 오류는 서버 쪽 원인, 아니면 브라우저 안의 원인
+export const failCause = (e, { steps, draft } = {}) => (e?.response || e?.request ? causeText(e, { draft }) : localCause(e, steps))
 
 // requestId: 보안 문맥이 아닌 주소(사내 http)에서는 crypto.randomUUID 가 없다 — getRandomValues 로 v4 를 만든다
 export function newRequestId() {
@@ -130,7 +145,12 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
     const from = draftTarget()
     if (!source() && edit.draftId && !(from && from.model === tg.model && from.name === tg.name)) {
       const missing = used.filter((id) => !(edit.uploads?.get(id) instanceof Blob))
-      const blobs = await Promise.all(missing.map((id) => loadBlob(draftImageUrl(edit.draftId, id))))
+      let blobs
+      try {
+        blobs = await Promise.all(missing.map((id) => loadBlob(draftImageUrl(edit.draftId, id))))
+      } catch (e) {
+        throw Object.assign(new Error(`draft image unreadable: ${e?.message ?? e}`), { code: 'DRAFT_IMAGE' })
+      }
       missing.forEach((id, i) => edit.setUpload(id, blobs[i]))
     }
     return formOf(meta, used)
@@ -287,7 +307,7 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
   // 실패·저장 창 복귀는 결과를 안다 — 보내기 직전에 적어 둔 requestId 를 지운다(거절도 결과 모름 화면으로 되살리지 않는다)
   function toFail(kind, e, upstreamText = null) {
     setPending(null)
-    error.value = { kind, code: errorCode(e), cause: kind === 'local' ? t('SEW_SAVE_CAUSE_LOCAL') : causeText(e), upstreamText }
+    error.value = { kind, code: errorCode(e), cause: kind === 'local' ? localCause(e, session()?.working?.steps) : causeText(e), upstreamText }
     stage.value = 'fail'
   }
   function backToForm(key) {
@@ -390,7 +410,7 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
       result.value = { savedAt: data.savedAt }
       stage.value = 'draft'
     } catch (e) {
-      notice.value = { key: 'SEW_SAVE_DRAFT_FAILED', params: { cause: e?.response || e?.request ? causeText(e) : t('SEW_SAVE_CAUSE_LOCAL') }, tone: 'error' }
+      notice.value = { key: 'SEW_SAVE_DRAFT_FAILED', params: { cause: failCause(e, { steps: s.working?.steps, draft: true }) }, tone: 'error' }
     } finally {
       busy.value = null
     }

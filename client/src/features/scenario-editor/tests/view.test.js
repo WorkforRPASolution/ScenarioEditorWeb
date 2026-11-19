@@ -432,6 +432,22 @@ describe('ScenarioEditorView', () => {
       expect(api.open).toHaveBeenLastCalledWith('P', 'M', 'B', 'current')
       expect(useEditorStore().skeleton.name).toBe('B')
     })
+    it('초안이 있는 시나리오를 [현재 버전]으로 열면 "현재 버전을 열었습니다. 내 초안은 남아 있습니다." 를 알린다 — 열지 못하면 알리지 않는다(SEW-023)', async () => {
+      expect(MESSAGES.SEW_LOAD_OPENED_CURRENT_DRAFT_KEPT).toBe('현재 버전을 열었습니다. 내 초안은 남아 있습니다.') // 목업 문구
+      const w = await openA()
+      const e = useEditStore()
+      api.open.mockReturnValue(ok(writable('B', 7)))
+      w.findComponent({ name: 'LoadDialog' }).vm.$emit('open', target, { draftKept: true })
+      await flushPromises()
+      expect(useEditorStore().skeleton.name).toBe('B')
+      expect(e.toast?.text).toBe(MESSAGES.SEW_LOAD_OPENED_CURRENT_DRAFT_KEPT)
+      api.open.mockReturnValue(Promise.reject({ response: { status: 503, data: { code: 'UPSTREAM_DOWN' } }, request: {} }))
+      e.notify('앞 알림')
+      w.findComponent({ name: 'LoadDialog' }).vm.$emit('open', { ...target, name: 'C' }, { draftKept: true })
+      await flushPromises()
+      expect(useEditorStore().openError).not.toBe(null)
+      expect(e.toast?.text).not.toBe(MESSAGES.SEW_LOAD_OPENED_CURRENT_DRAFT_KEPT)
+    })
     it('[적용하고 이동] 은 작업본에 넣은 뒤 연다', async () => {
       const w = await openA()
       const e = useEditStore()

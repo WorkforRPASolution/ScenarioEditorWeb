@@ -218,9 +218,11 @@ const sourceCheck = computed(() => (selected.value?.draftOnly === 'gone' ? sourc
 
 // ── 열기 ──
 const target = (name, crtime) => ({ process: loadedFor.value.process, model: loadedFor.value.model, name, crtime: String(crtime) })
-function openRow(name, crtime = 'current') {
+// how.draftKept: 내 초안이 있는 행을 고르기 창의 [현재 버전 열기]로 연다 — 화면이 "내 초안은 남아 있습니다" 를 알린다(목업, SEW-023)
+function openRow(name, crtime = 'current', how = undefined) {
   if (!loadedFor.value) return
-  emit('open', target(name, crtime))
+  if (how) emit('open', target(name, crtime), how)
+  else emit('open', target(name, crtime))
 }
 function openDraft() {
   const r = selected.value
@@ -504,7 +506,7 @@ const btnS = `px-4 py-2 ${SECONDARY} rounded-lg transition text-sm disabled:opac
       <LoadDraftCleanup v-if="sub === 'cleanup' && loadedFor" :process="loadedFor.process" :model="loadedFor.model" :rows="draftOnlyRows" :open-draft-id="edit.draftId"
         @done="onCleaned" @close="sub = null" />
       <LoadDraftChoice v-if="sub === 'choice' && selected?.draft" :row="selected" :model="loadedFor.model"
-        @draft="openDraft" @current="sub = null; openRow(selected.name)" @close="sub = null" />
+        @draft="openDraft" @current="sub = null; openRow(selected.name, 'current', { draftKept: true })" @close="sub = null" />
       <BaseToast :toast="toast" />
     </div>
     <template #footer>

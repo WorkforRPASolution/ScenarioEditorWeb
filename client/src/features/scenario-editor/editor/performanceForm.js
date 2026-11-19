@@ -70,11 +70,18 @@ export function sentFields(f, saved) {
 const devsKey = (devs) => JSON.stringify(devs.map((d) => [d.id, String(d.p).trim()]))
 export const devsChanged = (init, f) => devsKey(init.devs) !== devsKey(f.devs)
 
-// 사용자가 창을 연 뒤 바꾼 것(바닥 줄 "N개 바뀜"·닫기 확인). 값을 보일 수 있는 칸은 from·to.
+// 창을 열 때 저장값과 다르게 골라 두는 칸 — 효과 유형 None(그 밖)은 Active 로, 그때 남은 그룹은 빈 값(formOf·payloadOf).
+// 손대지 않아도 저장하면 그 값이 되므로 저장값과 견준다(SEW-023 — 전에는 "N개 바뀜" 에 세지 않아 말없이 Active 로 저장됐다).
+const OPEN_PICKED = new Set(['PerformType', 'Group'])
+
+// 저장하면 바뀌는 것(바닥 줄 "N개 바뀜"·닫기 확인). 사용자가 바꾼 칸은 창을 연 뒤 기준, 창이 골라 둔 칸(OPEN_PICKED)은 저장값 기준.
+// 값을 보일 수 있는 칸은 from·to. 창이 골라 둔 채 손대지 않은 칸은 implicit — 닫기 확인은 이것만 있을 때 묻지 않는다.
 export function changesOf(init, f, saved) {
   const a = payloadOf(init, saved)
   const b = payloadOf(f, saved)
-  const out = FIELD_KEYS.filter((k) => differs(a[k], b[k])).map((k) => ({ key: k, from: a[k], to: b[k] }))
+  const base = (k) => (OPEN_PICKED.has(k) ? saved[k] : a[k])
+  const out = FIELD_KEYS.filter((k) => differs(base(k), b[k]))
+    .map((k) => ({ key: k, from: base(k), to: b[k], ...(OPEN_PICKED.has(k) && !differs(a[k], b[k]) ? { implicit: true } : {}) }))
   if (devsChanged(init, f)) out.push({ key: 'CitizenDeveloper' })
   return out
 }

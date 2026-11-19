@@ -72,6 +72,8 @@ const errorAts = computed(() => [...new Set(errors.value.map((e) => e.at))])
 const anyVisible = computed(() => errors.value.some(visible))
 const changes = computed(() => changesOf(init.value, form.value, saved.value))
 const dirty = computed(() => changes.value.length > 0)
+// 사용자가 손댄 것 — 창이 골라 둔 값(implicit)만 있으면 닫을 때 묻지 않는다(닫아도 잃는 것이 없다)
+const touchedChanges = computed(() => changes.value.some((c) => !c.implicit))
 const sent = computed(() => sentFields(form.value, saved.value))
 const canSave = computed(() => allowed.value && !saving.value && !errors.value.length && dirty.value)
 const done = computed(() => isPerformanceComplete(payload.value))
@@ -158,7 +160,8 @@ function valueText(key, v) {
 const changeText = (c) => {
   const a = c.key === 'CitizenDeveloper' ? null : valueText(c.key, c.from)
   const b = c.key === 'CitizenDeveloper' ? null : valueText(c.key, c.to)
-  return a !== null && b !== null ? `${L.fields[c.key]} ${a} → ${b}` : L.fields[c.key]
+  const text = a !== null && b !== null ? `${L.fields[c.key]} ${a} → ${b}` : L.fields[c.key]
+  return c.implicit ? t('SEW_PERF_CHANGED_IMPLICIT', { text }) : text
 }
 const changesLine = computed(() => `${changes.value.map(changeText).join(', ')} · ${t('SEW_PERF_CHANGED_TAIL')}`)
 const changedNames = computed(() => changes.value.map((c) => L.fields[c.key]).join(', '))
@@ -244,7 +247,7 @@ async function save() {
     if (code === 'VALIDATION_FAILED') {
       serverBlocks.value = Array.isArray(e?.response?.data?.details?.blocks) ? e.response.data.details.blocks : []
       saveError.value = t('SEW_PERF_SAVE_BLOCKED')
-    } else if (code === 'UPSTREAM_TIMEOUT' || code === 'TIMEOUT') {
+    } else if (code === 'UPSTREAM_TIMEOUT' || code === 'TIMEOUT' || code === 'NETWORK') { // 보낸 뒤 끊김도 저장됐을 수 있다(SEW-023)
       saveError.value = t('SEW_PERF_SAVE_UNKNOWN')
     } else {
       saveError.value = t('SEW_PERF_SAVE_FAILED', { cause: errorMessage(e) })
@@ -257,14 +260,14 @@ async function save() {
 // 닫기: 저장하는 중에는 닫지 않는다. 바꾼 것이 있으면 묻는다(묻는 창의 Esc·[계속 고치기]는 묻는 창만 닫는다).
 function requestClose() {
   if (saving.value || leaving.value) return
-  if (!dirty.value) { emit('update:modelValue', false); return }
+  if (!touchedChanges.value) { emit('update:modelValue', false); return }
   leaving.value = true
   nextTick(() => keepEl.value?.focus())
 }
 function leaveKeep() { leaving.value = false; nextTick(() => closeEl.value?.focus()) }
 function leaveDrop() { leaving.value = false; emit('update:modelValue', false) }
 
-// Esc(찾기 목록이 열려 있으면 그 조각이 먼저 받는다)·Tab 이 창 밖으로 나가지 않게
+// Esc(찾기 목록이 열려 있으면 그 조각이 먼저 받는다)·Tab 이 창 밖으로 나가지 않게 — 창 위의 ✕(ModalShell 머리)도 Tab 고리에 든다(SEW-023)
 function onKey(e) {
   if (e.key === 'Escape') {
     e.preventDefault()
@@ -273,7 +276,7 @@ function onKey(e) {
     return
   }
   if (e.key !== 'Tab' || !rootEl.value) return
-  const scope = leaving.value ? rootEl.value.querySelector('.se-pp-cf') : rootEl.value
+  const scope = leaving.value ? rootEl.value.querySelector('.se-pp-cf') : rootEl.value.closest('[data-se-modal]') ?? rootEl.value
   const els = [...scope.querySelectorAll('button, input, select, textarea')].filter((x) => !x.disabled && (leaving.value || !x.closest('.se-pp-cf')))
   if (!els.length) return
   const first = els[0]

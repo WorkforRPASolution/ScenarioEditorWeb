@@ -63,6 +63,13 @@ function openDraft(d) {
   loadOpen.value = false
   guardedOpen(() => store.openDraft({ process: d.process, model: d.model, name: d.name, draftId: d.draftId }))
 }
+// 내 초안이 있는 시나리오를 현재 버전으로 열기(불러오기 창 고르기 창) — 열리면 초안이 남아 있다고 알린다(목업, SEW-023). 열지 못하면 가운데 화면이 알린다.
+function openCurrentKeepingDraft(target) {
+  guardedOpen(async () => {
+    await store.openScenario(target)
+    if (!store.openError) edit.notify(t('SEW_LOAD_OPENED_CURRENT_DRAFT_KEPT'))
+  })
+}
 function openRestore(target) {
   loadOpen.value = false
   guardedOpen(() => store.openRestore(target))
@@ -225,7 +232,7 @@ const card = 'bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:
         </section>
       </div>
     </template>
-    <LoadDialog v-model="loadOpen" @open="(target) => { loadOpen = false; openGuarded(target) }" @open-draft="openDraft" @restore="openRestore" />
+    <LoadDialog v-model="loadOpen" @open="(target, how) => { loadOpen = false; how?.draftKept ? openCurrentKeepingDraft(target) : openGuarded(target) }" @open-draft="openDraft" @restore="openRestore" />
     <NewScenarioDialog v-model="newOpen" @open-draft="openDraft" />
     <EditDialogs v-if="edit.editable" />
   </div>

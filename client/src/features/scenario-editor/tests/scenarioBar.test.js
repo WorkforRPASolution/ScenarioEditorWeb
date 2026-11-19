@@ -99,7 +99,25 @@ describe('ScenarioBar', () => {
     await w.vm.$nextTick()
     expect(w.find('[data-testid="se-scenario-notes"]').text()).not.toContain(MESSAGES.SEW_NOTE_NO_SUCCESS)
   })
-  describe('버튼 모양(2026-11-19 사용자 결정 A — 테두리 버튼 + 색 아이콘)', () => {
+  describe('바 머리 줄(SEW-023)', () => {
+  const barWith = ({ canWrite }) => {
+    const f = panelFixture([noneStep(0)], { canWrite })
+    f.s.skeleton = { ...f.s.skeleton, id: 'P-M-N', header: { description: '메일 제목', timeoutLimit: '1', targetWindow: null }, property: null, performance: null }
+    return mount(ScenarioBar, { global: { stubs: { ModalShell: ModalStub } } })
+  }
+  it('편집할 수 있으면 시나리오 ID 아래에 빈 줄 요소를 남기지 않는다 — 읽기 전용이면 메일 제목·제한 시간 줄', async () => {
+    const a = barWith({ canWrite: true })
+    expect(a.find('[data-testid="se-bar-meta"]').exists()).toBe(false)
+    expect(a.find('[data-testid="se-bar-fields"]').exists()).toBe(true)
+    a.unmount()
+    setActivePinia(createPinia())
+    const b = barWith({ canWrite: false })
+    expect(b.find('[data-testid="se-bar-meta"]').text()).toContain('제한')
+    b.unmount()
+  })
+})
+
+describe('버튼 모양(2026-11-19 사용자 결정 A — 테두리 버튼 + 색 아이콘)', () => {
     const cls = (w, id) => w.find(`[data-testid="${id}"]`).classes()
     const secondary = SECONDARY.split(' ')
     const open = (canWrite = true) => {

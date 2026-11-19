@@ -23,6 +23,9 @@ const options = computed(() => {
 const errName = computed(() => ctx.errors[`${props.field}.Name`] ?? null)
 const errText = computed(() => ctx.errors[`${props.field}.Text`] ?? null)
 const setPart = (part, value) => ctx.set(props.field, { Name: v.value?.Name ?? '', Text: v.value?.Text ?? '', [part]: value })
+// 잇기 단추 상태(저장된 빈 후속)인데 저장 창이 이 칸의 막힘으로 보냈으면 단추 옆에 그 까닭(SEW-023 — 지운 시나리오를 다시 만들 때 서버가 막는다)
+const linkIssue = computed(() => { const p = ctx.pointed; return p?.issue && p.field.split('.')[0] === props.field ? p.issue : null })
+const linkErrId = computed(() => `se-prop-link-err-${props.field}`)
 </script>
 
 <template>
@@ -32,7 +35,10 @@ const setPart = (part, value) => ctx.set(props.field, { Name: v.value?.Name ?? '
     <div class="name" :title="name">{{ name }}</div>
     <div v-if="v.Text" class="desc" :title="v.Text">{{ v.Text }}</div>
   </div>
-  <button v-else-if="!showEdit" type="button" class="se-pp-link" :data-pfield="field" @click="ctx.link(field)">{{ t('SEW_PROP_FOLLOW_LINK') }}</button>
+  <div v-else-if="!showEdit">
+    <button type="button" class="se-pp-link" :data-pfield="field" :aria-describedby="linkIssue ? linkErrId : undefined" @click="ctx.link(field)">{{ t('SEW_PROP_FOLLOW_LINK') }}</button>
+    <div v-if="linkIssue" :id="linkErrId" class="se-pp-err" :data-testid="`se-prop-err-${field}`">{{ fieldMessage(linkIssue) }}</div>
+  </div>
   <div v-else class="se-pp-n se-pp-next" :class="errName || errText ? 'bad' : ctx.changed(field) ? 'ch' : ''">
     <div class="se-pp-next-edit">
       <select class="se-pp-inp" :class="{ bad: errName }" :data-pfield="`${field}.Name`" :aria-label="P.next" :value="name ?? ''" @change="setPart('Name', $event.target.value)">
@@ -45,7 +51,7 @@ const setPart = (part, value) => ctx.set(props.field, { Name: v.value?.Name ?? '
       @input="setPart('Text', $event.target.value)">
     <div v-if="errName" class="se-pp-err" :data-testid="`se-prop-err-${field}.Name`">{{ fieldMessage(errName) }}</div>
     <div v-if="errText" class="se-pp-err" :data-testid="`se-prop-err-${field}.Text`">{{ fieldMessage(errText) }}</div>
-    <div v-if="!errName && gone" class="se-pp-warn">{{ t('SEW_PROP_FOLLOW_GONE') }}</div>
+    <div v-if="!errName && gone" class="se-pp-warn">{{ t('RULE_FOLLOW_MISSING') }}</div>
     <div v-else-if="!errName && self" class="se-pp-warn">{{ t('RULE_FOLLOW_SELF') }}</div>
   </div>
 </template>

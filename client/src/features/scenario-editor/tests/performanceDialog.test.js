@@ -157,6 +157,7 @@ describe('성과 입력 창(PerformanceDialog)', () => {
     setup({ performance: { ...PERF, eqpPerformanceLoss: 90 } })
     await flushPromises()
     expect(dlgText()).toContain(t('SEW_PERF_KEPT_LOSS', { value: '90' }))
+    expect(dlgText()).not.toContain('90는') // 숫자 뒤 조사가 어긋나지 않게(SEW-023)
     expect(dlgText()).not.toContain('90초')
   })
 
@@ -282,6 +283,38 @@ describe('성과 입력 창(PerformanceDialog)', () => {
     expect(api.saveReview).not.toHaveBeenCalled()
   })
 
+  it('효과 유형이 "None" 인 성과: 창이 골라 둔 Active 를 바닥 "바뀐 것" 에 세고 그것만으로 저장할 수 있다 — 손대지 않고 닫으면 묻지 않는다(SEW-023)', async () => {
+    setup({ performance: { ...PERF, performType: 0, performTypeName: 'None' } })
+    await flushPromises()
+    expect(footText()).toContain(t('SEW_PERF_CHANGED_N', { n: 1 }))
+    expect(footText()).toContain(t('SEW_PERF_CHANGED_IMPLICIT', { text: '효과 유형 None → Active' }))
+    expect(saveBtn().attributes('disabled')).toBeUndefined()
+    await id('se-perf-close').trigger('click')
+    expect(id('se-perf-leave').exists()).toBe(false)
+    expect(w.emitted('update:modelValue')).toEqual([[false]])
+    w.unmount()
+    setup({ performance: { ...PERF, performType: 0, performTypeName: 'None' } })
+    await flushPromises()
+    await pf('grade:1').trigger('click')
+    await id('se-perf-close').trigger('click')
+    expect(id('se-perf-leave').text()).toContain('바꾼 2곳(효과 유형, 등급)') // 손댄 것이 있으면 묻고 창이 골라 둔 것도 함께 적는다
+    await id('se-perf-leave-keep').trigger('click')
+    api.savePerformance.mockReturnValue(new Promise(() => {}))
+    await saveBtn().trigger('click')
+    expect(api.savePerformance.mock.calls[0][3].fields).toEqual({ PerformType: 1, Grade: 1 })
+  })
+
+  it('Tab 은 창 위의 ✕ 까지 돈다 — 마지막 단추에서 Tab 이면 ✕, ✕ 에서 Shift+Tab 이면 마지막 단추(SEW-023)', async () => {
+    setup()
+    await flushPromises()
+    const x = dlg().querySelector('[aria-label="닫기"]')
+    id('se-perf-close').element.focus() // 바뀐 것이 없어 [성과 저장]은 꺼져 있다 — [닫기]가 마지막
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }))
+    expect(document.activeElement).toBe(x)
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true }))
+    expect(document.activeElement).toBe(id('se-perf-close').element)
+  })
+
   it('바뀐 것이 없으면 바로 닫는다', async () => {
     setup()
     await flushPromises()
@@ -375,6 +408,18 @@ describe('성과 입력 창(PerformanceDialog)', () => {
     expect(footText()).toContain(t('SEW_PERF_SAVE_FAILED', { cause: MESSAGES.SEW_ERR_NOT_FOUND }))
     expect(pf('desc').element.value).toBe('설명을 고침')
     expect(saveBtn().attributes('disabled')).toBeUndefined()
+  })
+
+  it('보낸 뒤 응답 없이 끊기면 확정 실패가 아니라 "저장했는지 알 수 없습니다"(SEW-023)', async () => {
+    setup()
+    await flushPromises()
+    await pf('desc').setValue('설명을 고침')
+    api.savePerformance.mockReturnValue(Promise.reject({ request: {}, message: 'Network Error' }))
+    await saveBtn().trigger('click')
+    await flushPromises()
+    expect(footText()).toContain(t('SEW_PERF_SAVE_UNKNOWN'))
+    expect(footText()).not.toContain('저장하지 못했습니다')
+    expect(pf('desc').element.value).toBe('설명을 고침')
   })
 })
 

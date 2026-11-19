@@ -1830,6 +1830,32 @@ describe('editStore — 되돌려 열기(beginRestore)·초안 이어서 열기(
     expect(fx.loadBlob).toHaveBeenCalledWith('http://x/api/scenario-editor/drafts/d1/images/tUp')
     expect(e.uploads.get('tUp')).toBe(blob)
   })
+  it('붙인 스텝의 초안 그림을 받지 못하면 조용히 넘기지 않고 그 스텝 번호로 알린다 — 세션이 바뀌었으면 알리지 않는다(SEW-023)', async () => {
+    const { e } = start()
+    const base = versionOf(30, [imageStep(0)])
+    const st = { ...JSON.parse(JSON.stringify(imageStep(0))), images: { train: { 0: { from: 'upload', tempId: 'tUp' } }, base: { from: 'source', id: 's0-bi' } } }
+    e.beginFromDraft(draftOf({ ...base.edited, steps: [st] }), base)
+    e.setSelection({ uids: ['s0'], anchor: 's0' })
+    e.copySelection(false)
+    fx.loadBlob.mockRejectedValue(new Error('image 404'))
+    const other = { ...versionOf(30, [noneStep(0)]), name: 'B', id: 'P-M-B' }
+    other.edited = { ...other.edited, source: { ...other.edited.source, name: 'B' } }
+    e.begin(other, useEditorStore().me)
+    expect(e.pasteClip('end')).toBe(true)
+    await flushPromises()
+    expect(e.uploads.has('tUp')).toBe(false)
+    expect(e.toast.text).toBe(t('SEW_CMD_PASTE_IMAGE_FAILED', { nos: '2' }))
+    // 받는 사이 다른 시나리오를 열었으면 알리지 않는다
+    let reject
+    fx.loadBlob.mockImplementation(() => new Promise((_, rej) => { reject = rej }))
+    e.begin(other, useEditorStore().me)
+    expect(e.pasteClip('end')).toBe(true)
+    e.begin({ ...other, name: 'C', id: 'P-M-C' }, useEditorStore().me)
+    e.notify('다른 알림')
+    reject(new Error('image 404'))
+    await flushPromises()
+    expect(e.toast.text).toBe('다른 알림')
+  })
 })
 import { buildMeta } from '../editor/request'
 import { flushPromises } from '@vue/test-utils'

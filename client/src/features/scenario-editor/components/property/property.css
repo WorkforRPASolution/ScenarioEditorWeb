@@ -142,7 +142,7 @@ select.se-pp-inp { min-width: 210px; }
 .se-pp-review-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 6px; }
 .se-pp-lock { font-size: 12px; color: var(--pp-mut); }
 .se-pp-ok { font-size: 12px; color: var(--pp-ok); margin-top: 4px; }
-.se-pp-metrics { margin: 0; display: grid; grid-template-columns: 1fr auto; gap: 3px 16px; font-variant-numeric: tabular-nums; }
+.se-pp-metrics { margin: 0; display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; font-variant-numeric: tabular-nums; }
 .se-pp-metrics dt { color: var(--pp-mut); }
 .se-pp-metrics dd { margin: 0; text-align: right; font-weight: 500; }
 .se-pp-metrics dd.zero { color: var(--pp-faint); font-weight: 400; }

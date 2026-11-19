@@ -7,7 +7,7 @@
 import { ref, reactive, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
 import { useEditStore } from '../stores/editStore'
-import { useSaveFlow, causeText } from '../stores/saveFlow'
+import { useSaveFlow, failCause } from '../stores/saveFlow'
 import { scenarioEditorApi as api } from '../api'
 import { t, LABELS, errorMessage } from '../messages'
 import { formatCrtime, enabledLabel, scenarioTypeOptions } from '../format'
@@ -171,7 +171,7 @@ async function cfDraft() {
   try {
     await flow.draftCurrent()
   } catch (e) {
-    const cause = e?.response || e?.request ? causeText(e) : t('SEW_SAVE_CAUSE_LOCAL')
+    const cause = failCause(e, { steps: edit.session?.working?.steps, draft: true })
     cfError.value = t(verb === 'open' ? 'SEW_NEW_DRAFT_FAILED_OPEN' : 'SEW_NEW_DRAFT_FAILED_CREATE', { cause })
     return
   } finally {
@@ -191,7 +191,8 @@ function create() {
   const params = { process: form.process, model: form.model, name: name.value, type: form.type, description: form.description, timeoutLimit: form.timeoutLimit }
   leaveThen('create', (drafted) => {
     const prev = openName.value
-    if (!edit.beginNew(params)) return
+    // 만들지 못하면 창을 남기고 알린다 — 앞 시나리오를 초안으로 저장했으면 그 사실도(SEW-023)
+    if (!edit.beginNew(params)) { edit.notify(drafted ? t('SEW_NEW_CREATE_FAILED_DRAFT', { prev }) : t('SEW_NEW_CREATE_FAILED')); return }
     edit.notify(drafted ? t('SEW_NEW_MADE_DRAFT', { prev }) : t('SEW_NEW_MADE'))
     close()
   })
@@ -204,7 +205,8 @@ function openExisting() {
     const prev = openName.value
     close()
     await store.openScenario(target)
-    if (drafted && !store.openError) edit.notify(t('SEW_NEW_OPENED_DRAFT', { prev, name: target.name }))
+    // 열지 못한 까닭은 가운데 화면이 알린다 — 앞 시나리오를 초안으로 저장해 두었다는 것은 여기서(SEW-023)
+    if (drafted) edit.notify(t(store.openError ? 'SEW_NEW_OPEN_FAILED_DRAFT' : 'SEW_NEW_OPENED_DRAFT', { prev, name: target.name }))
   })
 }
 // 초안 열기는 부모가 맡는다(초안을 여는 길이 저장 전 변경을 다시 묻는다)
@@ -249,11 +251,24 @@ watch(() => props.modelValue, (open) => {
   nextTick(focusFirst)
 }, { immediate: true })
 
-// Esc = 취소, 확인 창이 떠 있으면 돌아가기(목업 "내가 정한 것" 15)
+// Esc = 취소, 확인 창이 떠 있으면 돌아가기(목업 "내가 정한 것" 15). 확인 창이 떠 있으면 Tab 은 그 단추 안에서만 돈다(SEW-023).
 function onKey(e) {
-  if (e.key !== 'Escape' || !props.modelValue) return
+  if (!props.modelValue) return
+  if (e.key === 'Tab' && confirm.value) { trapTab(e); return }
+  if (e.key !== 'Escape') return
   if (confirm.value) cfBack()
   else close()
+}
+function trapTab(e) {
+  const box = rootEl.value?.querySelector('.se-ns-cf')
+  const els = [...(box?.querySelectorAll('button') ?? [])].filter((x) => !x.disabled)
+  if (!els.length) return
+  const first = els[0]
+  const last = els[els.length - 1]
+  const at = document.activeElement
+  if (!box.contains(at)) { e.preventDefault(); (e.shiftKey ? last : first).focus() }
+  else if (e.shiftKey && at === first) { e.preventDefault(); last.focus() }
+  else if (!e.shiftKey && at === last) { e.preventDefault(); first.focus() }
 }
 watch(() => props.modelValue, (open) => (open ? document.addEventListener('keydown', onKey) : document.removeEventListener('keydown', onKey)), { immediate: true })
 onBeforeUnmount(() => document.removeEventListener('keydown', onKey))

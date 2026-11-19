@@ -45,10 +45,10 @@ const canDelete = computed(() => {
   const s = edit.session
   return !!store.me?.canWrite && !!store.skeleton && !store.skeleton.isNew && !!s?.source && s.readOnly !== 'deleted' && !s.fromDraft?.gone
 })
-// 운영 속성 창 초점({ field, n }) — 저장 창의 운영 속성 막힌 줄이 그 칸을 알려 준다. [운영 속성 전체]는 초점 없이 보기로 연다.
+// 운영 속성 창 초점({ field, issue, n }) — 저장 창의 운영 속성 막힌 줄이 그 칸과 막힌 까닭(issue = { code, params })을 알려 준다. [운영 속성 전체]는 초점 없이 보기로 연다.
 const propertyFocus = ref(null)
-function openProperty(field) {
-  propertyFocus.value = field ? { field, n: (propertyFocus.value?.n ?? 0) + 1 } : null
+function openProperty(field, issue = null) {
+  propertyFocus.value = field ? { field, issue, n: (propertyFocus.value?.n ?? 0) + 1 } : null
   showProperty.value = true
 }
 // 성과 입력 창: 운영 속성 창의 [성과 입력]으로 열고, 닫으면 초점을 [성과 입력]으로 돌린다
@@ -156,11 +156,10 @@ const saveCls = computed(() => (unsaved.value ? 'bg-primary-500 hover:bg-primary
     <template v-if="sk">
       <div class="min-w-0">
         <div class="font-mono text-sm text-gray-900 dark:text-white truncate" data-testid="se-bar-id">{{ sk.id }}</div>
-        <div class="text-xs text-gray-500 dark:text-gray-400 truncate">
-          <template v-if="!edit.editable">
-            <span ref="descEl" tabindex="-1" class="outline-none focus:ring-2 focus:ring-primary-400 rounded" data-testid="se-bar-description">{{ header.description }}</span>
-            · <span ref="timeoutEl" tabindex="-1" class="outline-none focus:ring-2 focus:ring-primary-400 rounded" data-testid="se-bar-timeout">제한 {{ header.timeoutLimit }}분</span>
-          </template>
+        <!-- 편집할 수 있으면 메일 제목·제한 시간은 옆의 입력 칸이다 — 빈 줄 요소를 남기지 않는다(SEW-023) -->
+        <div v-if="!edit.editable" class="text-xs text-gray-500 dark:text-gray-400 truncate" data-testid="se-bar-meta">
+          <span ref="descEl" tabindex="-1" class="outline-none focus:ring-2 focus:ring-primary-400 rounded" data-testid="se-bar-description">{{ header.description }}</span>
+          · <span ref="timeoutEl" tabindex="-1" class="outline-none focus:ring-2 focus:ring-primary-400 rounded" data-testid="se-bar-timeout">제한 {{ header.timeoutLimit }}분</span>
         </div>
       </div>
       <div v-if="edit.editable" class="flex items-start gap-3 text-xs text-gray-600 dark:text-gray-300" data-testid="se-bar-fields">
