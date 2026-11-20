@@ -2,7 +2,7 @@
 // 새 시나리오 창의 이름 칸(목업 nameField). 규칙이 있으면 대·중분류 고르기 + 3·4번 칸(직접 쓰는 칸 없음 — 40 §2.0 2026-11-09 ②),
 // 없으면 이름 한 칸. 값은 부모 form 을 보기만 하고 바꿀 때는 set·touch 를 알린다.
 import { computed } from 'vue'
-import { NAME_MAX, FREE_HEAD } from '../../editor/nameRule'
+import { NAME_MAX, isFreeHead } from '../../editor/nameRule'
 import { t, LABELS } from '../../messages'
 
 defineOptions({ name: 'NewScenarioName' })
@@ -14,7 +14,7 @@ const props = defineProps({
 const emit = defineEmits(['set', 'touch', 'retry'])
 const F = LABELS.newScenario.fields
 
-const free = computed(() => `${props.form.major}_${props.form.middle}` === FREE_HEAD)
+const free = computed(() => isFreeHead(props.form.major, props.form.middle))
 const optionText = (r) => (r.description ? t('SEW_NEW_RULE_OPTION', { name: r.name, description: r.description }) : r.name)
 // 만들어지는 이름 미리 보기: 빈 칸은 회색 자리표(3번 칸은 머리가 AUTO_DATABACKUP 이면 뺀다)
 const preview = computed(() => {

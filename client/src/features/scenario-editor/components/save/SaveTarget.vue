@@ -2,12 +2,12 @@
 // 저장 창 왼쪽 — 어디에 저장하나(목업 saveHtml 왼쪽·renderSaveLive svTarget, 조작판 24~28): 공정·모델·이름, 대상 안내와 덮어쓰기 확인,
 // 함께 저장되는 값(메일 제목·제한 시간 — 바에서 고친다).
 import { computed, ref, watch, nextTick, onMounted } from 'vue'
-import { useSaveFlow, overwriteDiff, followName } from '../../stores/saveFlow'
+import { useSaveFlow, overwriteDiff } from '../../stores/saveFlow'
 import { useEditStore } from '../../stores/editStore'
 import { useEditorStore } from '../../stores/editorStore'
 import { t, LABELS, fieldMessage } from '../../messages'
-import { enabledLabel } from '../../format'
-import { typeName } from '../../editor/propertyView'
+import { enabledLabel, timeoutText } from '../../format'
+import { typeName, followName } from '../../editor/propertyView'
 import SaveNamePanel from './SaveNamePanel.vue'
 import ChangeText from '../ChangeText.vue'
 import '../panel/panel.css'
@@ -49,7 +49,6 @@ const header = computed(() => edit.session?.working?.header ?? {})
 const blockCodes = computed(() => new Set((flow.check?.blocks ?? []).map((b) => b.code)))
 const descBad = computed(() => blockCodes.value.has('MAIL_TITLE_EMPTY') || blockCodes.value.has('MAIL_TITLE_COLON'))
 const timeoutBad = computed(() => blockCodes.value.has('TIMEOUT_INVALID'))
-const minutes = (v) => (v === '' || v === null || v === undefined ? t('SEW_SAVE_EMPTY_VALUE') : /^[0-9]+$/.test(String(v)) ? t('SEW_SAVE_MINUTES', { n: v }) : String(v))
 
 const nameEl = ref(null)
 const modelEl = ref(null)
@@ -112,7 +111,7 @@ function useName(name) {
       <dd><span :class="{ bad: descBad }">{{ header.description || t('SEW_SAVE_EMPTY_VALUE') }}</span>
         <button v-if="!locked" type="button" class="se-sv-link" data-testid="se-save-fix-description" @click="emit('go', { kind: 'bar', field: 'description' })">{{ t('SEW_SAVE_FIX') }}</button></dd>
       <dt>{{ t('SEW_SAVE_TIMEOUT') }}</dt>
-      <dd><span :class="{ bad: timeoutBad }">{{ minutes(header.timeoutLimit) }}</span>
+      <dd><span :class="{ bad: timeoutBad }">{{ timeoutText(header.timeoutLimit) }}</span>
         <button v-if="!locked" type="button" class="se-sv-link" data-testid="se-save-fix-timeout" @click="emit('go', { kind: 'bar', field: 'timeoutLimit' })">{{ t('SEW_SAVE_FIX') }}</button></dd>
     </dl>
   </div>

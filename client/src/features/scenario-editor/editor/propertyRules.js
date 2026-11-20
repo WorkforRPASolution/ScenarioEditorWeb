@@ -1,22 +1,27 @@
 // 운영 속성 칸 검사(브라우저, P2-D Task 4). 서버 domain/rules/propertyRules.js 와 같은 code·같은 규칙이다:
 // 사용자가 바꾼 키만 본다(옛 값은 보존하므로 막지 않는다). 기준(prev)이 없으면(새 시나리오) 모든 키가 바뀐 것이다.
 // 결과는 칸별 { [칸]: { code, params? } } — 후속 시나리오는 이름·설명 칸이 따로다(`NextScenarioIfSuccess.Name`·`.Text`).
-import { canonicalJson } from './diff'
+import { changedPropertyKeys } from './diff'
 
+// 후속 칸(which · 키). 키 모음 FOLLOW_FIELDS 도 여기서 나온다 — 저장 흐름·표시가 따로 들지 않는다(SEW-024).
 export const FOLLOW_KEYS = [['success', 'NextScenarioIfSuccess'], ['fail', 'NextScenarioIfFail']]
+export const FOLLOW_FIELDS = new Set(FOLLOW_KEYS.map(([, key]) => key))
+// 유형 알림(서버 scenarioRules — TYPE_UNSET 경고·FAP_TYPE_MISMATCH 막힘과 같은 규칙). 운영 속성 창이 유형 칸 아래에 보인다 — [적용]은 막지 않는다.
+const ACTION_FAP = 13
+const TYPE_PM_AUTOMATION = 7
+export function typeNoteCode(property, steps) {
+  if (property?.Type === 0) return 'TYPE_UNSET'
+  return (steps ?? []).some((s) => s?.action?.type === ACTION_FAP) && property?.Type !== TYPE_PM_AUTOMATION ? 'FAP_TYPE_MISMATCH' : null
+}
 const isInt = (v) => typeof v === 'number' && Number.isInteger(v)
 const inRange = (v, lo, hi) => isInt(v) && v >= lo && v <= hi
 const isSet = (f) => f !== null && f !== undefined && typeof f === 'object'
 
-// 서버 changeDetect.changedPropertyKeys 와 같다(Owners 는 배포가 정한다).
+// 서버 changeDetect.changedPropertyKeys 와 같다(Owners 는 배포가 정한다). 저장 전 변경의 diff.changedPropertyKeys 와 다른 점은 하나 —
+// 기준이 없으면(새 시나리오) 모든 키를 바뀐 것으로 본다(검사는 새 시나리오의 모든 칸을 본다). 저장 전 변경은 늘 기준점이 있다.
 function changedKeys(next, prev) {
-  const e = next || {}
-  const s = prev || {}
-  const out = new Set()
-  for (const k of new Set([...Object.keys(e), ...Object.keys(s)])) {
-    if (k !== 'Owners' && (prev == null || canonicalJson(e[k]) !== canonicalJson(s[k]))) out.add(k)
-  }
-  return out
+  if (prev == null) return new Set(Object.keys(next || {}).filter((k) => k !== 'Owners'))
+  return new Set(changedPropertyKeys(next, prev))
 }
 
 export function checkPropertyFields(next, prev) {

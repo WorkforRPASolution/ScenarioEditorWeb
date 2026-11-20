@@ -6,6 +6,8 @@
 
 export const NAME_MAX = 50
 export const FREE_HEAD = 'AUTO_DATABACKUP'
+// 대·중분류가 FREE_HEAD 면 3번 칸을 비워도 된다
+export const isFreeHead = (major, middle) => `${major}_${middle}` === FREE_HEAD
 export const PART3_MIN = 5
 const NAME_RE = /^[0-9A-Za-z_]+$/
 const PART_RE = /^[0-9A-Za-z_]*$/
@@ -40,7 +42,7 @@ export function buildName({ major = '', middle = '', part3 = '', part4 = '' } = 
   const errors = {}
   if (!major) errors.major = { code: 'MAJOR_REQUIRED', params: {} }
   if (!middle) errors.middle = { code: 'MIDDLE_REQUIRED', params: {} }
-  const free = `${major}_${middle}` === FREE_HEAD
+  const free = isFreeHead(major, middle)
   if (!PART_RE.test(part3)) errors.part3 = { code: 'PART_CHARS', params: {} }
   else if (!free && part3.length < PART3_MIN) errors.part3 = { code: 'PART_SHORT', params: { min: PART3_MIN, n: part3.length } }
   if (!PART_RE.test(part4)) errors.part4 = { code: 'PART_CHARS', params: {} }

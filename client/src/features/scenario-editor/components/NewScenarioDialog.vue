@@ -11,9 +11,9 @@ import { useSaveFlow, failCause } from '../stores/saveFlow'
 import { scenarioEditorApi as api } from '../api'
 import { t, LABELS, errorMessage } from '../messages'
 import { formatCrtime, enabledLabel, scenarioTypeOptions } from '../format'
-import { nameRuleOf, NAME_MAX, PART3_MIN, FREE_HEAD } from '../editor/nameRule'
+import { nameRuleOf, NAME_MAX, PART3_MIN, isFreeHead } from '../editor/nameRule'
 import { typeName } from '../editor/propertyView'
-import { DEFAULT_TIMEOUT, newScenarioId, checkNewScenario, newName, issueKey, humanMinutes } from '../editor/newScenario'
+import { DEFAULT_TIMEOUT, newScenarioId, checkNewScenario, newName, issueKey, humanMinutes, NAME_FIELDS as NAME_FIELD_LIST } from '../editor/newScenario'
 import ModalShell from './ModalShell.vue'
 import NewScenarioName from './newScenario/NewScenarioName.vue'
 import NewScenarioAfter from './newScenario/NewScenarioAfter.vue'
@@ -29,7 +29,7 @@ const store = useEditorStore()
 const edit = useEditStore()
 const flow = useSaveFlow()
 const F = LABELS.newScenario.fields
-const NAME_FIELDS = new Set(['major', 'middle', 'part3', 'part4', 'name'])
+const NAME_FIELDS = new Set(NAME_FIELD_LIST)
 
 const blank = () => ({ process: '', model: '', type: 0, major: '', middle: '', part3: '', part4: '', name: '', description: '', timeoutLimit: DEFAULT_TIMEOUT })
 const form = reactive(blank())
@@ -111,7 +111,7 @@ const draft = computed(() => (namesState.value === 'ok' && nameOk.value && !exis
 const draftTime = computed(() => { const ms = draft.value ? new Date(draft.value.savedAt).getTime() : NaN; return Number.isFinite(ms) ? formatCrtime(ms).slice(0, 16) : '' })
 
 // 칸 아래 줄: 오류(문구 키 issueKey) 또는 도움말
-const free = computed(() => `${form.major}_${form.middle}` === FREE_HEAD)
+const free = computed(() => isFreeHead(form.major, form.middle))
 const timeoutNum = computed(() => (/^[1-9][0-9]*$/.test(form.timeoutLimit) ? Number(form.timeoutLimit) : null))
 const HINTS = {
   process: () => t(form.process && form.process === openProcess.value ? 'SEW_NEW_PROCESS_FROM_OPEN' : 'SEW_NEW_PROCESS_HINT'),

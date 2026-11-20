@@ -4,23 +4,19 @@ import { computed, inject } from 'vue'
 import { useEditStore } from '../../stores/editStore'
 import { t, LABELS, fieldMessage } from '../../messages'
 import { typeName, priorityName, isStandardPriority } from '../../editor/propertyView'
+import { typeNoteCode } from '../../editor/propertyRules'
 import { SCENARIO_TYPE_CHOICES, scenarioTypeOptions } from '../../format'
 
 defineOptions({ name: 'PropertyState' })
 const ctx = inject('sePropertyCtx')
 const edit = useEditStore()
 const P = LABELS.prop
-const FAP = 13 // 동작 FAP — 있으면 유형이 PM 자동화(7)여야 저장된다(서버 FAP_TYPE_MISMATCH)
 
 const p = computed(() => ctx.p)
 const on = computed(() => p.value.IsEnabled === true)
 const typeKnown = computed(() => SCENARIO_TYPE_CHOICES.includes(p.value.Type))
-// 유형 알림: 미지정(서버 경고 TYPE_UNSET)·FAP 동작과 안 맞음(서버 막힘 FAP_TYPE_MISMATCH). [적용]은 막지 않는다 — 저장 창 검사가 본다.
-const typeNote = computed(() => {
-  if (p.value.Type === 0) return t('RULE_TYPE_UNSET')
-  const steps = edit.session?.working?.steps ?? []
-  return steps.some((s) => s.action?.type === FAP) && p.value.Type !== 7 ? t('RULE_FAP_TYPE_MISMATCH') : ''
-})
+// 유형 알림: 미지정(서버 경고 TYPE_UNSET)·FAP 동작과 안 맞음(서버 막힘 FAP_TYPE_MISMATCH) — 규칙은 editor/propertyRules. [적용]은 막지 않는다 — 저장 창 검사가 본다.
+const typeNote = computed(() => { const code = typeNoteCode(p.value, edit.session?.working?.steps); return code ? t(`RULE_${code}`) : '' })
 </script>
 
 <template>

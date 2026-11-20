@@ -11,7 +11,8 @@ import { buildMeta, buildFormData, uploadsToSend } from '../editor/request'
 import { loadBlob, draftImageUrl, uploadIdsOf } from '../editor/images'
 import { sessionChanges } from '../editor/diff'
 import { checkName, nameRuleOf } from '../editor/nameRule'
-import { propertyFieldOf } from '../editor/propertyRules'
+import { propertyFieldOf, FOLLOW_FIELDS } from '../editor/propertyRules'
+import { followName } from '../editor/propertyView'
 import { useEditStore } from './editStore'
 import { useEditorStore } from './editorStore'
 
@@ -36,10 +37,8 @@ export function issueGoal(issue) {
 }
 
 // 덮어쓰기 차이(서버 targetExists.diff). 저장된 빈 후속 {Name:''} 과 null 은 둘 다 "후속 없음" 이라 차이 줄이 아니다.
-const FOLLOW_KEYS = new Set(['NextScenarioIfSuccess', 'NextScenarioIfFail'])
-export const followName = (v) => (v && typeof v === 'object' && typeof v.Name === 'string' && v.Name !== '' ? v.Name : null)
 export function overwriteDiff(diff) {
-  return (Array.isArray(diff) ? diff : []).filter((d) => !(FOLLOW_KEYS.has(d.key) && followName(d.from) === followName(d.to)))
+  return (Array.isArray(diff) ? diff : []).filter((d) => !(FOLLOW_FIELDS.has(d.key) && followName(d.from) === followName(d.to)))
 }
 
 // 원인 한 줄 — 저장 창 문구가 있으면 그것(공통 문구의 "잠시 뒤 다시 시도하세요" 를 피한다), 없으면 공통 오류 문구.
@@ -396,17 +395,22 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
     stage.value = r.result === 'partial' ? 'partial' : 'ok'
   }
 
+  // 지금 작업본을 tg 의 초안으로 보내고 세션에 적는다(저장 창 [초안 저장]·draftCurrent 가 함께 쓴다). 실패하면 던진다.
+  // 되돌린 세션이면 옛 판 crtime 을 초안에 남긴다 — 다시 열어 배포해도 배포 기록에 되돌림이 남게(SEW-022)
+  async function postDraft(s, tg) {
+    const { meta, uploadsUsed } = buildMeta(s, { target: tg, extra: { restoredFrom: s.restoredFrom ?? null } })
+    const data = (await api.saveDraft(await formFor(meta, uploadsUsed, tg))).data.data
+    edit.markDraft({ ...data, target: tg })
+    return data
+  }
+
   async function saveDraft() {
     if (!canDraft.value) return
     const s = session()
     busy.value = 'draft'
     notice.value = null
     try {
-      const tg = fullTarget()
-      // 되돌린 세션이면 옛 판 crtime 을 초안에 남긴다 — 다시 열어 배포해도 배포 기록에 되돌림이 남게(SEW-022)
-      const { meta, uploadsUsed } = buildMeta(s, { target: tg, extra: { restoredFrom: s.restoredFrom ?? null } })
-      const data = (await api.saveDraft(await formFor(meta, uploadsUsed, tg))).data.data
-      edit.markDraft({ ...data, target: tg })
+      const data = await postDraft(s, fullTarget())
       result.value = { savedAt: data.savedAt }
       stage.value = 'draft'
     } catch (e) {
@@ -421,11 +425,7 @@ export const useSaveFlow = defineStore('scenarioEditorSave', () => {
   async function draftCurrent() {
     const s = session()
     if (stage.value || !s?.working || s.readOnly) throw new Error('draft unavailable')
-    const tg = { process: process(), ...ownTarget() }
-    const { meta, uploadsUsed } = buildMeta(s, { target: tg, extra: { restoredFrom: s.restoredFrom ?? null } })
-    const data = (await api.saveDraft(await formFor(meta, uploadsUsed, tg))).data.data
-    edit.markDraft({ ...data, target: tg })
-    return data
+    return postDraft(s, { process: process(), ...ownTarget() })
   }
 
   // [버전 목록 확인](결과 모름·거절 뒤): mine 이면 성공(또는 마무리 실패), none 이면 [다시 배포]. 404 = 기록 없음(보내지 않았다).

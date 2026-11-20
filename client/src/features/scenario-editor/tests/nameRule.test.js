@@ -77,3 +77,14 @@ describe('buildName — "{대}_{중}" + 3번(5자 이상) + 4번(있으면), 조
     expect(r.errors).toEqual({})
   })
 })
+
+import { isFreeHead } from '../editor/nameRule'
+import { NAME_FIELDS } from '../editor/newScenario'
+describe('이름 규칙 조각 한곳(SEW-024)', () => {
+  it('isFreeHead: 대·중분류가 AUTO_DATABACKUP 일 때만 3번 칸을 비워도 된다', () => {
+    expect(isFreeHead('AUTO', 'DATABACKUP')).toBe(true)
+    expect(isFreeHead('ALARM', 'RECOVERY')).toBe(false)
+    expect(isFreeHead('', '')).toBe(false)
+  })
+  it('이름 칸 목록', () => expect(NAME_FIELDS).toEqual(['major', 'middle', 'part3', 'part4', 'name']))
+})

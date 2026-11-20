@@ -34,6 +34,16 @@ function createOpenService({ repo, hash, gridfs, scopes, imageCache, log }) {
   const flight = createSingleFlight()
   // 큰 판 하나를 풀 때 메모리를 많이 쓴다 — 서로 다른 판의 풀기도 한 번에 하나만. 캐시가 있는 열기는 이 줄을 기다리지 않는다.
   const unpacking = createSemaphore(1)
+  // 판 파일이 없어 캐시로 읽었다는 로그를 남긴 판 — 배포가 손대지 않은 그림마다 기준 판을 읽어도 한 번만 남긴다(SEW-024)
+  const cacheNoted = new Set()
+
+  // 같은 형식 번호의 디스크 뼈대 캐시 → { core, fromCache: true }, 없거나 옛 형식이면 null. 형식 번호는 응답에 새지 않게 뗀다.
+  async function readCachedCore(key) {
+    const cached = await imageCache.readSkeleton(key)
+    if (!cached || cached.cacheFormat !== SKELETON_CACHE_FORMAT) return null
+    const { cacheFormat, ...core } = cached
+    return { core, fromCache: true }
+  }
 
   async function propertyDocOf(process, model, name) {
     const docs = await repo.findScenarioKeyDocs(process, model, name)
@@ -45,11 +55,8 @@ function createOpenService({ repo, hash, gridfs, scopes, imageCache, log }) {
   async function unpack(process, model, name, crtime, fileId) {
     const key = versionKey(process, model, name, crtime, fileId)
     return flight.run(key, async () => {
-      const cached = await imageCache.readSkeleton(key)
-      if (cached && cached.cacheFormat === SKELETON_CACHE_FORMAT) {
-        const { cacheFormat, ...core } = cached // 형식 번호는 응답에 새지 않게 뗀다
-        return { core, fromCache: true }
-      }
+      const cached = await readCachedCore(key)
+      if (cached) return cached
       return unpacking.run(async () => {
         const file = await gridfs.findFile(fileId)
         if (!file) throw seError(404, 'NOT_FOUND', '그 버전이 없습니다')
@@ -106,11 +113,12 @@ function createOpenService({ repo, hash, gridfs, scopes, imageCache, log }) {
 
   async function cachedVersion(process, model, name, crtime, oid) {
     const key = versionKey(process, model, name, crtime, oid)
-    const cached = await imageCache.readSkeleton(key)
-    if (!cached || cached.cacheFormat !== SKELETON_CACHE_FORMAT) return null
-    const { cacheFormat, ...core } = cached
-    log.info(`source ${process}-${model}-${name}@${crtime}: 판 파일이 없어 디스크 캐시로 읽음`)
-    return { core, fromCache: true }
+    const cached = await readCachedCore(key)
+    if (cached && !cacheNoted.has(key)) {
+      cacheNoted.add(key)
+      log.info(`source ${process}-${model}-${name}@${crtime}: 판 파일이 없어 디스크 캐시로 읽음`)
+    }
+    return cached
   }
 
   // 검사·배포가 기준 판으로 읽는다. 현재 운영 속성·성과를 붙인 뼈대와 그 문서(property·performance 하위 문서).

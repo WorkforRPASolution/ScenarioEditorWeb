@@ -7,6 +7,7 @@ import { diffLines } from '../../editor/panel'
 import { propertyDiffs } from '../../editor/propertyView'
 import { windowLabel } from '../../editor/windows'
 import { t } from '../../messages'
+import { timeoutText } from '../../format'
 import ChangeText from '../ChangeText.vue'
 
 defineOptions({ name: 'SaveChanges' })
@@ -16,7 +17,6 @@ const edit = useEditStore()
 
 const text = (v) => (v === '' || v === null || v === undefined ? t('SEW_SAVE_EMPTY_VALUE') : String(v))
 const plain = (v) => (v ? [{ text: v }] : [])
-const minutes = (v) => (v === '' || v === null || v === undefined ? t('SEW_SAVE_EMPTY_VALUE') : /^[0-9]+$/.test(String(v)) ? t('SEW_SAVE_MINUTES', { n: v }) : String(v))
 // 줄 아래 글은 조각 목록이다: { text } 는 글 그대로, { label, before, after } 는 "이름 이전 → 지금"(바뀐 부분만 색 — ChangeText)
 const arrow = (label, before, after) => ({ label, before, after })
 const lineOf = (l) => (l.before === '' && l.after === '' ? { text: l.label } : arrow(l.label, l.before, l.after))
@@ -51,7 +51,7 @@ const rows = computed(() => {
       })
     } else if (c.kind === 'field') {
       const desc = c.key === 'description'
-      out.push({ label: t(desc ? 'SEW_SAVE_MAIL_TITLE' : 'SEW_SAVE_TIMEOUT'), subs: [arrow('', (desc ? text : minutes)(c.before), (desc ? text : minutes)(c.after))], goal: { kind: 'bar', field: c.key } })
+      out.push({ label: t(desc ? 'SEW_SAVE_MAIL_TITLE' : 'SEW_SAVE_TIMEOUT'), subs: [arrow('', (desc ? text : timeoutText)(c.before), (desc ? text : timeoutText)(c.after))], goal: { kind: 'bar', field: c.key } })
     } else if (c.kind === 'added') {
       out.push({ label: t('SEW_SAVE_CHANGE_ADDED', { no: c.no }), subs: plain(now.get(c.uid)?.descriptionToEmail), goal: { kind: 'step', uid: c.uid } })
     } else if (c.kind === 'deleted') {

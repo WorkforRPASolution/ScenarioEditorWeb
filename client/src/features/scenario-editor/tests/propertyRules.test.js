@@ -89,3 +89,35 @@ describe('propertyFieldOf — 저장 창의 운영 속성 줄 → 창의 칸', (
     expect(propertyFieldOf(null)).toBeNull()
   })
 })
+
+// 규칙 한곳(SEW-024 — 화면 부품·저장 흐름·표시가 저마다 들고 있던 것)
+import { typeNoteCode, FOLLOW_KEYS, FOLLOW_FIELDS } from '../editor/propertyRules'
+import { followName } from '../editor/propertyView'
+describe('운영 속성 규칙 한곳(SEW-024)', () => {
+  const fap = { action: { type: 13 } }
+  const wait = { action: { type: 1 } }
+  it('유형 알림 code: 미지정 → TYPE_UNSET, FAP 동작이 있는데 PM 자동화(7)가 아님 → FAP_TYPE_MISMATCH(서버 scenarioRules 와 같다)', () => {
+    expect(typeNoteCode({ Type: 0 }, [fap])).toBe('TYPE_UNSET')
+    expect(typeNoteCode({ Type: 1 }, [wait, fap])).toBe('FAP_TYPE_MISMATCH')
+    expect(typeNoteCode({ Type: 7 }, [fap])).toBe(null)
+    expect(typeNoteCode({ Type: 1 }, [wait])).toBe(null)
+    expect(typeNoteCode({ Type: 1 }, [])).toBe(null)
+    expect(typeNoteCode({ Type: 1 }, undefined)).toBe(null)
+  })
+  it('후속 칸 키는 한 모양에서 나온다', () => {
+    expect(FOLLOW_KEYS).toEqual([['success', 'NextScenarioIfSuccess'], ['fail', 'NextScenarioIfFail']])
+    expect([...FOLLOW_FIELDS]).toEqual(['NextScenarioIfSuccess', 'NextScenarioIfFail'])
+  })
+  it('followName: 이름이 있는 후속만 이름, 저장된 빈 후속 {Name:""}·null 은 null', () => {
+    expect(followName({ Name: 'NEXT', Text: 't' })).toBe('NEXT')
+    expect(followName({ Name: '', Text: '' })).toBe(null)
+    expect(followName(null)).toBe(null)
+    expect(followName({ Name: 3 })).toBe(null)
+  })
+  it('바뀐 키: 기준이 없으면(새 시나리오) 모든 키, 있으면 값이 다른 키만 — Owners 는 늘 뺀다(서버 changeDetect 와 같다)', () => {
+    const p = { StartDelay: 5, RetryCnt: 0, Owners: ['x'] }
+    expect(Object.keys(checkPropertyFields(p, null))).toEqual(['StartDelay']) // 기준 없음 — 범위 밖 시작 지연을 본다
+    expect(Object.keys(checkPropertyFields(p, { StartDelay: 5, RetryCnt: 0 }))).toEqual([]) // 고치지 않은 옛 값은 막지 않는다
+    expect(Object.keys(checkPropertyFields({ ...p, RetryCnt: 12 }, { StartDelay: 5, RetryCnt: 0 }))).toEqual(['RetryCnt'])
+  })
+})

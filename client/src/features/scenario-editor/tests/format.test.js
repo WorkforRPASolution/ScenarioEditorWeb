@@ -69,3 +69,14 @@ describe('stepExtraRows', () => {
     expect(M.SEW_UI_EXTRA_TRAIN_KEYS).toBe('학습 이미지(키·Type)')
   })
 })
+
+import { timeoutText } from '../format'
+describe('제한 시간 글(SEW-024 — 저장 창 두 곳이 같은 함수를 따로 들고 있었다)', () => {
+  it('정수 글은 "n분", 빈 값은 (없음), 숫자가 아니면 글 그대로', () => {
+    expect(timeoutText('15')).toBe(t('SEW_SAVE_MINUTES', { n: '15' }))
+    expect(timeoutText(240)).toBe(t('SEW_SAVE_MINUTES', { n: 240 }))
+    for (const v of ['', null, undefined]) expect(timeoutText(v)).toBe(t('SEW_SAVE_EMPTY_VALUE'))
+    expect(timeoutText('1.5')).toBe('1.5')
+    expect(timeoutText('abc')).toBe('abc')
+  })
+})

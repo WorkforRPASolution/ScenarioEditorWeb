@@ -39,6 +39,8 @@ export function sizeText(bytes) {
 }
 
 export const intervalSec = (ms) => Math.trunc(ms / 1000)
+// 제한 시간(분, 문자열로 저장) 글 — 정수 글이면 "n분", 비었으면 (없음), 그 밖은 저장값 그대로(저장 창 대상·바뀐 것)
+export const timeoutText = (v) => (v === '' || v === null || v === undefined ? msg('SEW_SAVE_EMPTY_VALUE') : /^[0-9]+$/.test(String(v)) ? msg('SEW_SAVE_MINUTES', { n: v }) : String(v))
 export const actionLabel = (typeName) => (typeName ? LABELS.action[typeName] ?? typeName : '알 수 없는 동작')
 export const conditionLabel = (kind) => LABELS.condition[kind] ?? kind
 

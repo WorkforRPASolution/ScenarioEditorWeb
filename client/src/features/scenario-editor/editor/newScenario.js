@@ -43,7 +43,8 @@ export function newScenarioOf({ process, model, name, type, description, timeout
 // 창의 값 f = { process, model, type, major, middle, part3, part4, name, description, timeoutLimit }, rule = nameRuleOf 결과(없으면 직접 입력)
 export const newName = (f, rule) => (rule ? buildName(f).name : f.name ?? '')
 
-const NAME_FIELDS = ['major', 'middle', 'part3', 'part4', 'name']
+// 이름을 만드는 칸(규칙이 있으면 대·중분류·3·4번 칸, 없으면 이름 한 칸) — 창도 이 목록으로 이름 칸 오류를 가른다
+export const NAME_FIELDS = ['major', 'middle', 'part3', 'part4', 'name']
 export function checkNewScenario(f, { rule }) {
   const out = []
   const add = (field, code, params = {}, empty = false) => out.push({ field, code, params, empty })

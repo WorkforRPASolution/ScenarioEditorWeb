@@ -3,7 +3,7 @@
 // 저장된 빈 후속 {Name:''} 은 "후속 없음" 으로 보이고, 고치지 않으면 값 그대로 둔다(잇기를 눌러야 고르는 칸이 열린다).
 import { computed, inject } from 'vue'
 import { t, LABELS, fieldMessage } from '../../messages'
-import { followName } from '../../stores/saveFlow'
+import { followName } from '../../editor/propertyView'
 
 defineOptions({ name: 'PropertyFollow' })
 const props = defineProps({ field: { type: String, required: true } }) // NextScenarioIfSuccess | NextScenarioIfFail

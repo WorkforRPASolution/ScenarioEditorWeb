@@ -2,6 +2,10 @@
 import { LABELS, t } from '../messages'
 import { canonicalJson } from './diff'
 import { isScenarioType, scenarioTypeLabel } from '../format'
+import { FOLLOW_FIELDS } from './propertyRules'
+
+// 후속 이름 — 이름이 있는 후속만. 저장된 빈 후속 {Name:''} 과 null 은 둘 다 "후속 없음"(null)이다.
+export const followName = (v) => (v && typeof v === 'object' && typeof v.Name === 'string' && v.Name !== '' ? v.Name : null)
 
 const P = LABELS.prop
 
@@ -57,7 +61,6 @@ const DIFF_TEXT = {
   IsShowDialog: (v) => (v ? P.yes : P.no)
 }
 const ORDER = Object.keys(DIFF_TEXT)
-const FOLLOW_KEYS = new Set(['NextScenarioIfSuccess', 'NextScenarioIfFail'])
 const followDesc = (v) => (v && typeof v.Text === 'string' && v.Text !== '' ? v.Text : P.none)
 const plain = (v) => (v == null || v === '' ? P.none : typeof v === 'object' ? JSON.stringify(v) : String(v))
 
@@ -68,7 +71,7 @@ export function propertyDiffs(before, after) {
   keys.sort((x, y) => (ORDER.indexOf(x) + 1 || 99) - (ORDER.indexOf(y) + 1 || 99))
   return keys.map((key) => {
     // 후속 이름은 그대로고 설명만 바뀌면 "A → A" 가 된다 — 설명을 보인다
-    if (FOLLOW_KEYS.has(key) && followText(a[key]) === followText(b[key])) return { key, label: P.errorFields[`${key}.Text`], from: followDesc(a[key]), to: followDesc(b[key]) }
+    if (FOLLOW_FIELDS.has(key) && followText(a[key]) === followText(b[key])) return { key, label: P.errorFields[`${key}.Text`], from: followDesc(a[key]), to: followDesc(b[key]) }
     const text = DIFF_TEXT[key] ?? plain
     return { key, label: P.keys[key] ?? LABELS.propertyKey[key] ?? key, from: text(a[key]), to: text(b[key]) }
   })

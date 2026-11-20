@@ -195,6 +195,16 @@ describe('openService', () => {
         expect(await t.svc.source({}, V)).toEqual({ gone: true })
         await expect(t.svc.resolveImage(V, 's0-bi')).rejects.toMatchObject({ statusCode: 404, code: 'NOT_FOUND' })
       })
+      it('캐시로 읽었다는 로그는 판마다 한 번 — 배포가 손대지 않은 그림마다 읽어도 같은 줄을 되풀이하지 않는다(SEW-024)', async () => {
+        const t = setup({ fileId: HEX1 })
+        await t.svc.source({}, V)
+        t.deps.gridfs.findFileMeta = async () => null
+        const logs = []
+        t.deps.log.info = (m) => logs.push(m)
+        await t.svc.source({}, V, ALLOW)
+        for (let i = 0; i < 3; i++) expect(await t.svc.resolveImage(V, 's0-bi', ALLOW)).toBe(LONG_B64)
+        expect(logs.filter((m) => m.includes('디스크 캐시로 읽음'))).toHaveLength(1)
+      })
       it('파일 id 를 대문자로 보내도 같은 캐시를 찾는다', async () => {
         const t = setup({ fileId: HEX1 })
         await t.svc.source({}, V)
