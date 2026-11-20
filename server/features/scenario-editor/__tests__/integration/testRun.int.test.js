@@ -11,7 +11,7 @@ const require = createRequire(import.meta.url)
 const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '../../../../..')
 // 시험만 tools 를 읽는다 — CommandServer 흉내·정리 도구
 const { startFakeCommandServer } = require(join(ROOT, 'tools/infra/fake-command-server.js'))
-const { cleanupSewRecovery, cleanupSewTestRuns } = require(join(ROOT, 'tools/infra/sew-w-cleanup.js'))
+const { cleanupSewRecovery, cleanupSewTestRuns, assertLocalTargets } = require(join(ROOT, 'tools/infra/sew-w-cleanup.js'))
 const { startFaultProxy } = require(join(ROOT, 'tools/infra/fault-proxy.js'))
 const { MongoClient } = createRequire(join(ROOT, 'tools/package.json'))('mongodb')
 const { createActionClient } = require('../../clients/actionClient')
@@ -36,6 +36,8 @@ const PARAMS = { userInfo: '시험 - sew_multi', startStep: 1, userText: 'INSPEC
 beforeAll(async () => {
   require('dotenv').config({ path: join(ROOT, 'server/.env') })
   env = { MONGODB_URI: process.env.MONGODB_URI, WEBMANAGER_DB_URI: process.env.WEBMANAGER_DB_URI, REDIS_URL: process.env.REDIS_URL, EARS_INTERFACE_URL: process.env.EARS_INTERFACE_URL || 'http://localhost:8080' }
+  // 사내 프로필 .env 로 돌리면 실제 설비에 실행을 요청한다 — 연결·요청하기 전에 대상이 루프백인지 본다(SEW-024)
+  assertLocalTargets({ ...env, SE_WEB_DB_URI: process.env.SE_WEB_DB_URI })
   const { connectDB, earsConnection, webManagerConnection } = require('../../../../shared/db/connection')
   await connectDB()
   if (webManagerConnection.db.databaseName !== 'SE_WEB_DEV') throw new Error(`웹 전용 DB 가 SE_WEB_DEV 가 아니다: ${webManagerConnection.db.databaseName}`)

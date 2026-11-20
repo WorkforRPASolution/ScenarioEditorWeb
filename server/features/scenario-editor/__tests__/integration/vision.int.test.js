@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 const require = createRequire(import.meta.url)
 const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '../../../../..')
+const { assertLocalTargets } = require(join(ROOT, 'tools/infra/sew-w-cleanup.js'))
 // 시험만 tools 를 읽는다 — 흉내 판정 서버·ZooKeeper 노드 도구·PNG 만들기
 const { withJudge } = require(join(ROOT, 'tools/infra/fake-vision-server.js'))
 const { createIsZk } = require(join(ROOT, 'tools/infra/is-zk.js'))
@@ -154,6 +155,8 @@ describe('POST /vision-test·/ocr-test — 실제 앱으로', () => {
   const before = {}
   beforeAll(async () => {
     require('dotenv').config({ path: join(ROOT, 'server/.env') })
+    // 사내 프로필 .env 로 돌리지 않는다 — 연결하기 전에 EARS·웹 DB·Redis·InterfaceServer 가 루프백인지 본다(SEW-024)
+    assertLocalTargets(process.env)
     for (const k of ['EARS_INTERFACE_GRPC_ADDR', 'EARS_INTERFACE_GRPC_TIMEOUT_MS', 'SE_VISION_TEST_CONCURRENCY', 'SE_DEV_USER_OVERRIDE']) before[k] = process.env[k]
     process.env.SE_DEV_USER_OVERRIDE = '1'
     process.env.EARS_INTERFACE_GRPC_ADDR = GRPC_ADDR

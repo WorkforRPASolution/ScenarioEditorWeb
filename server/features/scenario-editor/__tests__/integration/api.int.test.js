@@ -7,6 +7,7 @@ const require = createRequire(import.meta.url)
 
 const HERE = fileURLToPath(new URL('.', import.meta.url))
 const ROOT = join(HERE, '../../../../..')
+const { assertLocalTargets } = require(join(ROOT, 'tools/infra/sew-w-cleanup.js'))
 const OUT = join(ROOT, 'tools/scenario-gen/out')
 const expectedScopes = require(join(ROOT, 'tools/seed/data/expected-scopes.js'))
 
@@ -14,6 +15,8 @@ let server
 let base
 beforeAll(async () => {
   require('dotenv').config({ path: join(ROOT, 'server/.env') })
+  // 사내 프로필 .env 로 돌리지 않는다 — 연결하기 전에 EARS·웹 DB·Redis·InterfaceServer 가 루프백인지 본다(SEW-024)
+  assertLocalTargets(process.env)
   process.env.SE_DEV_USER_OVERRIDE = '1'
   process.env.IMAGE_CACHE_DIR = join(ROOT, 'server/.cache/int-images')
   const { connectDB } = require('../../../../shared/db/connection')

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { t, errorCode, errorMessage, noteMessage, fieldMessage, MESSAGES } from '../messages'
 
@@ -23,7 +23,9 @@ function serverParseFailedFields() {
 // 서버가 새 code 를 내면 여기서 문구 누락이 드러난다(화면에 [SEW_ERR_…] 키가 보이지 않게).
 function serverErrorCodes() {
   const root = join(__dirname, '../../../../../server')
-  const files = [join(root, 'localGuard.js')]
+  // localGuard.js(Host·출처 거절)는 단독판 셸이라 WebManager 편입 때 사라진다 — 있을 때만 읽는다(SEW-024)
+  const guard = join(root, 'localGuard.js')
+  const files = existsSync(guard) ? [guard] : []
   const walk = (d) => {
     for (const e of readdirSync(d, { withFileTypes: true })) {
       if (e.isDirectory()) { if (e.name !== '__tests__' && e.name !== 'node_modules') walk(join(d, e.name)) } else if (e.name.endsWith('.js')) files.push(join(d, e.name))

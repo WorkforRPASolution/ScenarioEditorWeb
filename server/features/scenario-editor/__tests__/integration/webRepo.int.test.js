@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 const require = createRequire(import.meta.url)
 const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '../../../../..')
+const { assertLocalTargets } = require(join(ROOT, 'tools/infra/sew-w-cleanup.js'))
 
 const OWNER = 'sew_w_test'
 let repo
@@ -12,6 +13,8 @@ const gridIds = []
 const requestIds = []
 beforeAll(async () => {
   require('dotenv').config({ path: join(ROOT, 'server/.env') })
+  // 사내 프로필 .env 로 돌리지 않는다 — 연결하기 전에 EARS·웹 DB·Redis·InterfaceServer 가 루프백인지 본다(SEW-024)
+  assertLocalTargets(process.env)
   const { connectDB, webManagerConnection } = require('../../../../shared/db/connection')
   await connectDB()
   webDb = webManagerConnection.db

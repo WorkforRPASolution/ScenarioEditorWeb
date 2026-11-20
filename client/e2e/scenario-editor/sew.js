@@ -41,9 +41,11 @@ export async function apiAs(user = 'sew_master') {
     },
     // 시나리오 지우기(확인 이름 = 이름). 내 초안은 건드리지 않는다
     remove: async (k) => json(await ctx.delete(path(k), { data: { confirmName: k.name }, timeout: 60_000 }), `지우기 ${idOf(k)}`),
-    // 판 하나를 열어(edit 로 작업본을 고쳐) target 에 배포한다 — 다른 이름이면 복사, 같은 이름이면 새 판
+    // 판 하나를 열어(edit 로 작업본을 고쳐) target 에 배포한다 — 다른 이름이면 복사, 같은 이름이면 새 판.
+    // 새 판의 crtime 은 초 단위다 — 같은 초에 두 판을 만들면 판이 겹친다. 같은 시나리오에 새 판을 낼 때는 지금 현재 판의 다음 초까지 기다린다(SEW-024).
     async deployFrom(from, target, edit = null, crtime = 'current') {
       const sk = await api.open(from, crtime)
+      if (sameScenario(from, target)) await afterSecondOf(sk.headCrtime ?? sk.version?.crtime)
       const scenario = structuredClone(sk.edited)
       if (edit) edit(scenario)
       return api.deploy({ target, propertyRev: sk.propertyRev, scenario, requestId: randomUUID() })
@@ -51,6 +53,14 @@ export async function apiAs(user = 'sew_master') {
     dispose: () => ctx.dispose()
   }
   return api
+}
+
+const sameScenario = (a, b) => a.process === b.process && a.model === b.model && a.name === b.name
+// crtime(ms, 초 단위로 잘림)의 다음 초가 될 때까지 — 컨테이너 시계와의 작은 어긋남을 위해 200ms 를 더 둔다
+export async function afterSecondOf(crtime) {
+  if (typeof crtime !== 'number') return
+  const wait = crtime + 1200 - Date.now()
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait))
 }
 
 // 스텝 비교용 — 그림 URL 은 시나리오 이름·판·파일 id 를 품어 판마다 다르다(참조 from·id 로 비교)

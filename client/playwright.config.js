@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
-import { SERVER_PORT, CLIENT_PORT, FAULT_PROXY, FAULT_PROXY_URL, FAULT_CONTROL_URL, JUDGE_CONTROL_PORT, JUDGE_CONTROL_URL, JUDGE_GRPC_ADDR, COMMAND_CONTROL_PORT, COMMAND_CONTROL_URL, serverEnv } from './e2e/env.js'
+import { createRequire } from 'node:module'
+import { join } from 'node:path'
+import { ROOT, SERVER_PORT, CLIENT_PORT, FAULT_PROXY, FAULT_PROXY_URL, FAULT_CONTROL_URL, JUDGE_CONTROL_PORT, JUDGE_CONTROL_URL, JUDGE_GRPC_ADDR, COMMAND_CONTROL_PORT, COMMAND_CONTROL_URL, serverEnv } from './e2e/env.js'
 
 // 단독판: 로그인 setup 프로젝트 없음. 시험 데이터 `npm run seed -- reset basic anomaly` 가 먼저다.
 // 저장소 루트에서 `npm run e2e` 로 돌린다(루트에 @playwright/test).
@@ -13,6 +15,10 @@ import { SERVER_PORT, CLIENT_PORT, FAULT_PROXY, FAULT_PROXY_URL, FAULT_CONTROL_U
 // 판정 통합 시험·실측 도구와 동시에 돌리지 않는다(서로의 노드를 지운다). 내릴 때 노드를 지우도록 SIGTERM 으로 끝낸다(zkCli 한 번이 1초쯤).
 // 시험 실행 E2E(p5-test-run)는 CommandServer 흉내(3195, 제어 3194)를 띄운다 — 로컬 InterfaceServer 가 실행 요청을 그리로 넘긴다
 // (infra/is/conf 의 ARSCommandServerAddress). 시험 실행 통합 시험과 동시에 돌리지 않는다(둘 다 3195 를 쓴다).
+// 서버는 server/.env 의 EARS·웹 DB·Redis 로 뜨고 중계는 그 InterfaceServer 로 보낸다 — 사내 프로필 .env 로 돌리면 운영에 쓴다.
+// 무엇이든 띄우기 전에 대상이 루프백인지 본다(SEW-024 — 전에는 정리만 막았다).
+const { assertLocalTargets } = createRequire(join(ROOT, 'tools/package.json'))('./infra/sew-w-cleanup.js')
+assertLocalTargets(serverEnv())
 const CLIENT_URL = `http://localhost:${CLIENT_PORT}`
 const INTERFACE_URL = serverEnv().EARS_INTERFACE_URL || 'http://localhost:8080'
 
