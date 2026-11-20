@@ -448,6 +448,13 @@ describe('ScenarioEditorView', () => {
       expect(useEditorStore().openError).not.toBe(null)
       expect(e.toast?.text).not.toBe(MESSAGES.SEW_LOAD_OPENED_CURRENT_DRAFT_KEPT)
     })
+    it('다른 이름으로 배포해 기준이 새 판으로 바뀌면(rebase) 주소도 그 이름·현재 버전을 가리킨다(SEW-024)', async () => {
+      await openA()
+      replace.mockClear()
+      useEditStore().rebase({ ...writable('COPY', 9), id: 'P-M-COPY' })
+      await flushPromises()
+      expect(replace).toHaveBeenLastCalledWith({ name: 'ScenarioEditor', query: { p: 'P', m: 'M', n: 'COPY', v: 'current' } })
+    })
     it('[적용하고 이동] 은 작업본에 넣은 뒤 연다', async () => {
       const w = await openA()
       const e = useEditStore()

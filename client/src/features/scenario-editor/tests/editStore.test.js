@@ -12,6 +12,16 @@ import { useEditorStore } from '../stores/editorStore'
 import { useEditStore } from '../stores/editStore'
 import { typeArea } from '../editor/areaInput'
 import { t } from '../messages'
+import { insertStep as _ins, deleteSteps as _del, applyStep as _apply, STEP_MAX } from '../editor/commands'
+import { panelFixture, imageStep, noneStep, ocrStep } from './panelFixture'
+import { spotKey } from '../editor/trainView'
+import { LOCATE_MS } from '../editor/capture'
+import { defaultProperty } from '../editor/newScenario'
+import { unsavedChanges } from '../editor/diff'
+import { buildMeta } from '../editor/request'
+import { SNAPSHOT_BASE_MAX_BYTES } from '../editor/snapshotStep'
+import { flushPromises } from '@vue/test-utils'
+import { toRaw } from 'vue'
 
 const ok = (data) => Promise.resolve({ data: { success: true, data } })
 const edited = { source: { process: 'P', model: 'M', name: 'N', crtime: 1, fileId: 'f' }, headCrtime: 1, header: {}, steps: [{ uid: 's0' }], property: {} }
@@ -72,7 +82,6 @@ describe('editStore', () => {
   })
 })
 
-import { insertStep as _ins, deleteSteps as _del } from '../editor/commands'
 describe('editStore.run·undoLast·redoLast', () => {
   const mk = () => {
     const e = useEditStore()
@@ -273,7 +282,6 @@ describe('editStore 선택 — 여러 줄 선택과 초점(editorStore.selectedU
 })
 
 // ── 오른쪽 편집 패널(Task 6): openPanel·applyPanel·discardPanel·guard ──
-import { panelFixture, imageStep, noneStep, ocrStep } from './panelFixture'
 describe('editStore — 패널', () => {
   beforeEach(() => setActivePinia(createPinia()))
   const mk = () => panelFixture([imageStep(0), imageStep(1), noneStep(2)])
@@ -525,7 +533,6 @@ describe('editStore — 확인 창이 미룬 일(R-T6c)', () => {
   })
 })
 
-import { STEP_MAX } from '../editor/commands'
 describe('editStore — 큰 화면 잡기·[다시 찍기]·새 스텝(Task 7)', () => {
   const BITMAP = { width: 1000, height: 500 }
   const url = (id) => `http://x/api/scenario-editor/scenarios/P/M/N/versions/1/files/F/images/${id}`
@@ -946,7 +953,6 @@ describe('editStore — 큰 화면 잡기·[다시 찍기]·새 스텝(Task 7)',
 })
 
 // ── 다른 시나리오 붙여넣기·빈 시나리오(Task 8) ──
-import { applyStep as _apply } from '../editor/commands'
 describe('editStore — 다른 시나리오 붙여넣기·빈 시나리오(Task 8)', () => {
   beforeEach(() => { setActivePinia(createPinia()); Object.values(api).forEach((f) => f.mockReset()) })
   // 시나리오 name 의 열기 응답(뼈대 + edited). 판 = crtime·fileId.
@@ -1352,8 +1358,6 @@ describe('editStore — 최종 검토 반영(P2-C)', () => {
   })
 })
 
-import { spotKey } from '../editor/trainView'
-import { LOCATE_MS } from '../editor/capture'
 describe('editStore — 찾을 그림 위치 보기(findSpot, 찾을 그림 밖 누를 곳 B)', () => {
   const BITMAP = { width: 1000, height: 500 }
   const TRAIN = { width: 20, height: 10 }
@@ -1514,7 +1518,6 @@ describe('editStore — 배포 뒤 새 판으로(rebase)·초안 시각(markDraf
   })
 })
 
-import { defaultProperty } from '../editor/newScenario'
 describe('editStore — 새 시나리오(beginNew), P2-D Task 6', () => {
   beforeEach(() => { setActivePinia(createPinia()); Object.values(api).forEach((f) => f.mockReset()) })
   const params = { process: 'P', model: 'M2', name: 'NEW_ONE', type: 1, description: '새 메일', timeoutLimit: '240' }
@@ -1595,7 +1598,6 @@ describe('editStore — 새 시나리오(beginNew), P2-D Task 6', () => {
     expect(unsavedChanges(e.session.working, e.session.saveBase).map((c) => c.key ?? c.kind)).toEqual(['description', 'property', 'added', 'added'])
   })
 })
-import { unsavedChanges } from '../editor/diff'
 
 // ── 불러오기 창에서 여는 세션(P2-D Task 7): 되돌려 열기·초안 이어서 열기·지워짐 ──
 describe('editStore — 되돌려 열기(beginRestore)·초안 이어서 열기(beginFromDraft)·지워짐, P2-D Task 7', () => {
@@ -1857,12 +1859,8 @@ describe('editStore — 되돌려 열기(beginRestore)·초안 이어서 열기(
     expect(e.toast.text).toBe('다른 알림')
   })
 })
-import { buildMeta } from '../editor/request'
-import { flushPromises } from '@vue/test-utils'
-import { toRaw } from 'vue'
 
 // ── P3-E 스냅샷에서 스텝 만들기(P3 설계 §4.8) ──
-import { SNAPSHOT_BASE_MAX_BYTES } from '../editor/snapshotStep'
 describe('editStore — 스냅샷을 새 스텝의 기준 화면으로(P3-E)', () => {
   const BITMAP = { width: 640, height: 360 }
   beforeEach(() => {

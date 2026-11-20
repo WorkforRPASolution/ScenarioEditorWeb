@@ -277,10 +277,32 @@ describe('성과 입력 창(PerformanceDialog)', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     await flushPromises()
     expect(id('se-perf-leave').exists()).toBe(true)
+    // ✕·바깥 누르기도 같은 확인을 거친다(SEW-024)
+    await id('se-perf-leave-keep').trigger('click')
+    dlg().querySelector('[aria-label="닫기"]').click()
+    await flushPromises()
+    expect(id('se-perf-leave').exists()).toBe(true)
+    await id('se-perf-leave-keep').trigger('click')
+    dlg().querySelector('.bg-black\\/40').click()
+    await flushPromises()
+    expect(id('se-perf-leave').exists()).toBe(true)
+    expect(w.emitted('update:modelValue')).toBeUndefined()
     await id('se-perf-leave-drop').trigger('click')
     expect(w.emitted('update:modelValue')).toEqual([[false]])
     expect(api.savePerformance).not.toHaveBeenCalled()
     expect(api.saveReview).not.toHaveBeenCalled()
+  })
+
+  it('열면 등급(저장된 값)에 초점, 저장된 원개발자의 등록 여부를 묻지 못해도 표시 없이 연다 — 저장 때 서버가 다시 본다(SEW-024)', async () => {
+    const f = panelFixture([noneStep(0)], { canWrite: true, me: { singleid: 'choi_conductor', authorityManager: 2 } })
+    f.s.skeleton = { ...f.s.skeleton, id: 'P-M-N', property: {}, performance: PERF }
+    api.sameName.mockReturnValue(ok(['M']))
+    api.registeredUsers.mockImplementation(() => fail(503, 'UPSTREAM_DOWN'))
+    w = mount(PerformanceDialog, { props: { modelValue: true }, attachTo: document.body, global: { stubs: { teleport: false } } })
+    await flushPromises()
+    expect(document.activeElement).toBe(pf('grade:2').element)
+    expect(dlgText()).not.toContain(t('SEW_PERF_DEV_UNREG_TAG'))
+    expect(qa('.se-pf-err').length).toBe(0)
   })
 
   it('효과 유형이 "None" 인 성과: 창이 골라 둔 Active 를 바닥 "바뀐 것" 에 세고 그것만으로 저장할 수 있다 — 손대지 않고 닫으면 묻지 않는다(SEW-023)', async () => {
@@ -410,16 +432,23 @@ describe('성과 입력 창(PerformanceDialog)', () => {
     expect(saveBtn().attributes('disabled')).toBeUndefined()
   })
 
-  it('보낸 뒤 응답 없이 끊기면 확정 실패가 아니라 "저장했는지 알 수 없습니다"(SEW-023)', async () => {
+  it('보낸 뒤 응답 없이 끊기거나 시간이 지나면 확정 실패가 아니라 "저장했는지 알 수 없습니다"(SEW-023·SEW-024)', async () => {
     setup()
     await flushPromises()
     await pf('desc').setValue('설명을 고침')
-    api.savePerformance.mockReturnValue(Promise.reject({ request: {}, message: 'Network Error' }))
-    await saveBtn().trigger('click')
-    await flushPromises()
-    expect(footText()).toContain(t('SEW_PERF_SAVE_UNKNOWN'))
-    expect(footText()).not.toContain('저장하지 못했습니다')
-    expect(pf('desc').element.value).toBe('설명을 고침')
+    const errs = [
+      () => Promise.reject({ request: {}, message: 'Network Error' }),
+      () => Promise.reject({ code: 'ECONNABORTED', request: {}, message: 'timeout' }),
+      () => fail(504, 'UPSTREAM_TIMEOUT')
+    ]
+    for (const err of errs) {
+      api.savePerformance.mockImplementationOnce(err)
+      await saveBtn().trigger('click')
+      await flushPromises()
+      expect(footText()).toContain(t('SEW_PERF_SAVE_UNKNOWN'))
+      expect(footText()).not.toContain('저장하지 못했습니다')
+      expect(pf('desc').element.value).toBe('설명을 고침')
+    }
   })
 })
 

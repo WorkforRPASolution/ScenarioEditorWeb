@@ -355,7 +355,12 @@ describe('버튼 모양(2026-11-19 사용자 결정 A — 테두리 버튼 + 색
       const { w, e } = setup()
       await type(w, 'se-bar-description', '새 제목')
       await find(w, 'se-save').trigger('click')
-      useSaveFlow().close?.()
+      await new Promise((r) => setTimeout(r, 0))
+      const flow = useSaveFlow()
+      expect(flow.stage).toBe('form') // 창이 정말 열렸다
+      expect(flow.close()).toBe(true)
+      expect(flow.stage).toBe(null)
+      await w.vm.$nextTick()
       expect(e.session.working.header.description).toBe('새 제목')
       expect(find(w, 'se-bar-description').element.value).toBe('새 제목')
     })

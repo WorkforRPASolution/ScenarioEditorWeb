@@ -291,6 +291,25 @@ describe('saveFlow', () => {
     }
   })
 
+  it('code 없는 응답: 5xx 는 보냈는지 모른다(결과 모름, 기억을 남김), 4xx 는 보내지 않았다(SEW-024)', async () => {
+    const { flow } = setup()
+    flow.open(); await flushPromises()
+    flow.toConfirm()
+    api.deploy.mockImplementationOnce(() => Promise.reject({ response: { status: 500, data: {} }, request: {} }))
+    await flow.deploy()
+    expect(flow.stage).toBe('unknown')
+    const pend = JSON.parse(sessionStorage.getItem(PENDING_KEY))
+    expect(pend.requestId).toBe(flow.requestId)
+    expect(flow.requestId).toMatch(UUID)
+    flow.redeploy()
+    flow.toConfirm()
+    api.deploy.mockImplementationOnce(() => Promise.reject({ response: { status: 400, data: {} }, request: {} }))
+    await flow.deploy()
+    expect(flow.stage).toBe('fail')
+    expect(flow.error.kind).toBe('notSent')
+    expect(sessionStorage.getItem(PENDING_KEY)).toBe(null)
+  })
+
   it('requestId 가 없는 504(보내기 전 DB 시간 초과) → 보내지 않음', async () => {
     const { flow } = setup()
     flow.open(); await flushPromises()
@@ -466,6 +485,9 @@ describe('saveFlow', () => {
     const meta = metaOf(api.saveDraft.mock.calls[0])
     expect(meta.target).toEqual({ process: 'P', model: 'M', name: 'N' })
     expect(meta.requestId).toBeUndefined()
+    // 초안은 배포 확인 표시를 싣지 않는다(서버 초안 저장은 덮어쓰기·충돌을 보지 않는다, SEW-024)
+    expect(meta).not.toHaveProperty('force')
+    expect(meta).not.toHaveProperty('overwrite')
     expect(flow.stage).toBe('draft')
     expect(e.session.draft).toEqual({ id: 'd1', savedAt: '2026-11-09T05:23:00.000Z', target: { process: 'P', model: 'M', name: 'N' } })
     expect(unsavedChanges(e.session.working, e.session.saveBase)).toEqual(before)
