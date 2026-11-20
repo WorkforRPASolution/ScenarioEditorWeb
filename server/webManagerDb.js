@@ -2,7 +2,7 @@
 // 단독판 전용: WEBMANAGER DB(오류·감사 기록)를 쓸지 정한다. SE_WEBMANAGER_DB=0 이면 EARS 만 연결하고 기록 저장을 끈다 —
 // 사내 운영 EARS 에 붙여 읽기 시험을 할 때 운영 Mongo 에 아무것도 쓰지 않기 위해서다. 편입 때 대역과 함께 사라진다.
 const { createLogger } = require('./shared/logger')
-const { sameDbName } = require('./mongoUri')
+const { sameDbName, mongoDbName } = require('./mongoUri')
 
 const log = createLogger('db')
 
@@ -28,8 +28,12 @@ async function connectEarsOnly(earsConnection, env) {
 // SE_WEBMANAGER_DB=0 이어도 초안·배포 기록을 둘 웹 전용 DB 는 따로 연다(SE_WEB_DB_URI). 운영 EARS 가 아닌 DB 이름을 써야 한다.
 // WebManagerLog 저장은 꺼진 그대로다. 주소가 없으면 열지 않는다(쓰기 API 는 getWebDb 의 503 으로 막힌다).
 // DB 이름이 운영 EARS 와 같으면 열지 않고 던진다 — 초안·배포 기록 컬렉션이 운영 EARS 에 생기지 않게 서버가 뜨지 않는다(P2-E).
+// DB 이름이 없어도 던진다 — 드라이버가 test DB 에 쓴다(SEW-024, 사전 점검 WEB_DB_NAME_MISSING 과 같은 판정).
 async function connectWebDbOnly(webManagerConnection, env) {
   if (webManagerDbEnabled(env) || !env.SE_WEB_DB_URI) return false
+  if (mongoDbName(env.SE_WEB_DB_URI) === '') {
+    throw new Error('SE_WEB_DB_URI 에 DB 이름이 없습니다 — 주소 끝에 /WEB_MANAGER 처럼 웹 전용 DB 이름을 넣으세요')
+  }
   if (sameDbName(env.SE_WEB_DB_URI, env.MONGODB_URI || DEFAULT_EARS_URI)) {
     throw new Error('SE_WEB_DB_URI 의 DB 이름이 운영 EARS(MONGODB_URI)와 같습니다 — 웹 전용 DB 는 다른 이름을 쓰세요')
   }

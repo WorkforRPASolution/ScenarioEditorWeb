@@ -21,25 +21,36 @@ const TEST_NAME = /^SEW_TEST_\d{8}(_\d+)?$/
 const INTERFACE_URL = /^https?:\/\/[^/?#\s]+$/i
 
 const blank = (v) => typeof v !== 'string' || v.trim() === ''
+// 예시 파일(server/.env.inhouse.example)의 자리표 — <계정>·<운영 Mongo 호스트> 같은 것이 남은 값(SEW-024)
+const PLACEHOLDER = /<[^<>]+>/
+// Mongo 가 스스로 쓰는 DB — 웹 전용 DB 로 쓰지 않는다
+const SYSTEM_DBS = new Set(['admin', 'local', 'config'])
 const stop = (code, message) => ({ level: 'stop', code, message })
 const warn = (code, message) => ({ level: 'warn', code, message })
 
 // 설정 점검. 문구에는 주소 대신 DB 이름·호스트만 싣는다(계정·비밀번호가 화면·기록에 남지 않게).
 function checkEnv(env) {
   const out = []
+  // 자리표가 남은 변수는 이름만 알리고(값에 계정·비밀번호가 섞여 있을 수 있다) 그 변수의 다른 검사는 건너뛴다 — 같은 줄을 두 번 고치라고 하지 않게
+  const holders = new Set(Object.keys(env).filter((k) => typeof env[k] === 'string' && PLACEHOLDER.test(env[k])))
+  if (holders.size) out.push(stop('PLACEHOLDER_LEFT', `${[...holders].join(', ')} 에 예시 파일의 <…> 자리표가 남아 있다 — 실제 값으로 바꾼다(server/.env.inhouse.example 의 안내)`))
   const { host } = resolveListenAddress(env)
   if (!isLoopbackHost(host)) out.push(stop('HOST_NOT_LOOPBACK', `HOST=${host} — 인증 없는 서버라 이 PC 안에서만 받아야 한다. HOST 를 127.0.0.1 로 둔다(이대로 띄우면 쓰기 API 가 403 WRITE_DISABLED)`))
   if (env.SE_WEBMANAGER_DB !== '0') out.push(stop('WEBMANAGER_DB_ON', 'SE_WEBMANAGER_DB 가 0 이 아니다 — 운영 Mongo 에 WebManager 기록을 쓴다. SE_WEBMANAGER_DB=0 으로 둔다'))
-  if (blank(env.SE_WEB_DB_URI)) {
+  if (holders.has('SE_WEB_DB_URI')) {
+    // 위의 자리표 멈춤이 알린다
+  } else if (blank(env.SE_WEB_DB_URI)) {
     out.push(stop('WEB_DB_MISSING', 'SE_WEB_DB_URI 가 비었다 — 초안·배포 기록을 둘 웹 전용 DB 가 없어 저장·배포가 503 이다. 사내 WebManager 의 WEBMANAGER_DB_URI 값을 넣는다(README "사내 쓰기 시험" 3)'))
   } else if (mongoDbName(env.SE_WEB_DB_URI) === '') {
     out.push(stop('WEB_DB_NAME_MISSING', 'SE_WEB_DB_URI 에 DB 이름이 없다 — 드라이버가 test DB 에 쓴다. 주소 끝에 /WEB_MANAGER 처럼 DB 이름을 넣는다'))
+  } else if (SYSTEM_DBS.has(mongoDbName(env.SE_WEB_DB_URI).toLowerCase())) {
+    out.push(stop('WEB_DB_SYSTEM', `SE_WEB_DB_URI 의 DB 이름(${mongoDbName(env.SE_WEB_DB_URI)})이 Mongo 시스템 DB 다 — 초안·배포 기록을 그곳에 쓰지 않는다. 사내 WebManager 의 WEBMANAGER_DB_URI 값(DB 이름까지)을 그대로 넣는다(README "사내 쓰기 시험" 3)`))
   } else if (sameDbName(env.SE_WEB_DB_URI, env.MONGODB_URI || DEFAULT_EARS_URI)) {
     out.push(stop('WEB_DB_SAME_AS_EARS', `SE_WEB_DB_URI 의 DB 이름(${mongoDbName(env.SE_WEB_DB_URI)})이 운영 EARS(MONGODB_URI)와 같다 — 초안·배포 기록이 운영 EARS 에 생긴다. 다른 DB 이름을 쓴다(서버도 이대로는 뜨지 않는다)`))
   }
-  if (blank(env.EARS_INTERFACE_URL)) out.push(stop('INTERFACE_URL_MISSING', 'EARS_INTERFACE_URL 이 비었다 — 배포할 곳이 없다. 사내 InterfaceServer 주소를 넣는다'))
+  if (holders.has('EARS_INTERFACE_URL')) { /* 자리표 멈춤이 알린다 */ } else if (blank(env.EARS_INTERFACE_URL)) out.push(stop('INTERFACE_URL_MISSING', 'EARS_INTERFACE_URL 이 비었다 — 배포할 곳이 없다. 사내 InterfaceServer 주소를 넣는다'))
   else if (!interfaceTarget(env)) out.push(stop('INTERFACE_URL_FORMAT', 'EARS_INTERFACE_URL 은 http://<호스트>:<포트> 꼴이어야 한다 — 앞에 http:// 가 없거나, 뒤에 경로(/EARS/Interface)나 / 가 붙었다. 서버가 뒤에 /EARS/Interface 를 붙여 부른다. 이대로면 배포가 "저장 서버에 연결하지 못했습니다" 나 거절로 끝난다'))
-  if (blank(env.SE_USER_SINGLEID)) out.push(stop('USER_MISSING', 'SE_USER_SINGLEID 가 비었다 — 본인 SingleID(WRITE 권한)를 넣는다'))
+  if (!holders.has('SE_USER_SINGLEID') && blank(env.SE_USER_SINGLEID)) out.push(stop('USER_MISSING', 'SE_USER_SINGLEID 가 비었다 — 본인 SingleID(WRITE 권한)를 넣는다'))
   if (env.SE_DEV_USER_OVERRIDE === '1') out.push(stop('DEV_USER_OVERRIDE_ON', 'SE_DEV_USER_OVERRIDE=1 — 브라우저에서 다른 사용자로 바꿔 저장할 수 있다. 0 으로 둔다'))
   if (DEFAULT_IMAGE_CACHE_DIRS.has(String(env.IMAGE_CACHE_DIR ?? '').trim())) {
     out.push(warn('IMAGE_CACHE_DEFAULT', 'IMAGE_CACHE_DIR 이 기본값(server\\.cache\\images) — 운영 시나리오의 기준 화면이 저장소 폴더 안에 쌓인다(상한 IMAGE_CACHE_MAX_MB). 디스크 여유를 보고, 다른 곳에 두려면 경로를 넣는다'))
@@ -306,6 +317,25 @@ async function remoteChecks({ api, fetch, name, process, model }) {
   const rows = (await list.json())?.data ?? []
   if (rows.some((r) => r.name === name)) {
     out.push(stop('NAME_EXISTS', `${process}·${model} 에 ${name} 이 이미 있다 — 덮어쓰지 않는다. 다른 접미사를 쓴다(예: ${nextName(name)})`))
+  } else {
+    // 목록은 운영 속성 문서로 만든다 — 지운 시나리오의 판 파일이 남은 이름은 목록에 없다. 지운 이름을 다시 쓰지 않는다(SEW-024)
+    const enc = encodeURIComponent
+    const versions = await get(`/scenarios/${enc(process)}/${enc(model)}/${enc(name)}/versions`)
+    if (!versions) return [...out, down()]
+    if (versions.status === 200) {
+      const v = (await versions.json())?.data
+      if (Array.isArray(v) && v.length) out.push(stop('NAME_USED_BEFORE', `${process}·${model} 에 ${name} 의 옛 판이 남아 있다(지운 시나리오) — 지운 이름을 다시 쓰지 않는다. 다른 접미사를 쓴다(예: ${nextName(name)})`))
+    } else if (versions.status !== 404) {
+      out.push(warn('VERSIONS_UNKNOWN', `${name} 의 옛 판 조회가 ${versions.status} ${await errorCode(versions)} — 지운 이름인지 보지 못했다`))
+    }
+  }
+  // 떠 있는 서버가 웹 전용 DB 에 붙어 있는지 — 내 초안 목록(읽기만). .env 만 고치고 서버를 다시 띄우지 않으면 여기서 걸린다(SEW-024)
+  const drafts = await get(`/drafts?${new URLSearchParams({ process, model })}`)
+  if (!drafts) return [...out, down()]
+  if (drafts.status === 503) {
+    out.push(stop('WEB_DB_DOWN', '떠 있는 서버가 웹 전용 DB 에 붙어 있지 않다(내 초안 목록 503) — 이대로면 초안 저장·배포가 503 이다. 서버는 뜬 때의 설정을 쓴다 — SE_WEB_DB_URI 를 넣었거나 고쳤으면 서버를 다시 띄운 뒤 다시 돌린다'))
+  } else if (drafts.status !== 200) {
+    out.push(warn('DRAFTS_UNKNOWN', `내 초안 목록 조회가 ${drafts.status} ${await errorCode(drafts)} — 웹 전용 DB 연결을 보지 못했다`))
   }
   return out
 }

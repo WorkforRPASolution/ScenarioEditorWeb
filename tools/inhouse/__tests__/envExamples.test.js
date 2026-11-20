@@ -62,7 +62,8 @@ describe('서버 설정 예시 두 개의 구성', () => {
     expect(h.SE_DEV_USER_OVERRIDE).toBe('0')
     expect(h.EARS_INTERFACE_URL).toMatch(/^http:\/\/<.+>:<.+>$/) // 꼴(http://호스트:포트)을 그대로 보인다
     expect(checkEnv(h).filter((f) => f.level === 'stop').map((f) => f.code)).toContain('WEB_DB_MISSING')
-    const filled = { ...h, MONGODB_URI: 'mongodb://u:p@prod:27017/EARS', SE_WEB_DB_URI: 'mongodb://u:p@prod:27017/WEB_MANAGER', EARS_INTERFACE_URL: 'http://10.1.2.3:8080', SE_USER_SINGLEID: 'hong.gildong' }
+    expect(checkEnv(h).filter((f) => f.level === 'stop').map((f) => f.code)).toContain('PLACEHOLDER_LEFT') // <…> 를 채우지 않음(SEW-024)
+    const filled = { ...h, MONGODB_URI: 'mongodb://u:p@prod:27017/EARS', REDIS_URL: 'redis://:p@prod-redis:6379/0', SE_WEB_DB_URI: 'mongodb://u:p@prod:27017/WEB_MANAGER', EARS_INTERFACE_URL: 'http://10.1.2.3:8080', SE_USER_SINGLEID: 'hong.gildong' }
     expect(checkEnv(filled).filter((f) => f.level === 'stop')).toEqual([])
   })
 })

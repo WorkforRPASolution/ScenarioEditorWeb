@@ -174,7 +174,7 @@ notepad server\.env
 node tools\inhouse\preflight.js
 ```
 
-`멈춤` 줄이 하나라도 있으면 그 줄의 안내대로 고치고 다시 돌린다. 멈춤이 있는 채로 시험하지 않는다. 보는 것: `HOST` 가 이 PC 인지, `SE_WEBMANAGER_DB=0`, 웹 전용 DB 주소가 있고 EARS 와 다른 DB 인지, InterfaceServer 주소의 꼴과 이 PC 에서 그 주소에 연결되는지, 사용자, 다른 사용자로 바꾸기가 꺼졌는지. `tools` 설치 없이 된다.
+`멈춤` 줄이 하나라도 있으면 그 줄의 안내대로 고치고 다시 돌린다. 멈춤이 있는 채로 시험하지 않는다. 보는 것: 예시 파일의 `<…>` 자리표가 남은 값(`멈춤 PLACEHOLDER_LEFT` — 변수 이름만 알린다), `HOST` 가 이 PC 인지, `SE_WEBMANAGER_DB=0`, 웹 전용 DB 주소가 있고 DB 이름이 있으며 EARS·Mongo 시스템 DB(`admin`·`local`·`config`)와 다른 DB 인지, InterfaceServer 주소의 꼴과 이 PC 에서 그 주소에 연결되는지, 사용자, 다른 사용자로 바꾸기가 꺼졌는지. `tools` 설치 없이 된다.
 
 InterfaceServer 는 연결만 열었다 닫는다(요청은 보내지 않는다). `멈춤 INTERFACE_UNREACHABLE` 이면 배포가 "저장 서버에 연결하지 못했습니다" 로 끝난다 — 괄호 안 글자로 가린다: `ENOTFOUND` 는 이 PC 에서 모르는 이름, `ECONNREFUSED` 는 호스트·포트가 틀림, `TIMEOUT` 은 주소가 틀렸거나 방화벽. 3 의 `EARS_INTERFACE_URL` 안내대로 주소를 고친다.
 
@@ -196,13 +196,13 @@ Vision·OCR 시험 설정(구역 `[6]` 의 `EARS_INTERFACE_GRPC_ADDR`)도 본다
 
 첫 실행에서는 서버를 아직 띄우지 않았으므로 `경고 SERVER_DOWN` 이 나오는 것이 맞다(이때는 스냅샷·이력의 실제 조회도 보지 않는다).
 
-서버를 띄운 뒤(5), 서버 창은 그대로 두고 **새 명령 프롬프트 창**(저장소 폴더)에서 시험 이름과 함께 한 번 더 돌린다. 쓰기 권한, 이름 규칙, 그 이름이 이미 있는지를 본다. 이때는 서버에 닿지 않으면 멈춤이다.
+서버를 띄운 뒤(5), 서버 창은 그대로 두고 **새 명령 프롬프트 창**(저장소 폴더)에서 시험 이름과 함께 한 번 더 돌린다. 쓰기 권한, 이름 규칙, 그 이름이 이미 있는지, 그 이름의 옛 판이 남았는지(지운 시나리오), 떠 있는 서버가 웹 전용 DB 에 붙어 있는지(내 초안 목록을 읽어 본다)를 본다. 이때는 서버에 닿지 않으면 멈춤이다.
 
 ```bat
 node tools\inhouse\preflight.js --name SEW_TEST_20261110 --process <공정> --model <모델>
 ```
 
-이름이 이미 있으면 `SEW_TEST_20261110_2` 처럼 접미사를 바꾼다. `경고 NAME_RULE` 이 나오면 6단계 2번의 "이름 규칙이 있을 때" 를 따른다.
+이름이 이미 있거나(`멈춤 NAME_EXISTS`) 지운 시나리오의 옛 판이 남아 있으면(`멈춤 NAME_USED_BEFORE` — 지운 이름은 다시 쓰지 않는다) `SEW_TEST_20261110_2` 처럼 접미사를 바꾼다. `경고 NAME_RULE` 이 나오면 6단계 2번의 "이름 규칙이 있을 때" 를 따른다. `멈춤 WEB_DB_DOWN` 이면 떠 있는 서버가 웹 전용 DB 에 붙어 있지 않다(초안 저장·배포가 503) — 서버는 뜬 때의 설정을 쓰므로 `SE_WEB_DB_URI` 를 넣었거나 고쳤으면 서버를 다시 띄운 뒤 다시 돌린다.
 
 마지막으로 `mongo` 셸에서 그 이름이 운영 EARS 에 정말 없는지 본다(조회만 한다). 사전 점검은 운영 속성이 있는 문서만 보는데, 운영 속성 없는 문서가 남아 있으면 배포가 그 문서에 붙어 기존 성과를 덮는다.
 
@@ -224,7 +224,7 @@ npm run dev
 
 1. `MongoDB EARS Connected … SE_WEBMANAGER_DB=0` 과 `MongoDB 웹 전용 DB Connected … (SE_WEB_DB_URI)` 가 둘 다 있다. 웹 전용 DB 줄이 없으면 `SE_WEB_DB_URI` 가 비었다(저장·배포가 503).
 2. `HOST=… 는 루프백이 아니라` 경고가 보이면 끄고 `HOST` 를 고친다.
-3. `Failed to start server: SE_WEB_DB_URI 의 DB 이름이 운영 EARS…` 로 끝나면 웹 전용 DB 이름을 바꾼다. 웹 전용 DB 에 붙지 못해도 서버가 뜨지 않는다 — 주소·계정을 고치거나, 읽기 시험만 하려면 `SE_WEB_DB_URI` 를 비운다.
+3. `Failed to start server: SE_WEB_DB_URI 의 DB 이름이 운영 EARS…` 로 끝나면 웹 전용 DB 이름을 바꾼다. `…SE_WEB_DB_URI 에 DB 이름이 없습니다` 면 주소 끝에 DB 이름(`/WEB_MANAGER` 등)을 넣는다. 웹 전용 DB 에 붙지 못해도 서버가 뜨지 않는다 — 주소·계정을 고치거나, 읽기 시험만 하려면 `SE_WEB_DB_URI` 를 비운다.
 
 ### 6. 절차
 

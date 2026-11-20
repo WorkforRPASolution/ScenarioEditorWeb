@@ -69,6 +69,14 @@ describe('웹 전용 DB 만 연결 (SE_WEBMANAGER_DB=0)', () => {
     expect(conn.openUri).not.toHaveBeenCalled()
   })
 
+  it('웹 전용 DB 주소에 DB 이름이 없으면 열지 않고 던진다 — 드라이버가 test DB 에 쓰지 않게 서버가 뜨지 않는다(SEW-024)', async () => {
+    const conn = { openUri: vi.fn(async () => {}), on: vi.fn() }
+    for (const uri of ['mongodb://u:p@prod:27017', 'mongodb://u:p@prod:27017/', 'mongodb://u:p@prod:27017/?authSource=admin']) {
+      await expect(connectWebDbOnly(conn, { SE_WEBMANAGER_DB: '0', SE_WEB_DB_URI: uri }), uri).rejects.toThrow('DB 이름이 없습니다')
+    }
+    expect(conn.openUri).not.toHaveBeenCalled()
+  })
+
   it('주소가 없거나 SE_WEBMANAGER_DB 가 0 이 아니면 열지 않는다', async () => {
     const conn = { openUri: vi.fn(async () => {}), on: vi.fn() }
     expect(await connectWebDbOnly(conn, { SE_WEBMANAGER_DB: '0' })).toBe(false)
